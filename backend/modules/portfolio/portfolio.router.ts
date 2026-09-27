@@ -6,6 +6,8 @@ import { PortfolioHomeReadService } from './portfolio-home.read-service';
 import { validate } from '../../shared/middleware/validate';
 import { authenticate, requirePermission } from '../auth/auth.middleware';
 import { requireEntitlement } from '../billing/entitlement.middleware';
+import { createPortfolioContextAuthorityService } from '../../shared/portfolio-context/portfolio-context-authority.service';
+import { StrategicFramingHomeProjectionService } from '../strategic-framing/strategic-framing.home-projection.service';
 import {
   createStrategicFrontSchema,
   updateStrategicFrontSchema,
@@ -25,8 +27,8 @@ import {
 } from './portfolio.schemas';
 
 const service = new PortfolioService(prisma);
-const homeReadService = new PortfolioHomeReadService(prisma);
-const controller = new PortfolioController(service, homeReadService);
+const homeReadService = new PortfolioHomeReadService(prisma, new StrategicFramingHomeProjectionService(prisma));
+const controller = new PortfolioController(service, homeReadService, createPortfolioContextAuthorityService(prisma));
 
 export const portfolioRouter = Router();
 

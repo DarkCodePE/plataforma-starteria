@@ -3,6 +3,8 @@ import { AuthenticatedRequest } from '../../shared/types/auth.types';
 import { PortfolioService } from './portfolio.service';
 import { ApiResponse } from '../../shared/types/api.types';
 import { PortfolioHomeReadService } from './portfolio-home.read-service';
+import type { PortfolioContextAuthorityService } from '../../shared/portfolio-context/portfolio-context-authority.service';
+import { AppError } from '../../shared/errors/AppError';
 import {
   dryRunProjectionReadFailure,
   shouldFailStrategicFrontProjectionRead,
@@ -12,6 +14,7 @@ export class PortfolioController {
   constructor(
     private service: PortfolioService,
     private readonly homeReadService?: PortfolioHomeReadService,
+    private readonly portfolioContextAuthority?: PortfolioContextAuthorityService,
   ) {}
 
   getHome = async (
@@ -23,7 +26,21 @@ export class PortfolioController {
       if (!this.homeReadService || !req.user?.id) {
         throw new Error('Portfolio Home read service is not configured');
       }
-      const data = await this.homeReadService.getHome(req.user.id);
+      const actorUser = req.user as unknown as NonNullable<Express.Request['user']>;
+      if (hasExplicitOrganizationScope(req)) {
+        throw AppError.forbidden('La organizacion debe resolverse desde el contexto autorizado.', 'PORTFOLIO_SCOPE_FORBIDDEN');
+      }
+      const contextResolution = this.portfolioContextAuthority
+        ? await this.portfolioContextAuthority.resolve({
+          actorUserId: req.user.id,
+          authSessionId: actorUser.authSessionId,
+          permissions: actorUser.permissions,
+        })
+        : { status: 'no_context' as const };
+      const data = await this.homeReadService.getHome({
+        actorUserId: actorUser.id,
+        permissions: actorUser.permissions,
+      }, contextResolution);
       res.json({ success: true, data });
     } catch (err) {
       next(err);
@@ -418,4 +435,9 @@ export class PortfolioController {
       next(err);
     }
   };
+}
+
+function hasExplicitOrganizationScope(req: AuthenticatedRequest): boolean {
+  const query = req.query as Record<string, unknown>;
+  return ['organizationId', 'orgId', 'organization'].some((key) => query[key] !== undefined);
 }

@@ -69,6 +69,62 @@ function project(overrides: any = {}) {
 }
 
 describe('PortfolioHomeReadService', () => {
+  const actor = { actorUserId: 'user-1', permissions: new Set<any>() };
+
+  it('composes an authorized Strategic Framing projection with the governed organization only once', async () => {
+    const projection = { getProjection: vi.fn().mockResolvedValue({ availability: 'available', totalStateCount: 1, items: [], hasMore: false }) } as any;
+    const result = await new PortfolioHomeReadService(makePrisma(), projection).getHome(actor, {
+      status: 'available',
+      context: {
+        actorUserId: 'user-1', authSessionId: 'sid-1', organizationId: 'org-authorized',
+        authoritySource: 'scoped', validatedAt: new Date(),
+      },
+    });
+
+    expect(result.strategicFraming.status).toBe('available');
+    expect(projection.getProjection).toHaveBeenCalledOnce();
+    expect(projection.getProjection).toHaveBeenCalledWith(expect.objectContaining({
+      organizationId: 'org-authorized',
+      authorizedContext: expect.objectContaining({ organizationId: 'org-authorized' }),
+    }));
+  });
+
+  it.each([
+    ['no_context', { status: 'no_context' }],
+    ['context_selection_required', { status: 'context_selection_required' }],
+    ['not_authorized', { status: 'not_authorized' }],
+  ] as const)('does not query Strategic Framing for %s', async (_name, resolution) => {
+    const projection = { getProjection: vi.fn() } as any;
+    const result = await new PortfolioHomeReadService(makePrisma(), projection).getHome(actor, resolution);
+    expect(result.strategicFraming).toEqual({ status: resolution.status });
+    expect(projection.getProjection).not.toHaveBeenCalled();
+  });
+
+  it('distinguishes an authorized empty projection from unavailable', async () => {
+    const projection = { getProjection: vi.fn().mockResolvedValue({ availability: 'available', totalStateCount: 0, items: [], hasMore: false }) } as any;
+    const result = await new PortfolioHomeReadService(makePrisma(), projection).getHome(actor, {
+      status: 'available',
+      context: {
+        actorUserId: 'user-1', authSessionId: 'sid-1', organizationId: 'org-1',
+        authoritySource: 'global', validatedAt: new Date(),
+      },
+    });
+    expect(result.strategicFraming.status).toBe('empty');
+  });
+
+  it('localizes a genuine Strategic Framing technical failure and preserves canonical Home', async () => {
+    const projection = { getProjection: vi.fn().mockRejectedValue(new Error('db down')) } as any;
+    const result = await new PortfolioHomeReadService(makePrisma(), projection).getHome(actor, {
+      status: 'available',
+      context: {
+        actorUserId: 'user-1', authSessionId: 'sid-1', organizationId: 'org-1',
+        authoritySource: 'global', validatedAt: new Date(),
+      },
+    });
+    expect(result.strategicUnits).toEqual([]);
+    expect(result.strategicFraming).toEqual({ status: 'unavailable' });
+  });
+
   it('composes StrategicFront → Challenge → Initiative and PortfolioReading', async () => {
     const prisma = makePrisma(
       [front({ challenges: [challenge({ initiativeMetas: [initiativeMeta(project())] })] })],

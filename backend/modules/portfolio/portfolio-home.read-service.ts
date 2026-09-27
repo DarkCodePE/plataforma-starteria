@@ -7,6 +7,27 @@
  * composition for the Home read path.
  */
 
+import type { Permission } from '../../shared/authz/permissions';
+import type { PortfolioContextResolution } from '../../shared/portfolio-context/portfolio-context.types';
+import {
+  StrategicFramingHomeProjectionService,
+  type StrategicFramingHomeProjection,
+} from '../strategic-framing/strategic-framing.home-projection.service';
+import { AppError } from '../../shared/errors/AppError';
+
+export type StrategicFramingHomeState =
+  | { status: 'available'; projection: Extract<StrategicFramingHomeProjection, { availability: 'available' }> }
+  | { status: 'empty'; projection: Extract<StrategicFramingHomeProjection, { availability: 'available' }> }
+  | { status: 'no_context' }
+  | { status: 'context_selection_required' }
+  | { status: 'not_authorized' }
+  | { status: 'unavailable' };
+
+export type PortfolioHomeActor = {
+  actorUserId: string;
+  permissions: ReadonlySet<Permission>;
+};
+
 export type PortfolioHomePersonView = {
   id?: string | null;
   name?: string | null;
@@ -144,6 +165,7 @@ export type PortfolioHomeReadModel = {
     derivationSource: 'portfolio_reading' | 'legacy-derived';
   }>;
   generatedAt: string;
+  strategicFraming: StrategicFramingHomeState;
 };
 
 type PrismaLike = {
@@ -173,9 +195,19 @@ const READ_INCLUDE = {
 };
 
 export class PortfolioHomeReadService {
-  constructor(private readonly prisma: PrismaLike) {}
+  constructor(
+    private readonly prisma: PrismaLike,
+    private readonly strategicFramingProjection?: StrategicFramingHomeProjectionService,
+  ) {}
 
-  async getHome(userId: string): Promise<PortfolioHomeReadModel> {
+  async getHome(
+    actorOrUserId: PortfolioHomeActor | string,
+    contextResolution: PortfolioContextResolution = { status: 'no_context' },
+  ): Promise<PortfolioHomeReadModel> {
+    const actor = typeof actorOrUserId === 'string'
+      ? { actorUserId: actorOrUserId, permissions: new Set<Permission>() }
+      : actorOrUserId;
+    const userId = actor.actorUserId;
     const [fronts, reading] = await Promise.all([
       this.prisma.strategicFront.findMany({ include: READ_INCLUDE, orderBy: { updatedAt: 'desc' } }),
       this.loadLatestReading(userId),
@@ -202,7 +234,32 @@ export class PortfolioHomeReadService {
       pendingDecisions,
       recommendations: this.mapRecommendations(reading, strategicUnits),
       generatedAt,
+      strategicFraming: await this.composeStrategicFraming(actor, contextResolution),
     };
+  }
+
+  private async composeStrategicFraming(
+    actor: PortfolioHomeActor,
+    contextResolution: PortfolioContextResolution,
+  ): Promise<StrategicFramingHomeState> {
+    if (contextResolution.status !== 'available') return { status: contextResolution.status };
+    if (!this.strategicFramingProjection) return { status: 'unavailable' };
+
+    try {
+      const projection = await this.strategicFramingProjection.getProjection({
+        actorUserId: actor.actorUserId,
+        organizationId: contextResolution.context.organizationId,
+        permissions: actor.permissions,
+        authorizedContext: contextResolution.context,
+      });
+      if (projection.availability === 'unavailable') return { status: 'unavailable' };
+      return projection.totalStateCount === 0
+        ? { status: 'empty', projection }
+        : { status: 'available', projection };
+    } catch (error) {
+      if (error instanceof AppError) throw error;
+      return { status: 'unavailable' };
+    }
   }
 
   private async loadLatestReading(userId: string): Promise<any | null> {

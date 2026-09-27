@@ -6,6 +6,7 @@ import type {
   StrategicFramingPrioritizationState,
   StrategicFramingProvisionalSourceMode,
 } from './strategic-framing.types';
+import type { AuthorizedPortfolioContext } from '../../shared/portfolio-context/portfolio-context.types';
 
 export type StrategicFramingAttentionReason =
   | 'insufficient_framing'
@@ -81,9 +82,15 @@ export class StrategicFramingHomeProjectionService {
     actorUserId: string;
     organizationId: string | null;
     permissions: ReadonlySet<Permission>;
+    authorizedContext?: AuthorizedPortfolioContext;
   }): Promise<StrategicFramingHomeProjection> {
     if (!input.actorUserId) throw AppError.unauthorized('No autorizado.', 'SF_HOME_AUTH_REQUIRED');
-    if (!can(input.permissions, 'portfolio:read')) throw AppError.forbidden('No tienes permiso para acceder a este recurso.', 'SF_HOME_FORBIDDEN');
+    const contextAuthorizesRead = input.authorizedContext
+      && input.authorizedContext.actorUserId === input.actorUserId
+      && input.authorizedContext.organizationId === input.organizationId;
+    if (!can(input.permissions, 'portfolio:read') && !contextAuthorizesRead) {
+      throw AppError.forbidden('No tienes permiso para acceder a este recurso.', 'SF_HOME_FORBIDDEN');
+    }
 
     try {
       const db = this.prisma as Db;

@@ -143,6 +143,18 @@ describe('portfolio.router — autorización de escrituras (ADR-028)', () => {
     const res = await request(makeApp()).get('/api/v1/portfolio/home');
 
     expect(res.status, JSON.stringify(res.body)).toBe(200);
-    expect(getHome).toHaveBeenCalledWith('u-par');
+    expect(getHome).toHaveBeenCalledWith(
+      expect.objectContaining({ actorUserId: 'u-par' }),
+      { status: 'no_context' },
+    );
+  });
+
+  it('rechaza un intento explícito de imponer una organización desde la petición', async () => {
+    currentUser = { id: 'u-par', email: 'par@starteria.io', role: 'participante' };
+
+    const res = await request(makeApp()).get('/api/v1/portfolio/home?organizationId=other-org');
+
+    expect(res.status).toBe(403);
+    expect(getHome).not.toHaveBeenCalled();
   });
 });
