@@ -1,5 +1,5 @@
 import api, { parseApiError, type AuthError } from '../../../app/services/api';
-import type { PrioritizationRecommendationResult, PromotionSummary, StrategicFramingChallengeStructuringState, StrategicFramingDraft, StrategicFramingState, StrategicLensSuggestionResult } from './types';
+import type { PrioritizationRecommendationResult, PromotionSummary, StrategicFramingChallengeStructuringState, StrategicFramingDraft, StrategicFramingPromotionResponse, StrategicFramingState, StrategicLensSuggestionResult } from './types';
 
 type Envelope<T> = { success: true; data: T };
 export type StrategicFramingCorrection = Partial<StrategicFramingDraft> & { expectedVersion: number; reason?: string | null };
@@ -44,8 +44,8 @@ export async function getStrategicFramingPromotions(stateId: string): Promise<Pr
 }
 
 export type PromoteStrategicFramingChallengeBody = { challengeCandidateId: string; expectedVersion: number; strategicFrontId: string; title: string; statement: string; type: 'correccion' | 'crecimiento' | 'exploracion'; objective?: string | null; whyNow?: string | null; successCriteria?: string | null; rationale?: string | null };
-export async function promoteStrategicFramingChallenge(stateId: string, body: Omit<PromoteStrategicFramingChallengeBody, 'challengeCandidateId'> & { challengeCandidateId: string }) {
-  try { const { data } = await api.post<Envelope<{ promotion: PromotionSummary; challenge: { id: string; status: string } }>>(`/strategic-framing/states/${encodeURIComponent(stateId)}/promotions`, body); return data.data; } catch (error) { throw parseApiError(error); }
+export async function promoteStrategicFramingChallenge(stateId: string, body: Omit<PromoteStrategicFramingChallengeBody, 'challengeCandidateId'> & { challengeCandidateId: string }): Promise<StrategicFramingPromotionResponse> {
+  try { const { data } = await api.post<Envelope<StrategicFramingPromotionResponse>>(`/strategic-framing/states/${encodeURIComponent(stateId)}/promotions`, body); return data.data; } catch (error) { throw parseApiError(error); }
 }
 
 export type StrategicFramingEntryInput =
