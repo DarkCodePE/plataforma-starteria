@@ -1,10 +1,10 @@
 # Starteria — Portfolio Context Runtime & Persistence Design — SF-7B.2C
 
-**Document status:** GO_WITH_GAPS  
-**Design type:** Technical design / ADR assessment  
-**Date:** 2026-09-27  
-**Runtime implementation:** NOT IMPLEMENTED  
-**Prisma/schema change:** NONE IN THIS SLICE  
+**Document status:** GO_WITH_GAPS
+**Design type:** Technical design / ADR assessment
+**Date:** 2026-09-27
+**Runtime implementation:** NOT IMPLEMENTED
+**Prisma/schema change:** NONE IN THIS SLICE
 **KAN-41:** BLOCKED / NOT IMPLEMENTED
 
 This document selects the smallest secure runtime direction for Portfolio
@@ -788,4 +788,3 @@ Tests required: the SF-7B.2D matrix in section 19
 Remaining blockers: persistence carrier, ADR classification, audit vocabulary,
                   and exact session/device handle
 ```
-

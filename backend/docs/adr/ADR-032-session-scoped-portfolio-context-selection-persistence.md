@@ -289,52 +289,52 @@ invalidation/audit behavior. Do not persist full permission snapshots.
 
 ### Alternative A — Store selected organization on `User`
 
-**Advantages:** no new table; easy lookup.  
+**Advantages:** no new table; easy lookup.
 **Disadvantages:** account-global; cannot isolate sessions/devices; changes one
-session's context for all sessions.  
+session's context for all sessions.
 **Security:** creates cross-device context bleed and invites pointer-as-authority
-use.  
-**Semantic mismatch:** User profile/convenience pointer is not session selection.  
+use.
+**Semantic mismatch:** User profile/convenience pointer is not session selection.
 **Decision:** Reject.
 
 ### Alternative B — Encode selected organization in JWT or refresh token
 
-**Advantages:** no separate selection lookup; natural cross-request transport.  
+**Advantages:** no separate selection lookup; natural cross-request transport.
 **Disadvantages:** JWT is client-carried and stale until expiry; refresh tokens
 are authentication credentials; token rotation and revocation become coupled to
-Portfolio context.  
-**Security:** difficult immediate revocation and unclear multi-session scope.  
-**Semantic mismatch:** auth credential is not selected work context.  
+Portfolio context.
+**Security:** difficult immediate revocation and unclear multi-session scope.
+**Semantic mismatch:** auth credential is not selected work context.
 **Decision:** Reject.
 
 ### Alternative C — Reuse Bootstrap/Continuation persistence
 
-**Advantages:** existing rows and lineage available.  
+**Advantages:** existing rows and lineage available.
 **Disadvantages:** workflow-specific lifecycle; organization snapshots currently
-derive from `User.organizationId`; no general multi-org selection.  
-**Security:** promotes lineage into authority and risks stale scope reuse.  
-**Semantic mismatch:** handoff/bootstrap state is not active session context.  
+derive from `User.organizationId`; no general multi-org selection.
+**Security:** promotes lineage into authority and risks stale scope reuse.
+**Semantic mismatch:** handoff/bootstrap state is not active session context.
 **Decision:** Reject.
 
 ### Alternative D — Request-only context without persistence
 
-**Advantages:** no schema, immediate request-time validation, simple revocation.  
+**Advantages:** no schema, immediate request-time validation, simple revocation.
 **Disadvantages:** no durable server-owned cross-request selection; browser must
-carry a candidate each request; poor fit for restored session context.  
+carry a candidate each request; poor fit for restored session context.
 **Security:** can be safe only if every candidate is independently validated,
-but does not satisfy the selected-context requirement.  
-**Lifecycle:** no established/switch/clear persistence lifecycle.  
+but does not satisfy the selected-context requirement.
+**Lifecycle:** no established/switch/clear persistence lifecycle.
 **Decision:** Reject as the primary model; retain only as a possible future
 stateless mode if separately approved.
 
 ### Alternative E — Dedicated auth-session-scoped Portfolio Context persistence
 
 **Advantages:** session isolation, explicit multi-org selection, durable
-cross-request continuity, revocation-safe revalidation, reusable boundary.  
+cross-request continuity, revocation-safe revalidation, reusable boundary.
 **Disadvantages:** new persistence, migration, authority service, selection
-boundary, additional authz reads and cleanup.  
-**Security:** strongest fit when selection never substitutes for validation.  
-**Lifecycle:** can model established, switched, invalidated and cleared states.  
+boundary, additional authz reads and cleanup.
+**Security:** strongest fit when selection never substitutes for validation.
+**Lifecycle:** can model established, switched, invalidated and cleared states.
 **Decision:** Accepted under the bounded implementation conditions in section
 21.
 

@@ -1,10 +1,10 @@
 # Starteria — Portfolio Context Authority Contract — SF-7B.2B
 
-**Document status:** GO_WITH_GAPS  
-**Contract type:** Authority / Experience Contract  
-**Date:** 2026-09-27  
-**Runtime implementation:** NOT IMPLEMENTED BY THIS SLICE  
-**Prisma/schema change:** NONE  
+**Document status:** GO_WITH_GAPS
+**Contract type:** Authority / Experience Contract
+**Date:** 2026-09-27
+**Runtime implementation:** NOT IMPLEMENTED BY THIS SLICE
+**Prisma/schema change:** NONE
 **Scope:** governed Portfolio organization context for Portfolio Home and
 Strategic Framing consumers.
 
