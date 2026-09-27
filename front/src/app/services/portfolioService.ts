@@ -25,6 +25,57 @@ interface ApiResponse<T> {
   data: T;
 }
 
+export type StrategicFramingHomeItem = {
+  stateId: string;
+  updatedAt: string;
+  sourceMode: string;
+  intendedMovement: string | null;
+  sufficiency: { status: string; blockerCount: number };
+  prioritization: {
+    addressNow: number;
+    observe: number;
+    discard: number;
+    undecided: number;
+    focusSlots: number | null;
+  };
+  structuring: { confirmedCandidates: number; unpromotedCandidates: number };
+  promotions: Array<{
+    promotionId: string;
+    challengeId: string;
+    challengeTitle: string | null;
+    strategicFrontId: string | null;
+    strategicFrontName: string | null;
+    challengeHref: string | null;
+  }>;
+  attention: { required: boolean; reasons: string[] };
+  workspaceHref: string;
+};
+
+export type StrategicFramingHomeState =
+  | { status: 'available'; projection: { availability: 'available'; totalStateCount: number; hasMore: boolean; items: StrategicFramingHomeItem[] } }
+  | { status: 'empty'; projection: { availability: 'available'; totalStateCount: 0; hasMore: false; items: [] } }
+  | { status: 'no_context' }
+  | { status: 'context_selection_required' }
+  | { status: 'not_authorized' }
+  | { status: 'unavailable' };
+
+export type PortfolioHomeResponse = {
+  portfolioReading: unknown;
+  governance: unknown;
+  strategicUnits: unknown[];
+  attention: unknown[];
+  pendingDecisions: unknown[];
+  recommendations: unknown[];
+  generatedAt: string;
+  strategicFraming: StrategicFramingHomeState;
+};
+
+/** Read the server-composed Portfolio Home, including Strategic Framing state. */
+export async function getPortfolioHome(): Promise<PortfolioHomeResponse> {
+  const { data } = await api.get<ApiResponse<PortfolioHomeResponse>>('/portfolio/home');
+  return data.data;
+}
+
 // ---------- Backend raw shapes (snake_case may differ) ----------
 // We treat the backend responses as the same shape as our types
 // since the backend for portfolio was designed alongside the frontend types.

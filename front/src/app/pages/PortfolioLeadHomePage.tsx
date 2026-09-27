@@ -25,6 +25,8 @@ import { PortfolioCopilotDrawer, PortfolioCopilotLauncher } from '../../features
 import { isPortfolioCopilotEnabled } from '../services/featureFlags';
 import { PortfolioBootstrapHome, usePortfolioBootstrap } from '../../features/portfolio-lead/bootstrap';
 import { createOrReuseStrategicFramingFromSource } from '../../features/portfolio-lead/strategic-framing/service';
+import { usePortfolioHome } from '../hooks/usePortfolioHome';
+import { StrategicFramingHomeSection } from '../components/portfolio/StrategicFramingHomeSection';
 
 export function PortfolioLeadHomePage() {
   const navigate = useNavigate();
@@ -37,6 +39,7 @@ export function PortfolioLeadHomePage() {
     return params.get('portfolioEntryContinuationId');
   }, [location.search]);
   const bootstrap = usePortfolioBootstrap(entryContinuationId);
+  const home = usePortfolioHome(!entryContinuationId);
 
   const firstName = 'Ana';
 
@@ -126,6 +129,13 @@ export function PortfolioLeadHomePage() {
               { label: 'Iniciativas', value: `${commandCenter.summary.activeInitiatives} en curso de ${commandCenter.summary.initiatives}` },
               { label: 'Decisiones', value: `${commandCenter.summary.pendingDecisions} pendientes` },
             ]}
+          />
+
+          <StrategicFramingHomeSection
+            state={home.data?.strategicFraming ?? null}
+            loading={home.loading}
+            onRetry={() => void home.refetch()}
+            onNavigate={navigate}
           />
 
           {commandCenter.emptyState ? (
