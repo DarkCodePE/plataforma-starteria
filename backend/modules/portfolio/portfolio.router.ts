@@ -24,6 +24,7 @@ import {
   createOverlapSchema,
   createExecutiveOutputSchema,
   updateExecutiveOutputSchema,
+  selectPortfolioContextSchema,
 } from './portfolio.schemas';
 
 const service = new PortfolioService(prisma);
@@ -36,6 +37,9 @@ portfolioRouter.use(authenticate);
 
 // PH-2: read-only consolidated Portfolio Home composition.
 portfolioRouter.get('/home', controller.getHome);
+portfolioRouter.get('/context', controller.getPortfolioContext);
+portfolioRouter.put('/context', validate(selectPortfolioContextSchema), controller.selectPortfolioContext);
+portfolioRouter.delete('/context', controller.clearPortfolioContext);
 
 // ADR-028: las escrituras son `admin` + `portfolio_lead`. `mentor` las tenía por no
 // existir el rol correcto, no por decisión de producto; se le retiran aquí.

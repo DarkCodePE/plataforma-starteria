@@ -6,7 +6,9 @@ import { PortfolioContextSelectionStore } from './portfolio-context-selection.st
 import type {
   AuthorizedPortfolioContext,
   PortfolioContextActor,
+  PortfolioContextOption,
   PortfolioContextResolution,
+  PortfolioContextView,
 } from './portfolio-context.types';
 
 type MembershipDb = Pick<PrismaClient, 'organizationMember'>;
@@ -81,6 +83,15 @@ export class PortfolioContextAuthorityService {
     return this.resolveSelected(actor, organizationId);
   }
 
+  async view(actor: PortfolioContextActor, resolution?: PortfolioContextResolution): Promise<PortfolioContextView> {
+    const resolved = resolution ?? await this.resolve(actor);
+    if (!actor.authSessionId) return { status: resolved.status, options: [] };
+    const options = await this.listAuthorizedOrganizations(actor);
+    const currentOrganizationId = resolved.status === 'available' ? resolved.context.organizationId : undefined;
+    const current = options.find((option) => option.organizationId === currentOrganizationId);
+    return { status: resolved.status, ...(current ? { current } : {}), options };
+  }
+
   async clear(actor: PortfolioContextActor): Promise<PortfolioContextResolution> {
     if (!actor.authSessionId) return { status: 'no_context' };
     await this.store.clearSelection(actor.authSessionId);
@@ -120,7 +131,7 @@ export class PortfolioContextAuthorityService {
     })) ? 'scoped' : null;
   }
 
-  private async listAuthorizedOrganizations(actor: PortfolioContextActor): Promise<Array<{ organizationId: string; name: string }>> {
+  async listAuthorizedOrganizations(actor: PortfolioContextActor): Promise<PortfolioContextOption[]> {
     if (can(actor.permissions, 'portfolio:read')) {
       const memberships = await this.prisma.organizationMember.findMany({
         where: { userId: actor.actorUserId },

@@ -1,5 +1,9 @@
 import { z } from 'zod';
 
+export const selectPortfolioContextSchema = z.object({
+  organizationId: z.string().min(1),
+});
+
 // ─── Strategic Front ─────────────────────────────────────────────────────────
 
 export const createStrategicFrontSchema = z.object({

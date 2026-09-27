@@ -59,6 +59,13 @@ export type StrategicFramingHomeState =
   | { status: 'not_authorized' }
   | { status: 'unavailable' };
 
+export type PortfolioContextOption = { organizationId: string; name: string };
+export type PortfolioContextView = {
+  status: 'available' | 'no_context' | 'context_selection_required' | 'not_authorized';
+  current?: PortfolioContextOption;
+  options: PortfolioContextOption[];
+};
+
 export type PortfolioHomeResponse = {
   portfolioReading: unknown;
   governance: unknown;
@@ -68,11 +75,22 @@ export type PortfolioHomeResponse = {
   recommendations: unknown[];
   generatedAt: string;
   strategicFraming: StrategicFramingHomeState;
+  portfolioContext?: PortfolioContextView;
 };
 
 /** Read the server-composed Portfolio Home, including Strategic Framing state. */
 export async function getPortfolioHome(): Promise<PortfolioHomeResponse> {
   const { data } = await api.get<ApiResponse<PortfolioHomeResponse>>('/portfolio/home');
+  return data.data;
+}
+
+export async function getPortfolioContext(): Promise<PortfolioContextView> {
+  const { data } = await api.get<ApiResponse<PortfolioContextView>>('/portfolio/context');
+  return data.data;
+}
+
+export async function selectPortfolioContext(organizationId: string): Promise<PortfolioContextView> {
+  const { data } = await api.put<ApiResponse<PortfolioContextView>>('/portfolio/context', { organizationId });
   return data.data;
 }
 

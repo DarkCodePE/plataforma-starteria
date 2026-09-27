@@ -27,12 +27,14 @@ import { PortfolioBootstrapHome, usePortfolioBootstrap } from '../../features/po
 import { createOrReuseStrategicFramingFromSource } from '../../features/portfolio-lead/strategic-framing/service';
 import { usePortfolioHome } from '../hooks/usePortfolioHome';
 import { StrategicFramingHomeSection } from '../components/portfolio/StrategicFramingHomeSection';
+import { PortfolioContextSelector } from '../components/portfolio/PortfolioContextSelector';
 
 export function PortfolioLeadHomePage() {
   const navigate = useNavigate();
   const location = useLocation();
   const portfolioState = usePortfolioLead();
   const [copilotOpen, setCopilotOpen] = useState(false);
+  const [contextSelectorOpen, setContextSelectorOpen] = useState(false);
 
   const entryContinuationId = useMemo(() => {
     const params = new URLSearchParams(location.search);
@@ -100,6 +102,18 @@ export function PortfolioLeadHomePage() {
     <div className="mx-auto max-w-7xl space-y-6 p-6 md:p-8">
       <PortfolioLeadBreadcrumbs items={[{ label: 'Portfolio Lead', path: '/portfolio/inicio' }, { label: 'Inicio' }]} />
 
+      {home.data?.portfolioContext && home.data.portfolioContext.status !== 'no_context' && (
+        <div className="flex justify-end">
+          <PortfolioContextSelector
+            context={home.data.portfolioContext}
+            required={home.data.portfolioContext.status === 'context_selection_required'}
+            open={contextSelectorOpen}
+            onOpenChange={setContextSelectorOpen}
+            onSelected={home.refetch}
+          />
+        </div>
+      )}
+
       <PageHeader
         eyebrow="Portfolio Home"
         title="¿Qué requiere atención hoy?"
@@ -136,6 +150,7 @@ export function PortfolioLeadHomePage() {
             loading={home.loading}
             onRetry={() => void home.refetch()}
             onNavigate={navigate}
+            onSelectContext={() => setContextSelectorOpen(true)}
           />
 
           {commandCenter.emptyState ? (

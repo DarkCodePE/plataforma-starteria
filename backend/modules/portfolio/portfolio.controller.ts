@@ -41,7 +41,70 @@ export class PortfolioController {
         actorUserId: actorUser.id,
         permissions: actorUser.permissions,
       }, contextResolution);
+      const portfolioContext = this.portfolioContextAuthority
+        ? await this.portfolioContextAuthority.view({
+          actorUserId: actorUser.id,
+          authSessionId: actorUser.authSessionId,
+          permissions: actorUser.permissions,
+        }, contextResolution)
+        : { status: 'no_context' as const, options: [] };
+      res.json({ success: true, data: { ...data, portfolioContext } });
+    } catch (err) {
+      next(err);
+    }
+  };
+
+  getPortfolioContext = async (req: AuthenticatedRequest, res: Response<ApiResponse>, next: NextFunction) => {
+    try {
+      if (!this.portfolioContextAuthority || !req.user?.id) throw new Error('Portfolio Context authority is not configured');
+      const actor = req.user as unknown as NonNullable<Express.Request['user']>;
+      const data = await this.portfolioContextAuthority.view({
+        actorUserId: actor.id,
+        authSessionId: actor.authSessionId,
+        permissions: actor.permissions,
+      });
       res.json({ success: true, data });
+    } catch (err) {
+      next(err);
+    }
+  };
+
+  selectPortfolioContext = async (req: AuthenticatedRequest, res: Response<ApiResponse>, next: NextFunction) => {
+    try {
+      if (!this.portfolioContextAuthority || !req.user?.id) throw new Error('Portfolio Context authority is not configured');
+      const actor = req.user as unknown as NonNullable<Express.Request['user']>;
+      const result = await this.portfolioContextAuthority.select({
+        actorUserId: actor.id,
+        authSessionId: actor.authSessionId,
+        permissions: actor.permissions,
+      }, req.body.organizationId);
+      if (result.status !== 'available') {
+        throw AppError.forbidden('Ya no tienes acceso a este espacio.', 'PORTFOLIO_CONTEXT_NOT_AUTHORIZED');
+      }
+      res.json({ success: true, data: await this.portfolioContextAuthority.view({
+        actorUserId: actor.id,
+        authSessionId: actor.authSessionId,
+        permissions: actor.permissions,
+      }, result) });
+    } catch (err) {
+      next(err);
+    }
+  };
+
+  clearPortfolioContext = async (req: AuthenticatedRequest, res: Response<ApiResponse>, next: NextFunction) => {
+    try {
+      if (!this.portfolioContextAuthority || !req.user?.id) throw new Error('Portfolio Context authority is not configured');
+      const actor = req.user as unknown as NonNullable<Express.Request['user']>;
+      const result = await this.portfolioContextAuthority.clear({
+        actorUserId: actor.id,
+        authSessionId: actor.authSessionId,
+        permissions: actor.permissions,
+      });
+      res.json({ success: true, data: await this.portfolioContextAuthority.view({
+        actorUserId: actor.id,
+        authSessionId: actor.authSessionId,
+        permissions: actor.permissions,
+      }, result) });
     } catch (err) {
       next(err);
     }

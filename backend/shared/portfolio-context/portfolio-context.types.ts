@@ -20,6 +20,17 @@ export type PortfolioContextResolution =
   | { status: 'context_selection_required' }
   | { status: 'not_authorized' };
 
+export type PortfolioContextOption = {
+  organizationId: string;
+  name: string;
+};
+
+export type PortfolioContextView = {
+  status: PortfolioContextResolution['status'];
+  current?: PortfolioContextOption;
+  options: PortfolioContextOption[];
+};
+
 export type PortfolioContextSelectionRecord = {
   authSessionId: string;
   actorUserId: string;

@@ -9,9 +9,10 @@ type Props = {
   loading?: boolean;
   onRetry?: () => void;
   onNavigate?: (path: string) => void;
+  onSelectContext?: () => void;
 };
 
-export function StrategicFramingHomeSection({ state, loading = false, onRetry, onNavigate }: Props) {
+export function StrategicFramingHomeSection({ state, loading = false, onRetry, onNavigate, onSelectContext }: Props) {
   if (loading || !state) {
     return (
       <section aria-labelledby="strategic-framing-home-title" className="rounded-ds-lg border border-border-default bg-surface-default p-5 md:p-6">
@@ -30,7 +31,7 @@ export function StrategicFramingHomeSection({ state, loading = false, onRetry, o
     case 'no_context':
       return <StateCard title="No hay un contexto de portafolio activo para esta sesión." description="La lectura estratégica aparecerá cuando exista un contexto autorizado." />;
     case 'context_selection_required':
-      return <StateCard title="Tienes acceso a más de un espacio." description="Selecciona el portafolio que quieres consultar." action={<Button type="button" variant="secondary" onClick={() => undefined}>Seleccionar espacio</Button>} />;
+      return <StateCard title="Tienes acceso a más de un espacio." description="Selecciona el portafolio que quieres consultar." action={<Button type="button" variant="secondary" onClick={onSelectContext}>Seleccionar espacio</Button>} />;
     case 'not_authorized':
       return <StateCard title="Tu acceso a este portafolio cambió." description="Selecciona otro espacio disponible o solicita acceso." />;
     case 'unavailable':
