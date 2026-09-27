@@ -31,6 +31,7 @@ export type StrategicFramingChallengeStructuringState = { schemaVersion: 1; nonC
 export type PrioritizationRecommendation = { candidateId: string; recommendedDisposition: 'address_now' | 'observe' | 'discard' | 'uncertain' | 'needs_clarification'; rationale: string[]; sourceRefs: string[]; humanDisposition: HumanDisposition; recommendationSnapshot: { recommendationVersion: string; inputStateVersion: number; recommendedDisposition: string; rationale: string[]; sourceRefs: string[] } };
 export type PrioritizationRecommendationResult = { stateId: string; stateVersion: number; focusSlots: number | null; capacityStatus: string; recommendations: PrioritizationRecommendation[]; warnings: string[]; limitations: string[]; recommendationVersion: string };
 export type PromotionSummary = { promotionId: string; challengeCandidateId: string; challengeId: string; challengeTitle?: string | null; strategicFrontId: string; status: string; promotedAt: string };
+export type StrategicFramingPromotionResponse = { promotionId: string; challengeCandidateId: string; challengeId: string; challengeTitle: string; strategicFrontId: string; challengeStatus: 'draft'; retry: boolean };
 
 export type StrategicFramingDraft = Pick<StrategicFramingState, 'intendedMovement' | 'whyItMatters' | 'movementSignalStatus' | 'movementSignalValue' | 'horizonContext' | 'decisionToEnable' | 'subjectLevel' | 'parentStatus'> & { parentLabel: string | null };
 

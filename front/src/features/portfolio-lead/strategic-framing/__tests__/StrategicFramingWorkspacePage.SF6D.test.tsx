@@ -2,7 +2,7 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { StrategicFramingWorkspacePage } from '../StrategicFramingWorkspacePage';
-import { getStrategicFramingLensSuggestions, getStrategicFramingPrioritizationRecommendations, getStrategicFramingPromotions, getStrategicFramingState, reviewStrategicFramingChallengeStructure } from '../service';
+import { getStrategicFramingLensSuggestions, getStrategicFramingPrioritizationRecommendations, getStrategicFramingPromotions, getStrategicFramingState, promoteStrategicFramingChallenge, reviewStrategicFramingChallengeStructure } from '../service';
 import { listStrategicFronts } from '../../../../app/services/portfolioService';
 
 vi.mock('../service', () => ({ getStrategicFramingState: vi.fn(), updateStrategicFramingState: vi.fn(), getStrategicFramingLensSuggestions: vi.fn(), getStrategicFramingPrioritizationRecommendations: vi.fn(), getStrategicFramingPromotions: vi.fn(), reviewStrategicFramingChallengeStructure: vi.fn(), reviewStrategicFramingPrioritization: vi.fn(), promoteStrategicFramingChallenge: vi.fn() }));
@@ -25,6 +25,7 @@ describe('SF-6D human review gaps', () => {
     vi.mocked(getStrategicFramingPrioritizationRecommendations).mockResolvedValue({ stateId: 'state-1', stateVersion: 2, focusSlots: null, capacityStatus: 'unknown', recommendations: [], warnings: [], limitations: [], recommendationVersion: 'v1' });
     vi.mocked(getStrategicFramingPromotions).mockResolvedValue([]);
     vi.mocked(listStrategicFronts).mockResolvedValue([{ id: 'front-1', name: 'Crecimiento sostenible' }] as any);
+    vi.mocked(promoteStrategicFramingChallenge).mockResolvedValue({ promotionId: 'promotion-1', challengeCandidateId: 'cc-1', challengeId: 'challenge-1', challengeTitle: 'Challenge confirmado', strategicFrontId: 'front-1', challengeStatus: 'draft', retry: false });
   });
 
   it('loads canonical Fronts through the existing service and renders human names', async () => {
@@ -40,5 +41,19 @@ describe('SF-6D human review gaps', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Mantener provisional' }));
     expect(await screen.findByText(/no se crea ChallengeCandidate/)).toBeInTheDocument();
     expect(reviewStrategicFramingChallengeStructure).not.toHaveBeenCalled();
+  });
+
+  it('consumes promotionId from the explicit DTO and preserves the success UI', async () => {
+    renderPage();
+    fireEvent.change(await screen.findByLabelText('Frente estratégico'), { target: { value: 'front-1' } });
+    fireEvent.click(screen.getByLabelText('Confirmo Front, título, declaración y tipo.'));
+    fireEvent.click(screen.getByRole('button', { name: 'Promover Challenge' }));
+    expect(await screen.findByText('Challenge creado')).toBeInTheDocument();
+    expect(screen.getByText('Título: Challenge confirmado')).toBeInTheDocument();
+    expect(screen.getByText('Estado: Draft')).toBeInTheDocument();
+    expect(screen.getByText('Frente: Crecimiento sostenible')).toBeInTheDocument();
+    expect(screen.getByText('Iniciativas creadas: 0')).toBeInTheDocument();
+    expect(screen.getByText(/promotionId: promotion-1/)).toBeInTheDocument();
+    expect(promoteStrategicFramingChallenge).toHaveBeenCalledTimes(1);
   });
 });

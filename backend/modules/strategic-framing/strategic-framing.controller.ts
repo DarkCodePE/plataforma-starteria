@@ -8,6 +8,7 @@ import type { StrategicFramingPrioritizationRecommendationEvaluator } from './st
 import type { StrategicFramingPromotionService } from './strategic-framing.promotion.service';
 import { strategicFramingChallengeStructureReviewBodySchema, strategicFramingCorrectionBodySchema, strategicFramingPrioritizationReviewBodySchema, strategicFramingPromotionBodySchema, strategicFramingSourceBodySchema, strategicFramingStateParamsSchema } from './strategic-framing.schemas';
 import type { StrategicFramingPromotionReadService } from './strategic-framing.promotion-read.service';
+import type { StrategicFramingPromotionResponse } from './strategic-framing.types';
 
 export class StrategicFramingController {
   constructor(private readonly service: StrategicFramingProvisionalStateService, private readonly entryService?: StrategicFramingEntryService, private readonly lensEvaluator?: StrategicFramingLensSuggestionEvaluator, private readonly prioritizationRecommendationEvaluator?: StrategicFramingPrioritizationRecommendationEvaluator, private readonly promotionService?: StrategicFramingPromotionService, private readonly promotionReadService?: StrategicFramingPromotionReadService) {}
@@ -61,7 +62,16 @@ export class StrategicFramingController {
         rationale: body.rationale,
         actor: { id: req.user.id, roles: req.user.roles, permissions: req.user.permissions },
       });
-      res.status(result.retry ? 200 : 201).json({ success: true, data: result });
+      const data: StrategicFramingPromotionResponse = {
+        promotionId: result.promotion.id,
+        challengeCandidateId: result.promotion.challengeCandidateId,
+        challengeId: result.challenge.id,
+        challengeTitle: result.challenge.title,
+        strategicFrontId: result.promotion.strategicFrontId,
+        challengeStatus: 'draft',
+        retry: result.retry,
+      };
+      res.status(result.retry ? 200 : 201).json({ success: true, data });
     } catch (error) { next(error); }
   };
 

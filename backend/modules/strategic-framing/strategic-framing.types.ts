@@ -5,6 +5,16 @@ export type StrategicFramingSourceMode =
   | 'bootstrap'
   | 'unknown';
 
+export type StrategicFramingPromotionResponse = {
+  promotionId: string;
+  challengeCandidateId: string;
+  challengeId: string;
+  challengeTitle: string;
+  strategicFrontId: string;
+  challengeStatus: 'draft';
+  retry: boolean;
+};
+
 export type FramingProvenance =
   | 'user_declared'
   | 'extracted'

@@ -19,14 +19,23 @@ export class StrategicFramingPromotionReadService {
       select: { id: true, challengeCandidateId: true, challengeId: true, strategicFrontId: true, status: true, promotedAt: true },
       orderBy: { promotedAt: 'asc' },
     });
-    return Promise.all(rows.map(async (row: any) => ({
+    const challengeIds = [...new Set(rows.map((row: any) => row.challengeId))];
+    const challenges = challengeIds.length === 0
+      ? []
+      : await (this.prisma as any).challenge.findMany({
+        where: { id: { in: challengeIds } },
+        select: { id: true, title: true },
+      });
+    const challengeById = new Map<string, { id: string; title: string | null }>(challenges.map((challenge: any) => [challenge.id, challenge]));
+
+    return rows.map((row: any) => ({
       promotionId: row.id,
       challengeCandidateId: row.challengeCandidateId,
       challengeId: row.challengeId,
-      challengeTitle: (await (this.prisma as any).challenge.findUnique({ where: { id: row.challengeId }, select: { title: true } }))?.title ?? null,
+      challengeTitle: challengeById.get(row.challengeId)?.title ?? null,
       strategicFrontId: row.strategicFrontId,
       status: String(row.status).toLowerCase(),
       promotedAt: new Date(row.promotedAt).toISOString(),
-    })));
+    }));
   }
 }
