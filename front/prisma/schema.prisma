@@ -622,6 +622,7 @@ model User {
   @@index([googleId])
   @@index([organizationId])
   copilotConversations     CopilotConversation[]
+  portfolioContextSelections PortfolioContextSelection[]
 }
 
 model Project {
@@ -2221,8 +2222,31 @@ model Organization {
   subscriptions Subscription[]
   members       OrganizationMember[]
   portfolioAccessGrants OrganizationPortfolioAccessGrant[]
+  portfolioContextSelections PortfolioContextSelection[]
 
   @@index([cohortId])
+}
+
+// ADR-032: technical/session authority state only. This is not Portfolio,
+// Organization authority, membership, or a permission/grant snapshot.
+// One row per authenticated session provides the active-selection invariant;
+// invalidation metadata preserves the stale-selection lifecycle without
+// allowing an invalidated row to authorize a request.
+model PortfolioContextSelection {
+  id                String       @id @default(cuid())
+  authSessionId     String       @unique
+  actorUserId       String
+  actor             User         @relation(fields: [actorUserId], references: [id], onDelete: Cascade)
+  organizationId    String
+  organization      Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  selectedAt        DateTime     @default(now())
+  updatedAt         DateTime     @updatedAt
+  invalidatedAt     DateTime?
+  invalidationReason String?
+
+  @@index([actorUserId])
+  @@index([organizationId])
+  @@index([authSessionId, invalidatedAt])
 }
 
 model OrganizationMember {
