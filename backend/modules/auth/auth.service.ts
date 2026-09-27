@@ -571,8 +571,14 @@ export class AuthService {
     cohort?: string | null,
     existingFamily?: string,
   ): Promise<AuthTokens> {
+    // The access-token session identity must be established before signing.
+    // Refresh rotation supplies the existing family; a new login gets a new
+    // family, preserving isolation between independent sessions.
+    const family = existingFamily || crypto.randomUUID();
+
     const payload: TokenPayload = {
       sub: userId,
+      sid: family,
       role: role as TokenPayload['role'],
       ...(roles && roles.length > 0 ? { roles } : {}),
       email,
@@ -581,7 +587,6 @@ export class AuthService {
 
     const accessToken = generateAccessToken(payload);
     const rawRefreshToken = generateRefreshToken();
-    const family = existingFamily || crypto.randomUUID();
 
     await this.prisma.refreshToken.create({
       data: {

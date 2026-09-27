@@ -8,6 +8,12 @@ import { Role } from '../../shared/types/user.types';
 export interface TokenPayload {
   sub: string;
   /**
+   * Stable authenticated-session lineage. Present on persisted production
+   * tokens and optional only for legacy/development tokens without a
+   * refresh-family binding.
+   */
+  sid?: string;
+  /**
    * Rol PRIMARIO. Sigue siendo obligatorio: es la etiqueta de presentación, el eje
    * que usa `resolveProjectAccess`, y el respaldo que mantiene válidos los tokens
    * emitidos ANTES de ADR-029 (que no traen `roles`).

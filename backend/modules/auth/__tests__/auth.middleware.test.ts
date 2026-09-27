@@ -71,6 +71,7 @@ describe('modules/auth/auth.middleware — authenticate', () => {
       email: 'a@b.com',
       role: 'participante',
       cohort: '2026-Q1',
+      sid: 'family-1',
     });
     const res = await request(app).get('/me').set('Authorization', `Bearer ${token}`);
     expect(res.status).toBe(200);
@@ -79,7 +80,25 @@ describe('modules/auth/auth.middleware — authenticate', () => {
       email: 'a@b.com',
       role: 'participante',
       cohort: '2026-Q1',
+      authSessionId: 'family-1',
     });
+  });
+
+  it('does not invent a session identity for a legacy token without sid', async () => {
+    const app = makeApp(authenticate);
+    const token = generateAccessToken({
+      sub: 'legacy-user',
+      email: 'legacy@example.com',
+      role: 'participante',
+    });
+
+    const res = await request(app)
+      .get('/me')
+      .set('Authorization', `Bearer ${token}`)
+      .set('X-Auth-Session-Id', 'client-supplied');
+
+    expect(res.status).toBe(200);
+    expect(res.body.user.authSessionId).toBeUndefined();
   });
 });
 

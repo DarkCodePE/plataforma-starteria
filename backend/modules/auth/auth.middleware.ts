@@ -24,6 +24,8 @@ declare global {
         /** ADR-029: permisos efectivos, ya derivados. Es lo que consultan los guards. */
         permissions: ReadonlySet<Permission>;
         cohort?: string;
+        /** Stable session lineage from the verified access-token sid claim. */
+        authSessionId?: string;
       };
       projectAccess?: 'none' | 'read' | 'write' | 'admin';
     }
@@ -48,6 +50,7 @@ export function buildRequestUser(u: {
   role: Role;
   roles?: readonly Role[] | null;
   cohort?: string;
+  authSessionId?: string;
 }): NonNullable<Request['user']> {
   const roles = [...rolesForUser(u)];
 
@@ -58,6 +61,7 @@ export function buildRequestUser(u: {
     roles,
     permissions: permissionsForRoles(roles),
     cohort: u.cohort,
+    ...(u.authSessionId ? { authSessionId: u.authSessionId } : {}),
   };
 }
 
@@ -87,6 +91,7 @@ export async function authenticate(
       role: payload.role,
       roles: payload.roles,
       cohort: payload.cohort,
+      authSessionId: payload.sid,
     });
 
     next();

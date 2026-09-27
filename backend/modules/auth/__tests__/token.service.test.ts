@@ -20,6 +20,7 @@ import { AppError } from '../../../shared/errors/AppError';
 
 const samplePayload: TokenPayload = {
   sub: 'user-123',
+  sid: 'family-123',
   role: 'participante',
   email: 'a@test.local',
   cohort: 'cohort-2026-Q1',
@@ -32,6 +33,7 @@ describe('modules/auth/token.service', () => {
       expect(token.split('.').length).toBe(3);
       const decoded = jwt.decode(token) as Record<string, unknown>;
       expect(decoded.sub).toBe('user-123');
+      expect(decoded.sid).toBe('family-123');
       expect(decoded.role).toBe('participante');
       expect(decoded.email).toBe('a@test.local');
       expect(decoded.iss).toBe('starteria-api');
@@ -44,6 +46,7 @@ describe('modules/auth/token.service', () => {
       const token = generateAccessToken(samplePayload);
       const decoded = verifyAccessToken(token);
       expect(decoded.sub).toBe('user-123');
+      expect(decoded.sid).toBe('family-123');
       expect(decoded.role).toBe('participante');
       expect(decoded.email).toBe('a@test.local');
     });
