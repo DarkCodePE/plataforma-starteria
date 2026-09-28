@@ -1,6 +1,6 @@
 # Portfolio Handoff Invitation Delivery — H-TECH-04
 
-**Branch:** `feat/handoff-invitation-lifecycle-delivery`  
+**Branch:** `feat/handoff-invitation-lifecycle-delivery`
 **Status:** IMPLEMENTED — bounded lifecycle and email delivery; local verification complete
 
 ## 1. Scope
