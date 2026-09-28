@@ -47,5 +47,9 @@ export class DurableHandoffEventPort {
   constructor(private readonly events: HandoffSemanticEventRepository, private readonly projector: PortfolioHandoffProjector) {}
   async publish(input: any): Promise<void> { const eventType = normalizeType(input.type); const event: HandoffSemanticEvent = { eventId: input.eventId ?? randomUUID(), eventType, entityType: 'handoff_assignment', entityId: input.assignmentId, entityVersion: input.version ?? input.entityVersion ?? 1, actorId: input.actorId ?? null, actorRole: input.actorRole ?? null, interactionChannel: input.interactionChannel ?? 'api', organizationId: input.organizationId ?? null, portfolioScopeRef: input.portfolioScopeRef ?? null, challengeId: input.challengeId ?? null, initiativeId: input.initiativeId ?? null, sourceRefs: input.sourceRefs ?? [`handoff_assignment:${input.assignmentId}`], originAssignmentId: input.assignmentId, correlationId: input.correlationId ?? null, causationEventId: input.causationEventId ?? null, payload: safePayload(input.payload ?? input), occurredAt: input.occurredAt ?? new Date(), recordedAt: new Date() }; await this.events.append(event); await this.projector.apply(event); }
 }
+
+export function eventIdForCommand(assignmentId: string, type: string, idempotencyKey: string): string {
+  return `handoff-command:${assignmentId}:${type}:${idempotencyKey}`;
+}
 function normalizeType(type: string): HandoffSemanticEvent['eventType'] { const value = type.replace(/^handoff_/, ''); if (value === 'assignment_started') return 'handoff_assignment_started'; if (value === 'rejection_response_recorded') return 'portfolio_response_recorded'; return value as HandoffSemanticEvent['eventType']; }
 function safePayload(payload: Record<string, unknown>): Record<string, unknown> { const copy = { ...payload }; for (const key of Object.keys(copy)) if (/token|secret|hash/i.test(key)) delete copy[key]; return copy; }

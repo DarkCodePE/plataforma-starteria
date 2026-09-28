@@ -24,13 +24,19 @@ version remain canonical. Existing Initiative/Step read models remain separate.
 
 ## 4. Mechanism decision
 
-Option B, a bounded transactional-outbox-like persistence shape: a durable
-semantic event table is the handoff integration boundary and a projector
-updates a rebuildable read model. The adapter is synchronous after the existing
-canonical mutation, so event persistence/projector errors propagate to the
-caller and are not reported as durable event success. A future transaction can
-move mutation plus append into one Prisma transaction without changing the
-event contract; no broker or generic event platform was introduced.
+Selected mechanism: bounded Option A, a Prisma transaction owned by the
+handoff command repository. For Accept, Reject, Portfolio response and Start,
+the transaction contains the canonical `PortfolioHandoffAssignment` mutation,
+the command idempotency record, and the durable semantic event append. The
+projector runs after commit and remains read-only/rebuildable. No broker,
+generic event platform, or cross-domain transaction was introduced.
+
+The event ID is deterministic from `(assignmentId, commandType,
+idempotencyKey)`. This is event idempotency, not command idempotency: the
+command record still owns request replay/fingerprint validation, while the
+semantic event repository owns duplicate event safety. A same-key retry also
+re-enters event publication, so a committed command whose projection failed is
+recoverable rather than silently returned.
 
 ## 5. Schema/migrations
 
@@ -57,6 +63,11 @@ rebuild input by entity version, occurrence time, and event ID. A lower version
 cannot roll back a projection; `STARTED v4` therefore remains `STARTED` when
 `ACCEPTED v3` arrives later.
 
+If event append fails inside the transaction, the transaction rolls back the
+canonical mutation and command record, so the command cannot falsely complete.
+If projection fails after commit, canonical state and event history remain
+successful; a same-key retry or explicit rebuild retries projection.
+
 ## 12–13. PortfolioHandoffProjection/projector
 
 The projection contains assignment, organization/scope, challenge and target
@@ -72,6 +83,8 @@ derived repository; lifecycle commands never mutate this model directly.
 `PortfolioHandoffProjector.rebuild(assignmentId, events)` deletes only the
 derived row and replays canonical persisted events in deterministic order.
 Tests prove equivalent state after rebuild without a lifecycle command.
+The projection is never part of the command's canonical write and is never
+used to authorize or decide lifecycle transitions.
 
 ## 15–18. Initiative, Challenge, rejection, Start
 
@@ -108,7 +121,10 @@ was performed.
 
 ## 25. Tests/results
 
-- Focused H-TECH-08 plus H-TECH-05 response and H-TECH-04 delivery tests: **16 passed**.
+- Focused H-TECH-08 atomicity/recovery plus H-TECH-05 response and semantic-event tests: **17 passed**.
+- Focused failure coverage includes Accept rollback, Start rollback, same-key
+  projection recovery, duplicate event recovery, deterministic replay, and
+  separate Reject/Portfolio-response events.
 - Backend typecheck: **passed**.
 - `prisma generate`: **passed**.
 - `prisma validate`: **passed** with a syntactically valid disposable `DATABASE_URL`; no database connection was made.
@@ -136,6 +152,11 @@ absent while repository authority points to the factual v0.2 Core path. This is
 documented, not silently resolved. No new ADR is required; the implementation
 is within accepted ADR-005/H-TECH-08 boundaries. H-TECH-09 remains a future
 dependency for legacy-route quarantine only.
+
+No new ADR is required. This is an implementation-boundary hardening of the
+already accepted ADR-005 event/projection design: it preserves Assignment as
+the lifecycle authority, keeps the projection derived, and changes neither
+lifecycle semantics nor Core/Project/Steps behavior.
 
 ## 31. Final status
 
