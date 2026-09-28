@@ -36,6 +36,12 @@ export type HandoffReference = { id: string; organizationId?: string | null };
 export interface HandoffAssignmentRepository {
   create(input: CreateHandoffAssignmentInput): Promise<HandoffAssignment>;
   findById(id: string): Promise<HandoffAssignment | null>;
+  associateInvitedIdentity(input: {
+    assignmentId: string;
+    userId: string;
+    emailNormalized: string;
+    identityRef?: string | null;
+  }): Promise<HandoffAssignment | null>;
 }
 
 export interface HandoffReferenceRepository {

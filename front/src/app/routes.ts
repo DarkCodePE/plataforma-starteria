@@ -43,6 +43,7 @@ import { AuthenticatedProvisionalContinuationPage } from './pages/public/Authent
 import { ContinuePilotPage } from './pages/ContinuePilotPage';
 import { CompaniesPage } from './pages/CompaniesPage';
 import { StrategicFramingWorkspacePage } from '../features/portfolio-lead/strategic-framing/StrategicFramingWorkspacePage';
+import { HandoffInvitationPage } from './pages/HandoffInvitationPage';
 
 export const appRoutes = [
   {
@@ -61,6 +62,7 @@ export const appRoutes = [
         path: '/auth',
         Component: AuthPage,
       },
+      { path: '/handoff/invitations/:token', Component: HandoffInvitationPage },
       {
         path: '/auth/continue/:draftId',
         Component: PublicLayout,

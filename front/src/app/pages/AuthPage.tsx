@@ -19,6 +19,7 @@ import {
   trackPortfolioEntryEvent,
 } from '../../features/portfolio-entry/public';
 import { createIdempotencyKey } from '../../features/portfolio-entry/public/idempotency';
+import { claimHandoffInvitation, clearPendingHandoffInvitation, readPendingHandoffInvitation } from '../../features/portfolio-handoff/services/handoffInvitationService';
 
 /** When a pilot code is pending, route post-auth to the claim-consume page (ADR-018). */
 const claimRedirect = (): string | null => (getPendingPilotClaim() ? '/continuar-piloto' : null);
@@ -134,6 +135,21 @@ export function AuthPage() {
           clearPendingPortfolioEntryClaim();
           clearPortfolioEntryCurrentSession();
           navigate('/public/start', { replace: true });
+        }
+      })();
+      return;
+    }
+
+    const pendingHandoffInvitation = readPendingHandoffInvitation();
+    if (pendingHandoffInvitation) {
+      (async () => {
+        try {
+          await claimHandoffInvitation(pendingHandoffInvitation);
+          clearPendingHandoffInvitation();
+          navigate(`/handoff/invitations/${encodeURIComponent(pendingHandoffInvitation)}`, { replace: true });
+        } catch {
+          clearPendingHandoffInvitation();
+          navigate('/auth', { replace: true });
         }
       })();
       return;

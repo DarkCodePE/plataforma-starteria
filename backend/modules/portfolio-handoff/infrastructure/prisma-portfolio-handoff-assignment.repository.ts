@@ -33,6 +33,16 @@ export class PrismaPortfolioHandoffAssignmentRepository implements HandoffAssign
     return record ? mapAssignment(record) : null;
   }
 
+  async associateInvitedIdentity(input: { assignmentId: string; userId: string; emailNormalized: string; identityRef?: string | null }): Promise<HandoffAssignment | null> {
+    const prisma = this.prisma as any;
+    const assignment = await prisma.portfolioHandoffAssignment.findUnique({ where: { id: input.assignmentId }, include: { members: true } });
+    if (!assignment) return null;
+    const member = assignment.members.find((candidate: any) => candidate.role === 'OWNER' && !candidate.userId && (candidate.emailNormalized === input.emailNormalized || candidate.identityKey === input.emailNormalized || candidate.identityKey === input.identityRef));
+    if (!member) return null;
+    await prisma.portfolioHandoffMember.update({ where: { id: member.id }, data: { userId: input.userId } });
+    return this.findById(input.assignmentId);
+  }
+
   async findChallenge(id: string): Promise<HandoffReference | null> {
     const record = await this.prisma.challenge.findUnique({ where: { id }, select: { id: true, strategicFront: { select: { organizationId: true } } } });
     return record ? { id: record.id, organizationId: record.strategicFront.organizationId } : null;
