@@ -26,6 +26,7 @@ export class InMemoryPortfolioHandoffAssignmentRepository implements HandoffAssi
       revokedAt: null,
       expiredAt: null,
       acceptedAt: null, acceptedBy: null, rejectionReason: null, rejectedAt: null, rejectedBy: null,
+      startedAt: null, startedBy: null,
       portfolioResponse: null, portfolioResponseRecordedAt: null, portfolioResponseRecordedBy: null,
     };
     this.assignments.set(assignment.id, assignment);
@@ -64,6 +65,14 @@ export class InMemoryPortfolioHandoffAssignmentRepository implements HandoffAssi
     assignment.state = input.to; assignment.version += 1; assignment.updatedAt = input.now;
     if (input.to === 'ACCEPTED') { assignment.acceptedAt = input.now; assignment.acceptedBy = input.actorId; }
     else { assignment.rejectionReason = input.reason!; assignment.rejectedAt = input.now; assignment.rejectedBy = input.actorId; }
+    return clone(assignment);
+  }
+
+  async startAssignedWork(input: { assignmentId: string; expectedVersion: number; actorId: string; now: Date }): Promise<HandoffAssignment | null> {
+    const assignment = this.assignments.get(input.assignmentId);
+    if (!assignment || assignment.version !== input.expectedVersion || assignment.state !== 'ACCEPTED') return null;
+    assignment.state = 'STARTED'; assignment.startedAt = input.now; assignment.startedBy = input.actorId;
+    assignment.version += 1; assignment.updatedAt = input.now;
     return clone(assignment);
   }
 

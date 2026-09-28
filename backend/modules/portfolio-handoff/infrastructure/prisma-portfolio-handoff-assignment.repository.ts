@@ -60,6 +60,14 @@ export class PrismaPortfolioHandoffAssignmentRepository implements HandoffAssign
     return result.count ? this.findById(input.assignmentId) : null;
   }
 
+  async startAssignedWork(input: { assignmentId: string; expectedVersion: number; actorId: string; now: Date }): Promise<HandoffAssignment | null> {
+    const result = await (this.prisma as any).portfolioHandoffAssignment.updateMany({
+      where: { id: input.assignmentId, state: 'ACCEPTED', version: input.expectedVersion },
+      data: { state: 'STARTED', startedAt: input.now, startedBy: input.actorId, version: { increment: 1 }, updatedAt: input.now },
+    });
+    return result.count ? this.findById(input.assignmentId) : null;
+  }
+
   async recordPortfolioResponse(input: { assignmentId: string; response: string; actorId: string; now: Date }): Promise<HandoffAssignment | null> {
     const result = await (this.prisma as any).portfolioHandoffAssignment.updateMany({ where: { id: input.assignmentId, state: 'REJECTED' }, data: { portfolioResponse: input.response, portfolioResponseRecordedAt: input.now, portfolioResponseRecordedBy: input.actorId, updatedAt: input.now } });
     return result.count ? this.findById(input.assignmentId) : null;
@@ -97,6 +105,7 @@ function mapAssignment(record: any): HandoffAssignment {
     revokedAt: record.revokedAt,
     expiredAt: record.expiredAt,
     acceptedAt: record.acceptedAt, acceptedBy: record.acceptedBy, rejectionReason: record.rejectionReason, rejectedAt: record.rejectedAt, rejectedBy: record.rejectedBy,
+    startedAt: record.startedAt, startedBy: record.startedBy,
     portfolioResponse: record.portfolioResponse, portfolioResponseRecordedAt: record.portfolioResponseRecordedAt, portfolioResponseRecordedBy: record.portfolioResponseRecordedBy,
   };
 }

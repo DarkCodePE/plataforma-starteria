@@ -62,3 +62,50 @@ describe('H-TECH-05 response commands', () => {
     await expect(ctx.service.recordPortfolioRejectionResponse({ assignmentId: ctx.assignment.id, actorId: 'portfolio-1', response: 'reply', idempotencyKey: 'bad-state' })).rejects.toMatchObject({ code: 'INVALID_STATE' });
   });
 });
+
+describe('H-TECH-07 Start boundary', () => {
+  async function accepted(targetKind: 'CHALLENGE' | 'EXISTING_INITIATIVE' = 'CHALLENGE') {
+    const ctx = await setup(targetKind);
+    await ctx.service.acceptHandoffAssignment({ assignmentId: ctx.assignment.id, actor, expectedVersion: 2, idempotencyKey: `accept-${targetKind}` });
+    return ctx;
+  }
+
+  it('starts only ACCEPTED, persists audit once, is idempotent, and emits one bounded event', async () => {
+    const ctx = await accepted();
+    const events: unknown[] = [];
+    const service = new PortfolioHandoffResponseService(ctx.assignments, ctx.access, new InMemoryPortfolioHandoffResponseCommandRepository(), { publish: async (event) => { events.push(event); } }, () => new Date('2026-09-28T12:00:00Z'));
+    const first = await service.startAssignedWork({ assignmentId: ctx.assignment.id, actor, expectedVersion: 3, idempotencyKey: 'start-1' });
+    const second = await service.startAssignedWork({ assignmentId: ctx.assignment.id, actor, expectedVersion: 3, idempotencyKey: 'start-1' });
+    expect(first).toMatchObject({ state: 'STARTED', version: 4, startedBy: actor.id });
+    expect(first.startedAt).toEqual(new Date('2026-09-28T12:00:00Z'));
+    expect(second.version).toBe(4);
+    expect(events).toHaveLength(1);
+    expect(events[0]).toMatchObject({ type: 'handoff_assignment_started', assignmentId: ctx.assignment.id, targetKind: 'CHALLENGE', initiativeId: null, version: 4 });
+  });
+
+  it('preserves an existing Initiative and does not emit initiative_started', async () => {
+    const ctx = await accepted('EXISTING_INITIATIVE');
+    const events: any[] = [];
+    const service = new PortfolioHandoffResponseService(ctx.assignments, ctx.access, new InMemoryPortfolioHandoffResponseCommandRepository(), { publish: async (event) => { events.push(event); } }, () => new Date('2026-09-28T12:00:00Z'));
+    const result = await service.startAssignedWork({ assignmentId: ctx.assignment.id, actor, expectedVersion: 3, idempotencyKey: 'start-existing' });
+    expect(result).toMatchObject({ state: 'STARTED', initiativeId: 'initiative-1' });
+    expect(events.some((event) => event.type === 'initiative_started')).toBe(false);
+    expect(events[0]).toMatchObject({ type: 'handoff_assignment_started', initiativeId: 'initiative-1' });
+  });
+
+  it('rejects stale, wrong identity, unauthorized, and every non-ACCEPTED state', async () => {
+    const ctx = await setup();
+    await expect(ctx.service.startAssignedWork({ assignmentId: ctx.assignment.id, actor, expectedVersion: 2, idempotencyKey: 'not-accepted' })).rejects.toMatchObject({ code: 'INVALID_STATE' });
+    await expect(ctx.service.startAssignedWork({ assignmentId: ctx.assignment.id, actor, expectedVersion: 1, idempotencyKey: 'stale' })).rejects.toMatchObject({ code: 'INVALID_STATE' });
+    const acceptedCtx = await accepted();
+    await expect(acceptedCtx.service.startAssignedWork({ assignmentId: acceptedCtx.assignment.id, actor: { id: 'other', email: actor.email }, expectedVersion: 3, idempotencyKey: 'wrong' })).rejects.toMatchObject({ code: 'IDENTITY_MISMATCH' });
+    await expect(acceptedCtx.service.startAssignedWork({ assignmentId: acceptedCtx.assignment.id, actor: { id: 'owner-2', email: actor.email }, expectedVersion: 3, idempotencyKey: 'forbidden' })).rejects.toMatchObject({ code: 'IDENTITY_MISMATCH' });
+    await expect(acceptedCtx.service.startAssignedWork({ assignmentId: acceptedCtx.assignment.id, actor, expectedVersion: 2, idempotencyKey: 'stale-accepted' })).rejects.toMatchObject({ code: 'STALE_VERSION' });
+    for (const state of ['REVOKED', 'EXPIRED', 'REJECTED', 'VIEWED', 'SENT'] as const) {
+      const stateCtx = await setup();
+      if (state !== 'SENT') await stateCtx.assignments.transitionState({ assignmentId: stateCtx.assignment.id, from: ['SENT'], to: state });
+      expect((await stateCtx.assignments.findById(stateCtx.assignment.id))?.state).toBe(state);
+      await expect(stateCtx.service.startAssignedWork({ assignmentId: stateCtx.assignment.id, actor, expectedVersion: 2, idempotencyKey: `state-${state}` })).rejects.toMatchObject({ code: state === 'REVOKED' ? 'REVOKED' : state === 'EXPIRED' ? 'EXPIRED' : 'INVALID_STATE' });
+    }
+  });
+});

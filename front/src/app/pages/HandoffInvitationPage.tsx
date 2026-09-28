@@ -3,7 +3,7 @@ import { useNavigate, useParams } from 'react-router';
 import { AlertCircle, Loader2 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { parseApiError } from '../services/api';
-import { acceptHandoffAssignment, claimHandoffInvitation, readHandoffInvitation, rejectHandoffAssignment, savePendingHandoffInvitation, type HandoffInvitationPreview } from '../../features/portfolio-handoff/services/handoffInvitationService';
+import { acceptHandoffAssignment, claimHandoffInvitation, readHandoffInvitation, rejectHandoffAssignment, savePendingHandoffInvitation, startAssignedWork, type HandoffInvitationPreview } from '../../features/portfolio-handoff/services/handoffInvitationService';
 import { HandoffShell } from '../../features/portfolio-handoff/components/HandoffShell';
 
 export function HandoffInvitationPage() {
@@ -14,6 +14,7 @@ export function HandoffInvitationPage() {
   const [error, setError] = useState<string | null>(null);
   const [acceptBusy, setAcceptBusy] = useState(false);
   const [responseError, setResponseError] = useState<string | null>(null);
+  const [startBusy, setStartBusy] = useState(false);
   const claimedRef = useRef(false);
 
   useEffect(() => {
@@ -47,5 +48,13 @@ export function HandoffInvitationPage() {
     setResponseError(null); setPreview(await rejectHandoffAssignment(preview.assignmentId, reason, preview.version));
   }
 
-  return <HandoffShell preview={preview} onAccept={accept} onReject={reject} acceptBusy={acceptBusy} responseError={responseError} />;
+  async function start() {
+    if (startBusy || !preview.assignmentId) return;
+    setResponseError(null); setStartBusy(true);
+    try { setPreview(await startAssignedWork(preview.assignmentId, preview.version)); }
+    catch (reason) { setResponseError(parseApiError(reason).message); }
+    finally { setStartBusy(false); }
+  }
+
+  return <HandoffShell preview={preview} onAccept={accept} onReject={reject} acceptBusy={acceptBusy} responseError={responseError} onStart={start} startBusy={startBusy} />;
 }

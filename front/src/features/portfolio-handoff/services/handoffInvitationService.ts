@@ -27,7 +27,7 @@ export async function claimHandoffInvitation(token: string) {
   return data.data as HandoffInvitationPreview;
 }
 
-function createIdempotencyKey(command: 'accept' | 'reject', assignmentId: string): string {
+function createIdempotencyKey(command: 'accept' | 'reject' | 'start', assignmentId: string): string {
   const uuid = typeof crypto !== 'undefined' && 'randomUUID' in crypto
     ? crypto.randomUUID()
     : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
@@ -45,6 +45,12 @@ export async function rejectHandoffAssignment(assignmentId: string, reason: stri
   const { data } = await api.post(`/handoff/assignments/${encodeURIComponent(assignmentId)}/reject`, { reason: reason.trim(), expectedVersion }, {
     headers: { 'Idempotency-Key': createIdempotencyKey('reject', assignmentId) },
   });
+  return { ...data.data, authenticationRequired: true, identityClaimStatus: 'MATCHED' };
+}
+
+export async function startAssignedWork(assignmentId: string, expectedVersion: number): Promise<HandoffInvitationPreview> {
+  const idempotencyKey = createIdempotencyKey('start', assignmentId);
+  const { data } = await api.post(`/handoff/assignments/${encodeURIComponent(assignmentId)}/start`, { expectedVersion, idempotencyKey }, { headers: { 'Idempotency-Key': idempotencyKey } });
   return { ...data.data, authenticationRequired: true, identityClaimStatus: 'MATCHED' };
 }
 

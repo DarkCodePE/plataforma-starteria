@@ -25,10 +25,22 @@ describe('HandoffShell', () => {
     const onAccept = vi.fn();
     render(<HandoffShell preview={preview({ state: 'ACCEPTED', version: 3 })} onAccept={onAccept} onReject={vi.fn()} />);
     expect(screen.getByTestId('handoff-shell')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Empezar (disponible en el siguiente paso)' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Empezar' })).toBeDisabled();
     expect(screen.queryByRole('button', { name: 'Aceptar asignación' })).not.toBeInTheDocument();
     expect(screen.getByText(/Al empezar, Starteria registrará el inicio/)).toBeInTheDocument();
     expect(onAccept).not.toHaveBeenCalled();
+  });
+
+  it('invokes Start once and exposes an accessible busy state while processing', async () => {
+    const user = userEvent.setup();
+    let resolveStart!: () => void;
+    const onStart = vi.fn(() => new Promise<void>((resolve) => { resolveStart = resolve; }));
+    const view = render(<HandoffShell preview={preview({ state: 'ACCEPTED', version: 3 })} onAccept={vi.fn()} onReject={vi.fn()} onStart={onStart} />);
+    await user.click(screen.getByRole('button', { name: 'Empezar' }));
+    expect(onStart).toHaveBeenCalledTimes(1);
+    view.rerender(<HandoffShell preview={preview({ state: 'ACCEPTED', version: 3 })} onAccept={vi.fn()} onReject={vi.fn()} onStart={onStart} startBusy />);
+    expect(screen.getByRole('button', { name: 'Empezar' })).toHaveAttribute('aria-busy', 'true');
+    resolveStart();
   });
 
   it('requires a material rejection reason and submits a trimmed reason', async () => {
@@ -59,5 +71,13 @@ describe('HandoffShell', () => {
     expect(screen.getAllByText('Challenge Assignment')).toHaveLength(2);
     expect(screen.getByText('El encargo está vinculado a un reto. Todavía no existe una Initiative asociada.')).toBeInTheDocument();
     expect(screen.queryByText(/Step 0|Step 1|progreso|Initiative existente/)).not.toBeInTheDocument();
+  });
+
+  it('renders a bounded terminal state after Start with no downstream navigation', () => {
+    render(<HandoffShell preview={preview({ state: 'STARTED', version: 4 })} onAccept={vi.fn()} onReject={vi.fn()} />);
+    expect(screen.getByRole('status')).toHaveTextContent('Trabajo iniciado');
+    expect(screen.queryByRole('button', { name: 'Aceptar asignación' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Empezar' })).not.toBeInTheDocument();
+    expect(screen.queryByText(/Step|Workspace|Iniciativa iniciada/)).not.toBeInTheDocument();
   });
 });

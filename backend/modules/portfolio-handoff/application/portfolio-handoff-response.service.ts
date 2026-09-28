@@ -3,7 +3,7 @@ import type { HandoffAssignment, HandoffAssignmentRepository, HandoffResponseCom
 import type { HandoffInvitationAccessRepository } from '../domain/portfolio-handoff-invitation.types';
 import { PortfolioHandoffAssignmentError } from './portfolio-handoff-assignment.errors';
 
-export type HandoffEvent = { type: 'handoff_assignment_accepted' | 'handoff_assignment_rejected' | 'handoff_rejection_response_recorded'; assignmentId: string; actorId: string; occurredAt: Date; version: number };
+export type HandoffEvent = { type: 'handoff_assignment_accepted' | 'handoff_assignment_rejected' | 'handoff_rejection_response_recorded' | 'handoff_assignment_started'; assignmentId: string; targetKind?: HandoffAssignment['targetKind']; initiativeId?: string | null; actorId: string; occurredAt: Date; version: number };
 export type HandoffEventPort = { publish(event: HandoffEvent): Promise<void> };
 export const noopHandoffEventPort: HandoffEventPort = { async publish() {} };
 export type HandoffActor = { id: string; email: string };
@@ -19,8 +19,33 @@ export class PortfolioHandoffResponseService {
     if (!reason) throw failure('REASON_REQUIRED', 'A rejection reason is required');
     return this.respond(input, 'REJECT', reason, 'REJECTED');
   }
+  async startAssignedWork(input: { assignmentId: string; actor: HandoffActor; expectedVersion: number; idempotencyKey: string }): Promise<HandoffAssignment> {
+    if (!validIdempotencyKey(input.idempotencyKey)) throw failure('IDEMPOTENCY_REQUIRED', 'An idempotency key is required');
+    if (!Number.isInteger(input.expectedVersion) || input.expectedVersion < 1) throw failure('STALE_VERSION', 'Assignment version is stale');
+    const assignment = await this.requireAssignment(input.assignmentId);
+    if (assignment.state === 'REVOKED') throw failure('REVOKED', 'Assignment is no longer available');
+    if (assignment.state === 'EXPIRED') throw failure('EXPIRED', 'Assignment is no longer available');
+    const access = await this.access.findActiveForAssignment(input.assignmentId);
+    if (!access || access.claimedByUserId !== input.actor.id) throw failure('IDENTITY_MISMATCH', 'Invitation identity does not match the authenticated actor');
+    const owner = assignment.members.find((member) => member.role === 'OWNER');
+    if (!owner || owner.userId !== input.actor.id) throw failure('FORBIDDEN', 'Only the assigned Initiative Owner can start this work');
+    const fingerprint = fingerprintOf(input.actor.id, 'START');
+    const existing = await this.commands.findByIdempotencyKey({ assignmentId: input.assignmentId, type: 'START', idempotencyKey: input.idempotencyKey });
+    if (existing) {
+      if (existing.fingerprint !== fingerprint) throw failure('IDEMPOTENCY_CONFLICT', 'Idempotency key was already used for another command');
+      return assignment;
+    }
+    if (assignment.state !== 'ACCEPTED') throw failure('INVALID_STATE', 'Assignment must be accepted before it can start');
+    if (assignment.version !== input.expectedVersion) throw failure('STALE_VERSION', 'Assignment version is stale');
+    const now = this.now();
+    const updated = await this.assignments.startAssignedWork({ assignmentId: input.assignmentId, expectedVersion: input.expectedVersion, actorId: input.actor.id, now });
+    if (!updated) throw failure('STALE_VERSION', 'Assignment changed while starting');
+    await this.commands.create({ assignmentId: input.assignmentId, type: 'START', idempotencyKey: input.idempotencyKey, actorId: input.actor.id, fingerprint, resultingVersion: updated.version, createdAt: now });
+    await this.events.publish({ type: 'handoff_assignment_started', assignmentId: updated.id, targetKind: updated.targetKind, initiativeId: updated.initiativeId, actorId: input.actor.id, occurredAt: now, version: updated.version });
+    return updated;
+  }
   async recordPortfolioRejectionResponse(input: { assignmentId: string; actorId: string; response: string; idempotencyKey: string }): Promise<HandoffAssignment> {
-    if (!input.idempotencyKey.trim()) throw failure('IDEMPOTENCY_REQUIRED', 'An idempotency key is required');
+    if (!validIdempotencyKey(input.idempotencyKey)) throw failure('IDEMPOTENCY_REQUIRED', 'An idempotency key is required');
     const response = input.response.trim();
     if (!response) throw failure('REASON_REQUIRED', 'A portfolio response is required');
     const assignment = await this.requireAssignment(input.assignmentId);
@@ -55,4 +80,5 @@ export class PortfolioHandoffResponseService {
   private async requireAssignment(id: string): Promise<HandoffAssignment> { const assignment = await this.assignments.findById(id); if (!assignment) throw failure('NOT_FOUND', 'Handoff assignment not found'); return assignment; }
 }
 function fingerprintOf(actorId: string, value: string): string { return createHash('sha256').update(`${actorId}\0${value}`).digest('hex'); }
+function validIdempotencyKey(value: string): boolean { return typeof value === 'string' && value.trim().length > 0 && value.trim().length <= 200; }
 function failure(code: string, message: string): PortfolioHandoffAssignmentError { return new PortfolioHandoffAssignmentError(code, message); }

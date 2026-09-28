@@ -181,6 +181,7 @@ enum PortfolioHandoffState {
   EXPIRED
   ACCEPTED
   REJECTED
+  STARTED
 }
 
 enum PortfolioHandoffMemberRole {
@@ -1622,6 +1623,8 @@ model PortfolioHandoffAssignment {
   rejectionReason        String?
   rejectedAt             DateTime?
   rejectedBy             String?
+  startedAt              DateTime?
+  startedBy              String?
   portfolioResponse      String?
   portfolioResponseRecordedAt DateTime?
   portfolioResponseRecordedBy String?
@@ -1643,6 +1646,7 @@ enum PortfolioHandoffResponseCommandType {
   ACCEPT
   REJECT
   PORTFOLIO_RESPONSE
+  START
 }
 
 model PortfolioHandoffResponseCommand {
