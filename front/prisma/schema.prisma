@@ -179,6 +179,8 @@ enum PortfolioHandoffState {
   VIEWED
   REVOKED
   EXPIRED
+  ACCEPTED
+  REJECTED
 }
 
 enum PortfolioHandoffMemberRole {
@@ -1615,17 +1617,47 @@ model PortfolioHandoffAssignment {
   viewedAt               DateTime?
   revokedAt              DateTime?
   expiredAt              DateTime?
+  acceptedAt             DateTime?
+  acceptedBy             String?
+  rejectionReason        String?
+  rejectedAt             DateTime?
+  rejectedBy             String?
+  portfolioResponse      String?
+  portfolioResponseRecordedAt DateTime?
+  portfolioResponseRecordedBy String?
   createdAt              DateTime                  @default(now())
   updatedAt              DateTime                  @updatedAt
 
   members PortfolioHandoffMember[]
   invitations PortfolioHandoffInvitation[]
   deliveryAttempts PortfolioHandoffDeliveryAttempt[]
+  responseCommands PortfolioHandoffResponseCommand[]
 
   @@index([challengeId])
   @@index([initiativeId])
   @@index([organizationId])
   @@index([createdByActorId])
+}
+
+enum PortfolioHandoffResponseCommandType {
+  ACCEPT
+  REJECT
+  PORTFOLIO_RESPONSE
+}
+
+model PortfolioHandoffResponseCommand {
+  id               String @id @default(cuid())
+  assignmentId     String
+  assignment       PortfolioHandoffAssignment @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
+  type             PortfolioHandoffResponseCommandType
+  idempotencyKey   String
+  actorId          String
+  fingerprint      String
+  resultingVersion Int
+  createdAt        DateTime @default(now())
+
+  @@unique([assignmentId, type, idempotencyKey])
+  @@index([assignmentId, createdAt])
 }
 
 // H-TECH-03: bounded bearer access metadata. Assignment target/team/business

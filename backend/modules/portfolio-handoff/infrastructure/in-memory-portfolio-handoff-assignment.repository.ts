@@ -25,6 +25,8 @@ export class InMemoryPortfolioHandoffAssignmentRepository implements HandoffAssi
       viewedAt: null,
       revokedAt: null,
       expiredAt: null,
+      acceptedAt: null, acceptedBy: null, rejectionReason: null, rejectedAt: null, rejectedBy: null,
+      portfolioResponse: null, portfolioResponseRecordedAt: null, portfolioResponseRecordedBy: null,
     };
     this.assignments.set(assignment.id, assignment);
     return clone(assignment);
@@ -53,6 +55,22 @@ export class InMemoryPortfolioHandoffAssignmentRepository implements HandoffAssi
     if (input.to === 'VIEWED') assignment.viewedAt = assignment.updatedAt;
     if (input.to === 'REVOKED') assignment.revokedAt = assignment.updatedAt;
     if (input.to === 'EXPIRED') assignment.expiredAt = assignment.updatedAt;
+    return clone(assignment);
+  }
+
+  async applyResponse(input: { assignmentId: string; from: HandoffAssignmentState[]; to: 'ACCEPTED' | 'REJECTED'; actorId: string; reason?: string; expectedVersion: number; now: Date }): Promise<HandoffAssignment | null> {
+    const assignment = this.assignments.get(input.assignmentId);
+    if (!assignment || assignment.version !== input.expectedVersion || !input.from.includes(assignment.state)) return null;
+    assignment.state = input.to; assignment.version += 1; assignment.updatedAt = input.now;
+    if (input.to === 'ACCEPTED') { assignment.acceptedAt = input.now; assignment.acceptedBy = input.actorId; }
+    else { assignment.rejectionReason = input.reason!; assignment.rejectedAt = input.now; assignment.rejectedBy = input.actorId; }
+    return clone(assignment);
+  }
+
+  async recordPortfolioResponse(input: { assignmentId: string; response: string; actorId: string; now: Date }): Promise<HandoffAssignment | null> {
+    const assignment = this.assignments.get(input.assignmentId);
+    if (!assignment || assignment.state !== 'REJECTED') return null;
+    assignment.portfolioResponse = input.response; assignment.portfolioResponseRecordedAt = input.now; assignment.portfolioResponseRecordedBy = input.actorId; assignment.updatedAt = input.now;
     return clone(assignment);
   }
 }

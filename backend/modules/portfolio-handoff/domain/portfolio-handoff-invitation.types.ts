@@ -41,6 +41,7 @@ export interface HandoffInvitationAccessRepository {
   findByTokenHash(tokenHash: string): Promise<HandoffInvitationAccess | null>;
   markClaimed(input: { accessId: string; userId: string }): Promise<void>;
   revokeForAssignment(assignmentId: string): Promise<void>;
+  findActiveForAssignment(assignmentId: string): Promise<HandoffInvitationAccess | null>;
 }
 
 export interface HandoffDeliveryAttemptRepository {
