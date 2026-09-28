@@ -91,7 +91,7 @@ No Start path calls `ProjectService.createProject`, `createProjectFromPublicDraf
 
 - Focused H-TECH-07 backend suite: **9 tests passed**.
 - Handoff backend regression (H-TECH-02/03/04/05): **26 tests passed across 4 files**.
-- Focused HandoffShell suite: **6 tests passed**.
+- Focused HandoffShell suite: **7 tests passed**.
 - Full frontend Vitest suite: **passed**.
 - Frontend and backend TypeScript typecheck: **passed**.
 - Prisma generate: **passed**.
