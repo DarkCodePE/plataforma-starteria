@@ -12,6 +12,8 @@ import { PrismaPortfolioHandoffDeliveryAttemptRepository } from './infrastructur
 import { PrismaPortfolioHandoffResponseCommandRepository } from './infrastructure/prisma-portfolio-handoff-response-command.repository';
 import { PortfolioHandoffResponseService } from './application/portfolio-handoff-response.service';
 import { PortfolioHandoffAssignmentError } from './application/portfolio-handoff-assignment.errors';
+import { PrismaHandoffSemanticEventRepository, PrismaPortfolioHandoffProjectionRepository } from './infrastructure/prisma-portfolio-handoff-semantic-event.repository';
+import { PortfolioHandoffProjector, DurableHandoffEventPort } from './application/portfolio-handoff-semantic-event.projector';
 
 export function buildPortfolioHandoffInvitationRouter(service: PortfolioHandoffInvitationService, auth = authenticate, onViewed?: (token: string) => Promise<void>): Router {
   const router = Router();
@@ -38,6 +40,9 @@ export function buildPortfolioHandoffInvitationRouter(service: PortfolioHandoffI
 }
 
 const assignmentRepository = new PrismaPortfolioHandoffAssignmentRepository(prisma);
+const semanticEventRepository = new PrismaHandoffSemanticEventRepository(prisma);
+const handoffProjector = new PortfolioHandoffProjector(new PrismaPortfolioHandoffProjectionRepository(prisma));
+const semanticEventPort = new DurableHandoffEventPort(semanticEventRepository, handoffProjector);
 const invitationRepository = new PrismaPortfolioHandoffInvitationRepository(prisma);
 const deliveryAttemptRepository = new PrismaPortfolioHandoffDeliveryAttemptRepository(prisma);
 const invitationService = new PortfolioHandoffInvitationService({ assignments: assignmentRepository, access: invitationRepository });
@@ -46,7 +51,7 @@ const deliveryService = new PortfolioHandoffDeliveryService(assignmentRepository
     const delivered = await mailer.send(message);
     return { delivered };
   },
-} satisfies HandoffInvitationDeliveryPort);
+} satisfies HandoffInvitationDeliveryPort, semanticEventPort);
 
 export const portfolioHandoffInvitationRouter = buildPortfolioHandoffInvitationRouter(invitationService, authenticate, async (token) => {
   await deliveryService.markHandoffInvitationViewed(token);
@@ -75,7 +80,7 @@ export function buildPortfolioHandoffDeliveryRouter(service: PortfolioHandoffDel
 
 export const portfolioHandoffDeliveryRouter = buildPortfolioHandoffDeliveryRouter(deliveryService);
 
-const responseService = new PortfolioHandoffResponseService(assignmentRepository, invitationRepository, new PrismaPortfolioHandoffResponseCommandRepository(prisma));
+const responseService = new PortfolioHandoffResponseService(assignmentRepository, invitationRepository, new PrismaPortfolioHandoffResponseCommandRepository(prisma), semanticEventPort);
 export function buildPortfolioHandoffResponseRouter(service: PortfolioHandoffResponseService, auth = authenticate, portfolioWrite = requirePermission('portfolio:write')): Router {
   const router = Router();
   router.post('/:assignmentId/accept', auth, async (req, res, next) => {

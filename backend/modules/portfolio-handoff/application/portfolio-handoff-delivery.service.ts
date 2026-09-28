@@ -4,6 +4,7 @@ import { config } from '../../../config';
 import { hashRefreshToken } from '../../auth/token.service';
 import type { HandoffAssignment, HandoffAssignmentRepository, HandoffAssignmentState } from '../domain/portfolio-handoff-assignment.types';
 import type { HandoffDeliveryAttemptRepository, HandoffInvitationAccessRepository } from '../domain/portfolio-handoff-invitation.types';
+import type { DurableHandoffEventPort } from './portfolio-handoff-semantic-event.projector';
 
 export type HandoffInvitationDeliveryPort = {
   send(input: { to: string; subject: string; text: string; html: string }): Promise<{ delivered: boolean; providerMessageRef?: string }>;
@@ -23,6 +24,7 @@ export class PortfolioHandoffDeliveryService {
     private readonly access: HandoffInvitationAccessRepository,
     private readonly attempts: HandoffDeliveryAttemptRepository,
     private readonly delivery: HandoffInvitationDeliveryPort,
+    private readonly events?: DurableHandoffEventPort,
   ) {}
 
   async sendHandoffInvitation(input: SendHandoffInvitationInput): Promise<{ state: HandoffAssignmentState; attemptStatus: 'SUCCEEDED' | 'FAILED' | 'IDEMPOTENT' }> {
@@ -56,7 +58,9 @@ export class PortfolioHandoffDeliveryService {
     const transitioned = assignment.state === 'CREATED'
       ? await this.assignments.transitionState({ assignmentId: assignment.id, from: ['CREATED'], to: 'SENT' })
       : assignment;
-    return { state: transitioned?.state ?? assignment.state, attemptStatus: 'SUCCEEDED' };
+    const finalAssignment = transitioned ?? assignment;
+    if (this.events) await this.events.publish({ type: 'invitation_sent', assignmentId: finalAssignment.id, version: finalAssignment.version, actorId: finalAssignment.createdByActorId, occurredAt: new Date(), interactionChannel: 'api', payload: { targetKind: finalAssignment.targetKind, initiativeId: finalAssignment.initiativeId } });
+    return { state: finalAssignment.state, attemptStatus: 'SUCCEEDED' };
   }
 
   async markHandoffInvitationViewed(token: string): Promise<{ state: HandoffAssignmentState }> {
@@ -69,7 +73,9 @@ export class PortfolioHandoffDeliveryService {
       throw AppError.conflict('La invitacion expiro', 'HANDOFF_INVITATION_EXPIRED');
     }
     if (assignment.state === 'SENT') await this.assignments.transitionState({ assignmentId: assignment.id, from: ['SENT'], to: 'VIEWED' });
-    return { state: (await this.requireAssignment(assignment.id)).state };
+    const viewed = await this.requireAssignment(assignment.id);
+    if (this.events) await this.events.publish({ type: 'invitation_viewed', assignmentId: viewed.id, version: viewed.version, actorId: null, occurredAt: new Date(), interactionChannel: 'web', payload: { targetKind: viewed.targetKind, initiativeId: viewed.initiativeId } });
+    return { state: viewed.state };
   }
 
   async revokeHandoffInvitation(assignmentId: string): Promise<HandoffAssignment> {

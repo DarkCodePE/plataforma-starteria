@@ -5,11 +5,13 @@ import type {
   HandoffAssignmentRepository,
   HandoffReferenceRepository,
 } from '../domain/portfolio-handoff-assignment.types';
+import { eventFromAssignment, type DurableHandoffEventPort } from './portfolio-handoff-semantic-event.projector';
 
 export class PortfolioHandoffAssignmentService {
   constructor(
     private readonly repository: HandoffAssignmentRepository,
     private readonly references: HandoffReferenceRepository,
+    private readonly events?: DurableHandoffEventPort,
   ) {}
 
   async createHandoffAssignment(input: CreateHandoffAssignmentInput): Promise<HandoffAssignment> {
@@ -22,7 +24,9 @@ export class PortfolioHandoffAssignmentService {
       if (!initiative) throw invalid('initiative_ref must reference an existing Project/Initiative');
       assertScope(input.organizationId, initiative.organizationId, 'initiative');
     }
-    return this.repository.create({ ...input, initiativeId: input.initiativeId ?? null });
+    const assignment = await this.repository.create({ ...input, initiativeId: input.initiativeId ?? null });
+    if (this.events) await this.events.publish(eventFromAssignment(assignment, 'assignment_created', { actorId: input.createdByActorId, interactionChannel: 'api', payload: { targetKind: assignment.targetKind, initiativeId: assignment.initiativeId, challengeId: assignment.challengeId, members: assignment.members, invitedIdentity: assignment.invitedEmailNormalized } }));
+    return assignment;
   }
 
   getHandoffAssignment(id: string): Promise<HandoffAssignment | null> {

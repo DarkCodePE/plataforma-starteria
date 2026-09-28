@@ -1635,11 +1635,71 @@ model PortfolioHandoffAssignment {
   invitations PortfolioHandoffInvitation[]
   deliveryAttempts PortfolioHandoffDeliveryAttempt[]
   responseCommands PortfolioHandoffResponseCommand[]
+  semanticEvents PortfolioHandoffSemanticEvent[]
+  projection PortfolioHandoffProjection?
 
   @@index([challengeId])
   @@index([initiativeId])
   @@index([organizationId])
   @@index([createdByActorId])
+}
+
+model PortfolioHandoffSemanticEvent {
+  eventId              String   @id
+  eventType            String
+  entityType           String
+  entityId             String
+  entityVersion        Int
+  actorId              String?
+  actorRole            String?
+  interactionChannel   String
+  organizationId       String?
+  portfolioScopeRef    String?
+  challengeId          String?
+  initiativeId         String?
+  sourceRefs           String[]
+  originAssignmentId   String?
+  assignment           PortfolioHandoffAssignment? @relation(fields: [originAssignmentId], references: [id], onDelete: SetNull)
+  correlationId        String?
+  causationEventId     String?
+  payload              Json
+  occurredAt           DateTime
+  recordedAt           DateTime @default(now())
+
+  @@index([entityType, entityId, entityVersion])
+  @@index([originAssignmentId, occurredAt])
+}
+
+model PortfolioHandoffProjection {
+  assignmentId         String @id
+  assignment           PortfolioHandoffAssignment @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
+  organizationId       String?
+  portfolioScopeRef    String?
+  strategicFrontRef    String?
+  challengeRef         String
+  challengeVersionRef  String?
+  targetKind           PortfolioHandoffTargetKind
+  initiativeRef        String?
+  invitedIdentity      String?
+  initiativeOwnerRef   String?
+  executionTeam        Json
+  observers            Json
+  inviterRef           String?
+  handoffState         PortfolioHandoffState
+  acceptedAt           DateTime?
+  rejectedAt           DateTime?
+  rejectionReason      String?
+  portfolioResponse    String?
+  startedAt            DateTime?
+  resultingInitiativeRef String?
+  lastMaterialEvent    String?
+  sourceEventRefs      String[]
+  projectionVersion    Int
+  generatedAt          DateTime
+
+  @@index([challengeRef])
+  @@index([initiativeRef])
+  @@index([organizationId])
 }
 
 enum PortfolioHandoffResponseCommandType {

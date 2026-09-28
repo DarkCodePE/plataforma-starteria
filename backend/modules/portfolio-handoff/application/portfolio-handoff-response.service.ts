@@ -3,7 +3,7 @@ import type { HandoffAssignment, HandoffAssignmentRepository, HandoffResponseCom
 import type { HandoffInvitationAccessRepository } from '../domain/portfolio-handoff-invitation.types';
 import { PortfolioHandoffAssignmentError } from './portfolio-handoff-assignment.errors';
 
-export type HandoffEvent = { type: 'handoff_assignment_accepted' | 'handoff_assignment_rejected' | 'handoff_rejection_response_recorded' | 'handoff_assignment_started'; assignmentId: string; targetKind?: HandoffAssignment['targetKind']; initiativeId?: string | null; actorId: string; occurredAt: Date; version: number };
+export type HandoffEvent = { type: 'handoff_assignment_accepted' | 'handoff_assignment_rejected' | 'handoff_rejection_response_recorded' | 'handoff_assignment_started'; assignmentId: string; targetKind?: HandoffAssignment['targetKind']; challengeId?: string | null; initiativeId?: string | null; actorId: string; occurredAt: Date; version: number; interactionChannel?: 'web' | 'api' | 'copilot' | 'external_assistant' | 'system'; payload?: Record<string, unknown> };
 export type HandoffEventPort = { publish(event: HandoffEvent): Promise<void> };
 export const noopHandoffEventPort: HandoffEventPort = { async publish() {} };
 export type HandoffActor = { id: string; email: string };
@@ -56,7 +56,7 @@ export class PortfolioHandoffResponseService {
     const updated = await this.assignments.recordPortfolioResponse({ assignmentId: input.assignmentId, response, actorId: input.actorId, now: this.now() });
     if (!updated) throw failure('INVALID_STATE', 'Assignment is not rejected');
     await this.commands.create({ assignmentId: input.assignmentId, type: 'PORTFOLIO_RESPONSE', idempotencyKey: input.idempotencyKey, actorId: input.actorId, fingerprint, resultingVersion: updated.version, createdAt: this.now() });
-    await this.events.publish({ type: 'handoff_rejection_response_recorded', assignmentId: updated.id, actorId: input.actorId, occurredAt: this.now(), version: updated.version });
+    await this.events.publish({ type: 'handoff_rejection_response_recorded', assignmentId: updated.id, actorId: input.actorId, occurredAt: this.now(), version: updated.version, payload: { portfolioResponse: updated.portfolioResponse, handoffState: updated.state } });
     return updated;
   }
   private async respond(input: { assignmentId: string; actor: HandoffActor; expectedVersion: number; idempotencyKey: string }, type: 'ACCEPT' | 'REJECT', reason: string | undefined, target: 'ACCEPTED' | 'REJECTED'): Promise<HandoffAssignment> {
@@ -74,7 +74,7 @@ export class PortfolioHandoffResponseService {
     const updated = await this.assignments.applyResponse({ assignmentId: input.assignmentId, from: ['SENT', 'VIEWED'], to: target, actorId: input.actor.id, reason, expectedVersion: input.expectedVersion, now: this.now() });
     if (!updated) throw failure('STALE_VERSION', 'Assignment changed while responding');
     await this.commands.create({ assignmentId: input.assignmentId, type, idempotencyKey: input.idempotencyKey, actorId: input.actor.id, fingerprint, resultingVersion: updated.version, createdAt: this.now() });
-    await this.events.publish({ type: target === 'ACCEPTED' ? 'handoff_assignment_accepted' : 'handoff_assignment_rejected', assignmentId: updated.id, actorId: input.actor.id, occurredAt: this.now(), version: updated.version });
+    await this.events.publish({ type: target === 'ACCEPTED' ? 'handoff_assignment_accepted' : 'handoff_assignment_rejected', assignmentId: updated.id, actorId: input.actor.id, occurredAt: this.now(), version: updated.version, payload: { targetKind: updated.targetKind, initiativeId: updated.initiativeId, rejectionReason: updated.rejectionReason, handoffState: updated.state } });
     return updated;
   }
   private async requireAssignment(id: string): Promise<HandoffAssignment> { const assignment = await this.assignments.findById(id); if (!assignment) throw failure('NOT_FOUND', 'Handoff assignment not found'); return assignment; }

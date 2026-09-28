@@ -13,3 +13,7 @@ export * from './infrastructure/in-memory-portfolio-handoff-delivery-attempt.rep
 export * from './infrastructure/prisma-portfolio-handoff-delivery-attempt.repository';
 export * from './infrastructure/in-memory-portfolio-handoff-response-command.repository';
 export * from './infrastructure/prisma-portfolio-handoff-response-command.repository';
+export * from './domain/portfolio-handoff-semantic-event.types';
+export * from './application/portfolio-handoff-semantic-event.projector';
+export * from './infrastructure/in-memory-portfolio-handoff-semantic-event.repository';
+export * from './infrastructure/prisma-portfolio-handoff-semantic-event.repository';
