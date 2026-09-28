@@ -1,8 +1,8 @@
 # Portfolio Handoff Response Commands — H-TECH-05
 
-**Estado:** IMPLEMENTED — ready for PR review  
-**Jira:** KAN-57  
-**Slice:** H-TECH-05 only  
+**Estado:** IMPLEMENTED — ready for PR review
+**Jira:** KAN-57
+**Slice:** H-TECH-05 only
 **Boundary:** Accept / Reject / Portfolio response. `Start` remains out of scope.
 
 ## 1. Scope
@@ -113,7 +113,8 @@ The response service has no calls to Project creation, public-draft conversion, 
 - BR-HO-017–021: covered by Accept command, guards, target identity assertions, and no-Start tests.
 - BR-HO-022–023: covered by material reason validation, rejection audit, and persisted rejected state.
 - BR-HO-024–025: covered by Portfolio permission route, response audit, and no ownership/state mutation.
-- BR-HO-026: explicitly not implemented; reassignment remains a separate command/slice.
+- BR-HO-026: covered as a negative guard; H-TECH-05 does not implement reassignment, and Accept/Reject/Portfolio response cannot mutate the designated Owner or silently create a replacement assignment. Any reassignment remains an explicit future command with separate lineage.
+- AC-HO-031: NOT YET EXECUTABLE; H-TECH-05 preserves rejection history and blocks silent reassignment, but creation of a later explicit reassignment/new assignment remains outside this slice.
 - AC-HO-019–024: covered by Accept behavior and tests.
 - AC-HO-025–031: covered by Reject and Portfolio response behavior and tests.
 - AC-HO-067–072: applicable persistence/concurrency/idempotency/event-boundary portions are covered; projection, replay, outbox, and shell portions are not claimed because they belong to later slices.
