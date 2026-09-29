@@ -35,6 +35,7 @@ import { copilotRouter } from './modules/copilot/copilot.router';
 import { copilotReadinessHandler } from './modules/copilot/copilot-readiness';
 import { truthRouter } from './modules/truth/truth.router';
 import { strategicFramingRouter } from './modules/strategic-framing/strategic-framing.router';
+import { portfolioHandoffInvitationRouter } from './modules/portfolio-handoff/portfolio-handoff-invitation.router';
 
 export function createApp() {
   const app = express();
@@ -93,6 +94,7 @@ export function createApp() {
   app.use('/api/v1/public/portfolio-entry', portfolioEntryRouter);
   app.use('/api/v1/portfolio-bootstrap', portfolioBootstrapRouter);
   app.use('/api/v1/strategic-framing', strategicFramingRouter);
+  app.use('/api/v1/public/handoff-invitations', portfolioHandoffInvitationRouter);
   // Internal ai-service → backend push channel (X-Internal-Token only; no JWT).
   // Lets ai-service notify backend the moment an extraction finishes so the DB is
   // updated even when no frontend client is actively polling.

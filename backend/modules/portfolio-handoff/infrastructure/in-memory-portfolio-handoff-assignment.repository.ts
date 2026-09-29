@@ -29,6 +29,14 @@ export class InMemoryPortfolioHandoffAssignmentRepository implements HandoffAssi
     const assignment = this.assignments.get(id);
     return assignment ? clone(assignment) : null;
   }
+
+  async associateInvitedIdentity(input: { assignmentId: string; userId: string; emailNormalized: string; identityRef?: string | null }): Promise<HandoffAssignment | null> {
+    const assignment = this.assignments.get(input.assignmentId);
+    if (!assignment) return null;
+    const member = assignment.members.find((candidate) => candidate.role === 'OWNER' && !candidate.userId && (candidate.emailNormalized === input.emailNormalized || candidate.identityKey === input.emailNormalized || candidate.identityKey === input.identityRef));
+    if (member) member.userId = input.userId;
+    return clone(assignment);
+  }
 }
 
 export class InMemoryHandoffReferenceRepository implements HandoffReferenceRepository {

@@ -1611,11 +1611,30 @@ model PortfolioHandoffAssignment {
   updatedAt              DateTime                  @updatedAt
 
   members PortfolioHandoffMember[]
+  invitations PortfolioHandoffInvitation[]
 
   @@index([challengeId])
   @@index([initiativeId])
   @@index([organizationId])
   @@index([createdByActorId])
+}
+
+// H-TECH-03: bounded bearer access metadata. Assignment target/team/business
+// state remains owned by PortfolioHandoffAssignment.
+model PortfolioHandoffInvitation {
+  id              String                    @id @default(cuid())
+  assignmentId    String
+  assignment      PortfolioHandoffAssignment @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
+  tokenHash       String                    @unique
+  claimedByUserId String?
+  claimedAt       DateTime?
+  expiresAt       DateTime?
+  revokedAt       DateTime?
+  createdAt       DateTime                  @default(now())
+
+  @@index([assignmentId])
+  @@index([expiresAt])
+  @@index([revokedAt])
 }
 
 model PortfolioHandoffMember {
