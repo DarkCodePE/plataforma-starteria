@@ -48,6 +48,7 @@ import { Badge } from '../components/ui/badge';
 import { Button } from '../components/ui/button';
 import { Progress } from '../components/ui/progress';
 import { PortfolioLeadBreadcrumbs } from '../components/portfolio/PortfolioLeadPageElements';
+import { buildLegacyChallengeProjectPath } from '../routes/legacy-route-boundary';
 
 type TabKey = 'all' | 'ready' | 'active' | 'blocked' | 'with_initiatives' | 'decision';
 type DrawerMode = 'create' | 'edit' | null;
@@ -550,7 +551,8 @@ export function PortfolioLeadChallengesPage() {
                   expanded={isExpanded}
                   onToggleDetail={() => setExpandedChallengeId(current => (current === challenge.id ? null : challenge.id))}
                   onExplore={() => navigate(`/portfolio/iniciativas?challengeId=${encodeURIComponent(card.id)}`)}
-                  onCreateInitiative={() => navigate(`/projects/new?challengeId=${encodeURIComponent(challenge.id)}`)}
+                  // KEEP_COMPAT: legacy Challenge -> Project consumer; not canonical Handoff.
+                  onCreateInitiative={() => navigate(buildLegacyChallengeProjectPath(challenge.id))}
                   onEdit={() => openEditDrawer(card.id)}
                   onChangeStatus={(nextStatus) => updateChallenge(challenge.id, { status: nextStatus })}
                   onChangeOwnerStatus={(status) => updateChallengeStakeholderStatus(challenge.id, 'challengeOwnerStatus', status)}
