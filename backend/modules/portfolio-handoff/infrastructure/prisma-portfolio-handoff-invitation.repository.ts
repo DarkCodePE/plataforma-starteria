@@ -20,6 +20,13 @@ export class PrismaPortfolioHandoffInvitationRepository implements HandoffInvita
       data: { claimedByUserId: input.userId, claimedAt: new Date() },
     });
   }
+  async revokeForAssignment(assignmentId: string): Promise<void> {
+    await (this.prisma as any).portfolioHandoffInvitation.updateMany({ where: { assignmentId, revokedAt: null }, data: { revokedAt: new Date() } });
+  }
+
+  async findActiveForAssignment(assignmentId: string) {
+    return this.prisma.portfolioHandoffInvitation.findFirst({ where: { assignmentId, revokedAt: null, OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }] }, orderBy: { createdAt: 'desc' } });
+  }
 }
 
 function mapAccess(record: any): HandoffInvitationAccess {

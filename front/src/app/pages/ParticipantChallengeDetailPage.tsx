@@ -1,5 +1,6 @@
 import React from 'react';
 import { useNavigate, useParams } from 'react-router';
+import { buildLegacyChallengeProjectPath } from '../routes/legacy-route-boundary';
 import { ArrowLeft, FolderOpen, Layers3, Lightbulb, ShieldCheck } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { usePortfolioLead } from '../portfolio/PortfolioLeadContext';
@@ -186,7 +187,8 @@ export function ParticipantChallengeDetailPage() {
                 Si este reto si conecta con lo que quieres mover, crea la iniciativa desde aqui para que Step 0 herede su contexto.
               </p>
               <button
-                onClick={() => navigate(`/projects/new?challengeId=${challenge.id}`)}
+                // KEEP_COMPAT: participant Challenge -> Project flow; not Handoff.
+                onClick={() => navigate(buildLegacyChallengeProjectPath(challenge.id))}
                 className="mt-4 rounded-xl bg-indigo-600 px-4 py-2 text-sm text-white transition-colors hover:bg-indigo-700"
                 style={{ fontWeight: 600 }}
               >

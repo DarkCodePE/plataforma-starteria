@@ -5,6 +5,7 @@ import type {
   HandoffAssignmentRepository,
   HandoffReference,
   HandoffReferenceRepository,
+  HandoffAssignmentState,
 } from '../domain/portfolio-handoff-assignment.types';
 
 export class InMemoryPortfolioHandoffAssignmentRepository implements HandoffAssignmentRepository {
@@ -20,6 +21,13 @@ export class InMemoryPortfolioHandoffAssignmentRepository implements HandoffAssi
       members: input.members.map((member) => ({ ...member, identityKey: member.identityKey.trim().toLowerCase() })),
       createdAt: now,
       updatedAt: now,
+      sentAt: null,
+      viewedAt: null,
+      revokedAt: null,
+      expiredAt: null,
+      acceptedAt: null, acceptedBy: null, rejectionReason: null, rejectedAt: null, rejectedBy: null,
+      startedAt: null, startedBy: null,
+      portfolioResponse: null, portfolioResponseRecordedAt: null, portfolioResponseRecordedBy: null,
     };
     this.assignments.set(assignment.id, assignment);
     return clone(assignment);
@@ -35,6 +43,43 @@ export class InMemoryPortfolioHandoffAssignmentRepository implements HandoffAssi
     if (!assignment) return null;
     const member = assignment.members.find((candidate) => candidate.role === 'OWNER' && !candidate.userId && (candidate.emailNormalized === input.emailNormalized || candidate.identityKey === input.emailNormalized || candidate.identityKey === input.identityRef));
     if (member) member.userId = input.userId;
+    return clone(assignment);
+  }
+
+  async transitionState(input: { assignmentId: string; from: HandoffAssignmentState[]; to: HandoffAssignmentState; now?: Date }): Promise<HandoffAssignment | null> {
+    const assignment = this.assignments.get(input.assignmentId);
+    if (!assignment || !input.from.includes(assignment.state)) return null;
+    assignment.state = input.to;
+    assignment.version += 1;
+    assignment.updatedAt = input.now ?? new Date();
+    if (input.to === 'SENT') assignment.sentAt = assignment.updatedAt;
+    if (input.to === 'VIEWED') assignment.viewedAt = assignment.updatedAt;
+    if (input.to === 'REVOKED') assignment.revokedAt = assignment.updatedAt;
+    if (input.to === 'EXPIRED') assignment.expiredAt = assignment.updatedAt;
+    return clone(assignment);
+  }
+
+  async applyResponse(input: { assignmentId: string; from: HandoffAssignmentState[]; to: 'ACCEPTED' | 'REJECTED'; actorId: string; reason?: string; expectedVersion: number; now: Date }): Promise<HandoffAssignment | null> {
+    const assignment = this.assignments.get(input.assignmentId);
+    if (!assignment || assignment.version !== input.expectedVersion || !input.from.includes(assignment.state)) return null;
+    assignment.state = input.to; assignment.version += 1; assignment.updatedAt = input.now;
+    if (input.to === 'ACCEPTED') { assignment.acceptedAt = input.now; assignment.acceptedBy = input.actorId; }
+    else { assignment.rejectionReason = input.reason!; assignment.rejectedAt = input.now; assignment.rejectedBy = input.actorId; }
+    return clone(assignment);
+  }
+
+  async startAssignedWork(input: { assignmentId: string; expectedVersion: number; actorId: string; now: Date }): Promise<HandoffAssignment | null> {
+    const assignment = this.assignments.get(input.assignmentId);
+    if (!assignment || assignment.version !== input.expectedVersion || assignment.state !== 'ACCEPTED') return null;
+    assignment.state = 'STARTED'; assignment.startedAt = input.now; assignment.startedBy = input.actorId;
+    assignment.version += 1; assignment.updatedAt = input.now;
+    return clone(assignment);
+  }
+
+  async recordPortfolioResponse(input: { assignmentId: string; response: string; actorId: string; now: Date }): Promise<HandoffAssignment | null> {
+    const assignment = this.assignments.get(input.assignmentId);
+    if (!assignment || assignment.state !== 'REJECTED') return null;
+    assignment.portfolioResponse = input.response; assignment.portfolioResponseRecordedAt = input.now; assignment.portfolioResponseRecordedBy = input.actorId; assignment.updatedAt = input.now;
     return clone(assignment);
   }
 }
