@@ -69,6 +69,27 @@ export interface HandoffResponseCommandRepository {
   create(input: Omit<HandoffResponseCommand, 'id'>): Promise<HandoffResponseCommand>;
 }
 
+export type AtomicHandoffCommandInput = {
+  assignmentId: string;
+  type: HandoffResponseCommandType;
+  idempotencyKey: string;
+  actorId: string;
+  fingerprint: string;
+  expectedVersion?: number;
+  reason?: string;
+  response?: string;
+  now: Date;
+};
+
+export type AtomicHandoffCommandResult = {
+  assignment: HandoffAssignment;
+  event: import('./portfolio-handoff-semantic-event.types').HandoffSemanticEvent;
+};
+
+export interface AtomicHandoffCommandRepository {
+  execute(input: AtomicHandoffCommandInput): Promise<AtomicHandoffCommandResult>;
+}
+
 export interface HandoffReferenceRepository {
   findChallenge(id: string): Promise<HandoffReference | null>;
   findInitiative(id: string): Promise<HandoffReference | null>;
