@@ -82,18 +82,25 @@ export class PortfolioHandoffInvitationService {
   private preview(assignment: HandoffAssignment, email?: string): HandoffInvitationPreview {
     const normalized = email ? normalizeEmail(email) : null;
     const invited = normalizeEmail(assignment.invitedEmailNormalized);
+    const identityMatches = normalized === invited;
     return {
       assignmentId: assignment.id,
       targetKind: assignment.targetKind,
       challengeId: assignment.challengeId,
       initiativeId: assignment.initiativeId ?? null,
+      state: assignment.state,
+      version: assignment.version,
+      rejectionReason: identityMatches ? assignment.rejectionReason : null,
+      portfolioResponse: identityMatches ? assignment.portfolioResponse : null,
+      acceptedAt: identityMatches ? assignment.acceptedAt : null,
+      rejectedAt: identityMatches ? assignment.rejectedAt : null,
       authenticationRequired: true,
-      identityClaimStatus: normalized ? (normalized === invited ? 'MATCHED' : 'MISMATCH') : 'UNAUTHENTICATED',
+      identityClaimStatus: normalized ? (identityMatches ? 'MATCHED' : 'MISMATCH') : 'UNAUTHENTICATED',
     };
   }
 
   private invalid(status: 'INVALID_INVITATION' | 'EXPIRED' | 'REVOKED'): HandoffIdentityClaimResult {
-    return { assignmentId: '', targetKind: 'CHALLENGE', challengeId: '', initiativeId: null, authenticationRequired: true, identityClaimStatus: status };
+    return { assignmentId: '', targetKind: 'CHALLENGE', challengeId: '', initiativeId: null, state: 'EXPIRED', version: 0, rejectionReason: null, portfolioResponse: null, acceptedAt: null, rejectedAt: null, authenticationRequired: true, identityClaimStatus: status };
   }
 }
 

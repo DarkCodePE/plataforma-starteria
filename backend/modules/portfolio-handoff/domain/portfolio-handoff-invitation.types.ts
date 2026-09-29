@@ -28,6 +28,12 @@ export type HandoffInvitationPreview = {
   targetKind: HandoffTargetKind;
   challengeId: string;
   initiativeId: string | null;
+  state: HandoffAssignment['state'];
+  version: number;
+  rejectionReason: string | null;
+  portfolioResponse: string | null;
+  acceptedAt: Date | null;
+  rejectedAt: Date | null;
   authenticationRequired: boolean;
   identityClaimStatus: 'UNAUTHENTICATED' | 'MATCHED' | 'MISMATCH';
 };
