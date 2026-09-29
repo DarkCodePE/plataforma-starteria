@@ -175,6 +175,10 @@ enum PortfolioHandoffTargetKind {
 
 enum PortfolioHandoffState {
   CREATED
+  SENT
+  VIEWED
+  REVOKED
+  EXPIRED
 }
 
 enum PortfolioHandoffMemberRole {
@@ -1607,11 +1611,16 @@ model PortfolioHandoffAssignment {
   createdByActorId       String
   createdByActor         User                      @relation("HandoffCreatedBy", fields: [createdByActorId], references: [id])
   version                Int                       @default(1)
+  sentAt                 DateTime?
+  viewedAt               DateTime?
+  revokedAt              DateTime?
+  expiredAt              DateTime?
   createdAt              DateTime                  @default(now())
   updatedAt              DateTime                  @updatedAt
 
   members PortfolioHandoffMember[]
   invitations PortfolioHandoffInvitation[]
+  deliveryAttempts PortfolioHandoffDeliveryAttempt[]
 
   @@index([challengeId])
   @@index([initiativeId])
@@ -1635,6 +1644,26 @@ model PortfolioHandoffInvitation {
   @@index([assignmentId])
   @@index([expiresAt])
   @@index([revokedAt])
+}
+
+enum PortfolioHandoffDeliveryAttemptStatus {
+  SUCCEEDED
+  FAILED
+}
+
+model PortfolioHandoffDeliveryAttempt {
+  id                 String                              @id @default(cuid())
+  assignmentId       String
+  assignment         PortfolioHandoffAssignment         @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
+  channel            String                              @default("EMAIL")
+  status             PortfolioHandoffDeliveryAttemptStatus
+  attemptedAt        DateTime                            @default(now())
+  providerMessageRef String?
+  errorCategory      String?
+  idempotencyKey     String
+
+  @@unique([assignmentId, idempotencyKey])
+  @@index([assignmentId, attemptedAt])
 }
 
 model PortfolioHandoffMember {

@@ -1,16 +1,21 @@
 import { Router } from 'express';
 import { prisma } from '../../shared/db/prisma';
 import { authenticate } from '../auth/auth.middleware';
+import { requirePermission } from '../auth/auth.middleware';
+import { mailer } from '../../shared/mail/mailer';
+import { PortfolioHandoffDeliveryService, type HandoffInvitationDeliveryPort } from './application/portfolio-handoff-delivery.service';
 import { AppError } from '../../shared/errors/AppError';
 import { PortfolioHandoffInvitationService } from './application/portfolio-handoff-invitation.service';
 import { PrismaPortfolioHandoffAssignmentRepository } from './infrastructure/prisma-portfolio-handoff-assignment.repository';
 import { PrismaPortfolioHandoffInvitationRepository } from './infrastructure/prisma-portfolio-handoff-invitation.repository';
+import { PrismaPortfolioHandoffDeliveryAttemptRepository } from './infrastructure/prisma-portfolio-handoff-delivery-attempt.repository';
 
-export function buildPortfolioHandoffInvitationRouter(service: PortfolioHandoffInvitationService, auth = authenticate): Router {
+export function buildPortfolioHandoffInvitationRouter(service: PortfolioHandoffInvitationService, auth = authenticate, onViewed?: (token: string) => Promise<void>): Router {
   const router = Router();
 
   router.get('/:token', async (req, res, next) => {
     try {
+      if (onViewed) await onViewed(req.params.token);
       const data = await service.readInvitationByToken(req.params.token);
       res.json({ success: true, data });
     } catch (error) { next(error); }
@@ -31,4 +36,44 @@ export function buildPortfolioHandoffInvitationRouter(service: PortfolioHandoffI
 
 const assignmentRepository = new PrismaPortfolioHandoffAssignmentRepository(prisma);
 const invitationRepository = new PrismaPortfolioHandoffInvitationRepository(prisma);
-export const portfolioHandoffInvitationRouter = buildPortfolioHandoffInvitationRouter(new PortfolioHandoffInvitationService({ assignments: assignmentRepository, access: invitationRepository }));
+const deliveryAttemptRepository = new PrismaPortfolioHandoffDeliveryAttemptRepository(prisma);
+const invitationService = new PortfolioHandoffInvitationService({ assignments: assignmentRepository, access: invitationRepository });
+const deliveryService = new PortfolioHandoffDeliveryService(assignmentRepository, invitationRepository, deliveryAttemptRepository, {
+  async send(message) {
+    const delivered = await mailer.send(message);
+    return { delivered };
+  },
+} satisfies HandoffInvitationDeliveryPort);
+
+export const portfolioHandoffInvitationRouter = buildPortfolioHandoffInvitationRouter(invitationService, authenticate, async (token) => {
+  await deliveryService.markHandoffInvitationViewed(token);
+});
+
+export function buildPortfolioHandoffDeliveryRouter(service: PortfolioHandoffDeliveryService, auth = authenticate, write = requirePermission('portfolio:write')): Router {
+  const router = Router();
+  router.post('/:assignmentId/invitation', auth, write, async (req, res, next) => {
+    try {
+      const data = await service.sendHandoffInvitation({
+        assignmentId: req.params.assignmentId,
+        idempotencyKey: typeof req.get('Idempotency-Key') === 'string' ? req.get('Idempotency-Key')! : '',
+        expiresAt: req.body?.expiresAt ? parseExpiry(req.body.expiresAt) : null,
+        title: typeof req.body?.title === 'string' ? req.body.title : undefined,
+        whyItMatters: typeof req.body?.whyItMatters === 'string' ? req.body.whyItMatters : undefined,
+      });
+      res.json({ success: true, data });
+    } catch (error) { next(error); }
+  });
+  router.post('/:assignmentId/invitation/revoke', auth, write, async (req, res, next) => {
+    try { res.json({ success: true, data: await service.revokeHandoffInvitation(req.params.assignmentId) }); }
+    catch (error) { next(error); }
+  });
+  return router;
+}
+
+export const portfolioHandoffDeliveryRouter = buildPortfolioHandoffDeliveryRouter(deliveryService);
+
+function parseExpiry(value: unknown): Date {
+  const date = new Date(String(value));
+  if (!Number.isFinite(date.getTime())) throw AppError.badRequest('Fecha de expiracion invalida', 'HANDOFF_EXPIRY_INVALID');
+  return date;
+}

@@ -1,5 +1,5 @@
 export type HandoffTargetKind = 'EXISTING_INITIATIVE' | 'CHALLENGE';
-export type HandoffAssignmentState = 'CREATED';
+export type HandoffAssignmentState = 'CREATED' | 'SENT' | 'VIEWED' | 'REVOKED' | 'EXPIRED';
 export type HandoffMemberRole = 'OWNER' | 'EXECUTOR' | 'OBSERVER';
 
 export type HandoffMemberInput = {
@@ -29,6 +29,10 @@ export type HandoffAssignment = Omit<CreateHandoffAssignmentInput, 'members'> & 
   members: HandoffMemberInput[];
   createdAt: Date;
   updatedAt: Date;
+  sentAt: Date | null;
+  viewedAt: Date | null;
+  revokedAt: Date | null;
+  expiredAt: Date | null;
 };
 
 export type HandoffReference = { id: string; organizationId?: string | null };
@@ -42,6 +46,7 @@ export interface HandoffAssignmentRepository {
     emailNormalized: string;
     identityRef?: string | null;
   }): Promise<HandoffAssignment | null>;
+  transitionState(input: { assignmentId: string; from: HandoffAssignmentState[]; to: HandoffAssignmentState; now?: Date }): Promise<HandoffAssignment | null>;
 }
 
 export interface HandoffReferenceRepository {

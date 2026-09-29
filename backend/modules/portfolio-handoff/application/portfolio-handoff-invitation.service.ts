@@ -16,6 +16,7 @@ export class PortfolioHandoffInvitationService {
   async issueInvitationToken(assignmentId: string, expiresAt: Date | null = null): Promise<string> {
     const assignment = await this.dependencies.assignments.findById(assignmentId);
     if (!assignment) throw AppError.notFound('Invitacion', 'HANDOFF_INVITATION_NOT_FOUND');
+    if (assignment.state === 'REVOKED' || assignment.state === 'EXPIRED') throw AppError.conflict('La invitacion ya no esta activa', 'HANDOFF_INVITATION_NOT_ACTIVE');
 
     const token = randomBytes(32).toString('hex');
     await this.dependencies.access.create({ assignmentId, tokenHash: hashRefreshToken(token), expiresAt });
@@ -31,10 +32,16 @@ export class PortfolioHandoffInvitationService {
     const access = await this.dependencies.access.findByTokenHash(hashRefreshToken(token));
     if (!access) return this.invalid('INVALID_INVITATION');
     if (access.revokedAt) return this.invalid('REVOKED');
-    if (access.expiresAt && access.expiresAt.getTime() <= Date.now()) return this.invalid('EXPIRED');
+    const accessExpired = Boolean(access.expiresAt && access.expiresAt.getTime() <= Date.now());
 
     const assignment = await this.dependencies.assignments.findById(access.assignmentId);
     if (!assignment) return this.invalid('INVALID_INVITATION');
+    if (assignment.state === 'REVOKED') return this.invalid('REVOKED');
+    if (assignment.state === 'EXPIRED') return this.invalid('EXPIRED');
+    if (accessExpired) {
+      await this.dependencies.assignments.transitionState({ assignmentId: assignment.id, from: ['CREATED', 'SENT', 'VIEWED'], to: 'EXPIRED' });
+      return this.invalid('EXPIRED');
+    }
 
     if (access.claimedByUserId && access.claimedByUserId !== identity.id) {
       return { ...this.preview(assignment, identity.email), identityClaimStatus: 'MISMATCH' };
@@ -67,6 +74,8 @@ export class PortfolioHandoffInvitationService {
     if (access.expiresAt && access.expiresAt.getTime() <= Date.now()) throw AppError.notFound('Invitacion', 'HANDOFF_INVITATION_EXPIRED');
     const assignment = await this.dependencies.assignments.findById(access.assignmentId);
     if (!assignment) throw AppError.notFound('Invitacion', 'HANDOFF_INVITATION_INVALID');
+    if (assignment.state === 'REVOKED') throw AppError.conflict('La invitacion fue revocada', 'HANDOFF_INVITATION_REVOKED');
+    if (assignment.state === 'EXPIRED') throw AppError.conflict('La invitacion expiro', 'HANDOFF_INVITATION_EXPIRED');
     return { assignment };
   }
 

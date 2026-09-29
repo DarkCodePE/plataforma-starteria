@@ -5,6 +5,7 @@ import type {
   HandoffAssignmentRepository,
   HandoffReference,
   HandoffReferenceRepository,
+  HandoffAssignmentState,
 } from '../domain/portfolio-handoff-assignment.types';
 
 export class PrismaPortfolioHandoffAssignmentRepository implements HandoffAssignmentRepository, HandoffReferenceRepository {
@@ -43,6 +44,16 @@ export class PrismaPortfolioHandoffAssignmentRepository implements HandoffAssign
     return this.findById(input.assignmentId);
   }
 
+  async transitionState(input: { assignmentId: string; from: HandoffAssignmentState[]; to: HandoffAssignmentState; now?: Date }): Promise<HandoffAssignment | null> {
+    const now = input.now ?? new Date();
+    const timestampField = input.to === 'SENT' ? { sentAt: now } : input.to === 'VIEWED' ? { viewedAt: now } : input.to === 'REVOKED' ? { revokedAt: now } : input.to === 'EXPIRED' ? { expiredAt: now } : {};
+    const result = await (this.prisma as any).portfolioHandoffAssignment.updateMany({
+      where: { id: input.assignmentId, state: { in: input.from } },
+      data: { state: input.to, version: { increment: 1 }, updatedAt: now, ...timestampField },
+    });
+    return result.count ? this.findById(input.assignmentId) : null;
+  }
+
   async findChallenge(id: string): Promise<HandoffReference | null> {
     const record = await this.prisma.challenge.findUnique({ where: { id }, select: { id: true, strategicFront: { select: { organizationId: true } } } });
     return record ? { id: record.id, organizationId: record.strategicFront.organizationId } : null;
@@ -70,5 +81,9 @@ function mapAssignment(record: any): HandoffAssignment {
     members: record.members.map((member: any) => ({ identityKey: member.identityKey, userId: member.userId, emailNormalized: member.emailNormalized, label: member.label, role: member.role })),
     createdAt: record.createdAt,
     updatedAt: record.updatedAt,
+    sentAt: record.sentAt,
+    viewedAt: record.viewedAt,
+    revokedAt: record.revokedAt,
+    expiredAt: record.expiredAt,
   };
 }

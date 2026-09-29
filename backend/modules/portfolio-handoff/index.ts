@@ -5,5 +5,8 @@ export * from './infrastructure/in-memory-portfolio-handoff-assignment.repositor
 export * from './infrastructure/prisma-portfolio-handoff-assignment.repository';
 export * from './domain/portfolio-handoff-invitation.types';
 export * from './application/portfolio-handoff-invitation.service';
+export * from './application/portfolio-handoff-delivery.service';
 export * from './infrastructure/in-memory-portfolio-handoff-invitation.repository';
 export * from './infrastructure/prisma-portfolio-handoff-invitation.repository';
+export * from './infrastructure/in-memory-portfolio-handoff-delivery-attempt.repository';
+export * from './infrastructure/prisma-portfolio-handoff-delivery-attempt.repository';
