@@ -143,12 +143,33 @@ export type PortfolioHomeReadModel = {
     requiresHumanConfirmation: true;
     derivationSource: 'portfolio_reading' | 'legacy-derived';
   }>;
+  handoffAssignments: Array<{
+    assignmentId: string;
+    targetKind: string;
+    challengeRef: string;
+    initiativeRef: string | null;
+    initiativeOwnerRef: string | null;
+    executionTeam: unknown[];
+    observers: unknown[];
+    handoffState: string;
+    acceptedAt: string | null;
+    rejectedAt: string | null;
+    rejectionReason: string | null;
+    portfolioResponse: string | null;
+    startedAt: string | null;
+    resultingInitiativeRef: string | null;
+    lastMaterialEvent: string | null;
+    sourceEventRefs: string[];
+    projectionVersion: number;
+    generatedAt: string;
+  }>;
   generatedAt: string;
 };
 
 type PrismaLike = {
   strategicFront: { findMany: (args: unknown) => Promise<any[]> };
   portfolioBootstrapSession?: { findFirst: (args: unknown) => Promise<any | null> };
+  portfolioHandoffProjection?: { findMany: (args: unknown) => Promise<any[]> };
 };
 
 const READ_INCLUDE = {
@@ -176,9 +197,10 @@ export class PortfolioHomeReadService {
   constructor(private readonly prisma: PrismaLike) {}
 
   async getHome(userId: string): Promise<PortfolioHomeReadModel> {
-    const [fronts, reading] = await Promise.all([
+    const [fronts, reading, handoffAssignments] = await Promise.all([
       this.prisma.strategicFront.findMany({ include: READ_INCLUDE, orderBy: { updatedAt: 'desc' } }),
       this.loadLatestReading(userId),
+      this.loadHandoffAssignments(),
     ]);
 
     const strategicUnits = (fronts ?? []).map((front) => this.mapStrategicUnit(front));
@@ -201,8 +223,34 @@ export class PortfolioHomeReadService {
       attention,
       pendingDecisions,
       recommendations: this.mapRecommendations(reading, strategicUnits),
+      handoffAssignments,
       generatedAt,
     };
+  }
+
+  private async loadHandoffAssignments() {
+    if (!this.prisma.portfolioHandoffProjection?.findMany) return [];
+    const rows = await this.prisma.portfolioHandoffProjection.findMany({ orderBy: { generatedAt: 'desc' } });
+    return (rows ?? []).map((row: any) => ({
+      assignmentId: row.assignmentId,
+      targetKind: row.targetKind,
+      challengeRef: row.challengeRef,
+      initiativeRef: row.initiativeRef ?? null,
+      initiativeOwnerRef: row.initiativeOwnerRef ?? null,
+      executionTeam: Array.isArray(row.executionTeam) ? row.executionTeam : [],
+      observers: Array.isArray(row.observers) ? row.observers : [],
+      handoffState: row.handoffState,
+      acceptedAt: toIso(row.acceptedAt),
+      rejectedAt: toIso(row.rejectedAt),
+      rejectionReason: row.rejectionReason ?? null,
+      portfolioResponse: row.portfolioResponse ?? null,
+      startedAt: toIso(row.startedAt),
+      resultingInitiativeRef: row.resultingInitiativeRef ?? null,
+      lastMaterialEvent: row.lastMaterialEvent ?? null,
+      sourceEventRefs: Array.isArray(row.sourceEventRefs) ? row.sourceEventRefs : [],
+      projectionVersion: row.projectionVersion,
+      generatedAt: toIso(row.generatedAt) ?? new Date().toISOString(),
+    }));
   }
 
   private async loadLatestReading(userId: string): Promise<any | null> {

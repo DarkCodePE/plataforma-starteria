@@ -175,6 +175,13 @@ enum PortfolioHandoffTargetKind {
 
 enum PortfolioHandoffState {
   CREATED
+  SENT
+  VIEWED
+  REVOKED
+  EXPIRED
+  ACCEPTED
+  REJECTED
+  STARTED
 }
 
 enum PortfolioHandoffMemberRole {
@@ -1607,16 +1614,114 @@ model PortfolioHandoffAssignment {
   createdByActorId       String
   createdByActor         User                      @relation("HandoffCreatedBy", fields: [createdByActorId], references: [id])
   version                Int                       @default(1)
+  sentAt                 DateTime?
+  viewedAt               DateTime?
+  revokedAt              DateTime?
+  expiredAt              DateTime?
+  acceptedAt             DateTime?
+  acceptedBy             String?
+  rejectionReason        String?
+  rejectedAt             DateTime?
+  rejectedBy             String?
+  startedAt              DateTime?
+  startedBy              String?
+  portfolioResponse      String?
+  portfolioResponseRecordedAt DateTime?
+  portfolioResponseRecordedBy String?
   createdAt              DateTime                  @default(now())
   updatedAt              DateTime                  @updatedAt
 
   members PortfolioHandoffMember[]
   invitations PortfolioHandoffInvitation[]
+  deliveryAttempts PortfolioHandoffDeliveryAttempt[]
+  responseCommands PortfolioHandoffResponseCommand[]
+  semanticEvents PortfolioHandoffSemanticEvent[]
+  projection PortfolioHandoffProjection?
 
   @@index([challengeId])
   @@index([initiativeId])
   @@index([organizationId])
   @@index([createdByActorId])
+}
+
+model PortfolioHandoffSemanticEvent {
+  eventId              String   @id
+  eventType            String
+  entityType           String
+  entityId             String
+  entityVersion        Int
+  actorId              String?
+  actorRole            String?
+  interactionChannel   String
+  organizationId       String?
+  portfolioScopeRef    String?
+  challengeId          String?
+  initiativeId         String?
+  sourceRefs           String[]
+  originAssignmentId   String?
+  assignment           PortfolioHandoffAssignment? @relation(fields: [originAssignmentId], references: [id], onDelete: SetNull)
+  correlationId        String?
+  causationEventId     String?
+  payload              Json
+  occurredAt           DateTime
+  recordedAt           DateTime @default(now())
+
+  @@index([entityType, entityId, entityVersion])
+  @@index([originAssignmentId, occurredAt])
+}
+
+model PortfolioHandoffProjection {
+  assignmentId         String @id
+  assignment           PortfolioHandoffAssignment @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
+  organizationId       String?
+  portfolioScopeRef    String?
+  strategicFrontRef    String?
+  challengeRef         String
+  challengeVersionRef  String?
+  targetKind           PortfolioHandoffTargetKind
+  initiativeRef        String?
+  invitedIdentity      String?
+  initiativeOwnerRef   String?
+  executionTeam        Json
+  observers            Json
+  inviterRef           String?
+  handoffState         PortfolioHandoffState
+  acceptedAt           DateTime?
+  rejectedAt           DateTime?
+  rejectionReason      String?
+  portfolioResponse    String?
+  startedAt            DateTime?
+  resultingInitiativeRef String?
+  lastMaterialEvent    String?
+  sourceEventRefs      String[]
+  projectionVersion    Int
+  generatedAt          DateTime
+
+  @@index([challengeRef])
+  @@index([initiativeRef])
+  @@index([organizationId])
+}
+
+enum PortfolioHandoffResponseCommandType {
+  ACCEPT
+  REJECT
+  PORTFOLIO_RESPONSE
+  START
+}
+
+model PortfolioHandoffResponseCommand {
+  id               String @id @default(cuid())
+  assignmentId     String
+  assignment       PortfolioHandoffAssignment @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
+  type             PortfolioHandoffResponseCommandType
+  idempotencyKey   String
+  actorId          String
+  fingerprint      String
+  resultingVersion Int
+  createdAt        DateTime @default(now())
+
+  @@unique([assignmentId, type, idempotencyKey])
+  @@index([assignmentId, createdAt])
 }
 
 // H-TECH-03: bounded bearer access metadata. Assignment target/team/business
@@ -1635,6 +1740,26 @@ model PortfolioHandoffInvitation {
   @@index([assignmentId])
   @@index([expiresAt])
   @@index([revokedAt])
+}
+
+enum PortfolioHandoffDeliveryAttemptStatus {
+  SUCCEEDED
+  FAILED
+}
+
+model PortfolioHandoffDeliveryAttempt {
+  id                 String                              @id @default(cuid())
+  assignmentId       String
+  assignment         PortfolioHandoffAssignment         @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
+  channel            String                              @default("EMAIL")
+  status             PortfolioHandoffDeliveryAttemptStatus
+  attemptedAt        DateTime                            @default(now())
+  providerMessageRef String?
+  errorCategory      String?
+  idempotencyKey     String
+
+  @@unique([assignmentId, idempotencyKey])
+  @@index([assignmentId, attemptedAt])
 }
 
 model PortfolioHandoffMember {

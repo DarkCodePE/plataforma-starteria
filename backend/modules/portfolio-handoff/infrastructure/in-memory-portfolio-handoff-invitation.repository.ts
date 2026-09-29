@@ -17,4 +17,12 @@ export class InMemoryHandoffInvitationAccessRepository implements HandoffInvitat
     const access = this.accesses.find((candidate) => candidate.id === input.accessId);
     if (access && !access.claimedByUserId) { access.claimedByUserId = input.userId; access.claimedAt = new Date(); }
   }
+  async revokeForAssignment(assignmentId: string): Promise<void> {
+    for (const access of this.accesses.filter((candidate) => candidate.assignmentId === assignmentId)) access.revokedAt = new Date();
+  }
+  async findActiveForAssignment(assignmentId: string): Promise<HandoffInvitationAccess | null> {
+    const now = new Date();
+    const access = this.accesses.find((candidate) => candidate.assignmentId === assignmentId && !candidate.revokedAt && (!candidate.expiresAt || candidate.expiresAt > now));
+    return access ? { ...access } : null;
+  }
 }

@@ -5,6 +5,7 @@ import type {
   HandoffAssignmentRepository,
   HandoffReference,
   HandoffReferenceRepository,
+  HandoffAssignmentState,
 } from '../domain/portfolio-handoff-assignment.types';
 
 export class PrismaPortfolioHandoffAssignmentRepository implements HandoffAssignmentRepository, HandoffReferenceRepository {
@@ -43,6 +44,35 @@ export class PrismaPortfolioHandoffAssignmentRepository implements HandoffAssign
     return this.findById(input.assignmentId);
   }
 
+  async transitionState(input: { assignmentId: string; from: HandoffAssignmentState[]; to: HandoffAssignmentState; now?: Date }): Promise<HandoffAssignment | null> {
+    const now = input.now ?? new Date();
+    const timestampField = input.to === 'SENT' ? { sentAt: now } : input.to === 'VIEWED' ? { viewedAt: now } : input.to === 'REVOKED' ? { revokedAt: now } : input.to === 'EXPIRED' ? { expiredAt: now } : {};
+    const result = await (this.prisma as any).portfolioHandoffAssignment.updateMany({
+      where: { id: input.assignmentId, state: { in: input.from } },
+      data: { state: input.to, version: { increment: 1 }, updatedAt: now, ...timestampField },
+    });
+    return result.count ? this.findById(input.assignmentId) : null;
+  }
+
+  async applyResponse(input: { assignmentId: string; from: HandoffAssignmentState[]; to: 'ACCEPTED' | 'REJECTED'; actorId: string; reason?: string; expectedVersion: number; now: Date }): Promise<HandoffAssignment | null> {
+    const data = input.to === 'ACCEPTED' ? { state: input.to, acceptedAt: input.now, acceptedBy: input.actorId } : { state: input.to, rejectionReason: input.reason!, rejectedAt: input.now, rejectedBy: input.actorId };
+    const result = await (this.prisma as any).portfolioHandoffAssignment.updateMany({ where: { id: input.assignmentId, state: { in: input.from }, version: input.expectedVersion }, data: { ...data, version: { increment: 1 }, updatedAt: input.now } });
+    return result.count ? this.findById(input.assignmentId) : null;
+  }
+
+  async startAssignedWork(input: { assignmentId: string; expectedVersion: number; actorId: string; now: Date }): Promise<HandoffAssignment | null> {
+    const result = await (this.prisma as any).portfolioHandoffAssignment.updateMany({
+      where: { id: input.assignmentId, state: 'ACCEPTED', version: input.expectedVersion },
+      data: { state: 'STARTED', startedAt: input.now, startedBy: input.actorId, version: { increment: 1 }, updatedAt: input.now },
+    });
+    return result.count ? this.findById(input.assignmentId) : null;
+  }
+
+  async recordPortfolioResponse(input: { assignmentId: string; response: string; actorId: string; now: Date }): Promise<HandoffAssignment | null> {
+    const result = await (this.prisma as any).portfolioHandoffAssignment.updateMany({ where: { id: input.assignmentId, state: 'REJECTED' }, data: { portfolioResponse: input.response, portfolioResponseRecordedAt: input.now, portfolioResponseRecordedBy: input.actorId, updatedAt: input.now } });
+    return result.count ? this.findById(input.assignmentId) : null;
+  }
+
   async findChallenge(id: string): Promise<HandoffReference | null> {
     const record = await this.prisma.challenge.findUnique({ where: { id }, select: { id: true, strategicFront: { select: { organizationId: true } } } });
     return record ? { id: record.id, organizationId: record.strategicFront.organizationId } : null;
@@ -70,5 +100,12 @@ function mapAssignment(record: any): HandoffAssignment {
     members: record.members.map((member: any) => ({ identityKey: member.identityKey, userId: member.userId, emailNormalized: member.emailNormalized, label: member.label, role: member.role })),
     createdAt: record.createdAt,
     updatedAt: record.updatedAt,
+    sentAt: record.sentAt,
+    viewedAt: record.viewedAt,
+    revokedAt: record.revokedAt,
+    expiredAt: record.expiredAt,
+    acceptedAt: record.acceptedAt, acceptedBy: record.acceptedBy, rejectionReason: record.rejectionReason, rejectedAt: record.rejectedAt, rejectedBy: record.rejectedBy,
+    startedAt: record.startedAt, startedBy: record.startedBy,
+    portfolioResponse: record.portfolioResponse, portfolioResponseRecordedAt: record.portfolioResponseRecordedAt, portfolioResponseRecordedBy: record.portfolioResponseRecordedBy,
   };
 }
