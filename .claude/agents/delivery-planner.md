@@ -108,6 +108,14 @@ que de verdad la frenan. La funcional casi siempre bloquea a las técnicas que i
 criterios; dos técnicas independientes no se bloquean entre sí. El script crea esos bloqueos como
 enlaces `Blocks` en Jira.
 
+**División por frente** (`front/`, `backend/`, `ai-service/`). Una técnica por rebanada vertical
+que se puede demostrar sola, no una por capa. Se parte en otra técnica sólo si cambia quién la
+hace, hay una dependencia real o el entregable se demuestra por separado. Si dos técnicas dependen
+de un contrato nuevo entre frentes (esquema zod de un endpoint que consume el front, modelo
+pydantic que llama `backend/modules/ai/bridge.service.ts`), el contrato es su propia técnica y
+bloquea a las otras. Cada técnica nombra en `## Verificación` los comandos de `TESTING.md` §5 de
+los frentes que toca.
+
 Cada subtarea técnica lleva:
 
 - `## Áreas`: carpetas/archivos que se tocan, verificados con `Grep`/`Glob`, no supuestos.

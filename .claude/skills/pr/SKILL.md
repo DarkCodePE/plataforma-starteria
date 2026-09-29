@@ -4,8 +4,8 @@ description: >
   Escribe el cuerpo de un PR de Starteria que se revisa rápido: la HU de Jira que cierra, sus
   criterios de aceptación tildados contra el diff, la forma del cambio en un diagrama o diff chico,
   evidencia antes/después, y el peligro de mergear (puerta de una o dos vías, radio de impacto).
-  Use when: vas a abrir un PR o a reescribir el cuerpo de uno. Es el paso 7 del flujo obligatorio
-  de AGENTS.md, después de implementar una subtarea [Técnica].
+  Use when: vas a abrir un PR o a reescribir el cuerpo de uno. Es la fase h del ciclo de
+  AGENTS.md, después de /implementar y de que /verificar deje la evidencia y el revisor apruebe.
   Do not use for: revisar el código de otro PR, ni crear la HU (eso es /hu).
 argument-hint: "[KAN-nnn] [rama base, por defecto main]"
 allowed-tools: Read Grep Glob
