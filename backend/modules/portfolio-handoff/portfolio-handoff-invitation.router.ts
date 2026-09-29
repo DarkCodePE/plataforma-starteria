@@ -9,6 +9,8 @@ import { PortfolioHandoffInvitationService } from './application/portfolio-hando
 import { PrismaPortfolioHandoffAssignmentRepository } from './infrastructure/prisma-portfolio-handoff-assignment.repository';
 import { PrismaPortfolioHandoffInvitationRepository } from './infrastructure/prisma-portfolio-handoff-invitation.repository';
 import { PrismaPortfolioHandoffDeliveryAttemptRepository } from './infrastructure/prisma-portfolio-handoff-delivery-attempt.repository';
+import { PrismaPortfolioHandoffResponseCommandRepository } from './infrastructure/prisma-portfolio-handoff-response-command.repository';
+import { PortfolioHandoffResponseService } from './application/portfolio-handoff-response.service';
 
 export function buildPortfolioHandoffInvitationRouter(service: PortfolioHandoffInvitationService, auth = authenticate, onViewed?: (token: string) => Promise<void>): Router {
   const router = Router();
@@ -71,6 +73,34 @@ export function buildPortfolioHandoffDeliveryRouter(service: PortfolioHandoffDel
 }
 
 export const portfolioHandoffDeliveryRouter = buildPortfolioHandoffDeliveryRouter(deliveryService);
+
+const responseService = new PortfolioHandoffResponseService(assignmentRepository, invitationRepository, new PrismaPortfolioHandoffResponseCommandRepository(prisma));
+export function buildPortfolioHandoffResponseRouter(service: PortfolioHandoffResponseService, auth = authenticate, portfolioWrite = requirePermission('portfolio:write')): Router {
+  const router = Router();
+  router.post('/:assignmentId/accept', auth, async (req, res, next) => {
+    try {
+      if (!req.user) throw AppError.unauthorized('Autenticacion requerida', 'UNAUTHENTICATED');
+      const data = await service.acceptHandoffAssignment({ assignmentId: req.params.assignmentId, actor: { id: req.user.id, email: req.user.email }, expectedVersion: Number(req.body?.expectedVersion), idempotencyKey: req.get('Idempotency-Key') ?? '' });
+      res.json({ success: true, data });
+    } catch (error) { next(error); }
+  });
+  router.post('/:assignmentId/reject', auth, async (req, res, next) => {
+    try {
+      if (!req.user) throw AppError.unauthorized('Autenticacion requerida', 'UNAUTHENTICATED');
+      const data = await service.rejectHandoffAssignment({ assignmentId: req.params.assignmentId, actor: { id: req.user.id, email: req.user.email }, reason: req.body?.reason, expectedVersion: Number(req.body?.expectedVersion), idempotencyKey: req.get('Idempotency-Key') ?? '' });
+      res.json({ success: true, data });
+    } catch (error) { next(error); }
+  });
+  router.post('/:assignmentId/rejection-response', auth, portfolioWrite, async (req, res, next) => {
+    try {
+      if (!req.user) throw AppError.unauthorized('Autenticacion requerida', 'UNAUTHENTICATED');
+      const data = await service.recordPortfolioRejectionResponse({ assignmentId: req.params.assignmentId, actorId: req.user.id, response: typeof req.body?.response === 'string' ? req.body.response : '', idempotencyKey: req.get('Idempotency-Key') ?? '' });
+      res.json({ success: true, data });
+    } catch (error) { next(error); }
+  });
+  return router;
+}
+export const portfolioHandoffResponseRouter = buildPortfolioHandoffResponseRouter(responseService);
 
 function parseExpiry(value: unknown): Date {
   const date = new Date(String(value));
