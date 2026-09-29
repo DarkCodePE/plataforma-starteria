@@ -95,6 +95,38 @@ export const NOVAGROWTH_READING: FirstValueReading = {
   ],
 };
 
+const EXPANDED_INITIATIVE_NAMES = [
+  'Content Campaign', 'Lead Assistant', 'Pricing Pilot', 'Channel Partners', 'Checkout Optimizer', 'CRM Follow-up', 'Webinar Series',
+  'SEO Expansion', 'B2B Events', 'Outbound Sequences', 'Partner Enablement', 'Lead Scoring', 'Sales Playbook', 'Demo Experience',
+  'Regional Pricing', 'Contract Simplifier', 'Renewal Outreach', 'Customer Proof', 'Onboarding Workshops', 'Pipeline Hygiene',
+  'Forecast Quality', 'Revenue Operations', 'Enterprise Landing Pages', 'Trial Conversion Lab',
+];
+
+const EXPANDED_OWNERS = ['Laura', 'Ana', 'Carlos', 'Marta', 'Luis', 'Sofía', 'Diego', 'Nuria', 'Pablo', 'Irene', 'Jorge', 'Elena'];
+
+export const NOVAGROWTH_EXPANDED_WORK_INPUT = `NovaGrowthExpanded\n${EXPANDED_INITIATIVE_NAMES
+  .map((name, index) => `${name} — trabajo relacionado con crecimiento B2B. ${EXPANDED_OWNERS[index % EXPANDED_OWNERS.length]}.`)
+  .join('\n')}`;
+
+export const NOVAGROWTH_EXPANDED_READING: FirstValueReading = {
+  detectedGoal: NOVAGROWTH_READING.detectedGoal,
+  horizon: NOVAGROWTH_READING.horizon,
+  initiatives: EXPANDED_INITIATIVE_NAMES.map((name, index) => ({
+    id: `expanded-${index + 1}`,
+    name,
+    description: 'Trabajo relacionado con crecimiento B2B.',
+    ...(index % 6 === 4 ? {} : { owner: EXPANDED_OWNERS[index % EXPANDED_OWNERS.length] }),
+  })),
+  owners: EXPANDED_OWNERS,
+  groups: [
+    { id: 'expanded-generate', label: 'Generar oportunidades', initiativeIds: ['expanded-1', 'expanded-2', 'expanded-8', 'expanded-9', 'expanded-10', 'expanded-11'], rationale: 'La propuesta agrupa trabajo de captación, partners y generación de demanda.' },
+    { id: 'expanded-work', label: 'Trabajar oportunidades', initiativeIds: ['expanded-6', 'expanded-12', 'expanded-13', 'expanded-14', 'expanded-20', 'expanded-21'], rationale: 'La propuesta agrupa trabajo de cualificación, seguimiento y operación comercial.' },
+    { id: 'expanded-convert', label: 'Convertir oportunidades', initiativeIds: ['expanded-3', 'expanded-5', 'expanded-15', 'expanded-16', 'expanded-18', 'expanded-24'], rationale: 'La propuesta agrupa trabajo de pricing, contratación y conversión.' },
+    { id: 'expanded-retain', label: 'Sostener crecimiento', initiativeIds: ['expanded-4', 'expanded-7', 'expanded-17', 'expanded-19', 'expanded-22', 'expanded-23'], rationale: 'La propuesta agrupa trabajo de prueba social, onboarding y expansión.' },
+  ],
+  signals: NOVAGROWTH_READING.signals,
+};
+
 export function analyzeNovaGrowth(_goalInput: string, _workInput: string): FirstValueReading {
-  return NOVAGROWTH_READING;
+  return _workInput.includes('NovaGrowthExpanded') ? NOVAGROWTH_EXPANDED_READING : NOVAGROWTH_READING;
 }

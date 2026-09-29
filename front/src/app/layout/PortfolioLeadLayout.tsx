@@ -48,6 +48,7 @@ function PortfolioLeadLayoutContent() {
   const scopedEntryContext = usePortfolioHomeEntryContext(scopedEntryArrival ? continuationId : null);
   const scopedEntryAuthorized = scopedEntryArrival && scopedEntryContext.status === 'ready' && Boolean(scopedEntryContext.data);
   const scopedEntryChecking = scopedEntryArrival && (scopedEntryContext.status === 'idle' || scopedEntryContext.status === 'loading');
+  const isFocusedSetup = location.pathname === '/portfolio/setup';
 
   const pendingDecisions = useMemo(
     () => initiatives.filter(item => item.readyForDecision || item.status === 'bloqueada').length,
@@ -97,6 +98,31 @@ function PortfolioLeadLayoutContent() {
     return <p data-testid="portfolio-scoped-access-checking" className="py-16 text-center text-sm text-text-muted">Estamos verificando tu acceso al Portfolio.</p>;
   }
   if (!hasGlobalPortfolioAccess && !scopedEntryAuthorized) return null;
+
+  if (isFocusedSetup) {
+    return (
+      <div className="flex min-h-screen flex-col bg-[#f5f4ef]" data-testid="portfolio-focused-setup-shell">
+        <header className="border-b border-slate-200 bg-white">
+          <div className="mx-auto flex w-full max-w-6xl items-center justify-between px-4 py-4 sm:px-6 lg:px-10">
+            <div>
+              <p className="text-sm font-semibold tracking-tight text-slate-900">Startería</p>
+              <p className="text-xs text-slate-500">Portfolio Lead · Preparar mi espacio</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => navigate('/portfolio/inicio')}
+              className="rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600 transition-colors hover:bg-slate-50 hover:text-slate-900"
+            >
+              Salir del setup
+            </button>
+          </div>
+        </header>
+        <main className="flex-1">
+          <Outlet />
+        </main>
+      </div>
+    );
+  }
 
   if (scopedEntryAuthorized) {
     return (
