@@ -44,6 +44,7 @@ import { ContinuePilotPage } from './pages/ContinuePilotPage';
 import { CompaniesPage } from './pages/CompaniesPage';
 import { StrategicFramingWorkspacePage } from '../features/portfolio-lead/strategic-framing/StrategicFramingWorkspacePage';
 import { HandoffInvitationPage } from './pages/HandoffInvitationPage';
+import { PortfolioLeadFirstValuePage } from '../features/portfolio-lead/first-value/PortfolioLeadFirstValuePage';
 
 export const appRoutes = [
   {
@@ -118,6 +119,7 @@ export const appRoutes = [
         children: [
           { index: true, loader: () => redirect('/portfolio/inicio') },
           { path: 'inicio', Component: PortfolioLeadHomePage },
+          { path: 'setup', Component: PortfolioLeadFirstValuePage },
           { path: 'iniciar', Component: PortfolioLeadStartPage },
           { path: 'frentes-estrategicos', Component: PortfolioLeadStrategicFrontsPage },
           { path: 'retos', Component: PortfolioLeadChallengesPage },
