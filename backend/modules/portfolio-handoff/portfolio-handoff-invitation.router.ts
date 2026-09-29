@@ -11,6 +11,7 @@ import { PrismaPortfolioHandoffInvitationRepository } from './infrastructure/pri
 import { PrismaPortfolioHandoffDeliveryAttemptRepository } from './infrastructure/prisma-portfolio-handoff-delivery-attempt.repository';
 import { PrismaPortfolioHandoffResponseCommandRepository } from './infrastructure/prisma-portfolio-handoff-response-command.repository';
 import { PortfolioHandoffResponseService } from './application/portfolio-handoff-response.service';
+import { PortfolioHandoffAssignmentError } from './application/portfolio-handoff-assignment.errors';
 
 export function buildPortfolioHandoffInvitationRouter(service: PortfolioHandoffInvitationService, auth = authenticate, onViewed?: (token: string) => Promise<void>): Router {
   const router = Router();
@@ -91,6 +92,16 @@ export function buildPortfolioHandoffResponseRouter(service: PortfolioHandoffRes
       res.json({ success: true, data });
     } catch (error) { next(error); }
   });
+  router.post('/:assignmentId/start', auth, async (req, res, next) => {
+    try {
+      if (!req.user) throw AppError.unauthorized('Autenticacion requerida', 'UNAUTHENTICATED');
+      const expectedVersion = Number(req.body?.expectedVersion);
+      if (!Number.isInteger(expectedVersion) || expectedVersion < 1) throw AppError.badRequest('Version de asignacion invalida', 'STALE_VERSION');
+      const idempotencyKey = typeof req.body?.idempotencyKey === 'string' ? req.body.idempotencyKey : req.get('Idempotency-Key') ?? '';
+      const data = await service.startAssignedWork({ assignmentId: req.params.assignmentId, actor: { id: req.user.id, email: req.user.email }, expectedVersion, idempotencyKey });
+      res.json({ success: true, data });
+    } catch (error) { next(toHandoffApiError(error)); }
+  });
   router.post('/:assignmentId/rejection-response', auth, portfolioWrite, async (req, res, next) => {
     try {
       if (!req.user) throw AppError.unauthorized('Autenticacion requerida', 'UNAUTHENTICATED');
@@ -101,6 +112,12 @@ export function buildPortfolioHandoffResponseRouter(service: PortfolioHandoffRes
   return router;
 }
 export const portfolioHandoffResponseRouter = buildPortfolioHandoffResponseRouter(responseService);
+
+function toHandoffApiError(error: unknown): Error {
+  if (!(error instanceof PortfolioHandoffAssignmentError)) return error as Error;
+  const status = error.code === 'NOT_FOUND' ? 404 : ['STALE_VERSION', 'IDEMPOTENCY_CONFLICT'].includes(error.code) ? 409 : ['FORBIDDEN', 'IDENTITY_MISMATCH'].includes(error.code) ? 403 : 400;
+  return new AppError(status, error.message, error.code);
+}
 
 function parseExpiry(value: unknown): Date {
   const date = new Date(String(value));

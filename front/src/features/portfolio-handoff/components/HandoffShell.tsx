@@ -8,7 +8,7 @@ import { ContextSummary } from '../../../app/components/design-system/patterns/C
 import { parseApiError } from '../../../app/services/api';
 import type { HandoffInvitationPreview } from '../services/handoffInvitationService';
 
-type ShellState = 'invitation' | 'accepted' | 'rejected' | 'terminal';
+type ShellState = 'invitation' | 'accepted' | 'started' | 'rejected' | 'terminal';
 
 export type HandoffShellProps = {
   preview: HandoffInvitationPreview;
@@ -16,17 +16,19 @@ export type HandoffShellProps = {
   onReject: (reason: string) => Promise<void>;
   acceptBusy?: boolean;
   responseError?: string | null;
-  onStart?: () => void;
+  onStart?: () => Promise<void>;
+  startBusy?: boolean;
 };
 
 function shellState(preview: HandoffInvitationPreview): ShellState {
-  if (preview.state === 'ACCEPTED' || preview.state === 'STARTED') return 'accepted';
+  if (preview.state === 'STARTED') return 'started';
+  if (preview.state === 'ACCEPTED') return 'accepted';
   if (preview.state === 'REJECTED') return 'rejected';
   if (['EXPIRED', 'REVOKED'].includes(preview.state) || preview.identityClaimStatus === 'INVALID_INVITATION' || preview.identityClaimStatus === 'EXPIRED' || preview.identityClaimStatus === 'REVOKED') return 'terminal';
   return 'invitation';
 }
 
-export function HandoffShell({ preview, onAccept, onReject, acceptBusy = false, responseError, onStart }: HandoffShellProps) {
+export function HandoffShell({ preview, onAccept, onReject, acceptBusy = false, responseError, onStart, startBusy = false }: HandoffShellProps) {
   const state = shellState(preview);
   const [rejectOpen, setRejectOpen] = useState(false);
   const [reason, setReason] = useState('');
@@ -59,7 +61,8 @@ export function HandoffShell({ preview, onAccept, onReject, acceptBusy = false, 
     }
   }
 
-  const status = state === 'accepted' ? <Badge variant="success" data-testid="handoff-status">Aceptada</Badge>
+  const status = state === 'started' ? <Badge variant="success" data-testid="handoff-status">Trabajo iniciado</Badge>
+    : state === 'accepted' ? <Badge variant="success" data-testid="handoff-status">Aceptada</Badge>
     : state === 'rejected' ? <Badge variant="destructive" data-testid="handoff-status">Rechazada</Badge>
       : state === 'terminal' ? <Badge variant="neutral" data-testid="handoff-status">No disponible</Badge>
         : <Badge variant="info" data-testid="handoff-status">Pendiente de respuesta</Badge>;
@@ -75,7 +78,7 @@ export function HandoffShell({ preview, onAccept, onReject, acceptBusy = false, 
           eyebrow={typeLabel}
           title={title}
           status={status}
-          description={state === 'invitation' ? 'Revisa el encargo y decide si quieres asumirlo como Initiative Owner.' : state === 'accepted' ? 'Este es el contexto de activación que queda disponible antes de empezar.' : state === 'rejected' ? 'Tu respuesta quedó registrada en el mismo encargo.' : 'No podemos ofrecer acciones para esta invitación.'}
+          description={state === 'invitation' ? 'Revisa el encargo y decide si quieres asumirlo como Initiative Owner.' : state === 'accepted' ? 'Este es el contexto de activación que queda disponible antes de empezar.' : state === 'started' ? 'El inicio de este encargo quedó registrado.' : state === 'rejected' ? 'Tu respuesta quedó registrada en el mismo encargo.' : 'No podemos ofrecer acciones para esta invitación.'}
           density="comfortable"
         />
 
@@ -118,6 +121,11 @@ export function HandoffShell({ preview, onAccept, onReject, acceptBusy = false, 
           {preview.portfolioResponse && <div className="mt-4 flex gap-2 text-sm text-text-secondary"><MessageCircle aria-hidden="true" className="mt-0.5 size-4 shrink-0" /><p><span className="font-semibold text-text-primary">Respuesta del Portfolio Lead:</span> {preview.portfolioResponse}</p></div>}
         </section>}
 
+        {state === 'started' && <section role="status" className="rounded-ds-md border border-brand-primary/30 bg-brand-primary-subtle p-5" aria-labelledby="handoff-started-title">
+          <h2 id="handoff-started-title" className="text-base font-semibold">Trabajo iniciado</h2>
+          <p className="mt-2 text-sm leading-6 text-text-secondary">El inicio de este encargo quedó registrado. Esta pantalla no define el siguiente destino de trabajo.</p>
+        </section>}
+
         {state === 'terminal' && <section role="status" className="rounded-ds-md border border-border-default bg-surface-default p-5 text-sm text-text-secondary">Esta invitación ya no está disponible. No se puede aceptar ni rechazar.</section>}
 
         <div className="flex flex-col gap-3 border-t border-border-default pt-5 sm:flex-row sm:items-center sm:justify-end">
@@ -125,7 +133,7 @@ export function HandoffShell({ preview, onAccept, onReject, acceptBusy = false, 
             <Button type="button" variant="ghost" onClick={() => setRejectOpen(true)}>Rechazar</Button>
             <Button type="button" variant="primary" loading={acceptBusy} onClick={() => void onAccept()}>Aceptar asignación</Button>
           </>}
-          {state === 'accepted' && <Button type="button" variant="primary" disabled={!onStart} onClick={onStart} aria-label="Empezar (disponible en el siguiente paso)">Empezar</Button>}
+          {state === 'accepted' && <Button type="button" variant="primary" loading={startBusy} disabled={!onStart} onClick={() => { if (onStart) void onStart(); }} aria-label="Empezar">Empezar</Button>}
         </div>
       </div>
 

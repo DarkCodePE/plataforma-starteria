@@ -38,6 +38,8 @@ export type HandoffAssignment = Omit<CreateHandoffAssignmentInput, 'members'> & 
   rejectionReason: string | null;
   rejectedAt: Date | null;
   rejectedBy: string | null;
+  startedAt: Date | null;
+  startedBy: string | null;
   portfolioResponse: string | null;
   portfolioResponseRecordedAt: Date | null;
   portfolioResponseRecordedBy: string | null;
@@ -56,10 +58,11 @@ export interface HandoffAssignmentRepository {
   }): Promise<HandoffAssignment | null>;
   transitionState(input: { assignmentId: string; from: HandoffAssignmentState[]; to: HandoffAssignmentState; now?: Date }): Promise<HandoffAssignment | null>;
   applyResponse(input: { assignmentId: string; from: HandoffAssignmentState[]; to: 'ACCEPTED' | 'REJECTED'; actorId: string; reason?: string; expectedVersion: number; now: Date }): Promise<HandoffAssignment | null>;
+  startAssignedWork(input: { assignmentId: string; expectedVersion: number; actorId: string; now: Date }): Promise<HandoffAssignment | null>;
   recordPortfolioResponse(input: { assignmentId: string; response: string; actorId: string; now: Date }): Promise<HandoffAssignment | null>;
 }
 
-export type HandoffResponseCommandType = 'ACCEPT' | 'REJECT' | 'PORTFOLIO_RESPONSE';
+export type HandoffResponseCommandType = 'ACCEPT' | 'REJECT' | 'PORTFOLIO_RESPONSE' | 'START';
 export type HandoffResponseCommand = { id: string; assignmentId: string; type: HandoffResponseCommandType; idempotencyKey: string; actorId: string; fingerprint: string; resultingVersion: number; createdAt: Date };
 export interface HandoffResponseCommandRepository {
   findByIdempotencyKey(input: { assignmentId: string; type: HandoffResponseCommandType; idempotencyKey: string }): Promise<HandoffResponseCommand | null>;
