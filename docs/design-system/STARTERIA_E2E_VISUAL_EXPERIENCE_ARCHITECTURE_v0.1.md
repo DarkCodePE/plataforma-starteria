@@ -1,5 +1,10 @@
 # STARTERIA_E2E_VISUAL_EXPERIENCE_ARCHITECTURE_v0.1
 
+> Reconciliación ADR-006: para Landing pública, Portfolio Entry y Continuation, consultar
+> `STARTERIA_PUBLIC_LANDING_PORTFOLIO_ENTRY_CONTINUATION_ARCHITECTURE_v0.1.md`. Sus reglas adaptan
+> los ejemplos anteriores de funnel único hacia `/public/start`; no modifican las foundations ni los
+> patrones generales de este documento.
+
 **Estado:** Draft para validación de producto/diseño
 **Propósito:** Congelar la arquitectura visual y experiencial E2E de Starteria antes de convertirla en Design System e implementación.
 **Ámbito:** Portfolio Lead + Initiative Owner + Sponsor + Mentor + Copilot + comunicación + retorno al portafolio.
