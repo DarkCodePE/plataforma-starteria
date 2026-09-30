@@ -5,7 +5,7 @@ import { Badge } from '../components/ui/badge';
 import { useApp } from '../context/AppContext';
 import { PortfolioEntryExperience } from '../../features/portfolio-entry/public';
 
-const PLATFORM_PATH = ['Prioridad', 'Reto', 'Iniciativa', 'Evidencia', 'Decision'];
+const PLATFORM_PATH = ['Estrategia / necesidad', 'Iniciativas', 'Evidencia + avance', 'Decisiones'];
 
 const PROBLEMS = [
   {
@@ -110,32 +110,38 @@ export function LandingPage() {
       </header>
 
       <main>
-        <section className="mx-auto grid max-w-7xl gap-10 px-4 pb-12 pt-10 sm:px-6 md:pb-16 md:pt-16 lg:grid-cols-[minmax(0,0.88fr)_minmax(440px,0.86fr)] lg:items-center lg:px-8 lg:pb-20 lg:pt-20">
-          <div className="max-w-3xl">
+        <section className="mx-auto max-w-7xl px-4 pb-10 pt-10 sm:px-6 md:pb-14 md:pt-16 lg:px-8 lg:pb-16 lg:pt-20">
+          <div className="max-w-4xl">
             <Badge variant="secondary" className="border-indigo-100 bg-white/80 text-slate-700 shadow-sm">
               Plataforma de decisiones para portafolios
             </Badge>
             <h1 className="mt-5 max-w-4xl text-4xl font-semibold leading-[1.02] tracking-tight text-slate-950 md:text-6xl">
-              Convierte iniciativas dispersas en decisiones conectadas al negocio.
+              Convierte estrategia e iniciativas en decisiones sustentadas.
             </h1>
             <p className="mt-6 max-w-2xl text-base leading-7 text-slate-600 md:text-lg">
-              Empieza con una explicacion en lenguaje natural. Starteria la convierte en contexto estructurado para ordenar prioridades, retos, iniciativas, evidencia y decisiones.
+              Starteria ayuda a estructurar qué quieres mover, convertirlo en iniciativas accionables, seguir evidencia y bloqueos, y preparar mejores decisiones.
             </p>
-
-            <div className="hidden lg:block">
-              <PlatformStructure />
-            </div>
           </div>
 
-          <div className="space-y-6">
+          <PlatformStructure />
+        </section>
+
+        <section aria-labelledby="portfolio-entry-heading" className="border-y border-slate-200/70 bg-white/80">
+          <div className="mx-auto grid max-w-7xl gap-8 px-4 py-10 sm:px-6 md:py-14 lg:grid-cols-[minmax(0,0.8fr)_minmax(0,1fr)] lg:items-start lg:px-8">
+            <div className="max-w-xl">
+              <p className="text-xs font-semibold uppercase text-indigo-700">Orientación opcional</p>
+              <h2 id="portfolio-entry-heading" className="mt-3 text-2xl font-semibold tracking-tight text-slate-950 md:text-3xl">
+                ¿Todavía no tienes claro por dónde empezar?
+              </h2>
+              <p className="mt-3 text-base leading-7 text-slate-600">
+                Esta orientación te ayuda a ordenar tu objetivo, necesidad, problema, oportunidad, iniciativa y decisión antes de elegir cómo continuar.
+              </p>
+            </div>
             <PortfolioEntryExperience
               variant="landing"
               recoverExisting={false}
               redirectAfterStart="/public/start"
             />
-            <div className="lg:hidden">
-              <PlatformStructure />
-            </div>
           </div>
         </section>
 
@@ -294,20 +300,20 @@ export function LandingPage() {
 
 function PlatformStructure() {
   return (
-    <div className="mt-8 rounded-[24px] border border-white/80 bg-white/70 p-4 shadow-sm shadow-slate-900/[0.03] backdrop-blur lg:mt-8">
-      <p className="text-xs font-semibold uppercase text-indigo-700">Estructura Starteria</p>
-      <div className="mt-4 grid gap-2 sm:grid-cols-5">
+    <div aria-label="Cómo Starteria conecta el trabajo" className="mt-8 rounded-[24px] border border-slate-200/80 bg-white/75 p-4 shadow-sm shadow-slate-900/[0.03] backdrop-blur sm:p-5">
+      <p className="text-xs font-semibold uppercase text-indigo-700">Cómo Starteria conecta el trabajo</p>
+      <ol className="mt-4 grid list-none gap-2 p-0 sm:grid-cols-2 lg:grid-cols-4">
         {PLATFORM_PATH.map((item, index) => (
-          <div key={item} className="flex items-center gap-2">
+          <li key={item} className="flex min-w-0 items-center gap-2">
             <div className="min-w-0 flex-1 rounded-2xl border border-slate-200 bg-white px-3 py-3">
               <p className="text-sm font-semibold text-slate-950">{item}</p>
             </div>
             {index < PLATFORM_PATH.length - 1 ? (
-              <ArrowRight size={14} className="hidden shrink-0 text-slate-400 sm:block" />
+              <ArrowRight aria-hidden="true" size={14} className="shrink-0 text-slate-400" />
             ) : null}
-          </div>
+          </li>
         ))}
-      </div>
+      </ol>
     </div>
   );
 }
