@@ -1065,6 +1065,7 @@ export interface ChallengeFocusRecommendation {
 }
 
 export interface PortfolioLeadContextValue extends PortfolioLeadState {
+  portfolioDataStatus: 'idle' | 'loading' | 'ready' | 'error';
   refreshPortfolioData: () => Promise<void>;
   createStrategicFront: (input: CreateStrategicFrontInput) => StrategicFront;
   updateStrategicFront: (frontId: string, input: CreateStrategicFrontInput) => void;

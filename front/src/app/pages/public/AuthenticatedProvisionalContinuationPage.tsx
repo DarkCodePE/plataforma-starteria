@@ -21,6 +21,12 @@ function displayText(value: { value: string } | 'unresolved' | undefined): strin
   return value.value;
 }
 
+function setupDestination(destinationRoute: string): string {
+  const [path, search = ''] = destinationRoute.split('?');
+  if (path !== '/portfolio/inicio') return destinationRoute;
+  return `/portfolio/setup${search ? `?${search}` : ''}`;
+}
+
 export function AuthenticatedProvisionalContinuationPage() {
   const { isAuthenticated, authLoading } = useApp();
   const navigate = useNavigate();
@@ -110,7 +116,7 @@ export function AuthenticatedProvisionalContinuationPage() {
           organizationId: selectedOrganizationId ?? undefined,
           idempotencyKey: createIdempotencyKey('portfolio-entry:context-selection'),
         });
-        navigate(selected.destinationRoute);
+        navigate(setupDestination(selected.destinationRoute));
       }
     } catch (err) {
       setError(normalizePortfolioEntryApiError(err).message);

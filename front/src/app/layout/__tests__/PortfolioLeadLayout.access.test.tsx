@@ -41,6 +41,12 @@ const PERMISOS_POR_ROL: Record<string, string[]> = {
 const sesion = (role: string) => ({ role, permissions: PERMISOS_POR_ROL[role] ?? [] });
 
 let currentUser: { role: string; permissions: string[] } | null = sesion('portfolio_lead');
+let portfolioData: {
+  strategicFronts: unknown[];
+  challenges: unknown[];
+  initiatives: unknown[];
+  portfolioDataStatus: 'idle' | 'loading' | 'ready' | 'error';
+} = { strategicFronts: [], challenges: [], initiatives: [], portfolioDataStatus: 'idle' };
 vi.mock('../../context/AppContext', () => ({
   useApp: () => ({
     isAuthenticated: currentUser !== null,
@@ -51,7 +57,7 @@ vi.mock('../../context/AppContext', () => ({
 }));
 
 vi.mock('../../portfolio/PortfolioLeadContext', () => ({
-  usePortfolioLead: () => ({ initiatives: [] }),
+  usePortfolioLead: () => ({ initiatives: [], ...portfolioData }),
 }));
 
 vi.mock('../../../features/portfolio-entry/home/usePortfolioHomeEntryContext', () => ({
@@ -63,8 +69,10 @@ const entra = () => screen.queryByTestId('contenido-portafolio') !== null;
 describe('PortfolioLeadLayout — quién accede a /portfolio', () => {
   beforeEach(() => {
     navigate.mockReset();
+    currentUser = sesion('portfolio_lead');
     currentLocation = { pathname: '/portfolio/inicio', search: '' };
     scopedEntryContext = { data: null, status: 'idle', error: null };
+    portfolioData = { strategicFronts: [], challenges: [], initiatives: [], portfolioDataStatus: 'idle' };
   });
 
   it('un portfolio_lead entra', () => {
@@ -92,6 +100,53 @@ describe('PortfolioLeadLayout — quién accede a /portfolio', () => {
     render(<PortfolioLeadLayout />);
     expect(entra()).toBe(false);
     expect(navigate).toHaveBeenCalledWith('/auth', { replace: true });
+  });
+
+  it('redirige el inicio vacío al setup cuando la hidratación ya terminó', () => {
+    portfolioData = { strategicFronts: [], challenges: [], initiatives: [], portfolioDataStatus: 'ready' };
+
+    render(<PortfolioLeadLayout />);
+
+    expect(navigate).toHaveBeenCalledWith('/portfolio/setup', { replace: true });
+  });
+
+  it('mantiene el inicio activo cuando existe estructura de Portfolio', () => {
+    portfolioData = { strategicFronts: [{ id: 'front-1', status: 'active' }], challenges: [], initiatives: [], portfolioDataStatus: 'ready' };
+
+    render(<PortfolioLeadLayout />);
+
+    expect(navigate).not.toHaveBeenCalledWith('/portfolio/setup', { replace: true });
+  });
+
+  it('un admin vacío no se redirige al setup de Portfolio Lead', () => {
+    currentUser = sesion('admin');
+    portfolioData = { strategicFronts: [], challenges: [], initiatives: [], portfolioDataStatus: 'ready' };
+
+    render(<PortfolioLeadLayout />);
+
+    expect(navigate).not.toHaveBeenCalledWith('/portfolio/setup', { replace: true });
+  });
+
+  it('redirige una continuación de Entry a setup preservando el contexto en query', () => {
+    currentLocation = { pathname: '/portfolio/inicio', search: '?portfolioEntryContinuationId=cont-1' };
+    portfolioData = { strategicFronts: [], challenges: [], initiatives: [], portfolioDataStatus: 'ready' };
+
+    render(<PortfolioLeadLayout />);
+
+    expect(navigate).toHaveBeenCalledWith('/portfolio/setup?portfolioEntryContinuationId=cont-1', { replace: true });
+  });
+
+  it('mantiene el shell focused y oculta navegación ontology-first durante setup', () => {
+    currentLocation = { pathname: '/portfolio/setup', search: '' };
+
+    render(<PortfolioLeadLayout />);
+
+    expect(screen.getByTestId('portfolio-focused-setup-shell')).toBeInTheDocument();
+    expect(screen.queryByText('Frentes estratégicos')).not.toBeInTheDocument();
+    expect(screen.queryByText('Retos')).not.toBeInTheDocument();
+    expect(screen.queryByText('Iniciativas')).not.toBeInTheDocument();
+    expect(screen.queryByText('Actores clave')).not.toBeInTheDocument();
+    expect(screen.queryByText('Reportes y decisiones')).not.toBeInTheDocument();
   });
 
   it('LAYOUT-SCOPE-02: un participante con contexto scoped autorizado entra solo al Home', () => {

@@ -1,8 +1,10 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { usePortfolioHomeEntryContext } from '../../portfolio-entry/home/usePortfolioHomeEntryContext';
 import { ArrowRight, Check, ChevronDown, CircleHelp, ClipboardPaste, Sparkles } from 'lucide-react';
 import { Button } from '../../../app/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../../app/components/ui/card';
 import { Textarea } from '../../../app/components/ui/textarea';
+import { PortfolioCopilotDrawer } from '../../copilot';
 import { NOVAGROWTH_EXPANDED_WORK_INPUT, NOVAGROWTH_READING, NOVAGROWTH_WORK_INPUT, analyzeNovaGrowth, type FirstValueReading } from './novaGrowthFixture';
 import { trackPortfolioSetupEvent } from './prototypeInstrumentation';
 
@@ -16,11 +18,13 @@ const GUIDE = [
   'Empieza a dar seguimiento',
 ];
 
-export function PortfolioLeadFirstValuePage() {
+export function PortfolioLeadFirstValuePage({ firstName = '', continuationId = null }: { firstName?: string; continuationId?: string | null }) {
   const [stage, setStage] = useState<Stage>('empty');
   const [goal, setGoal] = useState('');
   const [work, setWork] = useState('');
   const [reading, setReading] = useState<FirstValueReading | null>(null);
+  const [copilotOpen, setCopilotOpen] = useState(false);
+  const entryContext = usePortfolioHomeEntryContext(continuationId);
 
   const guideStep = stage === 'value' || stage === 'next-slice' ? 2 : 1;
   const isSetup = stage !== 'empty';
@@ -63,7 +67,7 @@ export function PortfolioLeadFirstValuePage() {
           {isSetup ? <span className="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600">Preparando mi espacio</span> : null}
         </header>
 
-        {stage === 'empty' ? <EmptyState onStart={startSetup} /> : null}
+        {stage === 'empty' ? <EmptyState firstName={firstName} onStart={startSetup} onOpenCopilot={() => setCopilotOpen(true)} entryContext={entryContext} /> : null}
         {isSetup && stage !== 'value' && stage !== 'next-slice' ? (
           <div className="grid gap-8 lg:grid-cols-[240px_minmax(0,1fr)]">
             <SetupGuide activeStep={guideStep} />
@@ -84,24 +88,43 @@ export function PortfolioLeadFirstValuePage() {
         ) : null}
         {stage === 'next-slice' ? <NextSlicePlaceholder onBack={() => setStage('value')} /> : null}
       </div>
+      <PortfolioCopilotDrawer open={copilotOpen} onOpenChange={setCopilotOpen} setupMode />
     </div>
   );
 }
 
-function EmptyState({ onStart }: { onStart: () => void }) {
+function EmptyState({ firstName, onStart, onOpenCopilot, entryContext }: { firstName: string; onStart: () => void; onOpenCopilot: () => void; entryContext: ReturnType<typeof usePortfolioHomeEntryContext> }) {
   return (
     <section className="rounded-3xl border border-slate-200 bg-white px-6 py-14 shadow-sm sm:px-12" data-testid="first-visit-empty">
       <div className="max-w-2xl">
         <p className="mb-4 text-sm font-semibold text-amber-700">Primera visita</p>
+        <p className="text-base font-medium text-slate-700">Hola{firstName ? `, ${firstName}` : ''}.</p>
+        <p className="mt-1 text-sm text-slate-500">Bienvenida a Startería.</p>
         <h1 className="text-3xl font-semibold tracking-tight sm:text-5xl">Organiza tus iniciativas alrededor de lo que quieres conseguir.</h1>
         <p className="mt-5 max-w-xl text-base leading-7 text-slate-600">Empieza por lo que quieres conseguir. Después puedes incorporar las iniciativas y el trabajo que ya tienes.</p>
+        {entryContext.status === 'loading' ? <p className="mt-5 text-sm text-slate-500" role="status">Recuperando el contexto que compartiste al entrar...</p> : null}
+        {entryContext.status === 'ready' && entryContext.data ? <EntryContextSummary context={entryContext.data} /> : null}
         <Button className="mt-8" size="lg" onClick={onStart}>Preparar mi espacio <ArrowRight /></Button>
-        <div className="mt-10 flex flex-wrap gap-4 text-sm text-slate-600">
-          <span>¿Ya vienes con una iniciativa concreta?</span>
-          <button type="button" className="font-semibold text-slate-800 underline underline-offset-4">Empezar una iniciativa</button>
+        <div className="mt-10 rounded-2xl border border-slate-200 bg-slate-50 p-5">
+          <p className="text-sm font-semibold text-slate-900">Tu guía</p>
+          <ol className="mt-3 space-y-2 text-sm text-slate-600">
+            {GUIDE.map((step) => <li key={step} className="flex items-center gap-2"><span className="text-slate-400">○</span>{step}</li>)}
+          </ol>
         </div>
-        <p className="mt-5 flex items-center gap-2 text-sm text-slate-500"><CircleHelp size={16} /> ¿No sabes por dónde empezar? Puedes contárselo a Startería.</p>
+        <button type="button" onClick={onOpenCopilot} className="mt-5 flex items-center gap-2 text-sm font-medium text-slate-600 hover:text-slate-900"><Sparkles size={16} /> Preguntar a Startería</button>
       </div>
+    </section>
+  );
+}
+
+function EntryContextSummary({ context }: { context: NonNullable<ReturnType<typeof usePortfolioHomeEntryContext>['data']> }) {
+  const items = [context.arrival.understoodNeed, context.arrival.desiredOutcome, ...context.arrival.confirmedContext]
+    .filter((item): item is string => Boolean(item));
+  return (
+    <section className="mt-6 rounded-2xl border border-indigo-100 bg-indigo-50/60 p-4" data-testid="portfolio-entry-setup-context">
+      <p className="text-sm font-semibold text-slate-900">Trajimos el contexto que compartiste al entrar.</p>
+      {items.length > 0 ? <ul className="mt-2 space-y-1 text-sm text-slate-700">{items.slice(0, 4).map((item, index) => <li key={`${item}-${index}`}>{item}</li>)}</ul> : <p className="mt-2 text-sm text-slate-600">Lo revisaremos contigo durante la preparación.</p>}
+      <p className="mt-3 text-xs text-slate-500">Fuente: información compartida anteriormente · Startería no ha añadido datos nuevos.</p>
     </section>
   );
 }

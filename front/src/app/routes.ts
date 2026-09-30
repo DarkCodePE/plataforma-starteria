@@ -1,5 +1,5 @@
 import React from 'react';
-import { createBrowserRouter, redirect } from 'react-router';
+import { createBrowserRouter, redirect, useLocation } from 'react-router';
 import { RootLayout } from './layout/RootLayout';
 import { LandingPage } from './pages/LandingPage';
 import { AppLayout } from './layout/AppLayout';
@@ -45,6 +45,15 @@ import { CompaniesPage } from './pages/CompaniesPage';
 import { StrategicFramingWorkspacePage } from '../features/portfolio-lead/strategic-framing/StrategicFramingWorkspacePage';
 import { HandoffInvitationPage } from './pages/HandoffInvitationPage';
 import { PortfolioLeadFirstValuePage } from '../features/portfolio-lead/first-value/PortfolioLeadFirstValuePage';
+import { useApp } from './context/AppContext';
+
+function PortfolioLeadFirstValueRoute() {
+  const location = useLocation();
+  const { user } = useApp();
+  const firstName = user?.name.trim().split(/\s+/)[0] ?? '';
+  const continuationId = new URLSearchParams(location.search).get('portfolioEntryContinuationId');
+  return React.createElement(PortfolioLeadFirstValuePage, { firstName, continuationId });
+}
 
 export const appRoutes = [
   {
@@ -119,7 +128,7 @@ export const appRoutes = [
         children: [
           { index: true, loader: () => redirect('/portfolio/inicio') },
           { path: 'inicio', Component: PortfolioLeadHomePage },
-          { path: 'setup', Component: PortfolioLeadFirstValuePage },
+          { path: 'setup', Component: PortfolioLeadFirstValueRoute },
           { path: 'iniciar', Component: PortfolioLeadStartPage },
           { path: 'frentes-estrategicos', Component: PortfolioLeadStrategicFrontsPage },
           { path: 'retos', Component: PortfolioLeadChallengesPage },

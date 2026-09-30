@@ -6,9 +6,11 @@ import { Textarea } from '../../../app/components/ui/textarea';
 export function CopilotComposer({
   disabled,
   onSend,
+  placeholder = 'Crea un frente llamado Eficiencia operativa...',
 }: {
   disabled: boolean;
   onSend: (content: string) => Promise<void> | void;
+  placeholder?: string;
 }) {
   const [content, setContent] = useState('');
   const [localError, setLocalError] = useState<string | null>(null);
@@ -41,7 +43,7 @@ export function CopilotComposer({
               void submit();
             }
           }}
-          placeholder="Crea un frente llamado Eficiencia operativa..."
+          placeholder={placeholder}
           className="min-h-24 flex-1 rounded-2xl border-slate-200 bg-white"
           aria-invalid={!!localError}
           aria-describedby={localError ? 'portfolio-copilot-composer-error' : undefined}

@@ -109,6 +109,7 @@ describe('Authenticated provisional continuation page', () => {
     await waitFor(() => expect(serviceMocks.confirmAuthenticatedProvisionalContinuation).toHaveBeenCalledWith(
       'session-1', expect.objectContaining({ expectedRevision: 5 }),
     ));
+    expect(navigateSpy).toHaveBeenCalledWith('/portfolio/setup');
   });
 
   it('lets the owner correct user-owned fields and renders the saved value', async () => {

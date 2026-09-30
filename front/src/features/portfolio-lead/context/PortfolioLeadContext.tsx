@@ -144,6 +144,9 @@ export function PortfolioLeadProvider({
   const [initiativeOverlaps, setInitiativeOverlaps] = useState<InitiativeOverlap[]>(() => enableDemoData ? DEFAULT_INITIATIVE_OVERLAPS : []);
   const [portfolioDecisions, setPortfolioDecisions] = useState<PortfolioDecisionItem[]>(() => enableDemoData ? DEFAULT_PORTFOLIO_DECISIONS : []);
   const [executiveOutputs, setExecutiveOutputs] = useState<ExecutiveOutput[]>(() => enableDemoData ? DEFAULT_EXECUTIVE_OUTPUTS : []);
+  const [portfolioDataStatus, setPortfolioDataStatus] = useState<'idle' | 'loading' | 'ready' | 'error'>(
+    enableDemoData ? 'ready' : 'idle',
+  );
 
   useEffect(() => {
     if (!enableDemoData) {
@@ -173,8 +176,12 @@ export function PortfolioLeadProvider({
   // The mock fixtures above are the initial/fallback state, kept if the API is empty or
   // unreachable so local dev still works. Mutations remain local for now (follow-up).
   const refreshPortfolioData = useCallback(async () => {
+    setPortfolioDataStatus('loading');
     const rawFronts = await portfolioService.listStrategicFronts();
-    if (!rawFronts || rawFronts.length === 0) return;
+    if (!rawFronts || rawFronts.length === 0) {
+      setPortfolioDataStatus('ready');
+      return;
+    }
     const fronts = rawFronts.map(adaptStrategicFront);
     const challengesByFront = await Promise.all(
       fronts.map((f) => portfolioService.listChallenges(f.id)),
@@ -187,6 +194,7 @@ export function PortfolioLeadProvider({
     setStrategicFronts(fronts);
     setChallenges(allChallenges);
     setInitiatives(allInitiatives);
+    setPortfolioDataStatus('ready');
   }, []);
 
   useEffect(() => {
@@ -197,6 +205,7 @@ export function PortfolioLeadProvider({
         await refreshPortfolioData();
         if (cancelled) return;
       } catch (err) {
+        setPortfolioDataStatus('error');
         if (!cancelled && !enableDemoData) {
           setStrategicFronts([]);
           setChallenges([]);
@@ -218,6 +227,7 @@ export function PortfolioLeadProvider({
     initiativeOverlaps,
     portfolioDecisions,
     executiveOutputs,
+    portfolioDataStatus,
     refreshPortfolioData,
     createStrategicFront: input => {
       const front: StrategicFront = {

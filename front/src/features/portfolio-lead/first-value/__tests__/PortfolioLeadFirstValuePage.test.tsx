@@ -66,6 +66,20 @@ describe('PortfolioLeadFirstValuePage', () => {
     expect(screen.getByRole('button', { name: /Revisar cómo se relaciona/i })).toBeInTheDocument();
   });
 
+  it('personaliza la bienvenida y abre el Copilot en modo first-time', async () => {
+    render(<PortfolioLeadFirstValuePage firstName="Lucía" />);
+
+    expect(screen.getByText('Hola, Lucía.')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Preparar mi espacio/i })).toBeInTheDocument();
+    expect(screen.getByText(/Define qué quieres conseguir/i)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /Preguntar a Startería/i }));
+
+    expect(await screen.findByText(/Cuéntame qué quieres conseguir y te ayudo a ordenarlo/i)).toBeInTheDocument();
+    expect(screen.getByPlaceholderText(/Cuéntame qué quieres conseguir/i)).toBeInTheDocument();
+    expect(screen.queryByText(/Crear un reto/i)).not.toBeInTheDocument();
+  });
+
   it('opens rationale, exposes provenance, and stops at the next-slice boundary', async () => {
     render(<PortfolioLeadFirstValuePage />);
     fireEvent.click(screen.getByRole('button', { name: /Preparar mi espacio/i }));

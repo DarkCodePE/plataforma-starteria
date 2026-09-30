@@ -35,11 +35,17 @@ export function PortfolioLeadLayout() {
 
 function PortfolioLeadLayoutContent() {
   const { authLoading, isAuthenticated, logout, setUserRole, user } = useApp();
-  const { initiatives } = usePortfolioLead();
+  const {
+    strategicFronts = [],
+    challenges = [],
+    initiatives = [],
+    portfolioDataStatus = 'ready',
+  } = usePortfolioLead();
   const location = useLocation();
   const navigate = useNavigate();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const hasGlobalPortfolioAccess = can(user, 'portfolio:read');
+  const isPortfolioLead = user?.role === 'portfolio_lead';
   const isPortfolioHomeArrival = location.pathname === '/portfolio/inicio';
   const continuationId = isPortfolioHomeArrival
     ? new URLSearchParams(location.search).get('portfolioEntryContinuationId')
@@ -49,6 +55,11 @@ function PortfolioLeadLayoutContent() {
   const scopedEntryAuthorized = scopedEntryArrival && scopedEntryContext.status === 'ready' && Boolean(scopedEntryContext.data);
   const scopedEntryChecking = scopedEntryArrival && (scopedEntryContext.status === 'idle' || scopedEntryContext.status === 'loading');
   const isFocusedSetup = location.pathname === '/portfolio/setup';
+  const hasPortfolioStructure = strategicFronts.some(front => isMeaningfulStrategicFrontStatus(front.status));
+  const shouldRedirectToSetup = isPortfolioLead && isPortfolioHomeArrival && (
+    Boolean(continuationId)
+    || (portfolioDataStatus === 'ready' && !hasPortfolioStructure)
+  );
 
   const pendingDecisions = useMemo(
     () => initiatives.filter(item => item.readyForDecision || item.status === 'bloqueada').length,
@@ -92,6 +103,12 @@ function PortfolioLeadLayoutContent() {
       navigate('/dashboard', { replace: true });
     }
   }, [authLoading, isAuthenticated, navigate, hasGlobalPortfolioAccess, scopedEntryAuthorized, scopedEntryChecking]);
+
+  useEffect(() => {
+    if (shouldRedirectToSetup) {
+      navigate(`/portfolio/setup${location.search}`, { replace: true });
+    }
+  }, [location.search, navigate, shouldRedirectToSetup]);
 
   if (authLoading || !isAuthenticated) return null;
   if (scopedEntryChecking) {
@@ -281,4 +298,8 @@ function PortfolioLeadLayoutContent() {
       </div>
     </div>
   );
+}
+
+function isMeaningfulStrategicFrontStatus(status: unknown): boolean {
+  return ['active', 'tracking', 'with_active_challenges', 'in_tracking'].includes(String(status));
 }

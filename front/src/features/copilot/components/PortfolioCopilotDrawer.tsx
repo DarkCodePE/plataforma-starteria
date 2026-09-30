@@ -63,11 +63,13 @@ export function PortfolioCopilotDrawer({
   onOpenChange,
   client,
   onPortfolioRefresh,
+  setupMode = false,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   client?: CopilotClient;
   onPortfolioRefresh?: () => Promise<void> | void;
+  setupMode?: boolean;
 }) {
   const copilot = useCopilotConversation({ client, onPortfolioRefresh });
   const busy = copilot.isLoading || copilot.isSending || copilot.isMutating;
@@ -104,7 +106,18 @@ export function PortfolioCopilotDrawer({
 
         <div className="grid min-h-0 flex-1 grid-rows-[auto_1fr] overflow-hidden lg:grid-cols-[1fr_300px] lg:grid-rows-1">
           <main className="min-h-0 overflow-y-auto p-5">
-            {!session && copilot.messages.length === 0 ? (
+            {!session && copilot.messages.length === 0 && setupMode ? (
+              <section aria-label="Orientación inicial de Copilot" className="space-y-4">
+                <div>
+                  <p className="text-xs uppercase text-slate-500" style={{ fontWeight: 700 }}>Primeros pasos</p>
+                  <h2 className="mt-1 text-2xl text-slate-950" style={{ fontWeight: 800 }}>Cuéntame qué quieres conseguir y te ayudo a ordenarlo.</h2>
+                  <p className="mt-2 text-sm leading-6 text-slate-600">También puedes contarme qué información tienes hoy. Startería te ayudará a entenderla antes de introducir estructura.</p>
+                </div>
+                <CopilotComposer disabled={busy} onSend={copilot.sendMessage} placeholder="Cuéntame qué quieres conseguir..." />
+                {copilot.isSending && <p role="status" className="text-sm text-slate-500">Entendiendo tu situación...</p>}
+                {copilot.error && <p role="alert" className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">{copilot.error}</p>}
+              </section>
+            ) : !session && copilot.messages.length === 0 ? (
               <PortfolioCopilotIntentSelector disabled={busy} onSelect={(option) => copilot.sendMessage(option.prompt)} />
             ) : (
               <div className="space-y-4">
