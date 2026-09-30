@@ -41,7 +41,11 @@ export function PortfolioLeadFirstValuePage({ firstName = '', continuationId = n
 
   const startSetup = () => {
     trackPortfolioSetupEvent('portfolio_setup_started');
-    setStage('goal');
+    const inheritedGoal = entryContext.data?.arrival.desiredOutcome || entryContext.data?.arrival.understoodNeed;
+    const inheritedWork = entryContext.data?.arrival.existingWork;
+    if (inheritedGoal) setGoal(inheritedGoal);
+    if (inheritedWork) setWork(inheritedWork);
+    setStage(inheritedGoal ? 'work-refined' : 'goal');
   };
   const useNovaGrowth = () => setWork(NOVAGROWTH_WORK_INPUT);
   const submitGoal = () => {
@@ -82,9 +86,9 @@ export function PortfolioLeadFirstValuePage({ firstName = '', continuationId = n
           <div className="grid gap-8 lg:grid-cols-[240px_minmax(0,1fr)]">
             <SetupGuide activeStep={guideStep} />
             <section aria-live="polite">
-              {stage === 'goal' ? <RefinedGoalStep value={goal} additionalContext={additionalContext} onChange={setGoal} onAdditionalContextChange={setAdditionalContext} onContinue={submitGoal} /> : null}
+        {stage === 'goal' ? <RefinedGoalStep value={goal} additionalContext={additionalContext} onChange={setGoal} onAdditionalContextChange={setAdditionalContext} onContinue={submitGoal} /> : null}
               {stage === 'work' ? <ExistingWorkStep value={work} onChange={setWork} onUseFixture={useNovaGrowth} onUseExpandedFixture={() => setWork(NOVAGROWTH_EXPANDED_WORK_INPUT)} onProcess={processWork} onContinueWithoutWork={() => { setWork('No tengo nada organizado todavía.'); window.setTimeout(processWork, 0); }} /> : null}
-              {stage === 'work-refined' ? <RefinedExistingWorkStep value={work} onChange={setWork} onUseFixture={useNovaGrowth} onUseExpandedFixture={() => setWork(NOVAGROWTH_EXPANDED_WORK_INPUT)} onProcess={() => processWork()} onContinueWithoutWork={() => { const emptyWork = 'No tengo nada organizado todavía.'; setWork(emptyWork); processWork(emptyWork); }} /> : null}
+              {stage === 'work-refined' ? <RefinedExistingWorkStep value={work} inherited={Boolean(entryContext.data?.arrival.existingWork)} onChange={setWork} onUseFixture={useNovaGrowth} onUseExpandedFixture={() => setWork(NOVAGROWTH_EXPANDED_WORK_INPUT)} onProcess={() => processWork()} onContinueWithoutWork={() => { const emptyWork = 'No tengo nada organizado todavía.'; setWork(emptyWork); processWork(emptyWork); }} /> : null}
               {stage === 'processing-refined' ? <RefinedProcessingState /> : null}
               {stage === 'processing' ? <ProcessingState /> : null}
             </section>
@@ -222,11 +226,12 @@ function RefinedGoalStep({ value, additionalContext, onChange, onAdditionalConte
         <label htmlFor="portfolio-goal" className="sr-only">Qué quieres conseguir o tener bajo control</label>
         <Textarea id="portfolio-goal" value={value} onChange={event => onChange(event.target.value)} placeholder="Dirección quiere conseguir 200 nuevas ventas B2B este trimestre..." rows={7} />
         <details className="mt-5 rounded-xl border border-slate-200 bg-slate-50 p-4" data-testid="adaptive-context-checkpoint">
-          <summary className="cursor-pointer text-sm font-semibold text-slate-800">¿Quieres afinar esta lectura?</summary>
-          <p className="mt-3 text-sm leading-6 text-slate-600">Para relacionar mejor el trabajo actual me falta entender:</p>
-          <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-slate-600"><li>¿De qué producto o línea hablamos?</li><li>¿Partes de alguna situación actual conocida?</li></ul>
-          <label htmlFor="portfolio-additional-context" className="mt-4 block text-sm font-semibold text-slate-800">Contexto adicional (opcional)</label>
-          <Textarea id="portfolio-additional-context" className="mt-2" value={additionalContext} onChange={event => onAdditionalContextChange(event.target.value)} placeholder="Añade solo lo que ayude a interpretar mejor este objetivo..." rows={3} />
+          <summary className="cursor-pointer text-sm font-semibold text-slate-800">¿Quieres darme un poco más de contexto? <span className="font-normal text-slate-500">(opcional)</span></summary>
+          <p className="mt-3 text-sm leading-6 text-slate-600">Si ya lo sabes, puedes contarme por ejemplo:</p>
+          <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-slate-600"><li>de qué producto, área o proceso hablamos;</li><li>desde qué situación partes;</li><li>qué áreas están involucradas.</li></ul>
+          <p className="mt-3 text-sm leading-6 text-slate-600">No necesitas tener todas las respuestas para continuar.</p>
+          <label htmlFor="portfolio-additional-context" className="mt-4 block text-sm font-semibold text-slate-800">Contexto concreto (opcional)</label>
+          <Textarea id="portfolio-additional-context" className="mt-2" value={additionalContext} onChange={event => onAdditionalContextChange(event.target.value)} placeholder="Añade solo lo que pueda cambiar la interpretación..." rows={3} />
         </details>
         <div className="mt-5 flex justify-end"><Button onClick={onContinue} disabled={!value.trim()}>Continuar <ArrowRight /></Button></div>
       </CardContent>
@@ -234,7 +239,7 @@ function RefinedGoalStep({ value, additionalContext, onChange, onAdditionalConte
   );
 }
 
-function RefinedExistingWorkStep({ value, onChange, onUseFixture, onUseExpandedFixture, onProcess, onContinueWithoutWork }: { value: string; onChange: (value: string) => void; onUseFixture: () => void; onUseExpandedFixture: () => void; onProcess: () => void; onContinueWithoutWork: () => void }) {
+function RefinedExistingWorkStep({ value, inherited, onChange, onUseFixture, onUseExpandedFixture, onProcess, onContinueWithoutWork }: { value: string; inherited: boolean; onChange: (value: string) => void; onUseFixture: () => void; onUseExpandedFixture: () => void; onProcess: () => void; onContinueWithoutWork: () => void }) {
   return (
     <Card data-testid="existing-work-step">
       <CardHeader>
@@ -243,6 +248,7 @@ function RefinedExistingWorkStep({ value, onChange, onUseFixture, onUseExpandedF
         <CardDescription>Puedes pegar una lista de iniciativas, notas de seguimiento, proyectos, responsables o cualquier información que ya uses. No tiene que estar ordenada.</CardDescription>
       </CardHeader>
       <CardContent>
+        {inherited ? <p className="mb-4 rounded-xl border border-indigo-100 bg-indigo-50/60 p-3 text-sm leading-6 text-slate-700" data-testid="inherited-work-context">Ya encontramos parte del trabajo relacionado. Puedes revisarlo, añadir más información o continuar.</p> : null}
         <p className="text-sm font-semibold text-slate-800">Puedes incluir:</p>
         <ul className="mt-2 grid gap-1 text-sm text-slate-600 sm:grid-cols-2"><li>· iniciativas o proyectos</li><li>· responsables</li><li>· notas de avance</li><li>· bloqueos o dependencias</li><li>· extractos de reportes</li></ul>
         <label htmlFor="portfolio-existing-work" className="mt-5 block text-sm font-semibold text-slate-800">Pegar o escribir lo que ya tienes</label>
@@ -289,17 +295,26 @@ function RefinedProcessingState() {
 
 function RefinedFirstValue({ reading, onReview, onCorrect }: { reading: FirstValueReading; onReview: () => void; onCorrect: () => void }) {
   const [openRationale, setOpenRationale] = useState<string | null>(null);
-  const reviewedCount = reading.initiatives.filter(item => relationshipFor(item.id, item.description) !== 'Relación clara').length;
+  const [showAllInitiatives, setShowAllInitiatives] = useState(false);
+  const exceptions = reading.initiatives.filter(item => relationshipFor(item.id, `${item.name} ${item.description}`) !== 'Relación clara');
+  const clearCount = reading.initiatives.length - exceptions.length;
+  const initiativeRows = showAllInitiatives ? reading.initiatives : exceptions;
   return (
     <section className="space-y-6" data-testid="first-value-narrative">
       <div><h1 className="max-w-3xl text-3xl font-semibold tracking-tight">Esto es lo que entendí</h1><p className="mt-3 max-w-3xl text-lg leading-8 text-slate-700">A partir de lo que compartiste, esta es una primera lectura de tu objetivo y del trabajo que ya existe.</p><p className="mt-3 text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">Basado en lo que compartiste</p></div>
       <Card><CardHeader><CardTitle className="text-xl">Contexto</CardTitle></CardHeader><CardContent><dl className="grid gap-4 sm:grid-cols-3"><div><dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">Objetivo</dt><dd className="mt-1 font-semibold">{reading.detectedGoal}</dd></div><div><dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">Horizonte</dt><dd className="mt-1 font-semibold">{reading.horizon}</dd></div><div><dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">Contexto</dt><dd className="mt-1 text-sm leading-6 text-slate-700">El trabajo actual parece cubrir generación, seguimiento y conversión comercial.</dd></div></dl><p className="mt-4 text-sm text-slate-600" data-testid="initiative-count">{reading.initiatives.length} iniciativas detectadas</p></CardContent></Card>
       <Card className="border-amber-200 bg-amber-50/50"><CardHeader><CardTitle className="text-2xl">Así parece repartirse el trabajo</CardTitle><CardDescription>Esta es una propuesta de Startería. Puedes revisarla antes de convertirla en estructura del portafolio.</CardDescription></CardHeader><CardContent><div className="grid gap-4 md:grid-cols-3">{reading.groups.map(group => <Card key={group.id} className="bg-white"><CardHeader className="p-5"><CardTitle className="text-base">{group.label}</CardTitle><CardDescription>{group.initiativeIds.length} iniciativas</CardDescription></CardHeader><CardContent className="p-5 pt-0"><p className="text-sm text-slate-600">{group.initiativeIds.slice(0, 5).map(id => reading.initiatives.find(item => item.id === id)?.name).join(' · ')}{group.initiativeIds.length > 5 ? ' · …' : ''}</p><button type="button" className="mt-4 inline-flex items-center gap-1 text-sm font-semibold text-slate-800 underline underline-offset-4" onClick={() => setOpenRationale(openRationale === group.id ? null : group.id)} aria-expanded={openRationale === group.id}>¿Por qué las agrupé así? <ChevronDown size={15} /></button>{openRationale === group.id ? <p className="mt-3 border-t border-slate-100 pt-3 text-sm leading-6 text-slate-600" data-testid={`rationale-${group.id}`}>{group.rationale}</p> : null}</CardContent></Card>)}</div></CardContent></Card>
       <Card><CardHeader><CardTitle className="text-xl">Qué merece revisar</CardTitle><CardDescription>Hasta tres señales para que puedas decidir qué mirar primero.</CardDescription></CardHeader><CardContent className="space-y-4" data-testid="review-signals">{reading.signals.slice(0, 3).map(signal => <div key={signal.id} className="border-b border-slate-100 pb-3 last:border-0"><p className="text-sm font-semibold">{signal.label}</p><p className="mt-1 text-sm leading-6 text-slate-600">{signal.detail}</p><p className="mt-2 text-sm leading-6 text-slate-600"><strong>Por qué importa:</strong> {signalWhy(signal.id)}</p><p className="mt-1 text-sm leading-6 text-slate-600"><strong>Qué revisar:</strong> confirma el alcance y la responsabilidad antes de tomar una decisión.</p></div>)}</CardContent></Card>
-      <Card><CardHeader><CardTitle className="text-xl">Cómo se relacionan tus iniciativas con el objetivo</CardTitle><CardDescription>Las {reading.initiatives.length} iniciativas detectadas están contabilizadas aquí. <span data-testid="reconciliation-summary">{reviewedCount > 0 ? `${reviewedCount} necesitan una revisión más cercana.` : 'Todas tienen una relación inicial.'}</span></CardDescription></CardHeader><CardContent><ul className="grid gap-3">{reading.initiatives.map(item => { const state = relationshipFor(item.id, `${item.name} ${item.description}`); return <li key={item.id} className="rounded-lg border border-slate-200 p-4" data-testid="initiative-relationship-row"><div className="flex flex-wrap items-center justify-between gap-2"><p className="font-semibold">{item.name}</p><span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-700">{state}</span></div><p className="mt-2 text-sm leading-6 text-slate-600">{relationshipExplanation(state, item.name)}</p></li>; })}</ul></CardContent></Card>
-      <div className="border-t border-slate-200 pt-6"><p className="mb-4 text-sm text-slate-600">Podrás mover, agrupar o corregir cómo Startería está relacionando el trabajo con tu objetivo.</p><div className="flex flex-wrap items-center gap-3"><Button onClick={onReview} data-testid="relationship-review-cta">Revisar cómo se relaciona <ArrowRight /></Button><Button variant="outline" onClick={onCorrect}>Ajustar esta lectura</Button><Button variant="ghost" onClick={onCorrect}>Añadir más contexto</Button></div></div>
+      {exceptions.length > 1 ? <Card data-testid="post-analysis-question"><CardHeader><CardTitle className="text-xl">Una pregunta para aclarar varias iniciativas</CardTitle><CardDescription>Startería pregunta solo cuando la respuesta pueda cambiar la lectura.</CardDescription></CardHeader><CardContent><p className="text-sm leading-6 text-slate-700">Veo varias iniciativas que podrían responder a una necesidad distinta del objetivo actual. ¿Forman parte explícitamente de esta estrategia o pertenecen a otra prioridad?</p><p className="mt-3 text-xs text-slate-500">Puedes responder ahora o continuar con esta lectura.</p></CardContent></Card> : null}
+      <Card data-testid="relationship-summary"><CardHeader><CardTitle className="text-xl">Cómo se relaciona el trabajo con el objetivo</CardTitle><CardDescription>Startería resume primero y deja el detalle bajo demanda.</CardDescription></CardHeader><CardContent><div className="grid gap-3 sm:grid-cols-3"><SummaryMetric label="Relación clara" value={clearCount} /><SummaryMetric label="Por revisar" value={exceptions.filter(item => ['Por revisar', 'Sin contexto suficiente', 'Relación probable'].includes(relationshipFor(item.id, `${item.name} ${item.description}`))).length} /><SummaryMetric label="Posible mejor encaje" value={exceptions.filter(item => relationshipFor(item.id, `${item.name} ${item.description}`) === 'Posible mejor encaje').length} /></div><p className="mt-4 text-sm leading-6 text-slate-600">{reading.initiatives.length} iniciativas detectadas. Las relaciones claras no requieren acción.</p>{exceptions.length > 0 ? <p className="mt-2 text-sm font-semibold text-amber-800">Revisar primero las {exceptions.length} que necesitan atención.</p> : null}<div className="mt-5 flex flex-wrap gap-3"><Button onClick={() => setShowAllInitiatives(false)} disabled={exceptions.length === 0}>Revisar las {exceptions.length} que necesitan atención</Button><Button variant="outline" onClick={() => setShowAllInitiatives(true)}>Ver las {reading.initiatives.length} iniciativas</Button></div></CardContent></Card>
+      <Card><CardHeader><CardTitle className="text-xl">{showAllInitiatives ? 'Detalle de iniciativas' : 'Excepciones e incertidumbres'}</CardTitle><CardDescription>{showAllInitiatives ? 'Puedes abrir cualquier iniciativa y cambiar la relación si lo necesitas.' : 'Las relaciones claras quedan fuera del primer plano.'}</CardDescription></CardHeader><CardContent><ul className="grid gap-3">{initiativeRows.map(item => { const state = relationshipFor(item.id, `${item.name} ${item.description}`); return <li key={item.id} className="rounded-lg border border-slate-200 p-4" data-testid="initiative-relationship-row"><div className="flex flex-wrap items-center justify-between gap-2"><p className="font-semibold">{item.name}</p><span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-700">{state}</span></div><p className="mt-2 text-sm leading-6 text-slate-600">{relationshipExplanation(state, item.name)}</p><div className="mt-3 flex gap-3 text-sm"><button type="button" className="font-semibold underline underline-offset-4">Ver por qué</button><button type="button" className="font-semibold underline underline-offset-4">Cambiar relación</button></div></li>; })}</ul>{initiativeRows.length === 0 ? <p className="text-sm text-slate-600">No hay excepciones que revisar ahora.</p> : null}</CardContent></Card>
+      <div className="border-t border-slate-200 pt-6"><p className="mb-4 text-sm text-slate-600">La autoridad humana ocurre sobre esta lectura y su estructura, no iniciativa por iniciativa.</p><div className="flex flex-wrap items-center gap-3"><Button onClick={onReview} data-testid="relationship-review-cta">Continuar con esta lectura <ArrowRight /></Button><Button variant="outline" onClick={onCorrect}>Añadir contexto o corregir</Button></div></div>
     </section>
   );
+}
+
+function SummaryMetric({ label, value }: { label: string; value: number }) {
+  return <div className="rounded-xl border border-slate-200 bg-slate-50 p-4"><p className="text-2xl font-semibold text-slate-950">{value}</p><p className="mt-1 text-sm text-slate-600">{label}</p></div>;
 }
 
 function NextSliceBoundary({ onBack }: { onBack: () => void }) {

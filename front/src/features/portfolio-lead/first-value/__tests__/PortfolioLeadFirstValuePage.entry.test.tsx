@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { PortfolioLeadFirstValuePage } from '../PortfolioLeadFirstValuePage';
 
@@ -30,5 +30,8 @@ describe('PortfolioLeadFirstValuePage — Entry continuation', () => {
     expect(screen.getByTestId('portfolio-entry-setup-context')).toHaveTextContent('Trajimos el contexto que compartiste al entrar.');
     expect(screen.getByText('Ordenar las iniciativas')).toBeInTheDocument();
     expect(screen.getByText(/información compartida anteriormente/i)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /Preparar mi espacio/i }));
+    expect(screen.queryByLabelText(/Qué quieres conseguir/i)).not.toBeInTheDocument();
+    expect(screen.getByText(/Añade lo que ya existe alrededor de este objetivo/i)).toBeInTheDocument();
   });
 });

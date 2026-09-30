@@ -12,6 +12,8 @@ export type PortfolioHomeEntryContext = {
     laterWork: string[];
     organizationalUnknowns: string[];
     nextStep: string;
+    /** Optional work excerpt supplied by Portfolio Entry when available. */
+    existingWork?: string | null;
   };
 };
 

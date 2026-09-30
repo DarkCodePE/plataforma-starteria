@@ -22,10 +22,12 @@ describe('PortfolioLeadFirstValuePage', () => {
     fireEvent.click(screen.getByTestId('use-novagrowth-expanded-fixture'));
     fireEvent.click(screen.getByRole('button', { name: /Ayúdame a ordenar esto/i }));
     await waitFor(() => expect(screen.getByTestId('first-value-narrative')).toBeInTheDocument());
-    expect(screen.getByText(/24 iniciativas detectadas están contabilizadas aquí/)).toBeInTheDocument();
-    expect(screen.getAllByTestId('initiative-relationship-row')).toHaveLength(24);
+    expect(screen.getByTestId('initiative-count')).toHaveTextContent('24 iniciativas detectadas');
+    expect(screen.getAllByTestId('initiative-relationship-row')).toHaveLength(2);
     expect(screen.getAllByText('Posible mejor encaje').length).toBeGreaterThan(0);
-    expect(screen.getByRole('button', { name: /Revisar cómo se relaciona/i })).toBeVisible();
+    fireEvent.click(screen.getByRole('button', { name: /Ver las 24 iniciativas/i }));
+    expect(screen.getAllByTestId('initiative-relationship-row')).toHaveLength(24);
+    expect(screen.getByRole('button', { name: /Continuar con esta lectura/i })).toBeVisible();
   });
 
   it('emits the local first-value events without an analytics provider', async () => {
@@ -34,7 +36,7 @@ describe('PortfolioLeadFirstValuePage', () => {
     enterNovaGrowth();
     await waitFor(() => expect(screen.getByTestId('first-value-narrative')).toBeInTheDocument());
     fireEvent.click(screen.getAllByRole('button', { name: /¿Por qué las agrupé así/i })[0]);
-    fireEvent.click(screen.getByRole('button', { name: /Ajustar esta lectura/i }));
+    fireEvent.click(screen.getByRole('button', { name: /Añadir contexto o corregir/i }));
     const names = getPortfolioSetupEvents().map(event => event.name);
     expect(names).toEqual(expect.arrayContaining(['portfolio_setup_started', 'portfolio_goal_submitted', 'portfolio_existing_work_submitted', 'portfolio_first_value_rendered', 'portfolio_interpretation_corrected']));
   });
@@ -48,8 +50,9 @@ describe('PortfolioLeadFirstValuePage', () => {
     expect(screen.getByText('Esto es lo que entendí')).toBeInTheDocument();
     expect(screen.getByText('Así parece repartirse el trabajo')).toBeInTheDocument();
     expect(screen.getByText('Qué merece revisar')).toBeInTheDocument();
-    expect(screen.getByText('Cómo se relacionan tus iniciativas con el objetivo')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /Revisar cómo se relaciona/i })).toBeInTheDocument();
+    expect(screen.getByText('Cómo se relaciona el trabajo con el objetivo')).toBeInTheDocument();
+    expect(screen.getByTestId('post-analysis-question')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Continuar con esta lectura/i })).toBeInTheDocument();
   });
 
   it('personalizes the welcome and opens Copilot in first-time mode', async () => {
@@ -68,6 +71,7 @@ describe('PortfolioLeadFirstValuePage', () => {
     expect(screen.getByTestId('adaptive-context-checkpoint')).toBeInTheDocument();
     fireEvent.change(screen.getByLabelText(/Qué quieres conseguir/i), { target: { value: 'Aumentar ventas B2B' } });
     fireEvent.click(screen.getByRole('button', { name: /Continuar/i }));
+    expect(screen.queryByText(/¿Quieres afinar esta lectura|me falta entender/i)).not.toBeInTheDocument();
     expect(screen.getByText(/Añade lo que ya existe alrededor de este objetivo/i)).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: /No tengo nada organizado todavía/i }));
     await waitFor(() => expect(screen.getByTestId('first-value-narrative')).toBeInTheDocument());
@@ -82,7 +86,7 @@ describe('PortfolioLeadFirstValuePage', () => {
     expect(screen.getByTestId('rationale-generate-opportunities')).toBeInTheDocument();
     expect(screen.getAllByText(/Basado en lo que compartiste/i).length).toBeGreaterThan(0);
     expect(screen.queryByText(/alignment score|porcentaje|ranking/i)).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: /Revisar cómo se relaciona/i }));
+    fireEvent.click(screen.getByRole('button', { name: /Continuar con esta lectura/i }));
     expect(screen.getByTestId('relationship-review-boundary')).toBeInTheDocument();
     expect(screen.getByText(/Ya completaste la primera parte/i)).toBeInTheDocument();
     expect(screen.queryByText(/NEXT_SLICE_PLACEHOLDER|siguiente slice/i)).not.toBeInTheDocument();
