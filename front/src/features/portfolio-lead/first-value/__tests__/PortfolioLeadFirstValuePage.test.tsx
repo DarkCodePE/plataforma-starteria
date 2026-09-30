@@ -35,13 +35,22 @@ describe('PortfolioLeadFirstValuePage', () => {
     fireEvent.click(screen.getAllByRole('button', { name: /Añadir contexto/i })[0]);
     fireEvent.change(screen.getByLabelText(/Contexto sobre/i), { target: { value: 'El equipo ya confirmó su relación con ventas.' } });
     fireEvent.click(screen.getByRole('button', { name: /Guardar contexto/i }));
-    expect(screen.getAllByRole('status').some(status => status.textContent?.includes('Contexto añadido: El equipo ya confirmó su relación con ventas.'))).toBe(true);
+    expect(screen.getAllByRole('status').some(status => status.textContent?.includes('Contexto guardado: El equipo ya confirmó su relación con ventas.'))).toBe(true);
+    fireEvent.click(screen.getAllByRole('button', { name: /Mantener en este objetivo/i })[0]);
+    expect(screen.getByTestId('relationship-summary')).toHaveTextContent('23Contribuyen directamente');
     fireEvent.click(screen.getAllByRole('button', { name: /Marcar para revisar después/i })[0]);
     expect(screen.getAllByRole('status').some(status => status.textContent?.includes('Marcada para revisar después.'))).toBe(true);
     fireEvent.click(screen.getByRole('button', { name: /Ver las 24 iniciativas/i }));
     expect(screen.getAllByTestId('initiative-relationship-row')).toHaveLength(24);
     expect(screen.queryByRole('button', { name: /Mantener en este objetivo/i })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Continuar con esta lectura/i })).toBeVisible();
+    fireEvent.click(screen.getByRole('button', { name: /Continuar con esta lectura/i }));
+    expect(screen.getByTestId('global-reading-confirmation')).toHaveTextContent('El equipo ya confirmó su relación con ventas.');
+    expect(screen.getByTestId('global-reading-confirmation')).toHaveTextContent('1 iniciativa(s) marcada(s) para revisar después.');
+    fireEvent.click(screen.getByRole('button', { name: /Seguir ajustando/i }));
+    expect(screen.getByTestId('relationship-summary')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /Continuar con esta lectura/i }));
+    expect(screen.getByTestId('global-reading-confirmation')).toHaveTextContent('El equipo ya confirmó su relación con ventas.');
   });
 
   it('emits the local first-value events without an analytics provider', async () => {
@@ -113,8 +122,26 @@ describe('PortfolioLeadFirstValuePage', () => {
     fireEvent.click(screen.getByRole('button', { name: /Guardar aclaración/i }));
 
     expect(screen.getByTestId('reading-clarification')).toHaveTextContent('Las tres iniciativas forman parte del objetivo de ventas B2B.');
+    expect(screen.getByTestId('relationship-summary')).toHaveTextContent('7Contribuyen directamente');
+    expect(screen.getByTestId('clarification-impact')).toHaveTextContent('Pricing Pilot, Channel Partners, Checkout Optimizer');
     fireEvent.click(screen.getByRole('button', { name: /Continuar con esta lectura/i }));
     expect(screen.getByTestId('global-reading-confirmation')).toHaveTextContent('Las tres iniciativas forman parte del objetivo de ventas B2B.');
+    expect(screen.getByTestId('global-reading-confirmation')).toHaveTextContent('7 contribuyen directamente');
+    fireEvent.click(screen.getByRole('button', { name: /Seguir ajustando/i }));
+    expect(screen.getByTestId('relationship-summary')).toHaveTextContent('7Contribuyen directamente');
+  });
+
+  it('classifies a negative answer that places the grouped initiatives in another priority', async () => {
+    render(<PortfolioLeadFirstValuePage />);
+    await enterNovaGrowth();
+    await screen.findByTestId('post-analysis-question');
+    fireEvent.change(screen.getByLabelText(/Tu aclaración/i), { target: { value: 'No, todas pertenecen a otra prioridad.' } });
+    fireEvent.click(screen.getByRole('button', { name: /Guardar aclaración/i }));
+
+    expect(screen.getByTestId('relationship-summary')).toHaveTextContent('4Contribuyen directamente');
+    expect(screen.getByTestId('relationship-summary')).toHaveTextContent('3Podrían responder mejor a otra prioridad');
+    fireEvent.click(screen.getByRole('button', { name: /Continuar con esta lectura/i }));
+    expect(screen.getByTestId('global-reading-confirmation')).toHaveTextContent('4 contribuyen directamente, 0 necesitan más contexto y 3 podrían responder mejor a otra prioridad');
   });
 
   it('personalizes the welcome and opens Copilot in first-time mode', async () => {
