@@ -3,98 +3,88 @@ import { describe, expect, it } from 'vitest';
 import { PortfolioLeadFirstValuePage } from '../PortfolioLeadFirstValuePage';
 import { getPortfolioSetupEvents, resetPortfolioSetupEvents } from '../prototypeInstrumentation';
 
-describe('PortfolioLeadFirstValuePage', () => {
-  it('keeps focused setup content legible for NovaGrowthExpanded without rendering 24 cards', async () => {
-    render(<PortfolioLeadFirstValuePage />);
-    fireEvent.click(screen.getByRole('button', { name: /Preparar mi espacio/i }));
-    fireEvent.change(screen.getByLabelText(/Qué quieres conseguir/i), { target: { value: '200 nuevas ventas B2B en Q4' } });
-    fireEvent.click(screen.getByRole('button', { name: /Continuar/i }));
-    fireEvent.click(screen.getByRole('button', { name: /NovaGrowthExpanded/i }));
-    fireEvent.click(screen.getByRole('button', { name: /Ayúdame a ordenar esto/i }));
+function enterGoal() {
+  fireEvent.click(screen.getByRole('button', { name: /Preparar mi espacio/i }));
+  fireEvent.change(screen.getByLabelText(/Qué quieres conseguir/i), { target: { value: '200 nuevas ventas B2B en Q4' } });
+  fireEvent.click(screen.getByRole('button', { name: /Continuar/i }));
+}
 
-    await waitFor(() => expect(screen.getByTestId('first-analytical-value')).toBeInTheDocument());
-    expect(screen.getByTestId('initiative-count')).toHaveTextContent('24 iniciativas');
-    expect(screen.getByTestId('expanded-inventory-summary')).toBeInTheDocument();
-    expect(screen.getByTestId('first-analytical-value').querySelectorAll('li')).toHaveLength(0);
-    expect(screen.getByTestId('review-signals').querySelectorAll('div.border-b')).toHaveLength(3);
+function enterNovaGrowth() {
+  enterGoal();
+  fireEvent.click(screen.getByRole('button', { name: /Usar ejemplo NovaGrowth/i }));
+  fireEvent.click(screen.getByRole('button', { name: /Ayúdame a ordenar esto/i }));
+}
+
+describe('PortfolioLeadFirstValuePage', () => {
+  it('reconciles every detected initiative, including the expanded reading', async () => {
+    render(<PortfolioLeadFirstValuePage />);
+    enterGoal();
+    fireEvent.click(screen.getByTestId('use-novagrowth-expanded-fixture'));
+    fireEvent.click(screen.getByRole('button', { name: /Ayúdame a ordenar esto/i }));
+    await waitFor(() => expect(screen.getByTestId('first-value-narrative')).toBeInTheDocument());
+    expect(screen.getByText(/24 iniciativas detectadas están contabilizadas aquí/)).toBeInTheDocument();
+    expect(screen.getAllByTestId('initiative-relationship-row')).toHaveLength(24);
+    expect(screen.getAllByText('Posible mejor encaje').length).toBeGreaterThan(0);
     expect(screen.getByRole('button', { name: /Revisar cómo se relaciona/i })).toBeVisible();
   });
 
-  it('emits the local prototype events without an analytics provider', async () => {
+  it('emits the local first-value events without an analytics provider', async () => {
     resetPortfolioSetupEvents();
     render(<PortfolioLeadFirstValuePage />);
-    fireEvent.click(screen.getByRole('button', { name: /Preparar mi espacio/i }));
-    fireEvent.change(screen.getByLabelText(/Qué quieres conseguir/i), { target: { value: '200 nuevas ventas B2B en Q4' } });
-    fireEvent.click(screen.getByRole('button', { name: /Continuar/i }));
-    fireEvent.click(screen.getByRole('button', { name: /Usar ejemplo NovaGrowth/i }));
-    fireEvent.click(screen.getByRole('button', { name: /Ayúdame a ordenar esto/i }));
-    await waitFor(() => expect(screen.getByTestId('first-analytical-value')).toBeInTheDocument());
-    fireEvent.click(screen.getAllByRole('button', { name: /¿Por qué/i })[0]);
-    fireEvent.click(screen.getByRole('button', { name: /Corregir lo que entendió/i }));
+    enterNovaGrowth();
+    await waitFor(() => expect(screen.getByTestId('first-value-narrative')).toBeInTheDocument());
+    fireEvent.click(screen.getAllByRole('button', { name: /¿Por qué las agrupé así/i })[0]);
+    fireEvent.click(screen.getByRole('button', { name: /Ajustar esta lectura/i }));
     const names = getPortfolioSetupEvents().map(event => event.name);
-    expect(names).toEqual(expect.arrayContaining([
-      'portfolio_setup_started',
-      'portfolio_goal_submitted',
-      'portfolio_existing_work_submitted',
-      'portfolio_first_value_rendered',
-      'portfolio_rationale_opened',
-      'portfolio_interpretation_corrected',
-    ]));
+    expect(names).toEqual(expect.arrayContaining(['portfolio_setup_started', 'portfolio_goal_submitted', 'portfolio_existing_work_submitted', 'portfolio_first_value_rendered', 'portfolio_interpretation_corrected']));
   });
 
-  it('guides a Portfolio Lead from first visit to First Analytical Value', async () => {
+  it('guides a Portfolio Lead from first visit through the narrative reading', async () => {
     render(<PortfolioLeadFirstValuePage />);
-
     expect(screen.getByRole('button', { name: /Preparar mi espacio/i })).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: /Preparar mi espacio/i }));
-
-    fireEvent.change(screen.getByLabelText(/Qué quieres conseguir/i), {
-      target: { value: 'Dirección quiere conseguir 200 nuevas ventas B2B este trimestre.' },
-    });
-    fireEvent.click(screen.getByRole('button', { name: /Continuar/i }));
-    expect(screen.getByText(/Ahora añade el trabajo que ya existe/i)).toBeInTheDocument();
-
-    fireEvent.click(screen.getByRole('button', { name: /Usar ejemplo NovaGrowth/i }));
-    fireEvent.click(screen.getByRole('button', { name: /Ayúdame a ordenar esto/i }));
-
-    await waitFor(() => expect(screen.getByTestId('first-analytical-value')).toBeInTheDocument());
+    enterNovaGrowth();
+    await waitFor(() => expect(screen.getByTestId('first-value-narrative')).toBeInTheDocument());
     expect(screen.getByTestId('initiative-count')).toHaveTextContent('7 iniciativas');
-    expect(screen.getByTestId('owner-count')).toHaveTextContent('5');
-    expect(screen.getByText(/Parece haber tres formas principales/i)).toBeInTheDocument();
-    expect(screen.getByTestId('review-signals').querySelectorAll('div.border-b')).toHaveLength(3);
-    expect(screen.getByText(/Tu guía de inicio · 2 de 5/i)).toBeInTheDocument();
+    expect(screen.getByText('Esto es lo que entendí')).toBeInTheDocument();
+    expect(screen.getByText('Así parece repartirse el trabajo')).toBeInTheDocument();
+    expect(screen.getByText('Qué merece revisar')).toBeInTheDocument();
+    expect(screen.getByText('Cómo se relacionan tus iniciativas con el objetivo')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Revisar cómo se relaciona/i })).toBeInTheDocument();
   });
 
-  it('personaliza la bienvenida y abre el Copilot en modo first-time', async () => {
+  it('personalizes the welcome and opens Copilot in first-time mode', async () => {
     render(<PortfolioLeadFirstValuePage firstName="Lucía" />);
-
     expect(screen.getByText('Hola, Lucía.')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /Preparar mi espacio/i })).toBeInTheDocument();
-    expect(screen.getByText(/Define qué quieres conseguir/i)).toBeInTheDocument();
-
-    fireEvent.click(screen.getByRole('button', { name: /Preguntar a Startería/i }));
-
+    expect(screen.getByRole('button', { name: /Ayúdame a definir qué quiero conseguir/i })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /Ayúdame a definir qué quiero conseguir/i }));
     expect(await screen.findByText(/Cuéntame qué quieres conseguir y te ayudo a ordenarlo/i)).toBeInTheDocument();
-    expect(screen.getByPlaceholderText(/Cuéntame qué quieres conseguir/i)).toBeInTheDocument();
+    expect(screen.getByText(/Soy el asistente de Startería/i)).toBeInTheDocument();
     expect(screen.queryByText(/Crear un reto/i)).not.toBeInTheDocument();
   });
 
-  it('opens rationale, exposes provenance, and stops at the next-slice boundary', async () => {
+  it('offers adaptive context and a no-file continuation path', async () => {
     render(<PortfolioLeadFirstValuePage />);
     fireEvent.click(screen.getByRole('button', { name: /Preparar mi espacio/i }));
-    fireEvent.change(screen.getByLabelText(/Qué quieres conseguir/i), { target: { value: '200 nuevas ventas B2B en Q4' } });
+    expect(screen.getByTestId('adaptive-context-checkpoint')).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText(/Qué quieres conseguir/i), { target: { value: 'Aumentar ventas B2B' } });
     fireEvent.click(screen.getByRole('button', { name: /Continuar/i }));
-    fireEvent.click(screen.getByRole('button', { name: /Usar ejemplo NovaGrowth/i }));
-    fireEvent.click(screen.getByRole('button', { name: /Ayúdame a ordenar esto/i }));
+    expect(screen.getByText(/Añade lo que ya existe alrededor de este objetivo/i)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /No tengo nada organizado todavía/i }));
+    await waitFor(() => expect(screen.getByTestId('first-value-narrative')).toBeInTheDocument());
+    expect(screen.getByText('0 iniciativas detectadas')).toBeInTheDocument();
+  });
 
-    await waitFor(() => expect(screen.getByTestId('first-analytical-value')).toBeInTheDocument());
-    fireEvent.click(screen.getAllByRole('button', { name: /¿Por qué/i })[0]);
+  it('shows provenance once and ends at a clean boundary before P4', async () => {
+    render(<PortfolioLeadFirstValuePage />);
+    enterNovaGrowth();
+    await waitFor(() => expect(screen.getByTestId('first-value-narrative')).toBeInTheDocument());
+    fireEvent.click(screen.getAllByRole('button', { name: /¿Por qué las agrupé así/i })[0]);
     expect(screen.getByTestId('rationale-generate-opportunities')).toBeInTheDocument();
-    expect(screen.getAllByText(/Encontrado en la información/i).length).toBeGreaterThan(0);
-
+    expect(screen.getAllByText(/Basado en lo que compartiste/i).length).toBeGreaterThan(0);
+    expect(screen.queryByText(/alignment score|porcentaje|ranking/i)).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: /Revisar cómo se relaciona/i }));
-    expect(screen.getByTestId('next-slice-placeholder')).toBeInTheDocument();
-    expect(screen.getByText(/no se han implementado aún la Relationship Review/i)).toBeInTheDocument();
+    expect(screen.getByTestId('relationship-review-boundary')).toBeInTheDocument();
+    expect(screen.getByText(/Ya completaste la primera parte/i)).toBeInTheDocument();
+    expect(screen.queryByText(/NEXT_SLICE_PLACEHOLDER|siguiente slice/i)).not.toBeInTheDocument();
   });
 });

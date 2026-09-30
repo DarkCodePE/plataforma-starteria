@@ -110,6 +110,7 @@ export function PortfolioCopilotDrawer({
               <section aria-label="Orientación inicial de Copilot" className="space-y-4">
                 <div>
                   <p className="text-xs uppercase text-slate-500" style={{ fontWeight: 700 }}>Primeros pasos</p>
+                  <p className="mt-3 text-sm leading-6 text-slate-600">Soy el asistente de Startería. Puedo ayudarte a aclarar el objetivo, ordenar lo que ya tienes y entender qué falta antes de estructurar el portafolio.</p>
                   <h2 className="mt-1 text-2xl text-slate-950" style={{ fontWeight: 800 }}>Cuéntame qué quieres conseguir y te ayudo a ordenarlo.</h2>
                   <p className="mt-2 text-sm leading-6 text-slate-600">También puedes contarme qué información tienes hoy. Startería te ayudará a entenderla antes de introducir estructura.</p>
                 </div>
