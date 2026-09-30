@@ -112,6 +112,44 @@ esta aprobación sólo cubre la slice descrita y no certifica Starteria V2 compl
 
 ---
 
+# 2.2 Slice KAN-64_PUBLIC_LANDING_L1_PRODUCT_FRAMING_HERO
+
+**Registrado:** 2026-09-30 por HU autorizada KAN-64; habilitaciÃ³n sujeta a guardrail.
+
+```text
+slice_id: KAN-64_PUBLIC_LANDING_L1_PRODUCT_FRAMING_HERO
+HU: KAN-64
+slice: Public Landing - L1 Product Framing & Hero
+surface: /
+logic_status: ACTIVE_V2_BASELINE (framing aprobado por ADR-006; sin cambio de lÃ³gica Core o Portfolio Entry)
+implementation_status: PARTIAL_IMPLEMENTATION (Landing existente; framing L1 objetivo no implementado)
+visual_status: V2_TARGET_DEFINED
+evidence_status: OBSERVED (frontend current-state audit)
+semantic_owner: Public Landing V2
+portfolio_entry_semantic_owner: UNCHANGED (Portfolio Entry V2)
+authority: doc/product-adr/ADR-006-landing-and-portfolio-entry-separation.md
+           docs/experience/public-landing/STARTERIA_PUBLIC_LANDING_UX_SPEC_v0.1.md
+           docs/implementation/public-landing/STARTERIA_PUBLIC_LANDING_FRONTEND_CURRENT_STATE_AUDIT_v0.1.md
+           docs/design-system/STARTERIA_PUBLIC_LANDING_PORTFOLIO_ENTRY_CONTINUATION_ARCHITECTURE_v0.1.md
+           docs/experience/portfolio-entry/PORTFOLIO_ENTRY_ACCEPTANCE_CHECKLIST_v0.1.md
+core_impact: NONE
+step_impact: NONE (Steps 0-4 and Adaptive Cycle unchanged)
+public_start_runtime_impact: NONE (/public/start runtime unchanged)
+early_access_demo_runtime: NOT_AUTHORIZED
+implementation_status_note: AUTHORIZED SUBJECT TO V2_CHANGE_GUARDRAIL_CHECK; this record does not authorize work outside the KAN-64 L1 scope
+scope: Hero and above-the-fold framing; headline/subcopy; basic illustrative Starteria platform model; Portfolio Entry repositioned as an option; reuse PlatformStructure when compatible per audit; strictly necessary L1 tests
+excluded: Early Access/Demo runtime or routes; Pilot; backend/API/persistence; Email/Calendar/CRM; commercial routes; /public/start internals; Clarification; Handoff; Agent/Skills; Auth; Core; Steps 0-4; Adaptive Cycle
+entry_boundary: public route /
+exit_boundary: existing Portfolio Entry entry path only; no new commercial destination
+legacy_dependencies: LandingPage currently embeds PortfolioEntryExperience; retain its domain behavior and preserve /public/start; local PlatformStructure is presentation-only and requires audit-confirmed compatibility
+adapter_required: NO (presentation-only adaptation; no domain/API adapter authorized)
+tests_protecting_current_behavior: PortfolioEntryExperience.test.tsx; routes.public-entry.test.tsx; public-start E2E coverage (see frontend current-state audit)
+```
+
+Portfolio Entry conserva su autoridad semÃ¡ntica y comportamiento; esta slice cambia el framing de
+la superficie `/` y no altera la ruta directa `/public/start`. Los caminos de Early Access y Demo,
+incluida cualquier ruta o comportamiento runtime, no estÃ¡n autorizados por KAN-64.
+
 # 3. Jerarquía de autoridad objetivo
 
 ```text
@@ -326,6 +364,7 @@ HYP-004 Program / accelerator support experience
 | Authority / Governance | ACTIVE_V2_BASELINE but stale index | IMPLEMENTED | NOT_APPLICABLE | SUPPORTED | UPDATE |
 | Core | v0.2 factual current / v0.3 external reconciliation candidate | PARTIAL / PRODUCTIVE dependencies | NOT_APPLICABLE | REQUIRES_RETEST | KEEP v0.2 + ADR/re-test candidate |
 | Crazy 8s E2E | ACTIVE_V2_BASELINE / reference | NOT_APPLICABLE | NOT_APPLICABLE | SUPPORTED | KEEP |
+| Public Landing - L1 Product Framing & Hero (KAN-64) | ACTIVE_V2_BASELINE (ADR-006) | PARTIAL_IMPLEMENTATION; L1 not implemented | V2_TARGET_DEFINED | OBSERVED | AUTHORIZED SUBJECT TO GUARDRAIL; Early Access/Demo runtime excluded |
 | Landing V4 | ACTIVE_V2_BASELINE visual spec | VERIFY_IN_REPO | V2_TARGET_DEFINED | SUPPORTED | RECONCILE |
 | Portfolio Entry logic | ACTIVE_V2_BASELINE | PARTIAL_IMPLEMENTATION | V2_PILOT / VERIFY | SUPPORTED | PROMOTE STACK |
 | Clarification | CANDIDATE + hypotheses | EXPERIMENTAL / VERIFY | V2_PILOT | TESTING | TEST |
