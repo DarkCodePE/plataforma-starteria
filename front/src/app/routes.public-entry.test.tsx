@@ -99,8 +99,10 @@ describe('public entry routing', () => {
     render(<LandingPage />);
 
     expect(screen.getByRole('heading', {
-      name: /Convierte iniciativas dispersas en decisiones conectadas al negocio/i,
+      name: /Convierte estrategia e iniciativas en decisiones sustentadas/i,
     })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /Todavía no tienes claro por dónde empezar/i })).toBeInTheDocument();
+    expect(screen.getByText('Cómo Starteria conecta el trabajo')).toBeInTheDocument();
     expect(screen.getAllByRole('button', { name: /Analizar mi situaci[oó]n/i }).length).toBeGreaterThan(0);
     expect(screen.queryByText(/Crear pre proyecto/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/proposal editor/i)).not.toBeInTheDocument();

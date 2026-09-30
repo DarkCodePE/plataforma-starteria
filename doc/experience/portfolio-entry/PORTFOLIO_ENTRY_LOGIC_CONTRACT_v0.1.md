@@ -4,8 +4,9 @@
 **Versión:** v0.1
 **Estado:** APROBADO COMO BASE DE EXPERIENCIA PARA AUDITORÍA E IMPLEMENTACIÓN
 **Fecha de baseline:** 2026-09-09
+**Revisión documental:** 2026-09-30 — alineación de framing con ADR-006 ACCEPTED
 **Tipo:** Experience Logic Contract
-**Vertical slice:** Pantalla 1 — Portfolio Entry / Landing pública
+**Vertical slice:** Portfolio Entry público / orientación pre-Core
 **Usuario prioritario:** Portfolio Lead funcional
 
 ## 0. Autoridad
@@ -29,9 +30,17 @@ Si una implementación contradice este contrato o una autoridad superior, el con
 
 # 1. Propósito
 
-Permitir que un Portfolio Lead potencial comience desde su realidad, expresada en lenguaje natural, y que Starteria convierta esa entrada en una **interpretación provisional, estructurada y trazable** suficiente para alimentar Pantalla 2, sin crear todavía estructura corporativa canónica.
+Permitir que una persona que todavía no tiene suficientemente claro su objetivo, necesidad, problema,
+oportunidad, iniciativa, solución o decisión comience desde su realidad, expresada en lenguaje natural,
+y que Starteria convierta esa entrada en una **interpretación provisional, estructurada y trazable**
+suficiente para alimentar Clarification y el handoff vigente, sin crear todavía estructura corporativa
+canónica.
 
-Pantalla 1 debe demostrar:
+Portfolio Entry es una experiencia pública opcional de orientación. No representa todo Starteria ni es
+la única forma de acceder, evaluar o comprender la plataforma. La Landing de Starteria debe poder
+explicar el producto y ofrecer caminos directos de early access y demo sin exigir esta orientación.
+
+Portfolio Entry debe demostrar:
 
 1. que Starteria entiende lenguaje de negocio sin exigir su taxonomía;
 2. que puede detectar desde qué estado entra el usuario;
@@ -56,11 +65,15 @@ El usuario no debe seleccionar un cargo para poder empezar.
 
 ---
 
-# 3. Job de Pantalla 1
+# 3. Job de Portfolio Entry
 
-> Permitir al usuario explicar qué necesita conseguir o entender y transformar ese input en una interpretación provisional y trazable que permita continuar el diagnóstico.
+> Ayudar al usuario a ordenar su punto de partida cuando todavía no tiene claro por dónde empezar.
 
-Pantalla 1 responde:
+El usuario puede explicar qué necesita conseguir, resolver o entender. Portfolio Entry transforma ese
+input en una interpretación provisional y trazable que permita continuar la aclaración y decidir una
+continuación posible.
+
+Portfolio Entry responde:
 
 > ¿Desde qué situación está entrando este usuario y qué sabemos realmente a partir de lo que declaró?
 
@@ -76,15 +89,32 @@ ni:
 
 # 4. Promesa visible
 
-## Headline
+## Headline conceptual
 
-**Convierte tus iniciativas en decisiones conectadas al negocio.**
+**¿Todavía no tienes claro por dónde empezar?**
 
 ## Pregunta principal
 
-**¿Qué necesitas conseguir o entender de tus iniciativas?**
+**¿Qué necesitas conseguir, resolver o entender?**
 
-## Marco de valor
+## Promesa de valor conceptual
+
+> Cuéntanos qué necesitas conseguir, resolver o entender. Starteria te ayudará a ordenar tu punto de
+> partida, identificar qué conviene aclarar y mostrarte una posible ruta para avanzar.
+
+## CTA conceptual
+
+**Ayúdame a ordenar mi situación**
+
+## Microcopy
+
+**No necesitas registrarte para usar esta primera orientación.**
+
+El wording exacto de headline, promesa, CTA y microcopy permanece experimental. Lo que queda congelado
+es la semántica: Portfolio Entry orienta y ordena el punto de partida; no es Starteria completo ni
+canonicaliza contexto.
+
+## Marco de valor de Portfolio Entry
 
 `ALINEAR → DETECTAR → SEGUIR → DECIDIR`
 
@@ -120,7 +150,20 @@ Una inferencia sigue siendo inferencia hasta confirmación humana cuando corresp
 
 ## PE-07 — Solo información necesaria para continuar
 
-Pantalla 1 no es onboarding, assessment exhaustivo ni formulario largo.
+Portfolio Entry no es onboarding, assessment exhaustivo ni formulario largo.
+
+## PE-LANDING-01 — Portfolio Entry no es la única puerta visible
+
+Portfolio Entry **MUST NOT** be the only visible path to access, evaluate or understand Starteria.
+
+La experiencia pública debe mantener visibles, como caminos independientes, al menos:
+
+- Landing → solicitar early access;
+- Landing → agendar una demo de Starteria;
+- Landing → Portfolio Entry para quien necesita ordenar su situación.
+
+Portfolio Entry no puede presentarse como paso obligatorio para comprender Starteria ni como sustituto
+de la Landing, del workspace o de la propuesta de valor de la plataforma.
 
 ---
 
@@ -128,11 +171,11 @@ Pantalla 1 no es onboarding, assessment exhaustivo ni formulario largo.
 
 ## In scope
 
-- landing pública;
-- propuesta de valor;
+- orientación pública de Portfolio Entry, alcanzable desde la Landing;
+- propuesta de valor específica de Portfolio Entry;
 - textarea libre;
 - ejemplos/chips;
-- CTA `Analizar mi situación`;
+- CTA conceptual `Ayúdame a ordenar mi situación`;
 - persistencia provisional;
 - detección de intención;
 - detección de estado de entrada;
@@ -145,6 +188,9 @@ Pantalla 1 no es onboarding, assessment exhaustivo ni formulario largo.
 
 ## Out of scope
 
+- explicar por sí solo todo Starteria;
+- ser el único camino visible a early access, demo o comprensión del producto;
+- definir o implementar los destinos de early access o demo;
 - creación de Organization;
 - creación de StrategicFront;
 - creación de Challenge;
@@ -537,6 +583,31 @@ y Pantalla 2 puede recibir:
 
 La transición no crea objetos canónicos.
 
+El contrato vigente de Clarification + Handoff continúa gobernando la lectura de situación,
+`recommended_approach`, `unresolved_context`, `gap_resolution_map`, `starteria_path` y
+`recommended_cta`. El Handoff representa únicamente la transición desde esta orientación hacia una
+continuación posible; no representa el producto completo ni reemplaza la Landing o el workspace de
+Starteria.
+
+## 22.1 Rutas públicas permitidas
+
+La separación de responsabilidades se expresa conceptualmente así:
+
+```text
+Landing
+  ├── Early Access
+  ├── Demo Starteria
+  └── Portfolio Entry
+        → Clarification
+        → Handoff
+        → Continuation
+             ├── Early Access
+             └── Demo Starteria
+```
+
+Early access y demo son destinos de conversión o continuación. No equivalen a canonicalización de
+negocio, registro de autoridad ni entrada a Step 0.
+
 ---
 
 # 23. Casos mínimos
@@ -648,11 +719,15 @@ No requieren ADR:
 # 26. Definition of Done
 
 ## UX
-- [ ] headline Portfolio Lead;
+- [ ] Portfolio Entry se presenta como orientación opcional y pre-Core;
+- [ ] la Landing puede explicar Starteria sin depender de Portfolio Entry;
+- [ ] existen caminos conceptuales directos a early access y demo desde Landing;
+- [ ] headline de Portfolio Entry alineado con ordenar el punto de partida;
 - [ ] pregunta principal correcta;
 - [ ] input en lenguaje natural;
 - [ ] ejemplos editables;
-- [ ] CTA `Analizar mi situación`;
+- [ ] CTA conceptual `Ayúdame a ordenar mi situación`;
+- [ ] microcopy de orientación sin registro;
 - [ ] preview marcada como ejemplo;
 - [ ] no upload público.
 
@@ -708,7 +783,14 @@ No requieren ADR:
 
 # 27. Principio final
 
-> Pantalla 1 no estructura todavía el portafolio del usuario. Estructura suficientemente su entrada para que Starteria pueda empezar a razonar con él sin confundir interpretación con verdad organizacional.
+> Portfolio Entry no estructura todavía el portafolio del usuario. Ordena suficientemente su punto de
+> partida para que Starteria pueda empezar a razonar con él sin confundir interpretación con verdad
+> organizacional.
+
+Y:
+
+> Starteria debe poder comprenderse sin usar Portfolio Entry; Portfolio Entry existe para quien todavía
+> necesita ordenar su situación antes de elegir cómo continuar.
 
 Y para solution-first:
 
