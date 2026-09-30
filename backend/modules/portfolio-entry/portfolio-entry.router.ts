@@ -17,6 +17,7 @@ import {
   type PortfolioEntryAgentAdapterV2,
   type PortfolioEntryHandoffMaterializer,
   FetchStructuredModelAdapter,
+  JevClassifier,
   LivePortfolioEntryAgentAdapter,
   loadPortfolioEntryProviderConfig,
   ResilientStructuredModelAdapter,
@@ -141,13 +142,24 @@ function configuredAgentAdapter(): PortfolioEntryAgentAdapterV2 {
     const provider = loadPortfolioEntryProviderConfig();
     const prompts = loadResolvedPromptManifest();
     const candidate = createLiveCandidate(provider, prompts);
-    return new LivePortfolioEntryAgentAdapter(createResilientModel(provider), candidate, prompts);
+    return new LivePortfolioEntryAgentAdapter(createResilientModel(provider), candidate, prompts, {}, configuredClassifier());
   } catch (err) {
     // Degrading silently here surfaces later as PORTFOLIO_ENTRY_MODEL_PROVIDER_FAILURE
     // on every request, which points at the provider instead of the real cause.
     logger.error({ err }, 'Portfolio Entry live agent adapter is not configured; falling back to unconfigured.');
     return new UnconfiguredPortfolioEntryAgentAdapter();
   }
+}
+
+function configuredClassifier(): JevClassifier | undefined {
+  if (config.portfolioEntryClassifier !== 'jev') return undefined;
+  const apiKey = process.env.JEV_API_KEY?.trim() || process.env.TYPESAFE_API_KEY?.trim();
+  if (!apiKey) {
+    // Sin clave, Jev devolvería todo `unknown` en cada turno: mejor seguir con el LLM y avisar.
+    logger.error('PORTFOLIO_ENTRY_CLASSIFIER=jev without JEV_API_KEY; classification stays with the LLM.');
+    return undefined;
+  }
+  return new JevClassifier({ apiKey, model: process.env.TYPESAFE_MODEL?.trim() || undefined });
 }
 
 function configuredHandoffMaterializer(): PortfolioEntryHandoffMaterializer {
