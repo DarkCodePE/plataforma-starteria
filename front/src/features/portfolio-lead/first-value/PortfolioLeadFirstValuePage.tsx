@@ -5,10 +5,10 @@ import { Button } from '../../../app/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../../app/components/ui/card';
 import { Textarea } from '../../../app/components/ui/textarea';
 import { PortfolioCopilotDrawer } from '../../copilot';
-import { NOVAGROWTH_EXPANDED_WORK_INPUT, NOVAGROWTH_READING, NOVAGROWTH_WORK_INPUT, analyzeNovaGrowth, type FirstValueReading } from './novaGrowthFixture';
+import { NOVAGROWTH_EXPANDED_READING, NOVAGROWTH_EXPANDED_WORK_INPUT, NOVAGROWTH_READING, NOVAGROWTH_WORK_INPUT, analyzeNovaGrowth, type FirstValueReading } from './novaGrowthFixture';
 import { trackPortfolioSetupEvent } from './prototypeInstrumentation';
 
-type Stage = 'empty' | 'goal' | 'work' | 'work-refined' | 'processing' | 'processing-refined' | 'value' | 'next-slice';
+type Stage = 'empty' | 'goal' | 'intent-review' | 'work' | 'work-refined' | 'processing' | 'processing-refined' | 'work-review' | 'value' | 'global-confirmation' | 'next-slice';
 
 const GUIDE = [
   'Define qué quieres conseguir',
@@ -33,10 +33,12 @@ export function PortfolioLeadFirstValuePage({ firstName = '', continuationId = n
   const [work, setWork] = useState('');
   const [additionalContext, setAdditionalContext] = useState('');
   const [reading, setReading] = useState<FirstValueReading | null>(null);
+  const [clarification, setClarification] = useState('');
+  const [clarificationDraft, setClarificationDraft] = useState('');
   const [copilotOpen, setCopilotOpen] = useState(false);
   const entryContext = usePortfolioHomeEntryContext(continuationId);
 
-  const guideStep = stage === 'value' || stage === 'next-slice' ? 2 : 1;
+  const guideStep = stage === 'value' || stage === 'global-confirmation' || stage === 'next-slice' ? 2 : 1;
   const isSetup = stage !== 'empty';
 
   const startSetup = () => {
@@ -45,13 +47,13 @@ export function PortfolioLeadFirstValuePage({ firstName = '', continuationId = n
     const inheritedWork = entryContext.data?.arrival.existingWork;
     if (inheritedGoal) setGoal(inheritedGoal);
     if (inheritedWork) setWork(inheritedWork);
-    setStage(inheritedGoal ? 'work-refined' : 'goal');
+    setStage(inheritedGoal ? 'intent-review' : 'goal');
   };
   const useNovaGrowth = () => setWork(NOVAGROWTH_WORK_INPUT);
   const submitGoal = () => {
     if (goal.trim()) {
       trackPortfolioSetupEvent('portfolio_goal_submitted');
-      setStage('work-refined');
+      setStage('intent-review');
     }
   };
   const processWork = (workToAnalyze = work) => {
@@ -59,10 +61,28 @@ export function PortfolioLeadFirstValuePage({ firstName = '', continuationId = n
     trackPortfolioSetupEvent('portfolio_existing_work_submitted');
     setStage('processing-refined');
     window.setTimeout(() => {
-      setReading(workToAnalyze.includes('No tengo nada organizado') ? EMPTY_FIRST_VALUE_READING : analyzeNovaGrowth(goal, workToAnalyze));
+      setReading(detectWorkForCheckpoint(goal, workToAnalyze));
+      setStage('work-review');
+    }, 250);
+  };
+  const confirmWork = () => {
+    if (!work.trim() || work.includes('No tengo nada organizado')) {
+      setReading({ ...EMPTY_FIRST_VALUE_READING, detectedGoal: goal || EMPTY_FIRST_VALUE_READING.detectedGoal });
+      setStage('value');
+      return;
+    }
+    setStage('processing-refined');
+    window.setTimeout(() => {
+      const detected = detectWorkForCheckpoint(goal, work);
+      const analyzed = analyzeNovaGrowth(goal, work);
+      const detectedIds = new Set(detected.initiatives.map(item => item.id));
+      const groups = analyzed.groups.map(group => ({ ...group, initiativeIds: group.initiativeIds.filter(id => detectedIds.has(id)) })).filter(group => group.initiativeIds.length > 0);
+      const signals = analyzed.signals.filter(signal => signal.id === 'distribution' || (signal.id === 'ownership' && detected.initiatives.some(item => !item.owner)) || (signal.id === 'dependency' && countDependencies(work) > 0));
+      setReading({ ...analyzed, detectedGoal: detected.detectedGoal, initiatives: detected.initiatives, owners: detected.owners, groups, signals });
       setStage('value');
     }, 250);
   };
+  const saveWorkCorrection = () => setReading(detectWorkForCheckpoint(goal, work));
 
   const readingToShow = useMemo(() => reading ?? NOVAGROWTH_READING, [reading]);
 
@@ -87,9 +107,11 @@ export function PortfolioLeadFirstValuePage({ firstName = '', continuationId = n
             <SetupGuide activeStep={guideStep} />
             <section aria-live="polite">
         {stage === 'goal' ? <RefinedGoalStep value={goal} additionalContext={additionalContext} onChange={setGoal} onAdditionalContextChange={setAdditionalContext} onContinue={submitGoal} /> : null}
+              {stage === 'intent-review' ? <IntentCheckpoint goal={goal} additionalContext={additionalContext} onAdjust={() => setStage('goal')} onContinue={() => setStage('work-refined')} /> : null}
               {stage === 'work' ? <ExistingWorkStep value={work} onChange={setWork} onUseFixture={useNovaGrowth} onUseExpandedFixture={() => setWork(NOVAGROWTH_EXPANDED_WORK_INPUT)} onProcess={processWork} onContinueWithoutWork={() => { setWork('No tengo nada organizado todavía.'); window.setTimeout(processWork, 0); }} /> : null}
               {stage === 'work-refined' ? <RefinedExistingWorkStep value={work} inherited={Boolean(entryContext.data?.arrival.existingWork)} onChange={setWork} onUseFixture={useNovaGrowth} onUseExpandedFixture={() => setWork(NOVAGROWTH_EXPANDED_WORK_INPUT)} onProcess={() => processWork()} onContinueWithoutWork={() => { const emptyWork = 'No tengo nada organizado todavía.'; setWork(emptyWork); processWork(emptyWork); }} /> : null}
               {stage === 'processing-refined' ? <RefinedProcessingState /> : null}
+              {stage === 'work-review' && reading ? <WorkCheckpoint reading={reading} work={work} dependencies={countDependencies(work)} onChangeWork={setWork} onAdjust={() => setStage('work-refined')} onConfirm={confirmWork} onSave={saveWorkCorrection} /> : null}
               {stage === 'processing' ? <ProcessingState /> : null}
             </section>
           </div>
@@ -98,11 +120,12 @@ export function PortfolioLeadFirstValuePage({ firstName = '', continuationId = n
           <div className="space-y-8" aria-live="polite">
             <div className="grid gap-8 lg:grid-cols-[240px_minmax(0,1fr)]">
               <SetupGuide activeStep={guideStep} />
-              <RefinedFirstValue reading={readingToShow} onReview={() => { trackPortfolioSetupEvent('portfolio_relationship_review_clicked'); setStage('next-slice'); }} onCorrect={() => { trackPortfolioSetupEvent('portfolio_interpretation_corrected'); setStage('goal'); }} />
+              <RefinedFirstValue reading={readingToShow} clarification={clarification} clarificationDraft={clarificationDraft} onClarificationDraftChange={setClarificationDraft} onSaveClarification={() => setClarification(clarificationDraft.trim())} onSkipClarification={() => setClarificationDraft('')} onReview={() => { trackPortfolioSetupEvent('portfolio_relationship_review_clicked'); setStage('global-confirmation'); }} onCorrect={() => { trackPortfolioSetupEvent('portfolio_interpretation_corrected'); setStage('goal'); }} />
             </div>
           </div>
         ) : null}
         {stage === 'next-slice' ? <NextSliceBoundary onBack={() => setStage('value')} /> : null}
+        {stage === 'global-confirmation' ? <GlobalReadingConfirmation reading={readingToShow} clarification={clarification} onConfirm={() => setStage('next-slice')} onAdjust={() => setStage('value')} /> : null}
       </div>
       <PortfolioCopilotDrawer open={copilotOpen} onOpenChange={setCopilotOpen} setupMode />
     </div>
@@ -270,6 +293,7 @@ type RelationshipState = 'Relación clara' | 'Relación probable' | 'Por revisar
 function relationshipFor(id: string, description: string): RelationshipState {
   if (id.includes('pricing') || description.toLowerCase().includes('pricing')) return 'Posible mejor encaje';
   if (id.includes('checkout') || id.includes('partner')) return 'Relación probable';
+  if (id.startsWith('detected-')) return 'Sin contexto suficiente';
   if (!description.trim()) return 'Sin contexto suficiente';
   if (id.includes('retargeting') || id.includes('enablement')) return 'Por revisar';
   return 'Relación clara';
@@ -283,6 +307,12 @@ function relationshipExplanation(state: RelationshipState, name: string) {
   return 'La información compartida describe una contribución directa al objetivo.';
 }
 
+function relationshipLabel(state: RelationshipState) {
+  if (state === 'Relación clara') return 'Contribuye directamente';
+  if (state === 'Posible mejor encaje') return 'Podría responder mejor a otra prioridad';
+  return 'Necesita más contexto';
+}
+
 function signalWhy(signalId: string) {
   if (signalId.includes('concentration')) return 'Importa porque una parte relevante del trabajo puede depender de pocas iniciativas.';
   if (signalId.includes('owner')) return 'Importa porque una responsabilidad poco clara puede dificultar el seguimiento.';
@@ -293,21 +323,47 @@ function RefinedProcessingState() {
   return <Card data-testid="processing-state" aria-live="polite"><CardHeader><p className="text-sm font-semibold text-amber-700">Preparando una primera lectura</p><h1 className="text-2xl font-semibold tracking-tight">Estoy ordenando lo que compartiste</h1><CardDescription>Estamos identificando el objetivo, el trabajo existente y lo que conviene revisar.</CardDescription></CardHeader><CardContent><div className="space-y-3 text-sm text-slate-700">{['Entendiendo qué quieres conseguir', 'Identificando el trabajo existente', 'Buscando relaciones que conviene revisar'].map(item => <div key={item} className="flex items-center gap-3"><span className="size-2 rounded-full bg-amber-500" />{item}</div>)}</div></CardContent></Card>;
 }
 
-function RefinedFirstValue({ reading, onReview, onCorrect }: { reading: FirstValueReading; onReview: () => void; onCorrect: () => void }) {
+function detectWorkForCheckpoint(goal: string, workInput: string): FirstValueReading {
+  if (workInput.includes('No tengo nada organizado')) return { ...EMPTY_FIRST_VALUE_READING, detectedGoal: goal || EMPTY_FIRST_VALUE_READING.detectedGoal };
+  const fixture = workInput.includes('NovaGrowthExpanded') ? NOVAGROWTH_EXPANDED_READING : NOVAGROWTH_READING;
+  const originalWork = workInput.includes('NovaGrowthExpanded') ? NOVAGROWTH_EXPANDED_WORK_INPUT : NOVAGROWTH_WORK_INPUT;
+  const initiatives: FirstValueReading['initiatives'] = [];
+  const lines = workInput.split(/\r?\n/);
+  for (const line of lines) {
+    const trimmed = line.trim();
+    const known = fixture.initiatives.find(item => trimmed.startsWith(item.name));
+    const parsedName = trimmed.match(/^(.+?)\s+[—–-]\s+(.+)$/)?.[1]?.trim();
+    const name = known?.name ?? (parsedName && !/^(NovaGrowthExpanded|NovaGrowth)$/i.test(parsedName) ? parsedName : undefined);
+    if (!name || initiatives.some(item => item.name === name)) continue;
+    const ownerText = trimmed.match(/\.\s*([^.!?]+)\.$/)?.[1]?.trim();
+    const originalLine = originalWork.split(/\r?\n/).find(original => original.trim().startsWith(name));
+    const unchanged = trimmed === originalLine?.trim();
+    const owner = unchanged ? known?.owner : /sin (?:owner|responsable)/i.test(ownerText ?? '') ? undefined : ownerText || known?.owner;
+    initiatives.push({ id: known?.id ?? `detected-${initiatives.length + 1}`, name, description: known?.description ?? trimmed.slice(name.length).replace(/^\s*[—–-]\s*/, '').trim(), ...(owner ? { owner } : {}) });
+  }
+  return { ...fixture, detectedGoal: goal || fixture.detectedGoal, groups: [], signals: [], initiatives, owners: [...new Set(initiatives.flatMap(item => item.owner ? [item.owner] : []))] };
+}
+
+function countDependencies(workInput: string) {
+  return workInput.split(/\r?\n/).filter(line => /depend|espera acceso|bloquead/i.test(line)).length;
+}
+
+function RefinedFirstValue({ reading, clarification, clarificationDraft, onClarificationDraftChange, onSaveClarification, onSkipClarification, onReview, onCorrect }: { reading: FirstValueReading; clarification: string; clarificationDraft: string; onClarificationDraftChange: (value: string) => void; onSaveClarification: () => void; onSkipClarification: () => void; onReview: () => void; onCorrect: () => void }) {
   const [openRationale, setOpenRationale] = useState<string | null>(null);
   const [showAllInitiatives, setShowAllInitiatives] = useState(false);
+  const [showExceptionReview, setShowExceptionReview] = useState(false);
   const exceptions = reading.initiatives.filter(item => relationshipFor(item.id, `${item.name} ${item.description}`) !== 'Relación clara');
   const clearCount = reading.initiatives.length - exceptions.length;
-  const initiativeRows = showAllInitiatives ? reading.initiatives : exceptions;
+  const initiativeRows = showAllInitiatives ? reading.initiatives : showExceptionReview ? exceptions : [];
   return (
     <section className="space-y-6" data-testid="first-value-narrative">
       <div><h1 className="max-w-3xl text-3xl font-semibold tracking-tight">Esto es lo que entendí</h1><p className="mt-3 max-w-3xl text-lg leading-8 text-slate-700">A partir de lo que compartiste, esta es una primera lectura de tu objetivo y del trabajo que ya existe.</p><p className="mt-3 text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">Basado en lo que compartiste</p></div>
-      <Card><CardHeader><CardTitle className="text-xl">Contexto</CardTitle></CardHeader><CardContent><dl className="grid gap-4 sm:grid-cols-3"><div><dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">Objetivo</dt><dd className="mt-1 font-semibold">{reading.detectedGoal}</dd></div><div><dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">Horizonte</dt><dd className="mt-1 font-semibold">{reading.horizon}</dd></div><div><dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">Contexto</dt><dd className="mt-1 text-sm leading-6 text-slate-700">El trabajo actual parece cubrir generación, seguimiento y conversión comercial.</dd></div></dl><p className="mt-4 text-sm text-slate-600" data-testid="initiative-count">{reading.initiatives.length} iniciativas detectadas</p></CardContent></Card>
+      <Card><CardHeader><CardTitle className="text-xl">Contexto</CardTitle></CardHeader><CardContent><dl className="grid gap-4 sm:grid-cols-3"><div><dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">Objetivo</dt><dd className="mt-1 font-semibold">{reading.detectedGoal}</dd></div><div><dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">Horizonte</dt><dd className="mt-1 font-semibold">{reading.horizon}</dd></div><div><dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">Contexto</dt><dd className="mt-1 text-sm leading-6 text-slate-700">El trabajo actual parece cubrir generación, seguimiento y conversión comercial.</dd></div></dl><p className="mt-4 text-sm text-slate-600" data-testid="initiative-count">{reading.initiatives.length} iniciativas detectadas</p>{clarification ? <p className="mt-3 rounded-lg bg-indigo-50 p-3 text-sm text-indigo-950" data-testid="reading-clarification"><strong>Tu aclaración:</strong> {clarification}</p> : null}</CardContent></Card>
       <Card className="border-amber-200 bg-amber-50/50"><CardHeader><CardTitle className="text-2xl">Así parece repartirse el trabajo</CardTitle><CardDescription>Esta es una propuesta de Startería. Puedes revisarla antes de convertirla en estructura del portafolio.</CardDescription></CardHeader><CardContent><div className="grid gap-4 md:grid-cols-3">{reading.groups.map(group => <Card key={group.id} className="bg-white"><CardHeader className="p-5"><CardTitle className="text-base">{group.label}</CardTitle><CardDescription>{group.initiativeIds.length} iniciativas</CardDescription></CardHeader><CardContent className="p-5 pt-0"><p className="text-sm text-slate-600">{group.initiativeIds.slice(0, 5).map(id => reading.initiatives.find(item => item.id === id)?.name).join(' · ')}{group.initiativeIds.length > 5 ? ' · …' : ''}</p><button type="button" className="mt-4 inline-flex items-center gap-1 text-sm font-semibold text-slate-800 underline underline-offset-4" onClick={() => setOpenRationale(openRationale === group.id ? null : group.id)} aria-expanded={openRationale === group.id}>¿Por qué las agrupé así? <ChevronDown size={15} /></button>{openRationale === group.id ? <p className="mt-3 border-t border-slate-100 pt-3 text-sm leading-6 text-slate-600" data-testid={`rationale-${group.id}`}>{group.rationale}</p> : null}</CardContent></Card>)}</div></CardContent></Card>
       <Card><CardHeader><CardTitle className="text-xl">Qué merece revisar</CardTitle><CardDescription>Hasta tres señales para que puedas decidir qué mirar primero.</CardDescription></CardHeader><CardContent className="space-y-4" data-testid="review-signals">{reading.signals.slice(0, 3).map(signal => <div key={signal.id} className="border-b border-slate-100 pb-3 last:border-0"><p className="text-sm font-semibold">{signal.label}</p><p className="mt-1 text-sm leading-6 text-slate-600">{signal.detail}</p><p className="mt-2 text-sm leading-6 text-slate-600"><strong>Por qué importa:</strong> {signalWhy(signal.id)}</p><p className="mt-1 text-sm leading-6 text-slate-600"><strong>Qué revisar:</strong> confirma el alcance y la responsabilidad antes de tomar una decisión.</p></div>)}</CardContent></Card>
-      {exceptions.length > 1 ? <Card data-testid="post-analysis-question"><CardHeader><CardTitle className="text-xl">Una pregunta para aclarar varias iniciativas</CardTitle><CardDescription>Startería pregunta solo cuando la respuesta pueda cambiar la lectura.</CardDescription></CardHeader><CardContent><p className="text-sm leading-6 text-slate-700">Veo varias iniciativas que podrían responder a una necesidad distinta del objetivo actual. ¿Forman parte explícitamente de esta estrategia o pertenecen a otra prioridad?</p><p className="mt-3 text-xs text-slate-500">Puedes responder ahora o continuar con esta lectura.</p></CardContent></Card> : null}
-      <Card data-testid="relationship-summary"><CardHeader><CardTitle className="text-xl">Cómo se relaciona el trabajo con el objetivo</CardTitle><CardDescription>Startería resume primero y deja el detalle bajo demanda.</CardDescription></CardHeader><CardContent><div className="grid gap-3 sm:grid-cols-3"><SummaryMetric label="Relación clara" value={clearCount} /><SummaryMetric label="Por revisar" value={exceptions.filter(item => ['Por revisar', 'Sin contexto suficiente', 'Relación probable'].includes(relationshipFor(item.id, `${item.name} ${item.description}`))).length} /><SummaryMetric label="Posible mejor encaje" value={exceptions.filter(item => relationshipFor(item.id, `${item.name} ${item.description}`) === 'Posible mejor encaje').length} /></div><p className="mt-4 text-sm leading-6 text-slate-600">{reading.initiatives.length} iniciativas detectadas. Las relaciones claras no requieren acción.</p>{exceptions.length > 0 ? <p className="mt-2 text-sm font-semibold text-amber-800">Revisar primero las {exceptions.length} que necesitan atención.</p> : null}<div className="mt-5 flex flex-wrap gap-3"><Button onClick={() => setShowAllInitiatives(false)} disabled={exceptions.length === 0}>Revisar las {exceptions.length} que necesitan atención</Button><Button variant="outline" onClick={() => setShowAllInitiatives(true)}>Ver las {reading.initiatives.length} iniciativas</Button></div></CardContent></Card>
-      <Card><CardHeader><CardTitle className="text-xl">{showAllInitiatives ? 'Detalle de iniciativas' : 'Excepciones e incertidumbres'}</CardTitle><CardDescription>{showAllInitiatives ? 'Puedes abrir cualquier iniciativa y cambiar la relación si lo necesitas.' : 'Las relaciones claras quedan fuera del primer plano.'}</CardDescription></CardHeader><CardContent><ul className="grid gap-3">{initiativeRows.map(item => { const state = relationshipFor(item.id, `${item.name} ${item.description}`); return <li key={item.id} className="rounded-lg border border-slate-200 p-4" data-testid="initiative-relationship-row"><div className="flex flex-wrap items-center justify-between gap-2"><p className="font-semibold">{item.name}</p><span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-700">{state}</span></div><p className="mt-2 text-sm leading-6 text-slate-600">{relationshipExplanation(state, item.name)}</p><div className="mt-3 flex gap-3 text-sm"><button type="button" className="font-semibold underline underline-offset-4">Ver por qué</button><button type="button" className="font-semibold underline underline-offset-4">Cambiar relación</button></div></li>; })}</ul>{initiativeRows.length === 0 ? <p className="text-sm text-slate-600">No hay excepciones que revisar ahora.</p> : null}</CardContent></Card>
+      {exceptions.length > 1 ? <Card data-testid="post-analysis-question"><CardHeader><CardTitle className="text-xl">Tengo una duda sobre {exceptions.length} iniciativas</CardTitle><CardDescription>Una respuesta puede aclarar varias iniciativas a la vez.</CardDescription></CardHeader><CardContent><ul className="mb-3 list-inside list-disc text-sm text-slate-700">{exceptions.map(item => <li key={item.id}>{item.name}</li>)}</ul><p className="text-sm leading-6 text-slate-700">{exceptions.map(item => item.name).join(', ')}: ¿forman parte del mismo objetivo o alguna pertenece a otra prioridad?</p><label htmlFor="portfolio-clarification" className="mt-4 block text-sm font-semibold">Tu aclaración</label><Textarea id="portfolio-clarification" className="mt-2" value={clarificationDraft} onChange={event => onClarificationDraftChange(event.target.value)} placeholder="Escribe tu respuesta..." rows={3} /><div className="mt-3 flex flex-wrap gap-3"><Button disabled={!clarificationDraft.trim()} onClick={onSaveClarification}>Guardar aclaración</Button><Button variant="outline" onClick={onSkipClarification}>Continuar sin responder</Button></div>{clarification ? <p className="mt-4 rounded-lg bg-emerald-50 p-3 text-sm text-emerald-900">Aclaración incorporada a esta lectura: {clarification}</p> : null}</CardContent></Card> : null}
+      <Card data-testid="relationship-summary"><CardHeader><CardTitle className="text-xl">Cómo se relaciona el trabajo con el objetivo</CardTitle><CardDescription>Resumen primero; el detalle aparece cuando lo necesitas.</CardDescription></CardHeader><CardContent><div className="grid gap-3 sm:grid-cols-3"><SummaryMetric label="Contribuyen directamente" value={clearCount} /><SummaryMetric label="Necesitan más contexto" value={exceptions.filter(item => ['Por revisar', 'Sin contexto suficiente', 'Relación probable'].includes(relationshipFor(item.id, `${item.name} ${item.description}`))).length} /><SummaryMetric label="Podrían responder mejor a otra prioridad" value={exceptions.filter(item => relationshipFor(item.id, `${item.name} ${item.description}`) === 'Posible mejor encaje').length} /></div><p className="mt-4 text-sm leading-6 text-slate-600">{reading.initiatives.length} iniciativas analizadas. Las que contribuyen directamente no requieren acción individual.</p>{exceptions.length > 0 ? <div className="mt-5 flex flex-wrap gap-3"><Button onClick={() => { setShowExceptionReview(true); setShowAllInitiatives(false); }} data-testid="review-exceptions-cta">Revisar excepciones ({exceptions.length})</Button><Button variant="outline" onClick={() => setShowAllInitiatives(true)}>Ver las {reading.initiatives.length} iniciativas</Button></div> : null}</CardContent></Card>
+      {(showAllInitiatives || showExceptionReview) ? <Card data-testid="exception-review"><CardHeader><CardTitle className="text-xl">{showAllInitiatives ? 'Detalle de iniciativas' : 'Excepciones que necesitan atención'}</CardTitle><CardDescription>{showAllInitiatives ? 'Vista completa bajo demanda.' : 'Revisión inline de las iniciativas que necesitan contexto.'}</CardDescription></CardHeader><CardContent><ul className="grid gap-3">{initiativeRows.map(item => { const state = relationshipFor(item.id, `${item.name} ${item.description}`); return <ExceptionReviewRow key={item.id} item={item} state={state} showActions={showExceptionReview && !showAllInitiatives} />; })}</ul>{initiativeRows.length === 0 ? <p className="text-sm text-slate-600">No hay excepciones que revisar ahora.</p> : null}</CardContent></Card> : null}
       <div className="border-t border-slate-200 pt-6"><p className="mb-4 text-sm text-slate-600">La autoridad humana ocurre sobre esta lectura y su estructura, no iniciativa por iniciativa.</p><div className="flex flex-wrap items-center gap-3"><Button onClick={onReview} data-testid="relationship-review-cta">Continuar con esta lectura <ArrowRight /></Button><Button variant="outline" onClick={onCorrect}>Añadir contexto o corregir</Button></div></div>
     </section>
   );
@@ -315,6 +371,28 @@ function RefinedFirstValue({ reading, onReview, onCorrect }: { reading: FirstVal
 
 function SummaryMetric({ label, value }: { label: string; value: number }) {
   return <div className="rounded-xl border border-slate-200 bg-slate-50 p-4"><p className="text-2xl font-semibold text-slate-950">{value}</p><p className="mt-1 text-sm text-slate-600">{label}</p></div>;
+}
+
+function ExceptionReviewRow({ item, state, showActions }: { item: FirstValueReading['initiatives'][number]; state: RelationshipState; showActions: boolean }) {
+  const [showContext, setShowContext] = useState(false);
+  const [context, setContext] = useState('');
+  const [decision, setDecision] = useState('');
+  return <li className="rounded-lg border border-slate-200 p-4" data-testid="initiative-relationship-row"><div className="flex flex-wrap items-center justify-between gap-2"><p className="font-semibold">{item.name}</p><span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-700">{relationshipLabel(state)}</span></div><p className="mt-2 text-sm leading-6 text-slate-600">{relationshipExplanation(state, item.name)}</p>{showActions ? <><div className="mt-3 flex flex-wrap gap-3 text-sm"><button type="button" className="font-semibold underline underline-offset-4" aria-expanded={showContext} onClick={() => setShowContext(!showContext)}>Añadir contexto</button><button type="button" className="font-semibold underline underline-offset-4" onClick={() => setDecision('La mantienes en este objetivo.')}>Mantener en este objetivo</button><button type="button" className="font-semibold underline underline-offset-4" onClick={() => setDecision('Marcada para revisar después.')}>Marcar para revisar después</button></div>{showContext ? <div className="mt-3"><label className="text-sm font-semibold" htmlFor={`exception-context-${item.id}`}>Contexto sobre {item.name}</label><Textarea id={`exception-context-${item.id}`} className="mt-2" value={context} onChange={event => setContext(event.target.value)} placeholder="Añade contexto breve..." rows={2} /><Button className="mt-2" disabled={!context.trim()} onClick={() => setDecision(`Contexto añadido: ${context.trim()}`)}>Guardar contexto</Button></div> : null}{decision ? <p className="mt-3 rounded-lg bg-indigo-50 p-3 text-sm text-indigo-950" role="status">{decision}</p> : null}</> : null}</li>;
+}
+
+function IntentCheckpoint({ goal, additionalContext, onAdjust, onContinue }: { goal: string; additionalContext: string; onAdjust: () => void; onContinue: () => void }) {
+  return <Card data-testid="intent-checkpoint"><CardHeader><CardTitle>Esto es lo que entendí</CardTitle><CardDescription>Revisa el objetivo antes de añadir el trabajo existente.</CardDescription></CardHeader><CardContent><p className="text-sm font-semibold text-slate-500">Objetivo</p><p className="mt-1 text-lg font-semibold">{goal}</p>{additionalContext.trim() ? <p className="mt-3 text-sm text-slate-700">Contexto: {additionalContext}</p> : null}<p className="mt-3 text-sm text-slate-500">El contexto adicional sigue siendo opcional.</p><div className="mt-6 flex flex-wrap justify-end gap-3"><Button variant="outline" onClick={onAdjust}>Ajustar</Button><Button onClick={onContinue}>Está bien, continuar <ArrowRight /></Button></div></CardContent></Card>;
+}
+
+function WorkCheckpoint({ reading, work, dependencies, onChangeWork, onAdjust, onConfirm, onSave }: { reading: FirstValueReading; work: string; dependencies: number; onChangeWork: (value: string) => void; onAdjust: () => void; onConfirm: () => void; onSave: () => void }) {
+  const [editing, setEditing] = useState(false);
+  return <Card data-testid="existing-work-checkpoint"><CardHeader><CardTitle>Esto es lo que encontré</CardTitle><CardDescription>Confirma la lista antes de analizar cómo se relaciona con tu objetivo.</CardDescription></CardHeader><CardContent><p className="mb-4 text-sm text-slate-600"><strong>Objetivo:</strong> {reading.detectedGoal}</p><div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4 text-sm"><p><strong>{reading.initiatives.length}</strong> iniciativas</p><p><strong>{reading.owners.length}</strong> responsables mencionados</p><p><strong>{reading.initiatives.filter(item => !item.owner).length}</strong> sin responsable claro</p><p><strong>{dependencies}</strong> dependencias relevantes</p></div><ul className="mt-4 grid gap-2 sm:grid-cols-2" aria-label="Iniciativas detectadas">{reading.initiatives.slice(0, 7).map(item => <li key={item.id} className="rounded-lg bg-slate-50 px-3 py-2 text-sm">{item.name}{item.owner ? <span className="text-slate-500"> · {item.owner}</span> : null}</li>)}</ul>{reading.initiatives.length > 7 ? <p className="mt-2 text-sm text-slate-500">Y {reading.initiatives.length - 7} iniciativas más.</p> : null}{editing ? <div className="mt-5"><label htmlFor="work-review-edit" className="text-sm font-semibold">Corrige o añade información</label><Textarea id="work-review-edit" className="mt-2" rows={6} value={work} onChange={event => onChangeWork(event.target.value)} /><div className="mt-3 flex justify-end gap-3"><Button variant="outline" onClick={() => setEditing(false)}>Cancelar</Button><Button onClick={() => { setEditing(false); onSave(); }}>Guardar cambios</Button></div></div> : <div className="mt-6 flex flex-wrap gap-3"><Button onClick={onConfirm}>Sí, esto representa mi trabajo</Button><Button variant="outline" onClick={() => setEditing(true)}>Ajustar lista</Button><Button variant="outline" onClick={onAdjust}>Añadir algo más</Button></div>}</CardContent></Card>;
+}
+
+function GlobalReadingConfirmation({ reading, clarification, onConfirm, onAdjust }: { reading: FirstValueReading; clarification: string; onConfirm: () => void; onAdjust: () => void }) {
+  const exceptions = reading.initiatives.filter(item => relationshipFor(item.id, `${item.name} ${item.description}`) !== 'Relación clara');
+  const otherPriority = exceptions.filter(item => relationshipFor(item.id, `${item.name} ${item.description}`) === 'Posible mejor encaje').length;
+  return <section className="mx-auto max-w-2xl rounded-3xl border border-slate-300 bg-white px-6 py-10 shadow-sm" data-testid="global-reading-confirmation"><h1 className="text-3xl font-semibold">Startería propone esta lectura</h1><p className="mt-4 text-slate-700">{reading.initiatives.length - exceptions.length} contribuyen directamente, {exceptions.length - otherPriority} necesitan más contexto y {otherPriority} podrían responder mejor a otra prioridad.</p>{clarification ? <p className="mt-3 rounded-lg bg-indigo-50 p-3 text-sm text-indigo-950"><strong>Tu aclaración:</strong> {clarification}</p> : null}<p className="mt-3 text-sm text-slate-600">Puedes confirmar la lectura en conjunto o volver a ajustarla.</p><div className="mt-8 flex flex-wrap justify-center gap-3"><Button onClick={onConfirm}>Confirmar lectura y continuar</Button><Button variant="outline" onClick={onAdjust}>Seguir ajustando</Button></div></section>;
 }
 
 function NextSliceBoundary({ onBack }: { onBack: () => void }) {

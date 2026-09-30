@@ -31,6 +31,8 @@ describe('PortfolioLeadFirstValuePage — Entry continuation', () => {
     expect(screen.getByText('Ordenar las iniciativas')).toBeInTheDocument();
     expect(screen.getByText(/información compartida anteriormente/i)).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: /Preparar mi espacio/i }));
+    expect(screen.getByTestId('intent-checkpoint')).toHaveTextContent(/Llegar con una decisi.*clara/i);
+    fireEvent.click(screen.getByRole('button', { name: /Est.*bien, continuar/i }));
     expect(screen.queryByLabelText(/Qué quieres conseguir/i)).not.toBeInTheDocument();
     expect(screen.getByText(/Añade lo que ya existe alrededor de este objetivo/i)).toBeInTheDocument();
   });
