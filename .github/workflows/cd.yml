@@ -273,6 +273,8 @@ jobs:
             --from-literal=PORTFOLIO_ENTRY_PROVIDER=openai_responses \
             --from-literal=PORTFOLIO_ENTRY_MODEL=openai/gpt-5.6-luna \
             --from-literal=PORTFOLIO_ENTRY_BASE_URL=https://openrouter.ai/api/v1 \
+            --from-literal=JEV_API_KEY="$JEV_API_KEY" \
+            --from-literal=PORTFOLIO_ENTRY_CLASSIFIER=jev \
             --from-literal=GOOGLE_CLIENT_ID="$GOOGLE_CLIENT_ID" \
             --from-literal=SMTP_HOST="${SMTP_HOST:-}" --from-literal=SMTP_USER="${SMTP_USER:-}" \
             --from-literal=SMTP_PASS="${SMTP_PASS:-}" --from-literal=PILOT_LEAD_NOTIFY_FROM="${PILOT_LEAD_NOTIFY_FROM:-}" \
