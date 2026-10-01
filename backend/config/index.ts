@@ -11,6 +11,11 @@ const portfolioEntryRuntimeMode = process.env.PORTFOLIO_ENTRY_RUNTIME_MODE || 'l
 if (portfolioEntryRuntimeMode !== 'live' && portfolioEntryRuntimeMode !== 'deterministic') {
   throw new Error('PORTFOLIO_ENTRY_RUNTIME_MODE must be live or deterministic');
 }
+// ADR-032: quién clasifica entry_state e intent en Portfolio Entry. `llm` deja todo como antes.
+const portfolioEntryClassifier = process.env.PORTFOLIO_ENTRY_CLASSIFIER || 'llm';
+if (portfolioEntryClassifier !== 'llm' && portfolioEntryClassifier !== 'jev') {
+  throw new Error('PORTFOLIO_ENTRY_CLASSIFIER must be llm or jev');
+}
 
 function positiveIntegerEnv(name: string, fallback: number): number {
   const raw = process.env[name];
@@ -94,4 +99,5 @@ export const config = {
   // Portfolio Entry operations. Kept separate from semantic session state.
   portfolioEntryIdempotencyTtlSeconds: positiveIntegerEnv('PORTFOLIO_ENTRY_IDEMPOTENCY_TTL_SECONDS', 86400),
   portfolioEntryRuntimeMode,
+  portfolioEntryClassifier,
 } as const;

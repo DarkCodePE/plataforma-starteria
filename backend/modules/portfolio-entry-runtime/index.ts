@@ -12,6 +12,7 @@ export * from './handoff/handoff-builder';
 export * from './handoff/handoff-materializer';
 export * from './agent/portfolio-entry-agent-adapter';
 export * from './agent/live-portfolio-entry-agent-adapter';
+export { JevClassifier } from './agent/jev-classifier';
 export * from './model/structured-model-adapter';
 export * from './model/model-execution-types';
 export * from './model/live-model-error';

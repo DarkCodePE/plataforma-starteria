@@ -39,6 +39,14 @@ export type ModelExecutionMetadata = {
   retry_reason?: string;
   usage?: unknown;
   fallback_used?: boolean;
+  // ADR-032: presente cuando Jev clasificó el turno (o no estuvo disponible).
+  classifier?: {
+    provider: 'jev' | 'jev_unavailable';
+    model?: string;
+    confidence: { frame: number; primary_intent: number };
+    duration_ms: number;
+    error?: string;
+  };
 };
 
 export type ModelExecutionResult<T> = {

@@ -17,8 +17,16 @@ export function loadResolvedPromptManifest(): ResolvedPromptManifest {
   return { ...manifest, file_hashes: fileHashes, prompt_manifest_hash: hash(JSON.stringify({ manifest, file_hashes: fileHashes })) };
 }
 
-export function composeAnalysisSystemPrompt(manifest: ResolvedPromptManifest): string {
-  return [manifest.files.agent, manifest.files.skill_01, manifest.files.skill_02, manifest.files.skill_03, manifest.files.skill_04].map(read).join('\n\n---\n\n');
+// ADR-032: con Jev clasificando, la instrucción de clasificar (skill 01) se reemplaza por la que
+// dice que la clasificación llega fija. Fuera del manifest para no mover el hash del modo `llm`.
+const CLASSIFICATION_PROVIDED_FILE = 'classification-provided.md';
+
+export function composeAnalysisSystemPrompt(
+  manifest: ResolvedPromptManifest,
+  options: { classificationProvided?: boolean } = {},
+): string {
+  const skill01 = options.classificationProvided ? CLASSIFICATION_PROVIDED_FILE : manifest.files.skill_01;
+  return [manifest.files.agent, skill01, manifest.files.skill_02, manifest.files.skill_03, manifest.files.skill_04].map(read).join('\n\n---\n\n');
 }
 
 export function composeHandoffSystemPrompt(manifest: ResolvedPromptManifest): string {
