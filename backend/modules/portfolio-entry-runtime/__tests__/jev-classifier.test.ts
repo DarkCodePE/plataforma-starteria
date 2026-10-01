@@ -127,4 +127,32 @@ describe('LivePortfolioEntryAgentAdapter with Jev', () => {
     });
     expect(result.modelExecution?.execution_metadata.classifier).toMatchObject({ provider: 'jev', model: 'jev-1.13.0' });
   });
+
+  it('reports each classified turn without the user text', async () => {
+    const llmOutput = { analysis: { entry_id: 'e', extracted_context: {} }, question_plan: { questions: [], question_count: 0 } };
+    const model: StructuredModelAdapter = {
+      generate: vi.fn().mockResolvedValue({
+        provider_raw: {}, parsed_output: llmOutput, validated_output: llmOutput, schema_errors: [],
+        execution_metadata: { call_id: 'c', purpose: 'analysis_turn', provider: 'openai_responses', model: 'm', duration_ms: 5, retry_count: 0, seed_support: 'not_requested' },
+      } as ModelExecutionResult<unknown>),
+    };
+    const onClassified = vi.fn();
+    const adapter = new LivePortfolioEntryAgentAdapter(model, {
+      candidate_id: 't', adapter_mode: 'live_llm_candidate', provider: 'openai_responses', model: 'm',
+      prompt_manifest_hash: 'h', contract_manifest_hash: 'c',
+    }, {
+      prompt_version: '0.2', files: { agent: 'agent.md', skill_01: 'entry-01-intent-detection.md', skill_02: 'entry-02-context-extraction.md', skill_03: 'entry-03-reverse-alignment.md', skill_04: 'entry-04-question-planner.md', handoff: 'handoff.md' },
+      file_hashes: {}, prompt_manifest_hash: 'h',
+    }, {}, new JevClassifier({ apiKey: 'k', fetchImpl: jevResponse(confident) }), onClassified);
+
+    await adapter.analyzeTurn({
+      entryId: 's-turn-1', sessionId: 's', rawInput: 'texto privado del usuario',
+      sessionContext: createInitialSessionContext({ initial_mode: 'quick_clarification', quick_question_budget: 3 }),
+    });
+
+    expect(onClassified).toHaveBeenCalledOnce();
+    const event = onClassified.mock.calls[0][0];
+    expect(event).toMatchObject({ session_id: 's', follow_up: false, provider: 'jev', applied: { primary_intent: 'portfolio_prioritization' } });
+    expect(JSON.stringify(event)).not.toContain('texto privado');
+  });
 });

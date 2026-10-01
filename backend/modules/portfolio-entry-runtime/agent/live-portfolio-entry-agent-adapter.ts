@@ -38,6 +38,8 @@ export class LivePortfolioEntryAgentAdapter implements PortfolioEntryAgentAdapte
     private readonly runContext: { repeat_index?: number } = {},
     // ADR-032: con clasificador, Jev es el único que clasifica y el LLM recibe el resultado fijo.
     private readonly classifier?: JevClassifier,
+    // Una línea por turno clasificado, para seguir en producción cuántos casos quedan en `unknown`.
+    private readonly onClassified?: (event: ClassificationLogEvent) => void,
   ) {}
 
   async analyzeTurn(input: PortfolioEntryAnalyzeTurnInputV2): Promise<PortfolioEntryAnalyzeTurnOutputV2> {
@@ -48,6 +50,18 @@ export class LivePortfolioEntryAgentAdapter implements PortfolioEntryAgentAdapte
       })
       : undefined;
     const fixedClassification = classification ? resolveClassification(classification, input.priorAnalysis) : undefined;
+    if (classification && fixedClassification) {
+      this.onClassified?.({
+        session_id: input.sessionId,
+        follow_up: Boolean(input.priorAnalysis),
+        provider: classification.source,
+        jev: { frame: classification.frame, primary_intent: classification.primary_intent },
+        confidence: classification.confidence,
+        applied: fixedClassification,
+        duration_ms: classification.duration_ms,
+        ...(classification.error ? { error: classification.error } : {}),
+      });
+    }
 
     const result = await this.model.generate({
       systemPrompt: composeAnalysisSystemPrompt(this.promptManifest, { classificationProvided: Boolean(fixedClassification) }),
@@ -92,6 +106,17 @@ export class LivePortfolioEntryAgentAdapter implements PortfolioEntryAgentAdapte
     };
   }
 }
+
+export type ClassificationLogEvent = {
+  session_id: string;
+  follow_up: boolean;
+  provider: JevClassification['source'];
+  jev: Pick<JevClassification, 'frame' | 'primary_intent'>;
+  confidence: JevClassification['confidence'];
+  applied: FixedClassification;
+  duration_ms: number;
+  error?: string;
+};
 
 type FixedClassification = Pick<PortfolioEntryAnalysisV2, 'primary_intent' | 'secondary_intents' | 'initial_entry_state' | 'current_frame'>;
 

@@ -142,7 +142,13 @@ function configuredAgentAdapter(): PortfolioEntryAgentAdapterV2 {
     const provider = loadPortfolioEntryProviderConfig();
     const prompts = loadResolvedPromptManifest();
     const candidate = createLiveCandidate(provider, prompts);
-    return new LivePortfolioEntryAgentAdapter(createResilientModel(provider), candidate, prompts, {}, configuredClassifier());
+    return new LivePortfolioEntryAgentAdapter(
+      createResilientModel(provider), candidate, prompts, {}, configuredClassifier(),
+      // Sin texto del usuario: solo ids, etiquetas y confianza.
+      (event) => (event.provider === 'jev_unavailable' ? logger.warn : logger.info).call(
+        logger, { portfolioEntryClassification: event }, 'portfolio-entry classification',
+      ),
+    );
   } catch (err) {
     // Degrading silently here surfaces later as PORTFOLIO_ENTRY_MODEL_PROVIDER_FAILURE
     // on every request, which points at the provider instead of the real cause.
