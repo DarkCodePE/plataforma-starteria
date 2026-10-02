@@ -112,6 +112,21 @@ esta aprobación sólo cubre la slice descrita y no certifica Starteria V2 compl
 
 ---
 
+## Slice FIRST_VALUE_P3_RUNTIME_PROCESSOR (KAN-86)
+
+```text
+slice_id: FIRST_VALUE_P3_RUNTIME_PROCESSOR
+logic_status: ACTIVE_V2_BASELINE (solo el boundary CAPABILITY_CONTRACT_APPROVED de KAN-85 y comportamiento KAN-63/A.3.2)
+implementation_status: IMPLEMENTED_UNVERIFIED
+visual_status: NOT_APPLICABLE
+evidence_status: TESTING
+authority: KAN-85 + KAN-63 + docs/portfolio-lead/06-portfolio-monitoring/experience/FIRST_VALUE_P3_PRODUCTIVE_PROCESSING_CAPABILITY_CONTRACT_v0.1.md
+scope: processor síncrono stateless, relaciones provisionales, aclaraciones agrupadas, sin escrituras canónicas ni persistencia durable
+exclusions: KAN-83 UI/setup, D2/prefill, Portfolio Entry, Core, Steps 0-4
+implementation_report: docs/portfolio-lead/06-portfolio-monitoring/90-implementation-reports/KAN-86_FIRST_VALUE_P3_RUNTIME_PROCESSOR_IMPLEMENTATION_v0.1.md
+integration_status: NOT_INTEGRATED
+```
+
 # 2.2 Slice KAN-64_PUBLIC_LANDING_L1_PRODUCT_FRAMING_HERO
 
 **Registrado:** 2026-09-30 por HU autorizada KAN-64; habilitaciÃ³n sujeta a guardrail.

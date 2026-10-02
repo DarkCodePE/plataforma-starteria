@@ -36,6 +36,7 @@ import { copilotReadinessHandler } from './modules/copilot/copilot-readiness';
 import { truthRouter } from './modules/truth/truth.router';
 import { strategicFramingRouter } from './modules/strategic-framing/strategic-framing.router';
 import { portfolioHandoffInvitationRouter, portfolioHandoffDeliveryRouter, portfolioHandoffResponseRouter } from './modules/portfolio-handoff/portfolio-handoff-invitation.router';
+import { firstValueP3Router } from './modules/first-value-p3/first-value-p3.router';
 
 export function createApp() {
   const app = express();
@@ -67,6 +68,7 @@ export function createApp() {
   app.use('/api/v1/projects', helpRouter);
   app.use('/api/v1/sponsor', sponsorRouter);
   app.use('/api/v1/portfolio', portfolioRouter);
+  app.use('/api/v1', firstValueP3Router);
   app.use('/api/v1/copilot', copilotRouter);
   app.use('/api/v1/truth', truthRouter);
   app.use('/api/v1/initial-reviews', initialReviewRouter);
