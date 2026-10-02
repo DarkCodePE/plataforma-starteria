@@ -113,6 +113,21 @@ subordinate to Core v0.2 and approved ADRs. This approval does not imply
 runtime implementation, does not execute SF-1 and is not a canonical Core
 extension.
 
+## 4.2 Portfolio Lead First Value — A.3.2
+
+For the KAN-63 First Value checkpoint and inline review slice, Jira KAN-63
+identifies the following document as its Source of Truth:
+
+`docs/portfolio-lead/06-portfolio-monitoring/experience/STARTERIA_PORTFOLIO_LEAD_A32_CHECKPOINT_INLINE_REVIEW_v0.1.md`
+
+The document is a slice-specific `DELTA IMPLEMENTATION SPEC`; this entry makes
+its cited source available on the governed baseline and does not promote it to
+a generally approved Experience Logic Contract. Its A.3/A.3.1 v0.2 references
+were not found in repository history. The A.3.2 requirements are self-contained
+in the spec and KAN-63; the A.3/A.3.1 implementation reports remain historical
+evidence, not normative dependencies. No KAN-63 acceptance criterion or product
+semantics are changed by this reconciliation.
+
 ## 5. Contrato activo para Portfolio -> Initiative Activation/Handoff
 
 Para el bounded context:
