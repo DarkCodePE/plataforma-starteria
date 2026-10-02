@@ -1,6 +1,6 @@
 import React from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { PortfolioLeadFirstValuePage } from '../PortfolioLeadFirstValuePage';
 import { analyzeFirstValueP3 } from '../firstValueP3Service';
 
@@ -124,30 +124,46 @@ describe('First Value P1–P3 runtime', () => {
 
   it('FV-12: descarta una respuesta P3 tardía después de invalidar el análisis', async () => {
     let resolvePending!: (value: Awaited<ReturnType<typeof analyzeFirstValueP3>>) => void;
-    let markResponseSettled!: () => void;
-    const responseSettled = new Promise<void>(resolve => { markResponseSettled = resolve; });
-    vi.mocked(analyzeFirstValueP3).mockImplementation(() => new Promise(resolve => {
-      resolvePending = value => {
-        resolve(value);
-        markResponseSettled();
-      };
-    }));
-    confirmP1AndP2(['Pricing Pilot']);
-    fireEvent.click(screen.getByRole('button', { name: /sí, esto representa mi trabajo/i }));
-    expect(analyzeFirstValueP3).toHaveBeenCalledTimes(1);
-    expect(screen.getByTestId('p3-processing')).toBeInTheDocument();
+    let deferredSettled = false;
+    const pending = new Promise<Awaited<ReturnType<typeof analyzeFirstValueP3>>>(resolve => {
+      resolvePending = value => { deferredSettled = true; resolve(value); };
+    });
+    vi.mocked(analyzeFirstValueP3).mockReturnValue(pending);
+    const view = render(<PortfolioLeadFirstValuePage />);
+    try {
+      fireEvent.change(screen.getByLabelText(/qué quieres conseguir/i), { target: { value: 'Aumentar ventas B2B en Q4' } });
+      fireEvent.change(screen.getByLabelText(/contexto adicional/i), { target: { value: 'Mercado europeo' } });
+      fireEvent.click(screen.getByRole('button', { name: /mostrar lo que entendió/i }));
+      fireEvent.click(screen.getByRole('button', { name: /está bien, continuar/i }));
+      fireEvent.change(screen.getByLabelText(/trabajo existente/i), { target: { value: 'Pricing Pilot' } });
+      fireEvent.click(screen.getByRole('button', { name: /mostrar trabajo detectado/i }));
+      fireEvent.click(screen.getByRole('button', { name: /sí, esto representa mi trabajo/i }));
+      expect(analyzeFirstValueP3).toHaveBeenCalledTimes(1);
+      expect(screen.getByTestId('p3-processing')).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: /ajustar lista/i }));
-    fireEvent.change(screen.getByLabelText(/trabajo existente/i), { target: { value: 'Pricing Pilot\nNuevo CRM' } });
+      fireEvent.click(screen.getByRole('button', { name: /ajustar lista/i }));
+      fireEvent.change(screen.getByLabelText(/trabajo existente/i), { target: { value: 'Pricing Pilot\nNuevo CRM' } });
+      expect(analyzeFirstValueP3).toHaveBeenCalledTimes(1);
 
-    resolvePending(resultFor([{ itemId: 'item-1', name: 'Pricing Pilot' }]) as never);
-    await responseSettled;
-    await Promise.resolve();
-
-    expect(screen.queryByTestId('p3-result')).not.toBeInTheDocument();
-    expect(screen.getByLabelText(/trabajo existente/i)).toHaveValue('Pricing Pilot\nNuevo CRM');
-    expect(screen.getByTestId('p1-confirmed-summary')).toHaveTextContent('Aumentar ventas B2B en Q4');
-    expect(screen.queryByTestId('p3-processing')).not.toBeInTheDocument();
+      await act(async () => {
+        resolvePending(resultFor([{ itemId: 'item-1', name: 'Pricing Pilot' }]) as never);
+        await Promise.resolve();
+      });
+      expect(screen.queryByTestId('p3-result')).not.toBeInTheDocument();
+      expect(screen.getByLabelText(/trabajo existente/i)).toHaveValue('Pricing Pilot\nNuevo CRM');
+      expect(screen.getByTestId('p1-confirmed-summary')).toHaveTextContent('Aumentar ventas B2B en Q4');
+      expect(screen.queryByTestId('p3-processing')).not.toBeInTheDocument();
+    } finally {
+      if (!deferredSettled) {
+        await act(async () => {
+          resolvePending(resultFor([{ itemId: 'item-1', name: 'Pricing Pilot' }]) as never);
+          await Promise.resolve();
+        });
+      }
+      view.unmount();
+      vi.restoreAllMocks();
+      vi.clearAllMocks();
+    }
   });
 
   it('FV-13/14: la aclaración agrupada nombra varias iniciativas y acepta una respuesta común', async () => {
