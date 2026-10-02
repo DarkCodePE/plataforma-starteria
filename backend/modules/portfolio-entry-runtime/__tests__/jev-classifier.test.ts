@@ -156,3 +156,18 @@ describe('LivePortfolioEntryAgentAdapter with Jev', () => {
     expect(JSON.stringify(event)).not.toContain('texto privado');
   });
 });
+
+describe('JevClassifier.classifyRaw', () => {
+  it('returns Jev choices without thresholds, for calibration', async () => {
+    const result = await new JevClassifier({
+      apiKey: 'k',
+      fetchImpl: jevResponse({ entry_state: { choice: 'problem_first', confidence: 0.2 }, primary_intent: { choice: 'strategic_goal', confidence: 0.3 } }),
+    }).classifyRaw('x');
+    expect(result).toEqual({ frame: { choice: 'problem_first', confidence: 0.2 }, primary_intent: { choice: 'strategic_goal', confidence: 0.3 } });
+  });
+
+  it('throws when Jev fails, so a calibration never runs on gaps', async () => {
+    await expect(new JevClassifier({ apiKey: 'k', fetchImpl: vi.fn().mockResolvedValue({ ok: false, status: 429 }) }).classifyRaw('x'))
+      .rejects.toThrow('Jev HTTP 429');
+  });
+});
