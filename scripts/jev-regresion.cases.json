@@ -1,0 +1,76 @@
+{
+  "_doc": "Casos de scripts/jev-regresion.py. Cada HU con cambios visibles agrega acá su recorrido (ver TESTING.md §9). 'goal' en lenguaje natural; 'expect' es la ruta que se verifica por fuera del agente.",
+  "journeys": [
+    {
+      "name": "PL frentes",
+      "hu": "KAN-71",
+      "start": "/portfolio/inicio",
+      "goal": "Open 'Frentes estratégicos' from the left navigation. Stop when that page is visible.",
+      "expect": "/portfolio/frentes-estrategicos"
+    },
+    {
+      "name": "PL retos",
+      "hu": "KAN-71",
+      "start": "/portfolio/inicio",
+      "goal": "Open 'Retos' from the left navigation. Stop when the Retos page is visible.",
+      "expect": "/portfolio/retos"
+    },
+    {
+      "name": "PL iniciativas",
+      "hu": "KAN-71",
+      "start": "/portfolio/inicio",
+      "goal": "Open 'Iniciativas' from the left navigation. Stop when the Iniciativas page is visible.",
+      "expect": "/portfolio/iniciativas"
+    },
+    {
+      "name": "PL reportes",
+      "hu": "KAN-71",
+      "start": "/portfolio/inicio",
+      "goal": "Open 'Reportes y decisiones' from the left navigation. Stop when that page is visible.",
+      "expect": "/portfolio/decisiones"
+    },
+    {
+      "name": "Admin roles",
+      "hu": "KAN-71",
+      "start": "/",
+      "goal": "Click 'Ir al panel', then open 'Roles de plataforma' from the left navigation. Stop when the Roles de plataforma page is visible.",
+      "expect": "/admin/roles"
+    },
+    {
+      "name": "Admin cohorte",
+      "hu": "KAN-71",
+      "start": "/",
+      "goal": "Click 'Ir al panel', then open 'Panel cohorte' from the left navigation. Stop when the Panel de cohorte page is visible.",
+      "expect": "/admin"
+    },
+    {
+      "name": "Perfil",
+      "hu": "KAN-71",
+      "start": "/",
+      "goal": "Click 'Ir al panel', then open 'Mi perfil' from the left navigation. Stop when the profile page is visible.",
+      "expect": "/perfil"
+    }
+  ],
+  "deep_links": [
+    {
+      "path": "/perfil",
+      "hu": "KAN-65"
+    },
+    {
+      "path": "/admin/roles",
+      "hu": "KAN-65"
+    },
+    {
+      "path": "/evidencias",
+      "hu": "KAN-65"
+    },
+    {
+      "path": "/portfolio/retos",
+      "hu": "KAN-65"
+    },
+    {
+      "path": "/portfolio/frentes-estrategicos",
+      "hu": "KAN-65"
+    }
+  ]
+}

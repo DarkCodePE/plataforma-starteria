@@ -91,7 +91,7 @@ control donde decide una persona y el agente se detiene hasta tener su sí.
  c. delivery-planner      HU + subtareas [Funcional] y [Técnica] → dry-run   .claude/agents/delivery-planner.md
  d. [P] aprueba el plan   → se crea en Jira (jira-hu-crear.mjs --aplicar)
  e. /implementar KAN-nnn  una subtarea [Técnica]: rama+worktree, GUARDRAIL_CHECK, test primero, código
- f. /verificar            matriz de comandos según los frentes tocados → evidencia
+ f. /verificar            matriz de comandos según los frentes tocados + navegador → evidencia
  g. revisor-starteria     subagente de sólo lectura: CA + guardrails + diff; máx. 3 rondas
  h. /pr → [P] abre el PR → [P] mergea → cierre (CLOSURE_CHECK, Manifest, CURRENT_STATE, HU)
 ```
@@ -122,6 +122,9 @@ qué, el resultado buscado, el alcance y los criterios no se cambian en silencio
 **Verificar (fase f)** — `.claude/skills/verificar/SKILL.md` y [`TESTING.md`](TESTING.md). El nivel
 barato mientras se itera; la matriz completa de los frentes tocados antes de pedir review. **Lo que
 no se pudo correr se reporta con el motivo**; nunca se declara verde algo que no se ejecutó.
+Si el cambio es visible para el usuario, incluye la **validación en navegador** (`TESTING.md` §9):
+BrowserSkill sobre los `CA-n` en la app local y el recorrido de la HU en
+`scripts/jev-regresion.cases.json`.
 
 **Revisar (fase g)** — `.claude/agents/revisor-starteria.md`. Un subagente sin permisos de escritura
 lee la HU, el diff y la evidencia, y devuelve `approved | changes_required | uncertain` con hallazgos.
@@ -131,7 +134,8 @@ sigue sin aprobar, o si una ronda no cambió nada, se escala a una persona.
 **Cerrar (fase h).** `/pr` arma el cuerpo con la plantilla y lo muestra; se publica con el sí de la
 persona. Después del merge (lo hace una persona): `V2_CHANGE_CLOSURE_CHECK`, actualizar
 `STARTERIA_V2_MANIFEST.md` y `CURRENT_STATE.md` si cambió el estado del slice, y comentar en la HU el
-PR y la evidencia. Mover el estado en Jira, sólo con el sí.
+PR y la evidencia. Después del deploy, `scripts/jev-regresion.py` contra producción
+(`TESTING.md` §9) y su resultado va en el comentario de la HU. Mover el estado en Jira, sólo con el sí.
 
 ## 4. Cierre obligatorio de cada sesión
 
@@ -200,7 +204,7 @@ Los comandos completos, los niveles de test y los gotchas están en [`TESTING.md
 | la firma de un endpoint de `routers/ai.py` | el bridge · tests `-m contract` |
 | un prompt, agente o nodo de `ai-service/` | caso en `harness/eval/` si aplica · scorecard del eval en la evidencia |
 | una variable de entorno | `.env.example` del frente · `k8s/*.yaml` · secretos de `cd.yml` (se avisa, no se crean) |
-| una ruta del front | journeys E2E que la recorren · destinos prohibidos de Portfolio Entry (Guardrails §9) |
+| una ruta del front | journeys E2E que la recorren · destinos prohibidos de Portfolio Entry (Guardrails §9) · `scripts/jev-regresion.cases.json` (`TESTING.md` §9) |
 | comportamiento de un slice | `STARTERIA_V2_MANIFEST.md` y `CURRENT_STATE.md` en el mismo PR (fase h) |
 | comandos de build o test | `TESTING.md` y este archivo, en el mismo PR |
 

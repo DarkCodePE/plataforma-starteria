@@ -13,27 +13,26 @@ Requisitos:
       TYPESAFE_API_KEY=<JEV_API_KEY>   TEXT_MODEL_API_KEY=<OPENROUTER_API_KEY>
   - Chrome con chrome://inspect/#remote-debugging habilitado.
 
+Casos: scripts/jev-regresion.cases.json (o JEV_REGRESION_CASES). Cada HU con cambios
+visibles agrega ahí su recorrido; ver TESTING.md §9.
+
 Uso:
   uv run --project jev-ultrafast --env-file jev-ultrafast/.env python scripts/jev-regresion.py
   ... python scripts/jev-regresion.py "Admin roles" "PL retos"   # solo esos casos
+  ... python scripts/jev-regresion.py --hu KAN-nnn                # solo los casos de una HU
   STARTERIA_URL=http://localhost:5173 ... python scripts/jev-regresion.py
 
 Salida: 0 si todo pasa, 1 si algún caso falla.
 """
-import os, sys, time
+import json, os, sys, time
 from jev_ultrafast import Agent
 
 BASE = os.environ.get("STARTERIA_URL", "https://starter-ia.com").rstrip("/")
 NO_WRITE = " Only navigate: do not create, edit, submit or delete anything."
-CASES = [
-    ("PL frentes", "/portfolio/inicio", "Open 'Frentes estratégicos' from the left navigation. Stop when that page is visible.", "/portfolio/frentes-estrategicos"),
-    ("PL retos", "/portfolio/inicio", "Open 'Retos' from the left navigation. Stop when the Retos page is visible.", "/portfolio/retos"),
-    ("PL iniciativas", "/portfolio/inicio", "Open 'Iniciativas' from the left navigation. Stop when the Iniciativas page is visible.", "/portfolio/iniciativas"),
-    ("PL reportes", "/portfolio/inicio", "Open 'Reportes y decisiones' from the left navigation. Stop when that page is visible.", "/portfolio/decisiones"),
-    ("Admin roles", "/", "Click 'Ir al panel', then open 'Roles de plataforma' from the left navigation. Stop when the Roles de plataforma page is visible.", "/admin/roles"),
-    ("Admin cohorte", "/", "Click 'Ir al panel', then open 'Panel cohorte' from the left navigation. Stop when the Panel de cohorte page is visible.", "/admin"),
-    ("Perfil", "/", "Click 'Ir al panel', then open 'Mi perfil' from the left navigation. Stop when the profile page is visible.", "/perfil"),
-]
+CASES_FILE = os.environ.get("JEV_REGRESION_CASES", os.path.join(os.path.dirname(os.path.abspath(__file__)), "jev-regresion.cases.json"))
+_cases = json.load(open(CASES_FILE, encoding="utf-8"))
+CASES = [(c["name"], c["start"], c["goal"], c["expect"]) for c in _cases["journeys"]]
+DEEP_LINKS = [d["path"] for d in _cases["deep_links"]]
 
 class NotRendered(Exception):
     pass
@@ -55,7 +54,16 @@ def wait_rendered(agent, timeout=12, settle=1.5):
     return False
 
 
-only = set(sys.argv[1:])
+args = sys.argv[1:]
+hu = args[args.index("--hu") + 1] if "--hu" in args else None
+if hu:
+    names = {c["name"] for c in _cases["journeys"] if c.get("hu") == hu}
+    CASES = [c for c in CASES if c[0] in names]
+    DEEP_LINKS = [d["path"] for d in _cases["deep_links"] if d.get("hu") == hu]
+    args = [a for a in args if a not in ("--hu", hu)]
+    if not CASES and not DEEP_LINKS:
+        sys.exit(f"no hay casos con hu={hu} en {CASES_FILE}")
+only = set(args)
 results = []
 for name, start, goal, expect in CASES:
     if only and name not in only:
@@ -83,7 +91,6 @@ for name, start, goal, expect in CASES:
 
 # Links directos: se abre la URL y NO se deja actuar a Jev. Si la app redirige, es bug,
 # aunque el agente pudiera volver por el menú (eso tapó el bug en la primera versión).
-DEEP_LINKS = ["/perfil", "/admin/roles", "/evidencias", "/portfolio/retos", "/portfolio/frentes-estrategicos"]
 for path in DEEP_LINKS if not only else []:
     t0 = time.perf_counter()
     with Agent(BASE + path, "noop") as agent:

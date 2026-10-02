@@ -83,3 +83,6 @@ client_secret_*.json
 
 # graft's local graph cache — regenerable, not committed (run `graft build`).
 /graft/
+
+# jev-ultrafast se clona localmente para scripts/jev-regresion.py (TESTING.md §9)
+/jev-ultrafast/

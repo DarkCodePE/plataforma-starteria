@@ -35,6 +35,10 @@ En este orden, que corta rápido:
 3. integración, si toca persistencia (con Postgres levantado);
 4. build;
 5. E2E dirigido y eval determinístico, si la matriz los pide.
+6. validación en navegador, si el diff cambia algo que el usuario ve o recorre (`TESTING.md` §9):
+   la app levantada en local, la persona logueada en su Chrome, BrowserSkill sobre cada `CA-n`
+   visible, y `scripts/jev-regresion.py --hu KAN-nnn` con el recorrido nuevo agregado a
+   `scripts/jev-regresion.cases.json`. El agente no inicia sesión ni escribe credenciales.
 
 Cada comando se corre de verdad y se guarda su resultado (último tramo de la salida y el código de
 salida). Si algo no se puede correr (sin Docker, sin clave, timeout), va a la tabla con el motivo;
@@ -57,7 +61,10 @@ Frentes: front | back | ai
 | npm run test:backend | PASS 412/412 | |
 | npm run test:e2e -- e2e/x.spec.ts | FAIL 1 | fallo conocido, auditoría de migración |
 | uv run pytest -m unit --cov | NO CORRIDO | sin uv en el entorno |
+| navegador: CA-1 en localhost (bsk) | PASS | captura + 0 errores de consola/red de la app |
+| jev-regresion.py --hu KAN-nnn (local) | PASS 2/2 | |
 CA cubiertos por test: CA-1 (ruta::test), CA-2 (ruta::test)
+CA validados en navegador: CA-1 (recorrido o captura)
 CA sin test: CA-3 (motivo)
 ```
 
