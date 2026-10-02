@@ -4,6 +4,15 @@ export const sessionParamsSchema = z.object({
   sessionId: z.string().uuid(),
 });
 
+export const confirmedBriefIdentitySchema = z.object({
+  source: z.literal('portfolio_entry'),
+  sessionRevision: z.coerce.number().int().min(0),
+  handoffId: z.string().min(1),
+  handoffVersion: z.coerce.number().int().positive(),
+  confirmationId: z.string().min(1),
+  confirmationVersion: z.coerce.number().int().positive(),
+}).strict();
+
 export const createSessionBodySchema = z.object({
   sourceMetadata: z.record(z.unknown()).optional(),
 }).strict().default({});
@@ -40,3 +49,4 @@ export type GuidedExplorationBody = z.infer<typeof guidedExplorationBodySchema>;
 export type MaterializeHandoffBody = z.infer<typeof materializeHandoffBodySchema>;
 export type ConfirmationBody = z.infer<typeof confirmationBodySchema>;
 export type ClaimBody = z.infer<typeof claimBodySchema>;
+export type ConfirmedBriefIdentity = z.infer<typeof confirmedBriefIdentitySchema>;

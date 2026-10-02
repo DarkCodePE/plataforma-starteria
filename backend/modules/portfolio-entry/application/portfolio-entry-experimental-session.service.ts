@@ -22,10 +22,12 @@ import type { PortfolioEntryModelExecutionRecord } from '../../portfolio-entry-s
 import {
   toPortfolioEntryAuthenticatedProvisionalContinuationDto,
   toPortfolioEntrySessionClientDto,
+  toPortfolioEntryConfirmedBriefDto,
+  type PortfolioEntryConfirmedBriefDto,
   type PortfolioEntrySessionClientDto,
 } from '../portfolio-entry.dto';
 import { PortfolioEntryApiError } from '../portfolio-entry.errors';
-import type { ConfirmationBody, CreateSessionBody, GuidedExplorationBody, SubmitMessageBody } from '../portfolio-entry.schemas';
+import type { ConfirmationBody, ConfirmedBriefIdentity, CreateSessionBody, GuidedExplorationBody, SubmitMessageBody } from '../portfolio-entry.schemas';
 import type {
   PortfolioEntryIdempotencyRecord,
   PortfolioEntryIdempotencyRepository,
@@ -99,6 +101,24 @@ export class PortfolioEntryExperimentalSessionService {
     }
     if (session.expiresAt <= this.now()) throw PortfolioEntrySessionError.expired();
     return this.toProvisionalDto(session);
+  }
+
+  async resolveConfirmedBrief(sessionId: string, identity: ConfirmedBriefIdentity, principal?: Principal): Promise<PortfolioEntryConfirmedBriefDto> {
+    if (!principal) throw PortfolioEntrySessionError.unauthorized();
+    const session = await this.sessionRepository.findSessionById(sessionId);
+    if (!session) throw PortfolioEntryApiError.briefResolution('NOT_FOUND');
+    if (session.ownershipState !== 'CLAIMED' || session.ownerUserId !== principal.id) throw PortfolioEntryApiError.briefResolution('UNAUTHORIZED');
+    if (session.lifecycleStatus === 'ABANDONED') throw PortfolioEntryApiError.briefResolution('ABANDONED');
+    if (session.lifecycleStatus === 'EXPIRED' || session.expiredAt || session.expiresAt <= this.now()) throw PortfolioEntryApiError.briefResolution('EXPIRED');
+    if (session.lifecycleStatus !== 'CONFIRMED') throw PortfolioEntryApiError.briefResolution('NOT_CONFIRMED');
+    if (session.revision !== identity.sessionRevision) throw PortfolioEntryApiError.briefResolution('REVISION_MISMATCH');
+    const handoff = session.latestHandoff;
+    if (!handoff || handoff.id !== identity.handoffId || handoff.version !== identity.handoffVersion) throw PortfolioEntryApiError.briefResolution('INVALID_HANDOFF');
+    const confirmation = session.confirmation;
+    if (!confirmation || confirmation.status !== 'CONFIRMED' || confirmation.id !== identity.confirmationId || confirmation.version !== identity.confirmationVersion || confirmation.handoffId !== handoff.id) {
+      throw PortfolioEntryApiError.briefResolution('INVALID_CONFIRMATION');
+    }
+    return { ...toPortfolioEntryConfirmedBriefDto(session), revision: identity.sessionRevision };
   }
 
   async submitMessage(sessionId: string, body: SubmitMessageBody, context: RequestContext): Promise<PortfolioEntrySessionClientDto> {

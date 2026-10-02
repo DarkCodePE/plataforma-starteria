@@ -116,6 +116,7 @@ export function buildPortfolioEntryRouter(
   router.post('/sessions', createLimiter, controller.createSession);
   router.get('/sessions/:sessionId', optionalAuth, submitLimiter, controller.readSession);
   router.get('/sessions/:sessionId/provisional-continuation', auth, submitLimiter, controller.readAuthenticatedProvisionalContinuation);
+  router.get('/sessions/:sessionId/confirmed-brief', auth, submitLimiter, controller.resolveConfirmedBrief);
   router.get('/sessions/:sessionId/portfolio-contexts', auth, submitLimiter, continuationController.listPortfolioContexts);
   router.post('/sessions/:sessionId/messages', optionalAuth, submitLimiter, controller.submitMessage);
   router.post('/sessions/:sessionId/guided-exploration', optionalAuth, submitLimiter, controller.guidedExploration);

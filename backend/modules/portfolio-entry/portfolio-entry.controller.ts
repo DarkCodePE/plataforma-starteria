@@ -1,6 +1,7 @@
 import type { Request, Response, NextFunction } from 'express';
 import {
   claimBodySchema,
+  confirmedBriefIdentitySchema,
   confirmationBodySchema,
   createSessionBodySchema,
   guidedExplorationBodySchema,
@@ -13,6 +14,15 @@ import type { PortfolioEntryExperimentalSessionService } from './application/por
 
 export class PortfolioEntryController {
   constructor(private readonly service: PortfolioEntryExperimentalSessionService) {}
+
+  resolveConfirmedBrief = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const { sessionId } = sessionParamsSchema.parse(req.params);
+      const identity = confirmedBriefIdentitySchema.parse(req.query);
+      const data = await this.service.resolveConfirmedBrief(sessionId, identity, req.user ? { id: req.user.id } : undefined);
+      res.json({ success: true, data });
+    } catch (err) { next(mapPortfolioEntryError(err)); }
+  };
 
   createSession = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {

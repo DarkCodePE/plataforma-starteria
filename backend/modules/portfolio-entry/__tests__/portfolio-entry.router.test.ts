@@ -21,6 +21,70 @@ import { buildPortfolioEntryRouter } from '../portfolio-entry.router';
 const base = '/api/v1/public/portfolio-entry';
 
 describe('Portfolio Entry Experimental Session API', () => {
+  it('D1 resolves the exact owner-confirmed Brief with provenance and no session writes', async () => {
+    const { app, repository } = makeApp();
+    const fixture = await confirmedBriefFixture(app);
+    const before = await repository.findSessionById(fixture.sessionId);
+    const result = await request(app).get(confirmedBriefPath(fixture)).set('Authorization', 'Bearer user-1').expect(200);
+    expect(result.body.data).toMatchObject({
+      source: 'portfolio_entry', sessionId: fixture.sessionId, revision: fixture.sessionRevision,
+      handoffId: fixture.handoffId, handoffVersion: fixture.handoffVersion,
+      confirmationId: fixture.confirmationId, confirmationVersion: fixture.confirmationVersion,
+      brief: { rawEntry: expect.any(String), handoff: expect.any(Object), confirmation: {
+        status: 'CONFIRMED', acceptedFields: ['understood_need'], correctedFields: {}, rejectedFields: [],
+      } },
+    });
+    const after = await repository.findSessionById(fixture.sessionId);
+    expect(after?.revision).toBe(before?.revision);
+    expect(after?.latestHandoff).toEqual(before?.latestHandoff);
+    expect(after?.confirmation).toEqual(before?.confirmation);
+  });
+
+  it('D1 masks missing and foreign sessions and rejects stale or mismatched identities', async () => {
+    const { app } = makeApp();
+    const fixture = await confirmedBriefFixture(app);
+    await request(app).get(confirmedBriefPath(fixture)).expect(401);
+    const foreign = await request(app).get(confirmedBriefPath(fixture)).set('Authorization', 'Bearer user-2').expect(404);
+    const missing = await request(app).get(confirmedBriefPath({ ...fixture, sessionId: '2c6735b4-bc30-4b53-9f52-03c83dc46f22' })).set('Authorization', 'Bearer user-1').expect(404);
+    expect(foreign.body.error.code).toBe(missing.body.error.code);
+    expect(JSON.stringify(foreign.body)).not.toContain(fixture.sessionId);
+    await request(app).get(confirmedBriefPath({ ...fixture, sessionRevision: fixture.sessionRevision + 1 })).set('Authorization', 'Bearer user-1').expect(409);
+    await request(app).get(confirmedBriefPath({ ...fixture, handoffVersion: fixture.handoffVersion + 1 })).set('Authorization', 'Bearer user-1').expect(409);
+    await request(app).get(confirmedBriefPath({ ...fixture, confirmationVersion: fixture.confirmationVersion + 1 })).set('Authorization', 'Bearer user-1').expect(409);
+    await request(app).get(confirmedBriefPath({ ...fixture, handoffId: 'different-handoff' })).set('Authorization', 'Bearer user-1').expect(409);
+    await request(app).get(confirmedBriefPath({ ...fixture, confirmationId: 'different-confirmation' })).set('Authorization', 'Bearer user-1').expect(409);
+  });
+
+  it('D1 returns 410 for abandoned or expired and 409 for a not-confirmed session', async () => {
+    const { app, repository } = makeApp();
+    for (const lifecycleStatus of ['ABANDONED', 'EXPIRED'] as const) {
+      const fixture = await confirmedBriefFixture(app);
+      const current = await repository.findSessionById(fixture.sessionId);
+      await repository.saveSessionState({
+        session: {
+          ...current!, lifecycleStatus,
+          ...(lifecycleStatus === 'EXPIRED' ? { expiresAt: new Date(Date.now() - 1_000) } : {}),
+          revision: current!.revision + 1,
+        },
+        expectedRevision: current!.revision,
+      });
+      await request(app).get(confirmedBriefPath(fixture)).set('Authorization', 'Bearer user-1').expect(410);
+    }
+    const ready = await readySession(app);
+    const handoff = await request(app).post(`${base}/sessions/${ready.sessionId}/handoff`)
+      .set('X-Starteria-Entry-Token', ready.token).set('Idempotency-Key', `d1-not-confirmed-handoff-${ready.sessionId}`)
+      .send({ expectedRevision: ready.revision }).expect(200);
+    await request(app).post(`${base}/sessions/${ready.sessionId}/claim`)
+      .set('Authorization', 'Bearer user-1').set('X-Starteria-Entry-Token', ready.token)
+      .set('Idempotency-Key', `d1-not-confirmed-claim-${ready.sessionId}`)
+      .send({ expectedRevision: handoff.body.data.revision }).expect(200);
+    await request(app).get(confirmedBriefPath({
+      sessionId: ready.sessionId, source: 'portfolio_entry', sessionRevision: handoff.body.data.revision,
+      handoffId: handoff.body.data.handoff.id, handoffVersion: handoff.body.data.handoff.version,
+      confirmationId: 'not-confirmed', confirmationVersion: 1,
+    })).set('Authorization', 'Bearer user-1').expect(409);
+  });
+
   it('creates an anonymous session without a model call and returns the raw token once', async () => {
     const adapter = new FakeAgentAdapter();
     const { app, repository } = makeApp({ adapter });
@@ -866,6 +930,41 @@ async function readySession(app: express.Express): Promise<{ sessionId: string; 
   expect(provisional.body.data.nextAction).toBe('generate_handoff');
 
   return { ...created, revision: provisional.body.data.revision };
+}
+
+type ConfirmedBriefIdentityFixture = {
+  sessionId: string;
+  source: 'portfolio_entry';
+  sessionRevision: number;
+  handoffId: string;
+  handoffVersion: number;
+  confirmationId: string;
+  confirmationVersion: number;
+};
+
+async function confirmedBriefFixture(app: express.Express): Promise<ConfirmedBriefIdentityFixture> {
+  const ready = await readySession(app);
+  const handoff = await request(app).post(`${base}/sessions/${ready.sessionId}/handoff`)
+    .set('X-Starteria-Entry-Token', ready.token).set('Idempotency-Key', `d1-handoff-${ready.sessionId}`)
+    .send({ expectedRevision: ready.revision }).expect(200);
+  const claimed = await request(app).post(`${base}/sessions/${ready.sessionId}/claim`)
+    .set('Authorization', 'Bearer user-1').set('X-Starteria-Entry-Token', ready.token)
+    .set('Idempotency-Key', `d1-claim-${ready.sessionId}`).send({ expectedRevision: handoff.body.data.revision }).expect(200);
+  const confirmed = await request(app).post(`${base}/sessions/${ready.sessionId}/handoff/confirmation`)
+    .set('Authorization', 'Bearer user-1').set('Idempotency-Key', `d1-confirm-${ready.sessionId}`)
+    .send({ expectedRevision: claimed.body.data.revision, action: 'confirm', acceptedFields: ['understood_need'] }).expect(200);
+  return {
+    sessionId: ready.sessionId, source: 'portfolio_entry', sessionRevision: confirmed.body.data.revision,
+    handoffId: confirmed.body.data.handoff.id, handoffVersion: confirmed.body.data.handoff.version,
+    confirmationId: confirmed.body.data.confirmation.id, confirmationVersion: confirmed.body.data.confirmation.version,
+  };
+}
+
+function confirmedBriefPath(identity: ConfirmedBriefIdentityFixture): string {
+  const { sessionId, ...queryIdentity } = identity;
+  return `${base}/sessions/${sessionId}/confirmed-brief?${new URLSearchParams(
+    Object.entries(queryIdentity).map(([key, value]) => [key, String(value)]),
+  )}`;
 }
 
 async function offerGuidedExploration(app: express.Express): Promise<{
