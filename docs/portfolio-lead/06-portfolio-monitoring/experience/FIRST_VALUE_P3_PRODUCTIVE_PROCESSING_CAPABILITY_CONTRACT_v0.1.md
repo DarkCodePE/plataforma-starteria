@@ -1,16 +1,18 @@
 # First Value P3 — Productive Processing Capability Contract v0.1
 
-**Status:** `NEEDS_PRODUCT_DECISION` — implementation-ready proposal; not yet approved for productive runtime.
-**Slice:** KAN-85 — documentary capability contract only.
+**Status:** `CAPABILITY_CONTRACT_APPROVED`
+**Initial proposal status:** `NEEDS_PRODUCT_DECISION` — retained as historical trace of the initial proposal.
+**Decision record:** Jira KAN-85 — `Product Decision — APPROVED` (recorded after the initial proposal).
+**Next authorized technical slice:** KAN-86 — First Value P3 — Runtime Processor Implementation.
 **Product behavior authority:** Jira KAN-63 and its designated A.3.2 `DELTA IMPLEMENTATION SPEC`.
 **Global authority:** [`docs/STARTERIA_AUTHORITY.md`](../../../STARTERIA_AUTHORITY.md), subordinate to Core v0.2 and approved product ADRs.
 **Implementation evidence:** KAN-83 blocker report at commit `3f69d9a` on `feat/KAN-83-first-value-runtime-hardening`; evidence only, not product authority.
 
-## 1. Decision requested
+## 1. Decision and scope
 
-Approve a First Value-specific P3 analysis capability with the boundaries in this contract, and authorize a separate technical implementation slice for its service/API and productive analysis engine. This document does not authorize runtime changes, database changes, or a change to KAN-63.
+The initial proposal requested approval of a First Value-specific P3 analysis capability and a separate technical implementation slice. Jira KAN-85 subsequently recorded the human product decision `APPROVED`, with the binding limits in this contract. Runtime implementation is authorized only through the separate technical slice KAN-86 and only within this contract's scope. Approval of KAN-85 does not mean runtime already exists, authorize database changes, or change KAN-63.
 
-The result remains `NEEDS_PRODUCT_DECISION` until a product authority accepts or changes the proposed capability, especially its productive AI role. KAN-83 remains blocked from promotion while its P3 consumer depends on mock/local analysis; after this decision, its shell work may proceed only within KAN-83's scope and may not claim productive P3 readiness until the separately scoped capability is implemented and verified.
+The initial proposal status was `NEEDS_PRODUCT_DECISION`. The subsequent human product decision is `CAPABILITY_CONTRACT_APPROVED`, recorded in Jira KAN-85 after the proposal. KAN-86 is the only authorized runtime implementation slice and remains bounded by this contract. Approval does not mean runtime already exists. KAN-83 remains blocked until KAN-86 is implemented, reviewed, and integrated into the governed baseline; only then may KAN-83 resume its own scope.
 
 ## 2. Authority and scope
 
@@ -121,26 +123,38 @@ MANIFEST: No promoted First Value A.3.2 runtime slice; this document does not ch
 CURRENT FLOW: No governed /portfolio/setup route or productive First Value P3 processor on baseline
 V2 TARGET: Confirmed P1/P2 → session-only request/response interpretation → inline exception review → global human confirmation
 LEGACY: Prototype fixture/local analysis/timers are excluded; Portfolio Entry runtime is a separate domain boundary
-SEMANTIC OWNER: V2 for the bounded KAN-63 reading; implementation remains unapproved until this proposal is accepted
+SEMANTIC OWNER: V2 for the bounded KAN-63 reading; capability contract approved by Jira KAN-85; runtime implementation only in KAN-86
 CORE / STEPS: No change; no canonical writes
 PERSISTENCE: Active-session state only; no durable persistence authorized
 TESTS: No product code changed; contract validation is documentary. Future technical slice needs contract, negative-side-effect, failure/retry, provenance, and KAN-63 conformance tests.
 ADR: Not indicated for this bounded proposal while Core, canonical structure, and Steps remain unchanged; revisit if implementation changes those invariants or adds durable domain effects.
-PROCEED: YES for this documentary contract only. NO for productive runtime implementation until product decision is recorded and a separate technical slice is authorized/planned.
+PROCEED: KAN-85 capability contract approved. Runtime implementation authorized only within KAN-86 scope and this contract. KAN-86 runtime implementation: NO (not yet implemented).
 ```
 
 ## 11. Decision register and implementation gate
 
-| Question | Contract proposal | Status / evidence needed |
+| Question | Approved capability boundary | Technical status / evidence |
 |---|---|---|
-| Reuse an existing AI runtime? | Reuse only generic provider/runtime infrastructure if verified; never reuse Portfolio Entry analysis APIs, prompts, or state. | Product/technical approval needed; KAN-83 found no eligible First Value capability. |
-| New endpoint or existing service? | First Value-owned application service and backend boundary; prefer an existing exact-authority service only if a new audit proves one exists. | Separate technical slice; no such service found on baseline. |
-| Session-only or durable persistence? | Active-session state only; processor stores nothing. | Proposed explicit no-durable-persistence decision; durable storage needs separate authorization. |
+| Reuse an existing AI runtime? | Reuse only generic provider/runtime infrastructure if verified; never reuse Portfolio Entry analysis APIs, prompts, or state. | KAN-85 capability approved; verification and implementation are limited to KAN-86. |
+| New endpoint or existing service? | First Value-owned application service and backend boundary; prefer an existing exact-authority service only if a new audit proves one exists. | KAN-86 technical slice; no such service found on baseline. |
+| Session-only or durable persistence? | Active-session state only; processor stores nothing. | Approved binding limit; durable storage is not authorized. |
 | Minimal input? | P1-confirmed goal/context + P2-confirmed user-provided work and corrections + session clarifications. | Defined in §4; exclude unconfirmed/external data. |
 | Forbidden before confirmation? | All canonical/domain writes, submissions, structural changes, assignment changes, and promotion; global confirmation remains session-only. | Explicit zero-side-effect boundary in §5–6. |
-| Sync or async? | Bounded request/response with visible loading; no background job/polling requirement. | Proposed interaction contract; implementation must enforce timeout/failure behavior. |
-| Is a separate technical slice required? | Yes: implement and verify the First Value service/processor boundary independently of KAN-63 and KAN-83's frontend promotion scope. | This is a distinct deliverable; KAN-83 must not claim productive promotion while it is missing. |
+| Sync or async? | Bounded request/response with visible loading; no background job/polling requirement. | Approved capability contract; KAN-86 implementation must enforce timeout/failure behavior. |
+| Is a separate technical slice required? | Yes: implement and verify the First Value service/processor boundary independently of KAN-63 and KAN-83's frontend promotion scope. | KAN-86 is the next authorized technical slice; KAN-83 remains blocked until KAN-86 is implemented, reviewed, and integrated. |
 
 **Acceptance mapping:** AC1 §§1–3; AC2, AC4 §§4, 8; AC3 §§2, 5; AC5–6 §§5–6; AC7 §7; AC8 §§4, 10; AC9–10 §11.
 
-**Review outcome requested:** accept this contract as the bounded First Value P3 capability authority, or record specific product decisions that differ. Until then: `NEEDS_PRODUCT_DECISION`; no runtime authorization is inferred from this proposal.
+**Reconciliation result:** `KAN85_CAPABILITY_STATUS = CAPABILITY_CONTRACT_APPROVED` (Jira KAN-85; decision recorded after the initial `NEEDS_PRODUCT_DECISION` proposal).
+
+**Implementation gate:** KAN-85 product capability contract is approved. Runtime implementation is authorized only within the separate technical slice KAN-86 and only under this contract; KAN-85 approval does not mean the runtime already exists and does not grant open-ended backend authorization.
+
+**Next authorized technical slice:** KAN-86 — First Value P3 — Runtime Processor Implementation. KAN-86 remains limited by this KAN-85 contract.
+
+```text
+KAN85_CAPABILITY_STATUS = CAPABILITY_CONTRACT_APPROVED
+KAN86_RUNTIME_AUTHORIZED = YES, ONLY WITHIN KAN-86 SCOPE
+KAN86_RUNTIME_IMPLEMENTED = NO
+KAN83_CAN_RESUME_NOW = NO
+KAN83_CAN_RESUME_AFTER_KAN86_INTEGRATION = YES
+```
