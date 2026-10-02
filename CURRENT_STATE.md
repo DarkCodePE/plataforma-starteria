@@ -173,6 +173,10 @@ Invariantes de esta frontera: `AUTHENTICATION != BUSINESS CANONICALIZATION`,
 - The Portfolio Lead reconciliation plan, glossary/context map and PH-2
   revalidation report are indexed evidence/reference artifacts, not new
   authority.
+- First Value P3 runtime is implemented on `feat/KAN-86-first-value-p3-runtime`
+  under KAN-85/KAN-63 authority; integration and verification remain pending.
+  It is stateless, provisional, and has no canonical or durable P3 writes. See
+  `docs/portfolio-lead/06-portfolio-monitoring/90-implementation-reports/KAN-86_FIRST_VALUE_P3_RUNTIME_PROCESSOR_IMPLEMENTATION_v0.1.md`.
 
 ## ADRs
 

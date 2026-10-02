@@ -64,10 +64,33 @@ from schemas.responses import (
 )
 from services.context_assembler import ContextAssembler
 from services.cost_tracker import CostLimitExceededError
+from agents.first_value_p3 import process as process_first_value_p3, P3ProcessorError
+from schemas.first_value_p3 import FirstValueP3Input
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/ai", tags=["ai"])
+
+
+@router.post("/first-value/p3/analyze")
+async def analyze_first_value_p3(
+    body: FirstValueP3Input,
+    x_internal_token: str | None = Header(default=None, alias="X-Internal-Token"),
+):
+    """Internal P3 processing boundary; Express owns caller authentication."""
+    if not os.getenv(_INTERNAL_TOKEN_ENV):
+        raise HTTPException(status_code=503, detail={"code": "P3_PROCESSOR_UNAVAILABLE"})
+    _verify_internal_token(x_internal_token)
+    if body.p2Confirmed is not True:
+        raise HTTPException(status_code=422, detail={"code": "P3_INPUT_NOT_CONFIRMED"})
+    try:
+        return await run_in_threadpool(process_first_value_p3, body)
+    except P3ProcessorError as exc:
+        status_code = 504 if exc.code == "P3_PROCESSOR_TIMEOUT" else 422 if exc.code == "P3_INVALID_ANALYSIS" else 503
+        raise HTTPException(status_code=status_code, detail={"code": exc.code}) from exc
+    except Exception as exc:
+        logger.warning("First Value P3 request rejected (%s)", type(exc).__name__)
+        raise HTTPException(status_code=422, detail={"code": "P3_INVALID_INPUT"}) from exc
 
 # Agent singletons shared with orchestrator to avoid duplicate init.
 # Each agent class' __init__ may require `OPENROUTER_API_KEY` (via deepagents +
