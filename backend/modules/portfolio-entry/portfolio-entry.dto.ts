@@ -108,6 +108,44 @@ export type PortfolioEntryConfirmationClientDto = {
   createdAt: string;
 };
 
+export type PortfolioEntryConfirmedBriefDto = {
+  source: 'portfolio_entry';
+  sessionId: string;
+  revision: number;
+  handoffId: string;
+  handoffVersion: number;
+  confirmationId: string;
+  confirmationVersion: number;
+  brief: {
+    rawEntry: string;
+    handoff: PortfolioEntryHandoffRecord['handoff'];
+    confirmation: {
+      status: 'CONFIRMED';
+      acceptedFields: string[];
+      correctedFields: PortfolioEntryConfirmation['correctedFields'];
+      rejectedFields: string[];
+    };
+  };
+};
+
+export function toPortfolioEntryConfirmedBriefDto(session: PortfolioEntrySession): PortfolioEntryConfirmedBriefDto {
+  const handoff = session.latestHandoff!;
+  const confirmation = session.confirmation!;
+  return {
+    source: 'portfolio_entry', sessionId: session.id, revision: session.revision,
+    handoffId: handoff.id, handoffVersion: handoff.version,
+    confirmationId: confirmation.id, confirmationVersion: confirmation.version,
+    brief: {
+      rawEntry: session.rawEntry,
+      handoff: handoff.handoff,
+      confirmation: {
+        status: 'CONFIRMED', acceptedFields: confirmation.acceptedFields,
+        correctedFields: confirmation.correctedFields, rejectedFields: confirmation.rejectedFields,
+      },
+    },
+  };
+}
+
 export function toPortfolioEntrySessionClientDto(
   session: PortfolioEntrySession,
   turns: PortfolioEntryTurn[],
