@@ -87,6 +87,14 @@ describe('PortfolioLeadLayout — quién accede a /portfolio', () => {
     expect(navigate).toHaveBeenCalledWith('/dashboard', { replace: true });
   });
 
+  it('FV-02: un usuario sin portfolio:read no accede a First Value', () => {
+    currentUser = sesion('owner');
+    currentLocation = { pathname: '/portfolio/setup', search: '' };
+    render(<PortfolioLeadLayout />);
+    expect(entra()).toBe(false);
+    expect(navigate).toHaveBeenCalledWith('/dashboard', { replace: true });
+  });
+
   it('sin sesión va a /auth, no al dashboard', () => {
     currentUser = null;
     render(<PortfolioLeadLayout />);
