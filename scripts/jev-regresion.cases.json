@@ -49,6 +49,27 @@
       "start": "/",
       "goal": "Click 'Ir al panel', then open 'Mi perfil' from the left navigation. Stop when the profile page is visible.",
       "expect": "/perfil"
+    },
+    {
+      "name": "PL sponsors",
+      "hu": "KAN-72",
+      "start": "/portfolio/inicio",
+      "goal": "Open 'Actores clave' (sponsors) from the left navigation. Stop when that page is visible.",
+      "expect": "/portfolio/sponsors"
+    },
+    {
+      "name": "Evidencias",
+      "hu": "KAN-72",
+      "start": "/",
+      "goal": "Click 'Ir al panel', then open 'Evidencias' from the left navigation. Stop when the Evidencias page is visible.",
+      "expect": "/evidencias"
+    },
+    {
+      "name": "Mentor revisiones",
+      "hu": "KAN-72",
+      "start": "/",
+      "goal": "Click 'Ir al panel', then open 'Revisiones pendientes' from the left navigation. Stop when that page is visible.",
+      "expect": "/mentor"
     }
   ],
   "deep_links": [
@@ -71,6 +92,30 @@
     {
       "path": "/portfolio/frentes-estrategicos",
       "hu": "KAN-65"
+    },
+    {
+      "path": "/mentor",
+      "hu": "KAN-72"
+    },
+    {
+      "path": "/portfolio/sponsors",
+      "hu": "KAN-72"
+    },
+    {
+      "path": "/portfolio/reportes",
+      "hu": "KAN-72"
+    },
+    {
+      "path": "/portfolio/empresa",
+      "hu": "KAN-72"
+    },
+    {
+      "path": "/portfolio/iniciar",
+      "hu": "KAN-72"
+    },
+    {
+      "path": "/public/start",
+      "hu": "KAN-72"
     }
   ]
 }
