@@ -69,6 +69,28 @@ export class JevClassifier {
    */
   async classify(input: { rawInput: string; priorQuestions?: string[] }): Promise<JevClassification> {
     const startedAt = Date.now();
+    try {
+      const body = await this.ask(describeState(input.rawInput, input.priorQuestions ?? []));
+      return { ...fromAnswers(body.answers ?? {}), source: 'jev', model: body.model, duration_ms: Date.now() - startedAt };
+    } catch (err) {
+      // Si Jev no está, el turno sigue: sin clasificación confiable, todo queda en `unknown`.
+      return {
+        frame: 'unknown', primary_intent: 'unknown', secondary_intents: [], confidence: { frame: 0, primary_intent: 0 },
+        source: 'jev_unavailable', duration_ms: Date.now() - startedAt, error: err instanceof Error ? err.message : String(err),
+      };
+    }
+  }
+
+  /**
+   * La elección de Jev sin aplicar umbrales, para calibrarlos (backend/scripts/jev-calibration.ts).
+   * A diferencia de `classify`, sí lanza si Jev falla: una calibración con huecos engaña.
+   */
+  async classifyRaw(rawInput: string): Promise<{ frame: RawChoice; primary_intent: RawChoice }> {
+    const { answers = {} } = await this.ask(describeState(rawInput, []));
+    return { frame: rawChoice(answers.entry_state), primary_intent: rawChoice(answers.primary_intent) };
+  }
+
+  private async ask(state: string): Promise<{ answers?: Record<string, JevChoice & JevScore>; model?: string }> {
     const fetchImpl = this.config.fetchImpl ?? fetch;
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), this.config.timeoutMs ?? 10_000);
@@ -77,25 +99,20 @@ export class JevClassifier {
         method: 'POST',
         signal: controller.signal,
         headers: { Authorization: `Bearer ${this.config.apiKey}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          state: describeState(input.rawInput, input.priorQuestions ?? []),
-          model: this.config.model ?? 'jev-latest',
-          questions: QUESTIONS,
-        }),
+        body: JSON.stringify({ state, model: this.config.model ?? 'jev-latest', questions: QUESTIONS }),
       });
       if (!response.ok) throw new Error(`Jev HTTP ${response.status}`);
-      const body = await response.json() as { answers?: Record<string, JevChoice & JevScore>; model?: string };
-      return { ...fromAnswers(body.answers ?? {}), source: 'jev', model: body.model, duration_ms: Date.now() - startedAt };
-    } catch (err) {
-      // Si Jev no está, el turno sigue: sin clasificación confiable, todo queda en `unknown`.
-      return {
-        frame: 'unknown', primary_intent: 'unknown', secondary_intents: [], confidence: { frame: 0, primary_intent: 0 },
-        source: 'jev_unavailable', duration_ms: Date.now() - startedAt, error: err instanceof Error ? err.message : String(err),
-      };
+      return await response.json() as { answers?: Record<string, JevChoice & JevScore>; model?: string };
     } finally {
       clearTimeout(timer);
     }
   }
+}
+
+type RawChoice = { choice: string; confidence: number };
+
+function rawChoice(answer: JevChoice | undefined): RawChoice {
+  return { choice: answer?.choice ?? 'unknown', confidence: Number(answer?.confidence ?? 0) };
 }
 
 const QUESTIONS = {

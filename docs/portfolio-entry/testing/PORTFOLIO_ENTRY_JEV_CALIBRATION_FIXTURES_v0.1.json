@@ -1,0 +1,24 @@
+{
+  "fixture_version": "KAN-76-v0.1",
+  "status": "COLLECTING",
+  "authority": "experimental-only",
+  "purpose": "Frases reales de Portfolio Leads para calibrar los umbrales de Jev en Portfolio Entry (ADR-032). Es un set APARTE de los 26 casos del AI Harness: ajustar contra esos casos haría que la suite mida memoria.",
+  "how_to_fill": [
+    "Una entrada por frase real, anonimizada: sin nombres de personas, empresas ni montos identificables.",
+    "expected_entry_state y expected_intent salen de doc/entry-01 §5-6. Si la frase no alcanza para decidir, el valor correcto es 'unknown'.",
+    "expected_secondary_intents solo si la frase lo dice de forma explícita.",
+    "Meta: 30 a 50 frases. Correr desde front/: NODE_PATH=./node_modules npx tsx ../backend/scripts/jev-calibration.ts"
+  ],
+  "valid_entry_states": ["strategy_first", "portfolio_first", "initiative_first", "solution_first", "problem_first", "opportunity_first", "decision_first", "reporting_first", "unknown"],
+  "valid_intents": ["strategic_goal", "portfolio_alignment", "portfolio_tracking", "portfolio_prioritization", "portfolio_reporting", "portfolio_governance", "initiative_governance", "unknown"],
+  "cases": [
+    {
+      "id": "CAL-EJEMPLO",
+      "input": "Reemplazá esta línea por una frase real que haya dicho un Portfolio Lead.",
+      "expected_entry_state": "unknown",
+      "expected_intent": "unknown",
+      "expected_secondary_intents": [],
+      "notes": "Borrar este ejemplo al cargar la primera frase real."
+    }
+  ]
+}
