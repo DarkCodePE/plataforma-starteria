@@ -86,6 +86,7 @@ origin/main...HEAD`:
 | `ai-service/**` | `ruff check` · `pytest -m unit --cov` · eval determinístico si toca `agents/`, `prompts/` o `harness/` |
 | `backend/modules/ai/**` o `ai-service/schemas/**` | los dos frentes: es el contrato entre back y ai |
 | rutas, auth, flujo de Portfolio Entry | E2E dirigido (§6) |
+| cualquier cambio que el usuario ve o recorre | validación en navegador (§9) |
 | sólo `doc/`, `docs/`, `*.md` | nada de código; revisar que los links y rutas citadas existan |
 
 ## 6. E2E — `front/e2e/`
@@ -147,3 +148,60 @@ agrega `.skip` para despejar el camino.
   (msw, nock, respx).
 - Nada de estado compartido: cada test arma y limpia lo suyo; la base de integración es descartable.
 - Un test flaky no se reintenta hasta que pase: se reporta y se investiga.
+
+## 9. Validación en navegador
+
+Los tests de §2–§6 prueban el código; esta sección prueba que **lo que pide la HU funciona en la
+app real**, navegándola como una persona. Va en `/verificar` cuando el diff cambia algo que el usuario
+ve o recorre (pantallas, rutas, auth, Portfolio Entry), y otra vez después del deploy.
+
+Dos herramientas, para dos cosas distintas:
+
+| Herramienta | Para qué | Cuándo |
+|---|---|---|
+| **BrowserSkill** (`bsk`, skill `browser-skill`) | Explorar los `CA-n` de la HU en la app levantada, con consola y red capturadas | Antes del PR, contra local |
+| **`scripts/jev-regresion.py`** (jev-ultrafast + Jev) | Recorridos repetibles en lenguaje natural, con verificación de la ruta por fuera del agente | Antes del PR contra local, y después del deploy contra producción |
+
+### Antes del PR, contra local
+
+1. Levantar la app: `cd front && npm run dev:all` (front en `http://localhost:5173`).
+2. **La persona** inicia sesión en su Chrome. El agente usa esa sesión y nunca escribe credenciales,
+   códigos ni datos de pago: si aparece un login, para y lo pide.
+3. Con BrowserSkill, por cada `CA-n` visible: `bsk debug start`, navegar, `bsk observe`, actuar,
+   y guardar captura + errores de consola y red (`bsk debug aggregate`, `bsk debug console`).
+   Errores de consola de extensiones del navegador no cuentan.
+4. Si la HU agrega o cambia un recorrido, sumarlo a `scripts/jev-regresion.cases.json` con su
+   `"hu": "KAN-nnn"` y correrlo:
+   ```bash
+   STARTERIA_URL=http://localhost:5173 \
+     uv run --project jev-ultrafast --env-file jev-ultrafast/.env python scripts/jev-regresion.py --hu KAN-nnn
+   ```
+   Un recorrido es `start` + `goal` en lenguaje natural + `expect` (la ruta final). Para rutas que
+   deben abrirse directo o sobrevivir a una recarga, usar `deep_links`: ahí no actúa el agente, así
+   que no puede tapar un redirect volviendo por el menú.
+
+### Después del deploy, contra producción
+
+La suite completa contra `https://starter-ia.com`, sin `STARTERIA_URL`. Sale con 1 si algo falla.
+Es solo lectura: los objetivos piden navegar sin crear, editar ni borrar.
+
+### Reglas
+
+- **El `DONE` de Jev no es evidencia.** Lo que cuenta es la ruta final, el texto visible o la
+  respuesta de la API, verificados por fuera del agente.
+- Recorridos que crean datos (un proyecto, un frente) no van en la suite: se prueban con BrowserSkill
+  sobre datos marcados `[QA]` y con el sí de la persona si es producción.
+- La entrada pública limita a 20 sesiones cada 10 minutos por IP: tandas grandes contra producción
+  chocan con 429.
+
+### Preparar el entorno (una vez)
+
+- BrowserSkill: CLI `bsk` y la extensión en Chrome (`bsk doctor` para revisar).
+- jev-ultrafast: `git clone https://github.com/browser-use/jev-ultrafast.git && cd jev-ultrafast && uv sync`
+  en la raíz del repo (está en `.gitignore`). Su `.env`: `TYPESAFE_API_KEY=<JEV_API_KEY>`,
+  `TYPESAFE_MODEL=jev-latest`, `TEXT_MODEL_API_KEY=<OPENROUTER_API_KEY>`,
+  `TEXT_MODEL_BASE_URL=https://openrouter.ai/api/v1`.
+- Chrome con `chrome://inspect/#remote-debugging` habilitado.
+
+Si falta algo de esto, la validación va como `NO CORRIDO` con el motivo; no se reemplaza por
+"debería funcionar".
