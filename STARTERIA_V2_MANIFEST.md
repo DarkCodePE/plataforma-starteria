@@ -117,14 +117,32 @@ esta aprobación sólo cubre la slice descrita y no certifica Starteria V2 compl
 ```text
 slice_id: FIRST_VALUE_P3_RUNTIME_PROCESSOR
 logic_status: ACTIVE_V2_BASELINE (solo el boundary CAPABILITY_CONTRACT_APPROVED de KAN-85 y comportamiento KAN-63/A.3.2)
-implementation_status: IMPLEMENTED_UNVERIFIED
+implementation_status: IMPLEMENTED_VERIFIED (local KAN-86 validation; live provider/deployment unverified)
 visual_status: NOT_APPLICABLE
 evidence_status: TESTING
 authority: KAN-85 + KAN-63 + docs/portfolio-lead/06-portfolio-monitoring/experience/FIRST_VALUE_P3_PRODUCTIVE_PROCESSING_CAPABILITY_CONTRACT_v0.1.md
 scope: processor síncrono stateless, relaciones provisionales, aclaraciones agrupadas, sin escrituras canónicas ni persistencia durable
 exclusions: KAN-83 UI/setup, D2/prefill, Portfolio Entry, Core, Steps 0-4
 implementation_report: docs/portfolio-lead/06-portfolio-monitoring/90-implementation-reports/KAN-86_FIRST_VALUE_P3_RUNTIME_PROCESSOR_IMPLEMENTATION_v0.1.md
-integration_status: NOT_INTEGRATED
+integration_status: INTEGRATED_IN_GOVERNED_BASELINE (origin/main @ 1b44bc1 / PR #98)
+```
+
+## Slice FIRST_VALUE_RUNTIME_HARDENING_PROMOTION (KAN-83)
+
+```text
+slice_id: FIRST_VALUE_RUNTIME_HARDENING_PROMOTION
+logic_status: ACTIVE_V2_BASELINE (KAN-63/A.3.2 checkpoints; P3 capability bounded by KAN-85)
+implementation_status: READY_FOR_PROMOTION (branch-level verification complete)
+visual_status: V2_PILOT
+evidence_status: SUPPORTED_LOCAL_VALIDATION (real provider and deployed network not verified)
+authority: Jira KAN-83 + KAN-63; docs/portfolio-lead/06-portfolio-monitoring/experience/STARTERIA_PORTFOLIO_LEAD_A32_CHECKPOINT_INLINE_REVIEW_v0.1.md; KAN-85 P3 contract
+entry_boundary: authenticated /portfolio/setup under PortfolioLeadLayout
+exit_boundary: provisional P3 reading and local-only global confirmation; no canonical writes
+implementation: front/src/features/portfolio-lead/first-value/PortfolioLeadFirstValuePage.tsx
+backend_capability: POST /api/v1/first-value/p3/analyze (KAN-86; integrated)
+implementation_report: docs/portfolio-lead/06-portfolio-monitoring/90-implementation-reports/KAN-83_FIRST_VALUE_RUNTIME_HARDENING_PROMOTION_v0.2.md
+integration_status: NOT_MERGED (branch ready for promotion)
+exclusions: D1/D2, Portfolio Entry, Core, Steps 0-4, canonical portfolio writes
 ```
 
 # 2.2 Slice KAN-64_PUBLIC_LANDING_L1_PRODUCT_FRAMING_HERO
