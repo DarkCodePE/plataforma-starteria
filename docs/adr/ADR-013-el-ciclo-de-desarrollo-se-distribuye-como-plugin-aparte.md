@@ -87,7 +87,10 @@ de mergear.
 ### 2.3 Un `init` idempotente que escribe sólo entre marcadores
 
 Para usar el ciclo en otro repo, el plugin trae un `init` que escribe en el `AGENTS.md` y el
-`CLAUDE.md` del repo destino **un bloque delimitado por marcadores**, como `ruflo init`:
+`CLAUDE.md` del repo destino **un bloque delimitado por marcadores**, como `ruflo init` (del
+brief). *(Propuesta)* Los marcadores llevan el nombre del plugin y la versión, con esta forma
+ilustrativa; el texto exacto lo fija la Tech Spec, porque una vez en uso cambiarlo es una puerta
+de una vía (§4):
 
 ```text
 <!-- starteria-desarrollo:init:start v=<versión del plugin> -->
@@ -95,12 +98,13 @@ Para usar el ciclo en otro repo, el plugin trae un `init` que escribe en el `AGE
 <!-- starteria-desarrollo:init:end -->
 ```
 
-Reglas, todas obligatorias:
+Reglas. Las dos primeras y la de settings vienen del brief; la de marcadores rotos sale de "no
+pisar"; las marcadas *(propuesta)* las agrega este ADR:
 
 - **Fuera de los marcadores no se toca nada.** Ni una línea, ni un salto de línea.
 - **Correrlo dos veces da el mismo archivo.** La segunda corrida reemplaza el contenido del bloque y
   nada más; si el bloque ya está en la versión actual, no escribe.
-- **Si el archivo no existe, lo crea** con el bloque solo.
+- *(Propuesta)* **Si el archivo no existe, lo crea** con el bloque solo.
 - **Si los marcadores están rotos** (un `start` sin `end`, o dos `start`), **aborta sin escribir** y
   dice qué encontró. No adivina.
 - **No modifica settings existentes** (del brief: el `init` no puede pisar ni duplicar settings).
@@ -108,7 +112,7 @@ Reglas, todas obligatorias:
   cargue solo (`enabledPlugins`, `extraKnownMarketplaces`), el `init` lo propone como instrucción
   dentro del bloque y lo hace una persona. *(Propuesta)* Que el `init` no cree ni agregue claves de
   settings ni siquiera cuando faltan; si se quiere que las agregue, lo decide la Tech Spec.
-- **Tiene un modo de prueba** que muestra el diff sin escribir.
+- *(Propuesta)* **Tiene un modo de prueba** que muestra el diff sin escribir.
 
 **En este repo el `init` no se corre.** El ciclo ya lo describe `AGENTS.md` §3, que es la
 autoridad, y el bloque lo duplicaría con riesgo de que las dos versiones diverjan. Lo refuerza
@@ -125,8 +129,9 @@ principal**, calculado con `git rev-parse --git-common-dir`. En un worktree, ese
 El orden queda: `JIRA_ENV_FILE` si está, después el cwd y sus ancestros, después el checkout
 principal. El candidato que hoy existe "junto al script" (`jira-comun.mjs`, `jev-clasificar.mjs`)
 en un plugin instalado cae en la caché de Claude Code; *(propuesta)* se quita, y si la Tech Spec
-encuentra un uso que lo justifique, lo mantiene detrás de los otros. Fuera de un repo git, el candidato nuevo no existe y no falla nada. El aviso de
-permisos (`600`) y el diagnóstico de orígenes mezclados de `jira-comun.mjs` se mantienen.
+encuentra un uso que lo justifique, lo mantiene detrás de los otros. Fuera de un repo git, el
+candidato nuevo no existe y no falla nada. El aviso de permisos (`600`) y el diagnóstico de
+orígenes mezclados de `jira-comun.mjs` se mantienen.
 
 Qué queda para la Tech Spec del ciclo (KAN-95): la lista exacta de lo que se muda; todas las
 referencias por ruta a `.claude/skills/...` que hay que actualizar (`AGENTS.md`, los agentes
@@ -145,7 +150,8 @@ verificar el SUPUESTO de `${CLAUDE_PLUGIN_ROOT}`; y el texto del bloque del `ini
   enlace, que es el punto 3 otra vez.
 - **Un repo propio para el plugin:** rechazada. Las skills del ciclo citan `AGENTS.md`,
   `TESTING.md` y el manifiesto de este repo; separadas de lo que gobiernan, se desincronizan.
-- *(Propuesta)* **Un espejo generado desde `.claude/`, como `ADR-011` §2.4:** rechazada. Para el producto el
+- *(Propuesta)* **Un espejo generado desde `.claude/`, como `ADR-011` §2.4:** rechazada. Para el
+  producto el
   espejo existe porque la raíz es el paquete; acá no hay esa restricción, y una fuente única es más
   simple que un generador más un chequeo.
 - **Habilitar el plugin por settings del proyecto** (`.claude/settings.json` commiteado con
@@ -173,7 +179,8 @@ verificar el SUPUESTO de `${CLAUDE_PLUGIN_ROOT}`; y el texto del bloque del `ini
   (`starteria-desarrollo:hu`), y los documentos que dicen `/hu` tienen que seguir siendo ciertos.
   Además, `AGENTS.md`, los dos agentes y `implementar/SKILL.md` llaman las tools por ruta
   `.claude/skills/...`: la mudanza las rompe si no se actualizan en el mismo cambio.
-- **Es una puerta de una vía hacia afuera.** Una vez que haya repos con el bloque del `init`, cambiar
+- **Es una puerta de una vía hacia afuera.** Una vez que haya repos con el bloque del `init`,
+  cambiar
   el formato de los marcadores obliga a migrarlos.
 - **Dos plugins en un marketplace** son dos versiones que mantener y dos cuentas que verificar.
 - **Las skills del ciclo asumen archivos de este repo** (`AGENTS.md` §3, `TESTING.md`, el
