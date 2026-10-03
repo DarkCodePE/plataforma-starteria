@@ -151,9 +151,8 @@ verificar el SUPUESTO de `${CLAUDE_PLUGIN_ROOT}`; y el texto del bloque del `ini
 - **Un repo propio para el plugin:** rechazada. Las skills del ciclo citan `AGENTS.md`,
   `TESTING.md` y el manifiesto de este repo; separadas de lo que gobiernan, se desincronizan.
 - *(Propuesta)* **Un espejo generado desde `.claude/`, como `ADR-011` §2.4:** rechazada. Para el
-  producto el
-  espejo existe porque la raíz es el paquete; acá no hay esa restricción, y una fuente única es más
-  simple que un generador más un chequeo.
+  producto el espejo existe porque la raíz es el paquete; acá no hay esa restricción, y una fuente
+  única es más simple que un generador más un chequeo.
 - **Habilitar el plugin por settings del proyecto** (`.claude/settings.json` commiteado con
   `enabledPlugins` y `extraKnownMarketplaces`), en vez de un `init`: no es excluyente, pero no
   alcanza. Hace que el plugin cargue solo, que es lo que §4 lamenta perder, pero no escribe nada en
@@ -180,8 +179,7 @@ verificar el SUPUESTO de `${CLAUDE_PLUGIN_ROOT}`; y el texto del bloque del `ini
   Además, `AGENTS.md`, los dos agentes y `implementar/SKILL.md` llaman las tools por ruta
   `.claude/skills/...`: la mudanza las rompe si no se actualizan en el mismo cambio.
 - **Es una puerta de una vía hacia afuera.** Una vez que haya repos con el bloque del `init`,
-  cambiar
-  el formato de los marcadores obliga a migrarlos.
+  cambiar el formato de los marcadores obliga a migrarlos.
 - **Dos plugins en un marketplace** son dos versiones que mantener y dos cuentas que verificar.
 - **Las skills del ciclo asumen archivos de este repo** (`AGENTS.md` §3, `TESTING.md`, el
   manifiesto). En otro repo esos archivos pueden no existir; cada skill tiene que degradar diciendo
