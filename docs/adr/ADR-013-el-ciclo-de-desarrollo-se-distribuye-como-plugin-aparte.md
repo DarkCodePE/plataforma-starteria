@@ -40,8 +40,16 @@ Ya hay un precedente de cómo se resuelve esto para el producto: `ADR-008` empaq
 `starteria-harness` como plugin y `ADR-011` §2.4 lo volvió un paquete autocontenido en
 `plugins/starteria-harness/`, con un catálogo neutral en `.agents/plugins/marketplace.json`.
 
-Las decisiones de este ADR las tomó Orlando en la entrevista `/hu` del 2026-10-02 (HU KAN-91,
-preguntas P5 y P12). El ADR las registra; no las reabre.
+Hay dos clases de decisión en este ADR, y se marcan para que quien lo apruebe sepa qué firma:
+
+- **Del brief (P5, P12):** las tomó Orlando en la entrevista `/hu` del 2026-10-02 (HU KAN-91). El
+  ADR las registra y no las reabre: plugin aparte en `plugins/starteria-desarrollo/` dentro del
+  `marketplace.json` existente, sin mezclarse con `starteria-harness`; prueba de una rama con
+  `--plugin-dir`; `init` idempotente que escribe un bloque con marcadores en `AGENTS.md` y
+  `CLAUDE.md`; `.env` resuelto desde el checkout principal por git common dir.
+- **Propuestas por este ADR:** las marca *(propuesta)* en el texto. Son detalles que el brief no
+  decidió; **aprobar este ADR es aprobarlas**, y si quien firma no está de acuerdo, se sacan y las
+  decide la Tech Spec (KAN-95).
 
 ## 2. Decisión
 
@@ -53,11 +61,14 @@ nunca se mezcla con él.
 
 - El paquete trae sus `skills/`, sus `agents/`, sus tools (`jira-hu`, `jev-clasificar`) y su
   `.claude-plugin/plugin.json`.
-- **Las skills y agentes del ciclo se mudan, no se copian.** Dejar una versión en `.claude/` y otra
-  en el plugin produce justo el fallo del punto 3: dos `/hu` cargados y ninguna certeza de cuál
-  corre. La mudanza es completa o no se hace.
-- Las tools se llaman con rutas relativas a la raíz del plugin (`${CLAUDE_PLUGIN_ROOT}`), no a
+- **Las skills y agentes del ciclo se mudan, no se copian** (del brief: "se lleva las skills y
+  agentes del ciclo"). *(Propuesta)* La mudanza es completa o no se hace: dejar una versión en
+  `.claude/` y otra en el plugin produce justo el fallo del punto 3, dos `/hu` cargados y ninguna
+  certeza de cuál corre.
+- *(Propuesta)* Las tools se llaman con rutas relativas a la raíz del plugin, no a
   `.claude/skills/`, porque un plugin instalado vive en la caché de Claude Code y no en el repo.
+  **SUPUESTO:** que `${CLAUDE_PLUGIN_ROOT}` se expande dentro del cuerpo de un `SKILL.md` o de un
+  agente, y no sólo en hooks y servidores MCP. Lo verifica la Tech Spec antes de mudar nada.
 - Lo que no es del ciclo se queda donde está: `.claude/skills/graft/` no se muda.
 
 **Por qué separado y no dentro de `starteria-harness`:** `ADR-009` traza la frontera entre el
@@ -70,7 +81,8 @@ comandos que crean tickets en Jira y abren worktrees, y rompería la cuenta de `
 
 **Una rama se prueba abriendo Claude con `claude --plugin-dir plugins/starteria-desarrollo`** desde
 su worktree. Esa sesión carga la versión de la rama; la instalada desde el marketplace queda
-intacta para el resto. Es la única forma soportada de probar una skill del ciclo antes de mergear.
+intacta para el resto. *(Propuesta)* Es la forma documentada de probar una skill del ciclo antes
+de mergear.
 
 ### 2.3 Un `init` idempotente que escribe sólo entre marcadores
 
@@ -91,13 +103,18 @@ Reglas, todas obligatorias:
 - **Si el archivo no existe, lo crea** con el bloque solo.
 - **Si los marcadores están rotos** (un `start` sin `end`, o dos `start`), **aborta sin escribir** y
   dice qué encontró. No adivina.
-- **No escribe settings.** Ni `.claude/settings.json` ni `settings.local.json`. Lo que el ciclo
-  necesite configurar va como instrucción dentro del bloque, para que lo haga una persona.
+- **No modifica settings existentes** (del brief: el `init` no puede pisar ni duplicar settings).
+  Si `.claude/settings.json` ya tiene algo, no lo toca. Si el repo destino quiere que el plugin
+  cargue solo (`enabledPlugins`, `extraKnownMarketplaces`), el `init` lo propone como instrucción
+  dentro del bloque y lo hace una persona. *(Propuesta)* Que el `init` no cree ni agregue claves de
+  settings ni siquiera cuando faltan; si se quiere que las agregue, lo decide la Tech Spec.
 - **Tiene un modo de prueba** que muestra el diff sin escribir.
 
-**En este repo el `init` no se corre.** `CLAUDE.md` prohíbe dejar bloques que inyecta una
-herramienta, y acá el ciclo ya lo describe `AGENTS.md` §3, que es la autoridad. El `init` es para
-los repos que no lo tienen escrito.
+**En este repo el `init` no se corre.** El ciclo ya lo describe `AGENTS.md` §3, que es la
+autoridad, y el bloque lo duplicaría con riesgo de que las dos versiones diverjan. Lo refuerza
+`CLAUDE.md`: *"Si una herramienta (`hyperresearch install`, `ruflo init`, `graft`) inyecta
+instrucciones acá o en `AGENTS.md`, no las dejes"*. El `init` es para los repos que no tienen el
+ciclo escrito.
 
 ### 2.4 El `.env` se resuelve desde el checkout principal
 
@@ -106,12 +123,16 @@ principal**, calculado con `git rev-parse --git-common-dir`. En un worktree, ese
 `.git` del checkout principal, y su carpeta padre es donde vive el `.env`.
 
 El orden queda: `JIRA_ENV_FILE` si está, después el cwd y sus ancestros, después el checkout
-principal. Fuera de un repo git, el candidato nuevo no existe y no falla nada. El aviso de
+principal. El candidato que hoy existe "junto al script" (`jira-comun.mjs`, `jev-clasificar.mjs`)
+en un plugin instalado cae en la caché de Claude Code; *(propuesta)* se quita, y si la Tech Spec
+encuentra un uso que lo justifique, lo mantiene detrás de los otros. Fuera de un repo git, el candidato nuevo no existe y no falla nada. El aviso de
 permisos (`600`) y el diagnóstico de orígenes mezclados de `jira-comun.mjs` se mantienen.
 
-Qué queda para la Tech Spec del ciclo (KAN-95): la lista exacta de lo que se muda, cómo se extiende
-`verify.sh` para contar el segundo plugin, si el paquete se publica también en el catálogo neutral
-de `ADR-011`, y el texto del bloque del `init`.
+Qué queda para la Tech Spec del ciclo (KAN-95): la lista exacta de lo que se muda; todas las
+referencias por ruta a `.claude/skills/...` que hay que actualizar (`AGENTS.md`, los agentes
+`delivery-planner` y `revisor-starteria`, `implementar/SKILL.md`); cómo se extiende `verify.sh` para
+contar el segundo plugin; si el paquete se publica también en el catálogo neutral de `ADR-011`;
+verificar el SUPUESTO de `${CLAUDE_PLUGIN_ROOT}`; y el texto del bloque del `init`.
 
 ## 3. Alternativas consideradas
 
@@ -124,9 +145,14 @@ de `ADR-011`, y el texto del bloque del `init`.
   enlace, que es el punto 3 otra vez.
 - **Un repo propio para el plugin:** rechazada. Las skills del ciclo citan `AGENTS.md`,
   `TESTING.md` y el manifiesto de este repo; separadas de lo que gobiernan, se desincronizan.
-- **Un espejo generado desde `.claude/`, como `ADR-011` §2.4:** rechazada. Para el producto el
+- *(Propuesta)* **Un espejo generado desde `.claude/`, como `ADR-011` §2.4:** rechazada. Para el producto el
   espejo existe porque la raíz es el paquete; acá no hay esa restricción, y una fuente única es más
   simple que un generador más un chequeo.
+- **Habilitar el plugin por settings del proyecto** (`.claude/settings.json` commiteado con
+  `enabledPlugins` y `extraKnownMarketplaces`), en vez de un `init`: no es excluyente, pero no
+  alcanza. Hace que el plugin cargue solo, que es lo que §4 lamenta perder, pero no escribe nada en
+  `AGENTS.md` ni `CLAUDE.md`, que es lo que el brief pide del `init`. Queda como opción para la Tech
+  Spec, para este repo y para los que corran el `init`.
 - **Un `init` que reescribe el archivo entero desde una plantilla:** rechazada. Pisa lo que el repo
   destino ya tenía escrito, que es exactamente el modo de fallo que más cuesta deshacer.
 - **Exigir `JIRA_ENV_FILE` siempre:** rechazada. Es lo que se hace hoy y se olvida; la ubicación del
@@ -145,6 +171,8 @@ de `ADR-011`, y el texto del bloque del `init`.
   local, o abrir con `--plugin-dir`. Es el mismo precio que pagó `ADR-008`.
 - **Los nombres cambian.** Las skills de un plugin quedan con su prefijo
   (`starteria-desarrollo:hu`), y los documentos que dicen `/hu` tienen que seguir siendo ciertos.
+  Además, `AGENTS.md`, los dos agentes y `implementar/SKILL.md` llaman las tools por ruta
+  `.claude/skills/...`: la mudanza las rompe si no se actualizan en el mismo cambio.
 - **Es una puerta de una vía hacia afuera.** Una vez que haya repos con el bloque del `init`, cambiar
   el formato de los marcadores obliga a migrarlos.
 - **Dos plugins en un marketplace** son dos versiones que mantener y dos cuentas que verificar.
@@ -183,3 +211,7 @@ Ninguno se cumple con este ADR: dependen de la spec (KAN-95) y de las HU que cor
   2026-10-02, preguntas P5 y P12). El estado actual se verificó contra `jira-comun.mjs`,
   `jev-clasificar.mjs`, `scripts/verify.sh`, `.claude-plugin/marketplace.json` y
   `.agents/plugins/marketplace.json`.
+- 2026-10-03 · proposed · Ronda 1 de `revisor-starteria`: changes_required, porque el ADR firmaba
+  como del brief detalles que el brief no decidió. Se separaron en *(propuesta)* y SUPUESTO, la
+  regla de settings bajó a "no modifica settings existentes", y se agregó la alternativa de
+  habilitar el plugin por settings del proyecto.
