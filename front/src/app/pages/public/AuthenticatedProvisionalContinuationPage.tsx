@@ -13,6 +13,8 @@ import {
 } from '../../../features/portfolio-entry/public/portfolioEntryPublicService';
 import { createIdempotencyKey } from '../../../features/portfolio-entry/public/idempotency';
 import { readClaimedPortfolioEntrySession } from '../../../features/portfolio-entry/public/storage';
+import { saveClaimedPortfolioEntrySession } from '../../../features/portfolio-entry/public/storage';
+import { portfolioEntryBriefIdentityFromSession } from '../../../features/portfolio-entry/public/continuationIdentity';
 import type { PortfolioEntryContextResolution, PortfolioEntrySessionDto } from '../../../features/portfolio-entry/public/types';
 
 function displayText(value: { value: string } | 'unresolved' | undefined): string {
@@ -152,6 +154,8 @@ export function AuthenticatedProvisionalContinuationPage() {
         correctedFields,
         rejectedFields,
       });
+      const identity = portfolioEntryBriefIdentityFromSession(next);
+      if (identity) saveClaimedPortfolioEntrySession(identity);
       setSession(next);
       setEditing(false);
       const selected = await continuePortfolioEntryToPortfolio(continuation.sessionId, {

@@ -218,11 +218,22 @@ export type StoredPortfolioEntrySession = {
   credential: string;
 };
 
-export type PendingPortfolioEntryClaim = StoredPortfolioEntrySession;
-
-export type ClaimedPortfolioEntrySessionRef = {
+/** Exact browser transport identity consumed by the confirmed-Brief resolver. */
+export type PortfolioEntryBriefIdentity = {
+  source: 'portfolio_entry';
   sessionId: string;
+  sessionRevision: number;
+  handoffId: string;
+  handoffVersion: number;
+  confirmationId: string;
+  confirmationVersion: number;
 };
+
+export type PendingPortfolioEntryClaim = StoredPortfolioEntrySession & {
+  identity?: PortfolioEntryBriefIdentity;
+};
+
+export type ClaimedPortfolioEntrySessionRef = { sessionId: string } | PortfolioEntryBriefIdentity;
 
 export type PortfolioEntryConversionResult = {
   conversionId: string;

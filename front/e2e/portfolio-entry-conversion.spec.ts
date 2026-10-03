@@ -223,6 +223,27 @@ async function continueThroughAuthenticatedPortfolioEntry(
   expect(continued.status(), `continue-portfolio response body: ${continuedBodyText}`).toBe(200);
   expect(continuedBody?.data?.continuationId, `continue-portfolio response body: ${continuedBodyText}`).toBeTruthy();
   await expect(page).toHaveURL(/\/portfolio\/inicio\?portfolioEntryContinuationId=/, { timeout: 30_000 });
+
+  const transportedIdentity = await page.evaluate(() => {
+    const raw = window.sessionStorage.getItem('starteria.portfolioEntry.claimedSession');
+    return raw ? JSON.parse(raw) : null;
+  });
+  expect(transportedIdentity).toEqual({
+    source: 'portfolio_entry',
+    sessionId: confirmedBody.data.id,
+    sessionRevision: confirmedBody.data.revision,
+    handoffId: confirmedBody.data.handoff.id,
+    handoffVersion: confirmedBody.data.handoff.version,
+    confirmationId: confirmedBody.data.confirmation.id,
+    confirmationVersion: confirmedBody.data.confirmation.version,
+  });
+
+  await page.reload();
+  const identityAfterRefresh = await page.evaluate(() => {
+    const raw = window.sessionStorage.getItem('starteria.portfolioEntry.claimedSession');
+    return raw ? JSON.parse(raw) : null;
+  });
+  expect(identityAfterRefresh).toEqual(transportedIdentity);
 }
 
 async function visible(locator: ReturnType<Page['getByText']>): Promise<boolean> {

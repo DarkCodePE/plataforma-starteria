@@ -1,4 +1,5 @@
 import type { ClaimedPortfolioEntrySessionRef, PendingPortfolioEntryClaim, StoredPortfolioEntrySession } from './types';
+import { isPortfolioEntryBriefIdentity } from './continuationIdentity';
 
 const CURRENT_SESSION_KEY = 'starteria.portfolioEntry.current';
 const PENDING_CLAIM_KEY = 'starteria.portfolioEntry.pendingClaim';
@@ -45,7 +46,21 @@ export function savePendingPortfolioEntryClaim(ref: PendingPortfolioEntryClaim):
 }
 
 export function readPendingPortfolioEntryClaim(): PendingPortfolioEntryClaim | null {
-  return parseSessionRef(getSessionStorage()?.getItem(PENDING_CLAIM_KEY) ?? null);
+  const raw = getSessionStorage()?.getItem(PENDING_CLAIM_KEY);
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw) as Partial<PendingPortfolioEntryClaim>;
+    if (typeof parsed.sessionId === 'string' && typeof parsed.credential === 'string') {
+      return {
+        sessionId: parsed.sessionId,
+        credential: parsed.credential,
+        ...(isPortfolioEntryBriefIdentity(parsed.identity) ? { identity: parsed.identity } : {}),
+      };
+    }
+  } catch {
+    return null;
+  }
+  return null;
 }
 
 export function clearPendingPortfolioEntryClaim(): void {
@@ -84,11 +99,18 @@ export function readClaimedPortfolioEntrySession(): ClaimedPortfolioEntrySession
   if (!raw) return null;
   try {
     const parsed = JSON.parse(raw) as Partial<ClaimedPortfolioEntrySessionRef>;
-    if (typeof parsed.sessionId === 'string') return { sessionId: parsed.sessionId };
+    if (typeof parsed.sessionId === 'string') {
+      return isPortfolioEntryBriefIdentity(parsed) ? parsed : { sessionId: parsed.sessionId };
+    }
   } catch {
     return null;
   }
   return null;
+}
+
+export function readClaimedPortfolioEntryBriefIdentity() {
+  const claimed = readClaimedPortfolioEntrySession();
+  return isPortfolioEntryBriefIdentity(claimed) ? claimed : null;
 }
 
 export function clearClaimedPortfolioEntrySession(): void {
@@ -103,5 +125,5 @@ export function clearPortfolioEntryAnonymousState(): void {
 export function clearPortfolioEntryConversionState(): void {
   clearPortfolioEntryAnonymousState();
   clearPortfolioEntryClaimedNotice();
-  clearClaimedPortfolioEntrySession();
+  if (!readClaimedPortfolioEntryBriefIdentity()) clearClaimedPortfolioEntrySession();
 }
