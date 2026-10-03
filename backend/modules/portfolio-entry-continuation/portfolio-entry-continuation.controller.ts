@@ -2,11 +2,12 @@ import type { NextFunction, Request, Response } from 'express';
 import { AppError } from '../../shared/errors/AppError';
 import { mapPortfolioEntryError } from '../portfolio-entry/portfolio-entry.errors';
 import { sessionParamsSchema } from '../portfolio-entry/portfolio-entry.schemas';
-import type { PortfolioEntryContinuationService } from './portfolio-entry-continuation.service';
+import type { PortfolioEntryContinuationService, ReadScopedEntryAccessInput } from './portfolio-entry-continuation.service';
 import {
   continuationParamsSchema,
   continuePortfolioEntryBodySchema,
   portfolioContextParamsSchema,
+  scopedEntryIdentitySchema,
 } from './portfolio-entry-continuation.schemas';
 
 export class PortfolioEntryContinuationController {
@@ -75,6 +76,15 @@ export class PortfolioEntryContinuationController {
     } catch (err) {
       next(mapPortfolioEntryError(err));
     }
+  };
+
+  authorizeScopedFirstValueEntry = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      if (!req.user?.id) throw AppError.unauthorized('No autorizado.', 'PORTFOLIO_ENTRY_CONTINUATION_AUTH_REQUIRED');
+      const identity = scopedEntryIdentitySchema.parse(req.body);
+      const data = await this.service.authorizeScopedFirstValueEntry({ identity: identity as ReadScopedEntryAccessInput['identity'], authenticatedUserId: req.user.id });
+      res.json({ success: true, data });
+    } catch (err) { next(mapPortfolioEntryError(err)); }
   };
 }
 

@@ -1,4 +1,5 @@
 import api, { parseApiError } from '../../../app/services/api';
+import { readClaimedPortfolioEntryBriefIdentity } from '../public/storage';
 
 export type PortfolioHomeEntryContext = {
   continuationId: string;
@@ -29,5 +30,18 @@ export async function readPortfolioHomeEntryContext(continuationId: string): Pro
     return data.data;
   } catch (error) {
     throw new PortfolioHomeEntryContextError(parseApiError(error));
+  }
+}
+
+export async function authorizeScopedFirstValueEntry(): Promise<boolean> {
+  const identity = readClaimedPortfolioEntryBriefIdentity();
+  if (!identity) return false;
+  try {
+    const { data } = await api.post<{ success: true; data: { continuationId: string } }>(
+      '/public/portfolio-entry/continuations/scoped-first-value-access', identity,
+    );
+    return Boolean(data.data.continuationId);
+  } catch {
+    return false;
   }
 }

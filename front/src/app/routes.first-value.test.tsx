@@ -12,5 +12,10 @@ describe('First Value canonical route', () => {
     expect(setupRoutes).toHaveLength(1);
     expect(portfolio?.Component).toBe(PortfolioLeadLayout);
     expect(setupRoutes[0]?.Component).toBe(PortfolioLeadFirstValuePage);
+    const portfolioIndex = portfolio?.children?.find(route => 'index' in route && route.index === true);
+    const homeRedirect = portfolioIndex && 'loader' in portfolioIndex
+      ? (portfolioIndex.loader as () => Response)()
+      : undefined;
+    expect(homeRedirect?.headers.get('Location')).toBe('/portfolio/inicio');
   });
 });

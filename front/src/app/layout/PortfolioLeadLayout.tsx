@@ -18,7 +18,7 @@ import { isDemoDataEnabled } from '../featureFlags';
 import { can } from '../authz/permissions';
 import { WorkspaceSwitcher } from './WorkspaceSwitcher';
 import { usePortfolioLead } from '../portfolio/PortfolioLeadContext';
-import { usePortfolioHomeEntryContext } from '../../features/portfolio-entry/home/usePortfolioHomeEntryContext';
+import { usePortfolioHomeEntryContext, useScopedFirstValueEntryAccess } from '../../features/portfolio-entry/home/usePortfolioHomeEntryContext';
 
 const ROLE_LABELS = {
   owner: 'Participante',
@@ -41,13 +41,19 @@ function PortfolioLeadLayoutContent() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const hasGlobalPortfolioAccess = can(user, 'portfolio:read');
   const isPortfolioHomeArrival = location.pathname === '/portfolio/inicio';
+  const isFirstValueArrival = location.pathname === '/portfolio/setup';
   const continuationId = isPortfolioHomeArrival
     ? new URLSearchParams(location.search).get('portfolioEntryContinuationId')
     : null;
-  const scopedEntryArrival = Boolean(isAuthenticated && !hasGlobalPortfolioAccess && continuationId);
-  const scopedEntryContext = usePortfolioHomeEntryContext(scopedEntryArrival ? continuationId : null);
-  const scopedEntryAuthorized = scopedEntryArrival && scopedEntryContext.status === 'ready' && Boolean(scopedEntryContext.data);
-  const scopedEntryChecking = scopedEntryArrival && (scopedEntryContext.status === 'idle' || scopedEntryContext.status === 'loading');
+  const scopedHomeArrival = Boolean(isAuthenticated && !hasGlobalPortfolioAccess && continuationId);
+  const scopedSetupArrival = Boolean(isAuthenticated && !hasGlobalPortfolioAccess && isFirstValueArrival);
+  const scopedEntryContext = usePortfolioHomeEntryContext(scopedHomeArrival ? continuationId : null);
+  const scopedSetupAccess = useScopedFirstValueEntryAccess(scopedSetupArrival);
+  const scopedHomeAuthorized = scopedHomeArrival && scopedEntryContext.status === 'ready' && Boolean(scopedEntryContext.data);
+  const scopedSetupAuthorized = scopedSetupArrival && scopedSetupAccess.status === 'ready' && scopedSetupAccess.authorized;
+  const scopedEntryAuthorized = scopedHomeAuthorized || scopedSetupAuthorized;
+  const scopedEntryChecking = (scopedHomeArrival && (scopedEntryContext.status === 'idle' || scopedEntryContext.status === 'loading'))
+    || (scopedSetupArrival && (scopedSetupAccess.status === 'idle' || scopedSetupAccess.status === 'loading'));
 
   const pendingDecisions = useMemo(
     () => initiatives.filter(item => item.readyForDecision || item.status === 'bloqueada').length,

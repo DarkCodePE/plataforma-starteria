@@ -127,7 +127,7 @@ describe('portfolioEntryPublicService', () => {
             continuationId: 'continuation-1',
             sessionId: '11111111-1111-4111-8111-111111111111',
             status: 'CONTINUED',
-            destinationRoute: '/portfolio/inicio?portfolioEntryContinuationId=continuation-1',
+            destinationRoute: '/portfolio/setup',
             continuedAt: new Date().toISOString(),
             portfolioScope: { kind: 'scoped_portfolio_grant', userId: 'user-1', organizationId: 'org-1' },
             context: {},
@@ -141,7 +141,7 @@ describe('portfolioEntryPublicService', () => {
       idempotencyKey: 'convert-key',
     })).resolves.toMatchObject({
       status: 'CONTINUED',
-      destinationRoute: '/portfolio/inicio?portfolioEntryContinuationId=continuation-1',
+      destinationRoute: '/portfolio/setup',
     });
   });
 

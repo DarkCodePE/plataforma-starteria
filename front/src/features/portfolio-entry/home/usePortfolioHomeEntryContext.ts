@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import {
   PortfolioHomeEntryContextError,
   readPortfolioHomeEntryContext,
+  authorizeScopedFirstValueEntry,
   type PortfolioHomeEntryContext,
 } from './portfolioHomeEntryContextClient';
 
@@ -35,4 +36,19 @@ export function usePortfolioHomeEntryContext(continuationId: string | null) {
   }, [continuationId]);
 
   return { data, status, error };
+}
+
+export function useScopedFirstValueEntryAccess(enabled: boolean) {
+  const [authorized, setAuthorized] = useState(false);
+  const [status, setStatus] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle');
+  useEffect(() => {
+    let cancelled = false;
+    if (!enabled) { setAuthorized(false); setStatus('idle'); return () => { cancelled = true; }; }
+    setStatus('loading');
+    authorizeScopedFirstValueEntry().then((allowed) => {
+      if (!cancelled) { setAuthorized(allowed); setStatus(allowed ? 'ready' : 'error'); }
+    });
+    return () => { cancelled = true; };
+  }, [enabled]);
+  return { authorized, status };
 }

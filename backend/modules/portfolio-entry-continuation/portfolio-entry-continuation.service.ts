@@ -53,6 +53,11 @@ export type ReadPortfolioEntryContinuationInput = {
   permissions: ReadonlySet<Permission>;
 };
 
+export type ReadScopedEntryAccessInput = {
+  identity: { sessionId: string; sessionRevision: number; handoffId: string; handoffVersion: number; confirmationId: string; confirmationVersion: number };
+  authenticatedUserId: string;
+};
+
 export type PortfolioHomeEntryContextDto = {
   continuationId: string;
   sessionId: string;
@@ -182,6 +187,30 @@ export class PortfolioEntryContinuationService {
     };
   }
 
+  async authorizeScopedFirstValueEntry(input: ReadScopedEntryAccessInput): Promise<{ continuationId: string }> {
+    const row = await this.prisma.portfolioEntryPortfolioContinuation.findFirst({
+      where: { sessionId: input.identity.sessionId, continuedByUserId: input.authenticatedUserId },
+    });
+    if (!row) throw AppError.forbidden('No autorizado.', 'PORTFOLIO_ENTRY_CONTINUATION_FORBIDDEN');
+    const session = await this.prisma.portfolioEntrySession.findUnique({ where: { id: row.sessionId } });
+    if (!session || session.ownerUserId !== input.authenticatedUserId || session.ownershipState !== 'CLAIMED'
+      || session.revision !== input.identity.sessionRevision) {
+      throw AppError.forbidden('No autorizado.', 'PORTFOLIO_ENTRY_CONTINUATION_FORBIDDEN');
+    }
+    const snapshot = row.sourceSnapshot as Record<string, unknown>;
+    const handoff = (snapshot.handoffRef ?? {}) as Record<string, unknown>;
+    const confirmation = (snapshot.confirmation ?? {}) as Record<string, unknown>;
+    if (handoff.id !== input.identity.handoffId || handoff.version !== input.identity.handoffVersion
+      || confirmation.id !== input.identity.confirmationId || confirmation.version !== input.identity.confirmationVersion) {
+      throw AppError.forbidden('No autorizado.', 'PORTFOLIO_ENTRY_CONTINUATION_FORBIDDEN');
+    }
+    const scope = readOrganizationScope(row.portfolioScope);
+    if (!scope || !(await this.scopedPortfolioAccess.canUserAccessPortfolio({ userId: input.authenticatedUserId, organizationId: scope, capability: 'portfolio:read' }))) {
+      throw AppError.forbidden('No tienes acceso Portfolio para esta organizacion.', 'PORTFOLIO_ENTRY_CONTINUATION_SCOPED_PORTFOLIO_ACCESS_REQUIRED');
+    }
+    return { continuationId: row.id };
+  }
+
   private async createContinuation(input: ContinuePortfolioEntryInput, organizationId: string): Promise<PortfolioEntryContinuationResultDto> {
     try {
       const created = await this.prisma.$transaction(async (tx) => {
@@ -246,7 +275,7 @@ export class PortfolioEntryContinuationService {
         }
 
         const continuationId = randomUUID();
-        const destinationRoute = `/portfolio/inicio?portfolioEntryContinuationId=${encodeURIComponent(continuationId)}`;
+        const destinationRoute = '/portfolio/setup';
         const scope = {
           kind: 'scoped_portfolio_grant',
           userId: input.authenticatedUserId,
