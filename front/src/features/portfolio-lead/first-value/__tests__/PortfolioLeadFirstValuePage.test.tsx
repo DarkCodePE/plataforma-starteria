@@ -3,8 +3,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { PortfolioLeadFirstValuePage } from '../PortfolioLeadFirstValuePage';
 import { analyzeFirstValueP3 } from '../firstValueP3Service';
+import { getConfirmedBrief } from '../confirmedBriefClient';
+import { readClaimedPortfolioEntryBriefIdentity } from '../../../portfolio-entry/public/storage';
 
 vi.mock('../firstValueP3Service', () => ({ analyzeFirstValueP3: vi.fn() }));
+vi.mock('../confirmedBriefClient', () => ({ getConfirmedBrief: vi.fn() }));
+vi.mock('../../../portfolio-entry/public/storage', () => ({ readClaimedPortfolioEntryBriefIdentity: vi.fn(() => null) }));
 
 const resultFor = (items: Array<{ itemId: string; name: string }>) => ({
   sessionId: 'session-1', requestId: 'request-1', analysisId: 'analysis-1', resultState: 'PROVISIONAL',
@@ -39,7 +43,7 @@ const confirmP1AndP2 = (work = ['Pricing Pilot', 'Checkout Optimizer', 'CRM Foll
 };
 
 describe('First Value P1–P3 runtime', () => {
-  beforeEach(() => vi.mocked(analyzeFirstValueP3).mockReset());
+  beforeEach(() => { vi.mocked(analyzeFirstValueP3).mockReset(); vi.mocked(getConfirmedBrief).mockReset(); vi.mocked(readClaimedPortfolioEntryBriefIdentity).mockReturnValue(null); });
   afterEach(() => cleanup());
 
   it('FV-03/04: muestra el checkpoint P1 y ajustar mantiene objetivo y contexto', () => {
@@ -48,6 +52,54 @@ describe('First Value P1–P3 runtime', () => {
     fireEvent.click(screen.getByRole('button', { name: /ajustar intención/i }));
     expect(screen.getByLabelText(/qué quieres conseguir/i)).toHaveValue('Aumentar ventas B2B en Q4');
     expect(screen.getByLabelText(/contexto adicional/i)).toHaveValue('Mercado europeo');
+  });
+
+  it('mantiene setup vacío cuando no hay continuación y no llama D1', () => {
+    render(<PortfolioLeadFirstValuePage />);
+    expect(screen.getByLabelText(/qué quieres conseguir/i)).toHaveValue('');
+    expect(getConfirmedBrief).not.toHaveBeenCalled();
+  });
+
+  it('consume identidad completa, hidrata una vez y conserva edición local', async () => {
+    vi.mocked(readClaimedPortfolioEntryBriefIdentity).mockReturnValue({ source: 'portfolio_entry', sessionId: 's1', sessionRevision: 7, handoffId: 'h1', handoffVersion: 2, confirmationId: 'c1', confirmationVersion: 3 });
+    vi.mocked(getConfirmedBrief).mockResolvedValue({ source: 'portfolio_entry', sessionId: 's1', revision: 7, handoffId: 'h1', handoffVersion: 2, confirmationId: 'c1', confirmationVersion: 3, brief: { rawEntry: 'do not use', handoff: { desired_outcome: 'Goal', understanding: 'Situation' }, confirmation: { status: 'CONFIRMED', acceptedFields: ['desired_outcome', 'understanding'], correctedFields: {}, rejectedFields: [] } } });
+    render(<PortfolioLeadFirstValuePage />);
+    await waitFor(() => expect(screen.getByLabelText(/qué quieres conseguir/i)).toHaveValue('Goal'));
+    expect(screen.getByLabelText(/contexto adicional/i)).toHaveValue('Situación actual:\nSituation');
+    fireEvent.change(screen.getByLabelText(/qué quieres conseguir/i), { target: { value: 'My edit' } });
+    expect(getConfirmedBrief).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(getConfirmedBrief).mock.calls[0][0]).toMatchObject({ sessionId: 's1', sessionRevision: 7, handoffId: 'h1', confirmationId: 'c1' });
+    expect(screen.queryByText(/do not use/i)).not.toBeInTheDocument();
+  });
+
+  it('mantiene el composer bloqueado durante D1 y reintenta mismo identity después de error de red', async () => {
+    vi.mocked(readClaimedPortfolioEntryBriefIdentity).mockReturnValue({ source: 'portfolio_entry', sessionId: 's1', sessionRevision: 7, handoffId: 'h1', handoffVersion: 2, confirmationId: 'c1', confirmationVersion: 3 });
+    vi.mocked(getConfirmedBrief).mockRejectedValueOnce(new Error('network')).mockResolvedValueOnce({ source: 'portfolio_entry', sessionId: 's1', revision: 7, handoffId: 'h1', handoffVersion: 2, confirmationId: 'c1', confirmationVersion: 3, brief: { handoff: { desired_outcome: 'Goal' }, confirmation: { status: 'CONFIRMED', acceptedFields: ['desired_outcome'], correctedFields: {}, rejectedFields: [] } } });
+    render(<PortfolioLeadFirstValuePage />);
+    expect(screen.queryByLabelText(/qué quieres conseguir/i)).not.toBeInTheDocument();
+    fireEvent.click(await screen.findByRole('button', { name: /reintentar/i }));
+    await waitFor(() => expect(screen.getByLabelText(/qué quieres conseguir/i)).toHaveValue('Goal'));
+    expect(getConfirmedBrief).toHaveBeenCalledTimes(2);
+  });
+
+  it.each([
+    [401, /inicia sesión de nuevo/i],
+    [404, /no está disponible/i],
+    [409, /quedó desactualizada/i],
+    [410, /fue abandonada o venció/i],
+  ])('expone D1 %s sin fallback y conserva la identidad exacta para retry', async (status, message) => {
+    const identity = { source: 'portfolio_entry' as const, sessionId: 's1', sessionRevision: 7, handoffId: 'h1', handoffVersion: 2, confirmationId: 'c1', confirmationVersion: 3 };
+    vi.mocked(readClaimedPortfolioEntryBriefIdentity).mockReturnValue(identity);
+    vi.mocked(getConfirmedBrief).mockRejectedValueOnce({ response: { status } }).mockResolvedValueOnce({ source: 'portfolio_entry', sessionId: 's1', revision: 7, handoffId: 'h1', handoffVersion: 2, confirmationId: 'c1', confirmationVersion: 3, brief: { rawEntry: 'must not appear', handoff: { desired_outcome: 'Confirmed goal' }, confirmation: { status: 'CONFIRMED', acceptedFields: ['desired_outcome'], correctedFields: {}, rejectedFields: [] } } });
+    render(<PortfolioLeadFirstValuePage />);
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(message);
+    expect(screen.queryByLabelText(/qué quieres conseguir/i)).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /reintentar/i }));
+    await waitFor(() => expect(screen.getByLabelText(/qué quieres conseguir/i)).toHaveValue('Confirmed goal'));
+    expect(getConfirmedBrief).toHaveBeenNthCalledWith(1, identity);
+    expect(getConfirmedBrief).toHaveBeenNthCalledWith(2, identity);
+    expect(screen.queryByText('must not appear')).not.toBeInTheDocument();
   });
 
   it('FV-05/06: P2 es un checkpoint y ajustar su lista conserva el P1 confirmado', () => {

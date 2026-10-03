@@ -685,6 +685,69 @@ test.describe('Portfolio Entry visible UX and Portfolio continuation', () => {
     });
   }
 
+  test('KAN-96 hydrates the exact confirmed Brief after continuation and refresh before explicit P1 action', async ({ page }, testInfo) => {
+    const legacyNavigation = watchForbiddenPortfolioEntryNavigation(page);
+    await reachHandoff(page, SCENARIOS[0], testInfo);
+    const api = await pwRequest.newContext({ baseURL: process.env.E2E_BASE_URL || 'http://127.0.0.1:5176' });
+    const user = await registerPortfolioUser(api);
+    // First Value remains behind its existing portfolio:read gate (KAN-83/KAN-89).
+    // Give this test user the established dual role so D2 can be exercised without
+    // changing scoped-continuation or route authorization semantics.
+    await prisma.user.update({ where: { id: user.userId }, data: { role: 'portfolio_lead', roles: ['participante', 'portfolio_lead'] } });
+    const organization = await provisionScopedPortfolioAccess(user.userId);
+    const beforeHydration = await canonicalCounts();
+
+    await continueThroughAuthenticatedPortfolioEntry(page, user, organization);
+    const identity = await page.evaluate(() => JSON.parse(window.sessionStorage.getItem('starteria.portfolioEntry.claimedSession') || 'null'));
+    expect(identity).toMatchObject({ source: 'portfolio_entry', sessionId: expect.any(String), sessionRevision: expect.any(Number), handoffId: expect.any(String), handoffVersion: expect.any(Number), confirmationId: expect.any(String), confirmationVersion: expect.any(Number) });
+    const d1ResponsePromise = page.waitForResponse(response => response.request().method() === 'GET' && new URL(response.url()).pathname.endsWith('/confirmed-brief'));
+    await page.goto('/portfolio/setup');
+
+    const d1Response = await d1ResponsePromise;
+    expect(d1Response.status()).toBe(200);
+    const d1Url = new URL(d1Response.url());
+    expect(d1Url.pathname).toBe(`/api/v1/public/portfolio-entry/sessions/${identity.sessionId}/confirmed-brief`);
+    expect(Object.fromEntries(d1Url.searchParams)).toEqual({
+      source: identity.source,
+      sessionRevision: String(identity.sessionRevision),
+      handoffId: identity.handoffId,
+      handoffVersion: String(identity.handoffVersion),
+      confirmationId: identity.confirmationId,
+      confirmationVersion: String(identity.confirmationVersion),
+    });
+    const d1 = await d1Response.json();
+    expect(d1.data.brief.confirmation.status).toBe('CONFIRMED');
+    expect(d1.data.brief.confirmation.acceptedFields).toContain('recommended_approach');
+    // D2 must hydrate only from the confirmed projection; rawEntry is not a fallback source.
+    const expectedGoal = d1.data.brief.confirmation.correctedFields.desired_outcome ?? d1.data.brief.handoff.desired_outcome;
+    await expect(page.getByLabel(/qué quieres conseguir/i)).toHaveValue(expectedGoal.value ?? expectedGoal);
+    await expect(page.getByLabel(/contexto adicional/i)).not.toHaveValue(/rawEntry/i);
+    await expect(page.getByTestId('p3-processing')).toHaveCount(0);
+    await expect(page.getByTestId('p1-intent-checkpoint')).toHaveCount(0);
+
+    const refreshedD1Promise = page.waitForResponse(response => response.request().method() === 'GET' && new URL(response.url()).pathname.endsWith('/confirmed-brief'));
+    await page.reload();
+    await expect(page).toHaveURL(/\/portfolio\/setup/);
+    expect(await page.evaluate(() => JSON.parse(window.sessionStorage.getItem('starteria.portfolioEntry.claimedSession') || 'null'))).toEqual(identity);
+    const refreshedD1 = await refreshedD1Promise;
+    expect(refreshedD1.status()).toBe(200);
+    expect(new URL(refreshedD1.url()).search).toBe(d1Url.search);
+    await expect(page.getByLabel(/qué quieres conseguir/i)).toHaveValue(expectedGoal.value ?? expectedGoal);
+
+    await page.getByLabel(/qué quieres conseguir/i).fill('Objetivo editado por la persona');
+    await page.getByLabel(/contexto adicional/i).fill('Contexto editado por la persona');
+    await page.getByRole('button', { name: /Mostrar lo que entendió/i }).click();
+    await expect(page.getByTestId('p1-confirmed-summary')).toContainText('Objetivo editado por la persona');
+    await expect(page.getByTestId('p1-confirmed-summary')).toContainText('Contexto editado por la persona');
+    await expect(page.getByTestId('p3-processing')).toHaveCount(0);
+    expect(await canonicalCounts()).toEqual(beforeHydration);
+    await expect(page.getByText(/rawEntry/i)).toHaveCount(0);
+    await expect(page).not.toHaveURL(/\/initiatives\/|\/overview|\/step\/0/);
+    legacyNavigation.expectClean();
+    legacyNavigation.dispose();
+    await api.dispose();
+  });
+
   test('portfolio-first can persist explicit no-existing-work state through reload', async ({ page }, testInfo) => {
     const legacyNavigation = watchForbiddenPortfolioEntryNavigation(page);
     const scenario = SCENARIOS[0];

@@ -1,4 +1,4 @@
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { ArrowRight, Check, RefreshCw, Sparkles } from 'lucide-react';
 import { Button } from '../../../app/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../../app/components/ui/card';
@@ -8,6 +8,9 @@ import {
   type FirstValueP3Request,
   type FirstValueP3Result,
 } from './firstValueP3Service';
+import { getConfirmedBrief } from './confirmedBriefClient';
+import { projectStrategicIntent, serializeStrategicContext } from './strategicIntentProjection';
+import { readClaimedPortfolioEntryBriefIdentity } from '../../portfolio-entry/public/storage';
 
 type P3State = 'idle' | 'processing' | 'ready' | 'needs_clarification' | 'error';
 type WorkItem = { itemId: string; name: string };
@@ -31,6 +34,11 @@ const dispositionLabels = {
 } as const;
 
 export function PortfolioLeadFirstValuePage() {
+  const continuationIdentity = useRef(readClaimedPortfolioEntryBriefIdentity());
+  const [hydration, setHydration] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle');
+  const [hydrationError, setHydrationError] = useState('');
+  const hydrated = useRef(false);
+  const edited = useRef(false);
   const sessionId = useRef(createId());
   const requestSequence = useRef(0);
   const itemIds = useRef(new Map<string, string>());
@@ -47,6 +55,33 @@ export function PortfolioLeadFirstValuePage() {
   const [exceptionsOpen, setExceptionsOpen] = useState(true);
   const [globalConfirmed, setGlobalConfirmed] = useState(false);
   const [unansweredClarifications, setUnansweredClarifications] = useState<string[]>([]);
+
+  const hydrateContinuation = async () => {
+    const identity = continuationIdentity.current;
+    if (!identity || hydrated.current) return;
+    setHydration('loading');
+    setHydrationError('');
+    try {
+      const brief = await getConfirmedBrief(identity);
+      const projection = projectStrategicIntent(brief);
+      if (!projection.goal) throw new Error('No encontramos un objetivo confirmado en esta entrada.');
+      if (!edited.current && !hydrated.current) {
+        setGoal(projection.goal);
+        setContext(serializeStrategicContext(projection));
+      }
+      hydrated.current = true;
+      setHydration('ready');
+    } catch (error) {
+      const status = (error as { response?: { status?: number } })?.response?.status;
+      setHydrationError(status === 404 ? 'Esta entrada confirmada no está disponible.' : status === 409 ? 'La identidad de esta entrada quedó desactualizada.' : status === 410 ? 'Esta entrada fue abandonada o venció.' : status === 401 ? 'Inicia sesión de nuevo para recuperar esta entrada.' : getErrorMessage(error));
+      setHydration('error');
+    }
+  };
+
+  useEffect(() => {
+    if (!continuationIdentity.current) { setHydration('ready'); return; }
+    void hydrateContinuation();
+  }, []);
 
   const invalidateAnalysis = () => {
     requestSequence.current += 1;
@@ -144,6 +179,8 @@ export function PortfolioLeadFirstValuePage() {
   return (
     <main className="min-h-full bg-[#f7f7f3] px-4 py-8 text-slate-950 sm:px-6 lg:px-10" data-testid="portfolio-lead-first-value">
       <div className="mx-auto max-w-5xl space-y-6">
+        {continuationIdentity.current && hydration !== 'ready' ? <Card data-testid="d2-hydration-state"><CardContent className="space-y-3 py-6">{hydration === 'loading' ? <p role="status">Recuperando tu intención confirmada…</p> : <><p role="alert">{hydrationError}</p><Button variant="outline" onClick={() => void hydrateContinuation()}>Reintentar</Button></>}</CardContent></Card> : null}
+        {(!continuationIdentity.current || hydration === 'ready') ? <>
         <header>
           <p className="text-sm font-medium text-slate-600">Portfolio Lead · First Value</p>
           <h1 className="mt-2 text-3xl font-semibold tracking-tight">Organiza el trabajo alrededor de lo que quieres conseguir</h1>
@@ -159,9 +196,9 @@ export function PortfolioLeadFirstValuePage() {
           <CardContent className="space-y-4">
             {stage === 'intent' ? <>
               <label htmlFor="first-value-goal" className="block text-sm font-medium">Qué quieres conseguir</label>
-              <Textarea id="first-value-goal" value={goal} onChange={event => changeIntent(setGoal, event.target.value)} rows={3} />
+              <Textarea id="first-value-goal" value={goal} onChange={event => { edited.current = true; changeIntent(setGoal, event.target.value); }} rows={3} />
               <label htmlFor="first-value-context" className="block text-sm font-medium">Contexto adicional (opcional)</label>
-              <Textarea id="first-value-context" value={context} onChange={event => changeIntent(setContext, event.target.value)} rows={2} />
+              <Textarea id="first-value-context" value={context} onChange={event => { edited.current = true; changeIntent(setContext, event.target.value); }} rows={2} />
               <Button onClick={() => setStage('p1')} disabled={!goal.trim()}>Mostrar lo que entendió <ArrowRight /></Button>
             </> : <>
               <div data-testid="p1-confirmed-summary" className="rounded-lg border border-slate-200 bg-white p-4">
@@ -230,6 +267,7 @@ export function PortfolioLeadFirstValuePage() {
           /> : null}
           {p3State === 'idle' ? <p className="text-sm text-slate-600">La lectura anterior ya no está vigente. Confirma de nuevo el trabajo para analizar los cambios.</p> : null}
         </section> : null}
+        </> : null}
       </div>
     </main>
   );
