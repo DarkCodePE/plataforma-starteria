@@ -6,6 +6,7 @@ import { PortfolioEntryExperience } from '../PortfolioEntryExperience';
 import type { PortfolioEntryHandoff, PortfolioEntrySessionDto } from '../types';
 import {
   readPendingPortfolioEntryClaim,
+  readClaimedPortfolioEntryBriefIdentity,
   saveClaimedPortfolioEntrySession,
   savePortfolioEntryCurrentSession,
 } from '../storage';
@@ -702,6 +703,7 @@ describe('PortfolioEntryExperience', () => {
       revision: 8,
       nextAction: 'claim_or_close',
       ownership: { state: 'CLAIMED', ownerUserId: 'user-1' },
+      confirmation: { id: 'confirmation-1', version: 3, status: 'CONFIRMED', acceptedFields: [], correctedFields: {}, rejectedFields: [], createdAt: new Date().toISOString() },
     }));
     serviceMocks.continuePortfolioEntryToPortfolio.mockResolvedValue({
       continuationId: 'continuation-1',
@@ -731,7 +733,10 @@ describe('PortfolioEntryExperience', () => {
     await waitFor(() => expect(navigateSpy).toHaveBeenCalledWith('/portfolio/inicio?portfolioEntryContinuationId=continuation-1'));
     expect(window.sessionStorage.getItem('starteria.portfolioEntry.current')).toBeNull();
     expect(window.sessionStorage.getItem('starteria.portfolioEntry.pendingClaim')).toBeNull();
-    expect(window.sessionStorage.getItem('starteria.portfolioEntry.claimedSession')).toBeNull();
+    expect(readClaimedPortfolioEntryBriefIdentity()).toEqual({
+      source: 'portfolio_entry', sessionId: '11111111-1111-4111-8111-111111111111', sessionRevision: 8,
+      handoffId: 'handoff-1', handoffVersion: 1, confirmationId: 'confirmation-1', confirmationVersion: 3,
+    });
   });
 
   it('reuses the same conversion idempotency key when retrying after a server failure', async () => {

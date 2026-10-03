@@ -14,6 +14,7 @@ const serviceMocks = vi.hoisted(() => ({
 }));
 const storageMocks = vi.hoisted(() => ({
   readClaimedPortfolioEntrySession: vi.fn(() => ({ sessionId: 'session-1' })),
+  saveClaimedPortfolioEntrySession: vi.fn(),
 }));
 const navigateSpy = vi.hoisted(() => vi.fn());
 
@@ -46,7 +47,7 @@ const continuation = {
   },
   semanticProjection: {},
   nextAction: 'claim_or_close',
-  handoff: { sessionId: 'session-1', revision: 5, handoff: {
+  handoff: { id: 'handoff-1', version: 2, sessionId: 'session-1', revision: 5, handoff: {
     understanding: { value: 'Ordenar las iniciativas antes del comité.' },
     desired_outcome: { value: 'Llegar con una decisión clara.' },
     decision_to_enable: { value: 'Elegir prioridades.' },
@@ -55,6 +56,7 @@ const continuation = {
     evidence_or_clarity_needed: [{ value: 'Datos de avance.' }],
     recommended_approach: { description: 'Comparar las iniciativas.' },
   } },
+  confirmation: { id: 'confirmation-1', version: 3, status: 'CONFIRMED', acceptedFields: [], correctedFields: {}, rejectedFields: [] },
   provisionalContinuation: {
     state: 'AUTHENTICATED_PROVISIONAL_CONTINUATION',
     sessionId: 'session-1',
@@ -117,6 +119,13 @@ describe('Authenticated provisional continuation page', () => {
     await waitFor(() => expect(serviceMocks.confirmAuthenticatedProvisionalContinuation).toHaveBeenCalledWith(
       'session-1', expect.objectContaining({ expectedRevision: 5, acceptedFields: expect.arrayContaining(['understood_need', 'desired_outcome', 'decision_to_enable', 'known_context', 'unresolved_context', 'evidence_or_clarity_needed', 'recommended_approach']) }),
     ));
+    await waitFor(() => expect(storageMocks.saveClaimedPortfolioEntrySession).toHaveBeenCalledWith({
+      source: 'portfolio_entry', sessionId: 'session-1', sessionRevision: 5,
+      handoffId: 'handoff-1', handoffVersion: 2, confirmationId: 'confirmation-1', confirmationVersion: 3,
+    }));
+    expect(serviceMocks.continuePortfolioEntryToPortfolio.mock.invocationCallOrder[0]).toBeGreaterThan(
+      storageMocks.saveClaimedPortfolioEntrySession.mock.invocationCallOrder[0]!,
+    );
   });
 
   it('lets the owner correct user-owned fields and renders the saved value', async () => {

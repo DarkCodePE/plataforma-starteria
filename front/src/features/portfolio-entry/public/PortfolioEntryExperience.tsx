@@ -28,6 +28,7 @@ import {
 } from './portfolioEntryPublicService';
 import { createIdempotencyKey } from './idempotency';
 import { trackPortfolioEntryEvent } from './analytics';
+import { portfolioEntryBriefIdentityFromSession } from './continuationIdentity';
 import {
   clearPortfolioEntryClaimedNotice,
   clearPortfolioEntryConversionState,
@@ -36,6 +37,7 @@ import {
   readPortfolioEntryClaimedNotice,
   readPortfolioEntryCurrentSession,
   savePendingPortfolioEntryClaim,
+  saveClaimedPortfolioEntrySession,
   savePortfolioEntryCurrentSession,
 } from './storage';
 import type {
@@ -1604,7 +1606,8 @@ export function PortfolioEntryExperience({
 
   const continueToSignup = () => {
     if (!sessionRef) return;
-    savePendingPortfolioEntryClaim(sessionRef);
+    const identity = sessionDto ? portfolioEntryBriefIdentityFromSession(sessionDto) : null;
+    savePendingPortfolioEntryClaim({ ...sessionRef, ...(identity ? { identity } : {}) });
     trackPortfolioEntryEvent('signup_gate_reached', { sessionId: sessionRef.sessionId });
     navigate('/auth');
   };
@@ -1619,6 +1622,7 @@ export function PortfolioEntryExperience({
     setPendingRequest('converting');
     trackPortfolioEntryEvent('portfolio_entry_conversion_started', { sessionId: sessionDto.id });
     try {
+      const identity = portfolioEntryBriefIdentityFromSession(sessionDto);
       const result = await continuePortfolioEntryToPortfolio(sessionDto.id, {
         expectedRevision: sessionDto.revision,
         idempotencyKey: key,
@@ -1628,6 +1632,7 @@ export function PortfolioEntryExperience({
         continuationId: result.continuationId,
       });
       clearPortfolioEntryConversionState();
+      if (identity) saveClaimedPortfolioEntrySession(identity);
       trackPortfolioEntryEvent('portfolio_entry_overview_opened', { continuationId: result.continuationId });
       // The continuation grants the capability in the database. Rotate the access
       // token before entering Portfolio so the current request context sees it too.

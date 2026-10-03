@@ -17,6 +17,7 @@ import {
   savePortfolioEntryClaimedNotice,
   claimPortfolioEntrySession,
   trackPortfolioEntryEvent,
+  portfolioEntryClaimIdentity,
 } from '../../features/portfolio-entry/public';
 import { createIdempotencyKey } from '../../features/portfolio-entry/public/idempotency';
 import { claimHandoffInvitation, clearPendingHandoffInvitation, readPendingHandoffInvitation } from '../../features/portfolio-handoff/services/handoffInvitationService';
@@ -117,7 +118,7 @@ export function AuthPage() {
             pendingPortfolioEntryClaim.sessionId,
             pendingPortfolioEntryClaim.credential,
           );
-          await claimPortfolioEntrySession(
+          const claimResponse = await claimPortfolioEntrySession(
             pendingPortfolioEntryClaim.sessionId,
             pendingPortfolioEntryClaim.credential,
             {
@@ -127,7 +128,8 @@ export function AuthPage() {
           );
           clearPendingPortfolioEntryClaim();
           clearPortfolioEntryCurrentSession();
-          saveClaimedPortfolioEntrySession({ sessionId: pendingPortfolioEntryClaim.sessionId });
+          const identity = portfolioEntryClaimIdentity(claimResponse, pendingPortfolioEntryClaim.identity);
+          saveClaimedPortfolioEntrySession(identity ?? { sessionId: claimResponse.id });
           savePortfolioEntryClaimedNotice(pendingPortfolioEntryClaim.sessionId);
           trackPortfolioEntryEvent('portfolio_entry_claimed', { sessionId: pendingPortfolioEntryClaim.sessionId });
           navigate('/public/provisional-continuation', { replace: true });
