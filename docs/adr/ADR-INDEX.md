@@ -11,7 +11,7 @@ gates, por qué las skills se empaquetan como plugin y cómo se separan las deci
 | Dónde viven | `docs/adr/` | `doc/product-adr/` |
 | Formato | el de este archivo | Development Harness §4.6, plantilla en `/starteria-decision` |
 | Quién los escribe | quien mantiene el harness | quien gobierna el producto |
-| Cuántos hay | 11 | **ninguno todavía** |
+| Cuántos hay | 12 | **ninguno todavía** |
 
 `ADR-001` de una serie no tiene nada que ver con `ADR-001` de la otra. Cuando
 `/starteria-decision` redacte el primer ADR de producto, va a ser el `ADR-001` **de esa serie**, y
@@ -50,6 +50,7 @@ Los ADRs de producto se consultan aparte en `doc/product-adr/ADR-INDEX.md`.
 | [ADR-009](ADR-009-dos-harnesses-el-producto-y-el-productor.md) | El repo tiene dos harnesses: el producto que se instala y el productor que lo construye | proposed | un segundo harness es un segundo harness que mantener |
 | [ADR-010](ADR-010-un-solo-runtime-y-el-estado-como-artefacto.md) | Un solo runtime, y el estado del harness como artefacto encadenado que una memoria indexa | **accepted** | se pierde ChatGPT, y el harness gana una dependencia de servicio |
 | [ADR-011](ADR-011-dos-runtimes-una-sola-fuente-de-skills.md) | Dos runtimes otra vez, pero con una sola fuente de skills y las degradaciones declaradas | proposed | un `PASS` ya no vale lo mismo en todos lados |
+| [ADR-012](ADR-012-el-ciclo-de-hu-se-paga-por-ruta.md) | El ciclo de HU se paga por ruta: triage R0/R1/R2/Q, spec antes de los tickets en lo grande, y cada ticket y PR legible para negocio | proposed | el triage es un punto de falla nuevo, y R2 espera una spec antes del código |
 
 
 La columna de la derecha existe porque un registro de decisiones que solo cuenta las ventajas no
