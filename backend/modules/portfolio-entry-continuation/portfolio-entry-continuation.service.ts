@@ -270,25 +270,6 @@ export class PortfolioEntryContinuationService {
           },
         });
 
-        const converted = await tx.portfolioEntrySession.updateMany({
-          where: {
-            id: input.sessionId,
-            revision: row.revision,
-            ownerUserId: input.authenticatedUserId,
-            ownershipState: 'CLAIMED',
-            lifecycleStatus: { in: ['CONFIRMED', 'CONVERSION_ELIGIBLE'] },
-            continuationProfile: 'PORTFOLIO_LEAD_ENTRY',
-          },
-          data: {
-            lifecycleStatus: 'CONVERTED',
-            revision: { increment: 1 },
-            updatedAt: this.now(),
-            lastActivityAt: this.now(),
-          },
-        });
-        if (converted.count !== 1) {
-          throw AppError.conflict('La sesion cambio antes de finalizar la continuidad.', 'PORTFOLIO_ENTRY_SESSION_CONFLICT');
-        }
 
         return created;
       });

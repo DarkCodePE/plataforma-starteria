@@ -231,6 +231,32 @@ describeIntegration('Portfolio Entry Conversion Boundary', () => {
       .expect(200);
     expect(replay.body).toEqual(first.body);
 
+    const retry = await request(app)
+      .post(`${base}/sessions/${seeded.sessionId}/continue-portfolio`)
+      .set('Authorization', `Bearer ${portfolioLeadId}`)
+      .set('Idempotency-Key', 'continue-portfolio-same-session-retry')
+      .send({ expectedRevision: seeded.revision })
+      .expect(200);
+    expect(retry.body.data.continuationId).toBe(first.body.data.continuationId);
+
+    const confirmedBrief = await request(app)
+      .get(`${base}/sessions/${seeded.sessionId}/confirmed-brief?${new URLSearchParams({
+        source: 'portfolio_entry',
+        sessionRevision: String(seeded.revision),
+        handoffId: seeded.handoffId,
+        handoffVersion: '1',
+        confirmationId: seeded.confirmationId,
+        confirmationVersion: '1',
+      })}`)
+      .set('Authorization', `Bearer ${portfolioLeadId}`)
+      .expect(200);
+    expect(confirmedBrief.body.data).toMatchObject({
+      sessionId: seeded.sessionId,
+      revision: seeded.revision,
+      handoffId: seeded.handoffId,
+      confirmationId: seeded.confirmationId,
+    });
+
     const read = await request(app)
       .get(`${base}/continuations/${first.body.data.continuationId}`)
       .set('Authorization', `Bearer ${portfolioLeadId}`)
@@ -252,9 +278,17 @@ describeIntegration('Portfolio Entry Conversion Boundary', () => {
       mappingVersion: 'portfolio-entry-portfolio-continuation-v0.1',
       status: 'CONTINUED',
     });
+    expect(continuation?.sourceSnapshot).toMatchObject({
+      session: { id: seeded.sessionId, revision: seeded.revision },
+      handoffRef: { id: seeded.handoffId, version: 1 },
+      confirmation: { id: seeded.confirmationId, version: 1, status: 'CONFIRMED' },
+    });
     expect(JSON.stringify(continuation?.sourceSnapshot)).toContain('AI_SUGGESTED');
     expect(JSON.stringify(continuation?.sourceSnapshot)).toContain('brecha de decision');
-    expect(session?.lifecycleStatus).toBe('CONVERTED');
+    expect(session?.lifecycleStatus).toBe('CONFIRMED');
+    expect(session?.revision).toBe(seeded.revision);
+    expect(await prisma.portfolioEntryPortfolioContinuation.count({ where: { sessionId: seeded.sessionId } })).toBe(1);
+    expect(await prisma.portfolioEntryConversion.count({ where: { sessionId: seeded.sessionId } })).toBe(0);
     expect(after).toEqual(before);
   });
 
@@ -288,12 +322,13 @@ describeIntegration('Portfolio Entry Conversion Boundary', () => {
     });
     const before = await canonicalCounts();
     const grantsBeforeUnauthorizedContinuation = await prisma.organizationPortfolioAccessGrant.count();
-    await request(app)
+    const noAuthorizedContext = await request(app)
       .post(`${base}/sessions/${unauthorized.sessionId}/continue-portfolio`)
       .set('Authorization', `Bearer ${ownerId}`)
       .set('Idempotency-Key', 'continue-without-scoped-grant')
       .send({ expectedRevision: unauthorized.revision })
       .expect(403);
+    expect(noAuthorizedContext.body.error.code).toBe('PORTFOLIO_ENTRY_CONTINUATION_NO_AUTHORIZED_CONTEXT');
     expect(await prisma.portfolioEntryPortfolioContinuation.count({ where: { sessionId: unauthorized.sessionId } })).toBe(0);
     expect(await prisma.organizationPortfolioAccessGrant.count()).toBe(grantsBeforeUnauthorizedContinuation);
     expect(await prisma.user.findUniqueOrThrow({ where: { id: ownerId }, select: { role: true, roles: true } }))
@@ -308,14 +343,39 @@ describeIntegration('Portfolio Entry Conversion Boundary', () => {
         capability: 'portfolio:read',
       },
     });
+    const secondOrganizationId = `org-${ownerId}-second`;
+    await prisma.organization.create({
+      data: { id: secondOrganizationId, name: 'Second authorized organization', slug: secondOrganizationId },
+    });
+    touchedOrganizationIds.add(secondOrganizationId);
+    await prisma.organizationMember.create({
+      data: { id: `membership-${ownerId}-second`, userId: ownerId, organizationId: secondOrganizationId, role: 'member' },
+    });
+    await prisma.organizationPortfolioAccessGrant.create({
+      data: {
+        id: `grant-${ownerId}-second-read`,
+        userId: ownerId,
+        organizationId: secondOrganizationId,
+        capability: 'portfolio:read',
+      },
+    });
+    const multipleContexts = await request(app)
+      .post(`${base}/sessions/${unauthorized.sessionId}/continue-portfolio`)
+      .set('Authorization', `Bearer ${ownerId}`)
+      .set('Idempotency-Key', 'continue-requires-context-selection')
+      .send({ expectedRevision: unauthorized.revision })
+      .expect(409);
+    expect(multipleContexts.body.error.code).toBe('PORTFOLIO_ENTRY_CONTINUATION_CONTEXT_SELECTION_REQUIRED');
+
     const grantsBeforeAuthorizedContinuation = await prisma.organizationPortfolioAccessGrant.count();
     const granted = await request(app)
       .post(`${base}/sessions/${unauthorized.sessionId}/continue-portfolio`)
       .set('Authorization', `Bearer ${ownerId}`)
-      .set('Idempotency-Key', 'continue-with-preexisting-scoped-grant')
-      .send({ expectedRevision: unauthorized.revision })
+      .set('Idempotency-Key', 'continue-with-explicit-organization')
+      .send({ expectedRevision: unauthorized.revision, organizationId: ownerOrganizationId })
       .expect(200);
     expect(granted.body.data.portfolioAccessGranted).toBe(true);
+    expect(granted.body.data.portfolioScope.organizationId).toBe(ownerOrganizationId);
     expect(await prisma.organizationPortfolioAccessGrant.count()).toBe(grantsBeforeAuthorizedContinuation);
     expect(await prisma.user.findUniqueOrThrow({ where: { id: ownerId }, select: { role: true, roles: true } }))
       .toEqual({ role: 'participante', roles: ['participante'] });
@@ -340,11 +400,41 @@ describeIntegration('Portfolio Entry Conversion Boundary', () => {
     await request(app)
       .post(`${base}/sessions/${stale.sessionId}/continue-portfolio`)
       .set('Authorization', `Bearer ${portfolioLeadId}`)
+      .set('Idempotency-Key', 'continue-stale-session-revision')
+      .send({ expectedRevision: stale.revision - 1 })
+      .expect(409);
+
+    await request(app)
+      .post(`${base}/sessions/${stale.sessionId}/continue-portfolio`)
+      .set('Authorization', `Bearer ${portfolioLeadId}`)
       .set('Idempotency-Key', 'continue-stale-confirmation')
       .send({ expectedRevision: stale.revision })
       .expect(409);
     expect(await prisma.portfolioEntryPortfolioContinuation.count({ where: { sessionId: stale.sessionId } })).toBe(0);
     expect(await canonicalCounts()).toEqual(before);
+
+    await request(app)
+      .post(`${base}/sessions/${stale.sessionId}/continue-portfolio`)
+      .set('Authorization', `Bearer ${otherUserId}`)
+      .set('Idempotency-Key', 'continue-foreign-owner')
+      .send({ expectedRevision: stale.revision, organizationId: `org-${portfolioLeadId}` })
+      .expect(403);
+
+    const expired = await seedConfirmedClaimedSession({
+      ownerUserId: portfolioLeadId,
+      ownerRole: 'portfolio_lead',
+      profile: 'PORTFOLIO_LEAD_ENTRY',
+    });
+    await prisma.portfolioEntrySession.update({
+      where: { id: expired.sessionId },
+      data: { expiresAt: new Date(Date.now() - 1) },
+    });
+    await request(app)
+      .post(`${base}/sessions/${expired.sessionId}/continue-portfolio`)
+      .set('Authorization', `Bearer ${portfolioLeadId}`)
+      .set('Idempotency-Key', 'continue-expired-session')
+      .send({ expectedRevision: expired.revision })
+      .expect(410);
   });
 
   it('rejects unclaimed, unconfirmed and expired sessions without canonical writes', async () => {
@@ -779,7 +869,10 @@ async function cleanup() {
 
 async function canonicalCounts() {
   const [
+    strategicFronts,
+    challenges,
     projects,
+    initiativePortfolioMetas,
     steps,
     adaptiveStepConfigurations,
     adaptiveCheckpointInstances,
@@ -790,7 +883,10 @@ async function canonicalCounts() {
     initiativeCycles,
     ownerAssignments,
   ] = await Promise.all([
+    prisma.strategicFront.count(),
+    prisma.challenge.count(),
     prisma.project.count({ where: { origin: 'from_portfolio_entry' } }),
+    prisma.initiativePortfolioMeta.count({ where: { project: { origin: 'from_portfolio_entry' } } }),
     prisma.step.count({ where: { project: { origin: 'from_portfolio_entry' } } }),
     prisma.adaptiveStepConfiguration.count({ where: { project: { origin: 'from_portfolio_entry' } } }),
     prisma.adaptiveCheckpointInstance.count({ where: { project: { origin: 'from_portfolio_entry' } } }),
@@ -802,7 +898,10 @@ async function canonicalCounts() {
     prisma.teamMember.count({ where: { project: { origin: 'from_portfolio_entry' }, role: 'OWNER' } }),
   ]);
   return {
+    strategicFronts,
+    challenges,
     projects,
+    initiativePortfolioMetas,
     steps,
     adaptiveStepConfigurations,
     adaptiveCheckpointInstances,
