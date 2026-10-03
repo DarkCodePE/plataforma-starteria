@@ -22,6 +22,7 @@ let scopedEntryContext: {
   status: 'idle' | 'loading' | 'ready' | 'error';
   error: string | null;
 } = { data: null, status: 'idle', error: null };
+let scopedSetupAccess = { authorized: false, status: 'idle' as 'idle' | 'loading' | 'ready' | 'error' };
 vi.mock('react-router', () => ({
   Outlet: () => <div data-testid="contenido-portafolio" />,
   useNavigate: () => navigate,
@@ -56,6 +57,7 @@ vi.mock('../../portfolio/PortfolioLeadContext', () => ({
 
 vi.mock('../../../features/portfolio-entry/home/usePortfolioHomeEntryContext', () => ({
   usePortfolioHomeEntryContext: () => scopedEntryContext,
+  useScopedFirstValueEntryAccess: () => scopedSetupAccess,
 }));
 
 const entra = () => screen.queryByTestId('contenido-portafolio') !== null;
@@ -65,6 +67,7 @@ describe('PortfolioLeadLayout — quién accede a /portfolio', () => {
     navigate.mockReset();
     currentLocation = { pathname: '/portfolio/inicio', search: '' };
     scopedEntryContext = { data: null, status: 'idle', error: null };
+    scopedSetupAccess = { authorized: false, status: 'idle' };
   });
 
   it('un portfolio_lead entra', () => {
@@ -90,6 +93,26 @@ describe('PortfolioLeadLayout — quién accede a /portfolio', () => {
   it('FV-02: un usuario sin portfolio:read no accede a First Value', () => {
     currentUser = sesion('owner');
     currentLocation = { pathname: '/portfolio/setup', search: '' };
+    scopedSetupAccess = { authorized: false, status: 'error' };
+    render(<PortfolioLeadLayout />);
+    expect(entra()).toBe(false);
+    expect(navigate).toHaveBeenCalledWith('/dashboard', { replace: true });
+  });
+
+  it('KAN-100: participante con continuation scoped vigente entra solo a /portfolio/setup', () => {
+    currentUser = sesion('owner');
+    currentLocation = { pathname: '/portfolio/setup', search: '' };
+    scopedSetupAccess = { authorized: true, status: 'ready' };
+    render(<PortfolioLeadLayout />);
+    expect(entra()).toBe(true);
+    expect(screen.getByTestId('scoped-portfolio-entry-layout')).toBeInTheDocument();
+    expect(navigate).not.toHaveBeenCalledWith('/dashboard', { replace: true });
+  });
+
+  it.each(['missing', 'stale', 'foreign', 'revoked'] as const)('KAN-100: %s scoped continuation stays denied at setup', () => {
+    currentUser = sesion('owner');
+    currentLocation = { pathname: '/portfolio/setup', search: '' };
+    scopedSetupAccess = { authorized: false, status: 'error' };
     render(<PortfolioLeadLayout />);
     expect(entra()).toBe(false);
     expect(navigate).toHaveBeenCalledWith('/dashboard', { replace: true });

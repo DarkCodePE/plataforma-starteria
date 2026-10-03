@@ -14,12 +14,13 @@ function makeService({ grant = true, owner = 'user-1' } = {}) {
         later_work: [{ value: 'Revisar el detalle después' }],
         organizational_unknowns: [{ value: 'La capacidad debe confirmarse' }],
       },
-      confirmation: { status: 'CONFIRMED', acceptedFields: { context: { value: 'Hay varias iniciativas' } } },
+      confirmation: { id: 'confirmation-1', version: 3, status: 'CONFIRMED', acceptedFields: { context: { value: 'Hay varias iniciativas' } } },
+      handoffRef: { id: 'handoff-1', version: 2 },
     },
   };
   const prisma = {
-    portfolioEntryPortfolioContinuation: { findUnique: vi.fn(async () => continuation) },
-    portfolioEntrySession: { findUnique: vi.fn(async () => ({ ownerUserId: owner, ownershipState: 'CLAIMED' })) },
+    portfolioEntryPortfolioContinuation: { findUnique: vi.fn(async () => continuation), findFirst: vi.fn(async () => continuation) },
+    portfolioEntrySession: { findUnique: vi.fn(async () => ({ ownerUserId: owner, ownershipState: 'CLAIMED', revision: 7 })) },
     user: { findUnique: vi.fn(async () => ({ id: 'user-1' })) },
     organization: { findUnique: vi.fn(async () => ({ id: 'org-1', name: 'Acme' })) },
     organizationMember: { findFirst: vi.fn(async () => ({ id: 'member-1' })) },
@@ -29,6 +30,17 @@ function makeService({ grant = true, owner = 'user-1' } = {}) {
 }
 
 describe('Portfolio Home server-owned entry context', () => {
+  const identity = { sessionId: 'session-1', sessionRevision: 7, handoffId: 'handoff-1', handoffVersion: 2, confirmationId: 'confirmation-1', confirmationVersion: 3 };
+
+  it('KAN-100 scoped setup access requires the stored identity, owner, claimed session and current grant', async () => {
+    const { service, prisma } = makeService();
+    await expect(service.authorizeScopedFirstValueEntry({ identity, authenticatedUserId: 'user-1' })).resolves.toMatchObject({ continuationId: 'continuation-1' });
+    await expect(service.authorizeScopedFirstValueEntry({ identity: { ...identity, handoffVersion: 1 }, authenticatedUserId: 'user-1' })).rejects.toMatchObject({ code: 'PORTFOLIO_ENTRY_CONTINUATION_FORBIDDEN' });
+    await expect(makeService({ owner: 'other-user' }).service.authorizeScopedFirstValueEntry({ identity, authenticatedUserId: 'user-1' })).rejects.toMatchObject({ code: 'PORTFOLIO_ENTRY_CONTINUATION_FORBIDDEN' });
+    await expect(makeService({ grant: false }).service.authorizeScopedFirstValueEntry({ identity, authenticatedUserId: 'user-1' })).rejects.toMatchObject({ code: 'PORTFOLIO_ENTRY_CONTINUATION_SCOPED_PORTFOLIO_ACCESS_REQUIRED' });
+    expect(prisma.organizationPortfolioAccessGrant.findFirst).toHaveBeenCalled();
+  });
+
   it('HOME-01/06/07/08/09/10/11 returns a safe projection with the same session linkage', async () => {
     const { service } = makeService();
     const result = await service.readPortfolioHomeEntryContext({ continuationId: 'continuation-1', authenticatedUserId: 'user-1', permissions: new Set() });

@@ -97,7 +97,7 @@ describe('Authenticated provisional continuation page', () => {
       revision: 5,
       contexts: [{ organizationId: 'org-1', name: 'Organización autorizada' }],
     });
-    serviceMocks.continuePortfolioEntryToPortfolio.mockResolvedValue({ destinationRoute: '/portfolio/inicio' });
+    serviceMocks.continuePortfolioEntryToPortfolio.mockResolvedValue({ destinationRoute: '/portfolio/setup' });
   });
 
   it('renders the same claimed session without internal terminology or restart intake', async () => {

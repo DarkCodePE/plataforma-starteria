@@ -226,7 +226,7 @@ async function seedAuthorizedState() {
       },
       pendingItems: { unresolved_context: [], evidence_or_clarity_needed: [] },
       mappingVersion: 'portfolio-entry-portfolio-continuation-v0.1',
-      destinationRoute: `/portfolio/inicio?portfolioEntryContinuationId=${continuationId}`,
+      destinationRoute: '/portfolio/setup',
     },
   });
   return { sessionId, continuationId };

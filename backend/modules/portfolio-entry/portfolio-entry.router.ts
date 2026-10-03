@@ -128,6 +128,7 @@ export function buildPortfolioEntryRouter(
   router.post('/sessions/:sessionId/continue-portfolio', auth, handoffLimiter, continuationController.continueToPortfolio);
   router.get('/continuations/:continuationId', auth, submitLimiter, continuationController.readContinuation);
   router.get('/continuations/:continuationId/home-context', auth, submitLimiter, continuationController.readPortfolioHomeEntryContext);
+  router.post('/continuations/scoped-first-value-access', auth, submitLimiter, continuationController.authorizeScopedFirstValueEntry);
 
   return router;
 }

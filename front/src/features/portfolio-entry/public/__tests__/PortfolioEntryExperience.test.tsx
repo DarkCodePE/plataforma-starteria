@@ -709,7 +709,7 @@ describe('PortfolioEntryExperience', () => {
       continuationId: 'continuation-1',
       sessionId: '11111111-1111-4111-8111-111111111111',
       status: 'CONTINUED',
-      destinationRoute: '/portfolio/inicio?portfolioEntryContinuationId=continuation-1',
+      destinationRoute: '/portfolio/setup',
       continuedAt: new Date().toISOString(),
       portfolioScope: { kind: 'scoped_portfolio_grant', userId: 'user-1', organizationId: 'org-1' },
       context: {},
@@ -730,7 +730,7 @@ describe('PortfolioEntryExperience', () => {
     });
     expect(serviceMocks.continuePortfolioEntryToPortfolio.mock.calls[0][1]).not.toHaveProperty('ownerUserId');
     expect(serviceMocks.continuePortfolioEntryToPortfolio.mock.calls[0][1]).not.toHaveProperty('projectId');
-    await waitFor(() => expect(navigateSpy).toHaveBeenCalledWith('/portfolio/inicio?portfolioEntryContinuationId=continuation-1'));
+    await waitFor(() => expect(navigateSpy).toHaveBeenCalledWith('/portfolio/setup'));
     expect(window.sessionStorage.getItem('starteria.portfolioEntry.current')).toBeNull();
     expect(window.sessionStorage.getItem('starteria.portfolioEntry.pendingClaim')).toBeNull();
     expect(readClaimedPortfolioEntryBriefIdentity()).toEqual({
@@ -753,7 +753,7 @@ describe('PortfolioEntryExperience', () => {
         continuationId: 'continuation-1',
         sessionId: '11111111-1111-4111-8111-111111111111',
         status: 'CONTINUED',
-        destinationRoute: '/portfolio/inicio?portfolioEntryContinuationId=continuation-1',
+        destinationRoute: '/portfolio/setup',
         continuedAt: new Date().toISOString(),
         portfolioScope: { kind: 'scoped_portfolio_grant', userId: 'user-1', organizationId: 'org-1' },
         context: {},
@@ -771,7 +771,7 @@ describe('PortfolioEntryExperience', () => {
 
     await waitFor(() => expect(serviceMocks.continuePortfolioEntryToPortfolio).toHaveBeenCalledTimes(2));
     expect(serviceMocks.continuePortfolioEntryToPortfolio.mock.calls[1][1].idempotencyKey).toBe(firstKey);
-    expect(navigateSpy).toHaveBeenCalledWith('/portfolio/inicio?portfolioEntryContinuationId=continuation-1');
+    expect(navigateSpy).toHaveBeenCalledWith('/portfolio/setup');
   });
 
   it('recovers latest claimed session on conversion conflict without auto-resubmitting conversion', async () => {
