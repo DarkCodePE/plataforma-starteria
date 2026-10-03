@@ -833,6 +833,89 @@ describe('Portfolio Entry Experimental Session API', () => {
     expect(repeated.body.data.steps).toBeUndefined();
   });
 
+  it('persists explicit Strategic Intent decisions, rejects contradictions, and exposes only stored confirmation through D1', async () => {
+    const { app, repository } = makeApp();
+    const ready = await readySession(app);
+    const handoff = await request(app).post(`${base}/sessions/${ready.sessionId}/handoff`)
+      .set('X-Starteria-Entry-Token', ready.token).set('Idempotency-Key', `intent-handoff-${ready.sessionId}`)
+      .send({ expectedRevision: ready.revision }).expect(200);
+    const claimed = await request(app).post(`${base}/sessions/${ready.sessionId}/claim`)
+      .set('Authorization', 'Bearer user-1').set('X-Starteria-Entry-Token', ready.token)
+      .set('Idempotency-Key', `intent-claim-${ready.sessionId}`)
+      .send({ expectedRevision: handoff.body.data.revision }).expect(200);
+    const confirmationUrl = `${base}/sessions/${ready.sessionId}/handoff/confirmation`;
+    const terminalReadingFields = [
+      'understood_need', 'desired_outcome', 'decision_to_enable', 'known_context',
+      'unresolved_context', 'evidence_or_clarity_needed',
+    ];
+    await request(app).post(confirmationUrl).set('Authorization', 'Bearer user-1')
+      .set('Idempotency-Key', 'intent-contradiction')
+      .send({ expectedRevision: claimed.body.data.revision, action: 'confirm', acceptedFields: ['decision_to_enable'], rejectedFields: ['decision_to_enable'] })
+      .expect(400);
+    await request(app).post(confirmationUrl).set('Authorization', 'Bearer user-1')
+      .set('Idempotency-Key', 'intent-correction-contradiction')
+      .send({ expectedRevision: claimed.body.data.revision, action: 'confirm', correctedFields: { decision_to_enable: 'Decision corregida' }, rejectedFields: ['decision_to_enable'] })
+      .expect(400);
+    await request(app).post(confirmationUrl).set('Authorization', 'Bearer user-1')
+      .set('Idempotency-Key', 'intent-accepted-correction-contradiction')
+      .send({ expectedRevision: claimed.body.data.revision, action: 'confirm', acceptedFields: ['decision_to_enable'], correctedFields: { decision_to_enable: 'Decision corregida' } })
+      .expect(400);
+    const confirmed = await request(app).post(confirmationUrl).set('Authorization', 'Bearer user-1')
+      .set('Idempotency-Key', 'intent-confirmation')
+      .send({
+        expectedRevision: claimed.body.data.revision,
+        action: 'confirm',
+        acceptedFields: terminalReadingFields.filter((field) => !['known_context', 'decision_to_enable', 'unresolved_context', 'evidence_or_clarity_needed'].includes(field)),
+        rejectedFields: ['known_context'],
+        correctedFields: {
+          decision_to_enable: 'Preparar una decision de prioridad',
+          unresolved_context: ['Validar capacidad disponible'],
+          evidence_or_clarity_needed: ['Medir capacidad del equipo'],
+          recommended_approach: 'Enfoque aceptado como hipotesis',
+        },
+      }).expect(200);
+    expect(confirmed.body.data.confirmation.acceptedFields).toEqual(terminalReadingFields.filter((field) => !['known_context', 'decision_to_enable', 'unresolved_context', 'evidence_or_clarity_needed'].includes(field)));
+    expect(confirmed.body.data.confirmation.acceptedFields).not.toContain('recommended_approach');
+    expect(confirmed.body.data.confirmation.correctedFields).toMatchObject({
+      decision_to_enable: 'Preparar una decision de prioridad',
+      unresolved_context: ['Validar capacidad disponible'],
+      evidence_or_clarity_needed: ['Medir capacidad del equipo'],
+      recommended_approach: 'Enfoque aceptado como hipotesis',
+    });
+
+    const identity = {
+      sessionId: ready.sessionId,
+      source: 'portfolio_entry' as const,
+      sessionRevision: confirmed.body.data.revision,
+      handoffId: confirmed.body.data.handoff.id,
+      handoffVersion: confirmed.body.data.handoff.version,
+      confirmationId: confirmed.body.data.confirmation.id,
+      confirmationVersion: confirmed.body.data.confirmation.version,
+    };
+    const before = await repository.findSessionById(ready.sessionId);
+    const d1 = await request(app).get(confirmedBriefPath(identity)).set('Authorization', 'Bearer user-1').expect(200);
+    expect(d1.body.data.brief.confirmation).toMatchObject({
+      acceptedFields: terminalReadingFields.filter((field) => !['known_context', 'decision_to_enable', 'unresolved_context', 'evidence_or_clarity_needed'].includes(field)),
+      correctedFields: confirmed.body.data.confirmation.correctedFields,
+      rejectedFields: ['known_context'],
+    });
+    expect(d1.body.data.brief).not.toHaveProperty('strategicIntentProjection');
+    const after = await repository.findSessionById(ready.sessionId);
+    expect(after?.confirmation).toEqual(before?.confirmation);
+    expect(after?.revision).toBe(before?.revision);
+  });
+
+  it('keeps legacy confirmations without new field states unconfirmed in D1', async () => {
+    const { app } = makeApp();
+    const fixture = await confirmedBriefFixture(app);
+    const d1 = await request(app).get(confirmedBriefPath(fixture)).set('Authorization', 'Bearer user-1').expect(200);
+    const confirmation = d1.body.data.brief.confirmation;
+    expect(confirmation.acceptedFields).toEqual(['understood_need']);
+    expect(confirmation.acceptedFields).not.toContain('decision_to_enable');
+    expect(confirmation.correctedFields).not.toHaveProperty('recommended_approach');
+    expect(confirmation.rejectedFields).not.toContain('unresolved_context');
+  });
+
   it('supports required custom CORS headers and rate limits public operations', async () => {
     const { app } = makeApp({ options: { maxCreateRequests: 1, windowMs: 60_000 } });
 

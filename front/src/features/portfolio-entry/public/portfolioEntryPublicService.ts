@@ -63,6 +63,7 @@ export type GuidedExplorationChoiceInput = MutationOptions & {
 export type HandoffConfirmationInput = MutationOptions & {
   acceptedFields?: string[];
   rejectedFields?: string[];
+  correctedFields?: Record<string, unknown>;
   notes?: string;
 };
 
@@ -73,12 +74,9 @@ export type HandoffCorrectionInput = HandoffConfirmationInput & {
 export type AuthenticatedProvisionalConfirmationInput = {
   expectedRevision: number;
   idempotencyKey: string;
-  acceptedFields?: Array<'understood_need' | 'desired_outcome' | 'known_context'>;
-  correctedFields?: {
-    understood_need?: string;
-    desired_outcome?: string;
-    known_context?: Array<{ key: string; value: string }>;
-  };
+  acceptedFields?: string[];
+  rejectedFields?: string[];
+  correctedFields?: Record<string, unknown>;
 };
 
 export type PortfolioContextSelectionInput = MutationOptions & { organizationId?: string };
@@ -202,6 +200,7 @@ export async function confirmPortfolioEntryHandoff(
       action: 'confirm',
       ...(input.acceptedFields?.length ? { acceptedFields: input.acceptedFields } : {}),
       ...(input.rejectedFields?.length ? { rejectedFields: input.rejectedFields } : {}),
+      ...(input.correctedFields && Object.keys(input.correctedFields).length ? { correctedFields: input.correctedFields } : {}),
       ...(input.notes?.trim() ? { notes: input.notes.trim() } : {}),
     },
     { headers: authHeaders(credential, input.idempotencyKey) },
