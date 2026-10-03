@@ -183,6 +183,34 @@ Portfolio Entry conserva su autoridad semÃ¡ntica y comportamiento; esta slice 
 la superficie `/` y no altera la ruta directa `/public/start`. Los caminos de Early Access y Demo,
 incluida cualquier ruta o comportamiento runtime, no estÃ¡n autorizados por KAN-64.
 
+# 2.3 Slice DEV_CYCLE_HU_TOOLING (KAN-91)
+
+**Registrado:** 2026-10-02 por instrucción explícita del responsable (Orlando), HU KAN-91,
+subtarea KAN-92, brief `estado/hu/ciclo-hu-spec.brief.md`.
+
+```text
+slice_id: DEV_CYCLE_HU_TOOLING
+HU: KAN-91 (HU-0 Spec del ciclo)
+logic_status: CANDIDATE (decisiones del brief; la Tech Spec de KAN-95 las fija)
+implementation_status: NOT_IMPLEMENTED
+visual_status: NOT_APPLICABLE
+evidence_status: NO_EVIDENCE
+semantic_owner: harness productor (ADR-009), no el producto
+authority: AGENTS.md §3 (ciclo de vida de una tarea)
+           docs/adr/ADR-009-dos-harnesses-el-producto-y-el-productor.md
+           ADR de proceso (KAN-93, pendiente) y ADR de distribución (KAN-94, pendiente)
+           Tech Spec del ciclo (KAN-95, pendiente; manda desde que se mergea su PR)
+scope: triage por rutas R0/R1/R2/Q; skill /spec y corte de HU desde la spec; capa de negocio (scorecard C1 a C4, "Por qué importa", Resumen ejecutivo); calibración de Jev con registro en estado/; plugin starteria-desarrollo con init idempotente
+exclusions: plugin de producto starteria-harness y sus skills starteria*; ajuste automático de umbrales de Jev; priorización del backlog por scorecard; front, backend, Prisma, ai-service y Core
+core_impact: NONE
+step_impact: NONE
+registered_by: Orlando (responsable), instrucción explícita en la entrevista /hu del 2026-10-02
+```
+
+Es tooling del ciclo de desarrollo, no una capacidad de producto: no autoriza cambios en runtime de
+Starteria. Mientras la Tech Spec no esté aprobada, este registro sólo habilita los documentos de
+KAN-93, KAN-94 y KAN-95.
+
 # 3. Jerarquía de autoridad objetivo
 
 ```text
