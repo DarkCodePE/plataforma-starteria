@@ -9,7 +9,7 @@ supersedes: null
 superseded_by: null
 aprobado_por: null
 aprobado_en: null
-review_trigger: "cuando la ruta se suba a mitad de camino en más de un pedido de cada cinco, o cuando un R0 termine necesitando subtareas: cualquiera de las dos dice que el triage corta mal"
+review_trigger: "cuando la ruta se suba a mitad de camino de forma repetida, o cuando un R0 termine necesitando subtareas: cualquiera de las dos dice que el triage corta mal"
 tags: [productor, ciclo, triage, spec, jira, pr, negocio, jev]
 ---
 
@@ -36,7 +36,7 @@ Eso falla por los dos extremos:
 Hay además dos problemas que no dependen del tamaño:
 
 - **Nadie fuera de desarrollo lee un ticket ni un PR.** No dicen qué cambia para el usuario ni qué
-  objetivo del equipo mueven. El scorecard C1 a C4 existe, pero ningún ticket lo cita.
+  objetivo del equipo mueven. El scorecard C1 a C4 existe, pero los tickets no lo citan como regla.
 - **La aprobación está partida por frente** ([F] firma producto, [T] firma desarrollo), y en la
   práctica las dos firmas las da la misma persona en la misma conversación.
 
@@ -51,7 +51,7 @@ que Jev no puede ver, y **una persona confirma la ruta**.
 
 | Ruta | Cuándo | Qué sale en Jira | Antes de implementar |
 |---|---|---|---|
-| **R0 directo** | cambio cosmético o dentro de un flujo existente, un solo frente, sin contrato entre frentes ni autoridad de backend, Prisma, IA productiva o Core | **un issue sin subtareas**, con "Por qué importa" y 1 a 3 CA | un único [P]: la persona aprueba el issue |
+| **R0 directo** | cambio cosmético o dentro de un flujo existente, un solo frente, sin contrato entre frentes ni autoridad de backend, Prisma o IA | **un issue sin subtareas**, con "Por qué importa" y 1 a 3 CA | un único [P]: la persona aprueba el issue |
 | **R1 acotado** | modifica algo existente y no dispara nada de R2 | HU + subtareas, **el plan va dentro de la [Técnica]** | brief aprobado y plan aprobado |
 | **R2 grande** | capacidad nueva, cambia algo de lo que otros dependen, tres o más capas, o un contrato entre frentes | **épica + HU-0 con la Tech Spec** (y ADR si hace falta); las demás HU se cortan **desde la spec** | spec aprobada |
 | **Q pregunta** | busca una respuesta, no un cambio que quede | un spike, o nada si se contesta en la sesión | ninguna; no queda código |
@@ -148,8 +148,9 @@ Ninguno se cumple con este ADR: todos dependen de la spec (KAN-95) y de las HU q
 
 ## 6. Gatillos de revisión
 
-- **La ruta se sube a mitad de camino con frecuencia.** Más de un pedido de cada cinco dice que el
-  triage clasifica mal, y que hay que revisar las preguntas o los cortes antes que las reglas.
+- **La ruta se sube a mitad de camino de forma repetida.** Dice que el triage clasifica mal, y que hay
+  que revisar las preguntas o los cortes antes que las reglas. Cuánto es "repetida" lo propone la
+  primera corrida de `/calibrar` y lo aprueba una persona; este ADR no fija un número.
 - **Un R0 termina necesitando subtareas o toca un contrato.** El borde entre R0 y R1 está mal puesto.
 - **Las secciones de negocio se vuelven relleno.** Si los resúmenes ejecutivos se repiten o nadie
   los lee, el formato no está sirviendo y hay que cambiarlo, no sólo exigirlo.
