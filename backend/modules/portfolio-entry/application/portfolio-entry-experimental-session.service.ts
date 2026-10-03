@@ -42,13 +42,15 @@ type RequestContext = {
   idempotencyRecordId?: string;
 };
 type Operation = 'submit_message' | 'guided_exploration_choice' | 'materialize_handoff' | 'confirm_handoff' | 'claim_session';
-const USER_CONFIRMABLE_FIELDS = new Set(['understood_need', 'desired_outcome', 'known_context', 'understanding']);
+const USER_CONFIRMABLE_FIELDS = new Set([
+  'understood_need', 'understanding', 'desired_outcome', 'decision_to_enable', 'known_context',
+  'unresolved_context', 'evidence_or_clarity_needed', 'recommended_approach',
+]);
 const ORGANIZATIONAL_FIELDS = new Set([
   'organization', 'organization_id', 'portfolio', 'portfolio_membership', 'portfolio_authority',
   'sponsor', 'sponsor_decision', 'management_priority', 'organizational_role', 'owner',
   'ownership', 'permission', 'permissions', 'access', 'initiative_owner', 'initiative',
-  'project', 'steps', 'kpi', 'approval', 'organizational_unknowns', 'unresolved_context',
-  'decision_to_enable',
+  'project', 'steps', 'kpi', 'approval', 'organizational_unknowns',
 ]);
 type RecoveryHint = {
   kind: 'portfolio-entry-recovery';
@@ -586,6 +588,7 @@ function stableJson(value: unknown): string {
 }
 
 function validateConfirmationCommand(body: ConfirmationBody): void {
+  const canonicalField = (field: string) => field === 'understood_need' || field === 'understanding' ? 'understood_need' : field;
   const acceptedFields = body.acceptedFields ?? [];
   for (const field of acceptedFields) {
     if (ORGANIZATIONAL_FIELDS.has(field) || !USER_CONFIRMABLE_FIELDS.has(field)) {
@@ -598,6 +601,22 @@ function validateConfirmationCommand(body: ConfirmationBody): void {
       throw PortfolioEntryApiError.invalidConfirmation(`El campo "${field}" no puede corregirse en esta etapa.`);
     }
   }
+  const accepted = new Set(acceptedFields.map(canonicalField));
+  const corrected = new Set(Object.keys(correctedFields).map(canonicalField));
+  const rejected = new Set((body.rejectedFields ?? []).map(canonicalField));
+  for (const field of accepted) {
+    if (corrected.has(field)) {
+      throw PortfolioEntryApiError.invalidConfirmation(`El campo "${field}" tiene estados de confirmacion contradictorios.`);
+    }
+  }
+  for (const field of rejected) {
+    if (!USER_CONFIRMABLE_FIELDS.has(field)) {
+      throw PortfolioEntryApiError.invalidConfirmation(`El campo "${field}" no puede rechazarse en esta etapa.`);
+    }
+    if (accepted.has(field) || corrected.has(field)) {
+      throw PortfolioEntryApiError.invalidConfirmation(`El campo "${field}" tiene estados de confirmacion contradictorios.`);
+    }
+  }
   if (body.action === 'correct' && Object.keys(correctedFields).length === 0) {
     throw PortfolioEntryApiError.invalidConfirmation('Indica al menos un dato propio que quieras corregir.');
   }
@@ -605,6 +624,12 @@ function validateConfirmationCommand(body: ConfirmationBody): void {
   validateUserValue(correctedFields.desired_outcome, 'desired_outcome');
   if (correctedFields.known_context !== undefined) validateKnownContext(correctedFields.known_context);
   if (correctedFields.understanding !== undefined) validateUserValue(correctedFields.understanding, 'understanding');
+  for (const field of ['decision_to_enable', 'recommended_approach'] as const) {
+    if (correctedFields[field] !== undefined) validateUserValue(correctedFields[field], field);
+  }
+  for (const field of ['unresolved_context', 'evidence_or_clarity_needed'] as const) {
+    if (correctedFields[field] !== undefined) validateTextList(correctedFields[field], field);
+  }
 }
 
 function normalizeAcceptedFields(body: ConfirmationBody): string[] {
@@ -621,6 +646,12 @@ function normalizeCorrectedFields(fields: Record<string, unknown> | undefined): 
   if (fields.understanding !== undefined) normalized.understood_need = normalizeTextValue(fields.understanding);
   if (fields.desired_outcome !== undefined) normalized.desired_outcome = normalizeTextValue(fields.desired_outcome);
   if (fields.known_context !== undefined) normalized.known_context = normalizeKnownContext(fields.known_context);
+  for (const field of ['decision_to_enable', 'recommended_approach'] as const) {
+    if (fields[field] !== undefined) normalized[field] = normalizeTextValue(fields[field]);
+  }
+  for (const field of ['unresolved_context', 'evidence_or_clarity_needed'] as const) {
+    if (fields[field] !== undefined) normalized[field] = normalizeTextList(fields[field]);
+  }
   return normalized;
 }
 
@@ -640,8 +671,27 @@ function validateKnownContext(value: unknown): void {
   normalizeKnownContext(value);
 }
 
+function validateTextList(value: unknown, field: string): void {
+  normalizeTextList(value, field);
+}
+
+function normalizeTextList(value: unknown, field = 'contexto'): string[] {
+  if (typeof value !== 'string' && !Array.isArray(value)) {
+    throw PortfolioEntryApiError.invalidConfirmation(`El campo "${field}" debe contener una lista de textos.`);
+  }
+  const entries = typeof value === 'string' ? value.split(/\r?\n/) : value;
+  return entries.map((entry) => normalizeTextValue(entry)).filter(Boolean);
+}
+
 function normalizeKnownContext(value: unknown): Array<{ key: string; value: string }> {
-  const entries = Array.isArray(value)
+  const entries = typeof value === 'string'
+    ? value.split(/\r?\n/).filter((line) => line.trim()).map((line, index) => {
+      const separator = line.indexOf(':');
+      return separator > 0
+        ? { key: line.slice(0, separator), value: line.slice(separator + 1) }
+        : { key: `Contexto ${index + 1}`, value: line };
+    })
+    : Array.isArray(value)
     ? value
     : value && typeof value === 'object'
       ? Object.entries(value).map(([key, item]) => ({ key, value: item }))

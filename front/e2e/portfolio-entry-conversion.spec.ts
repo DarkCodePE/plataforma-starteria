@@ -172,6 +172,8 @@ async function continueThroughAuthenticatedPortfolioEntry(
   await expect(page).toHaveURL(/\/public\/provisional-continuation/, { timeout: 30_000 });
   await expect(page.getByRole('heading', { name: /Esto es lo que entendimos/i })).toBeVisible({ timeout: 30_000 });
   await expect(page.getByTestId('single-authorized-context')).toContainText(organization.name);
+  await expect(page.getByTestId('strategic-intent-review')).toBeVisible();
+  await expect(page.getByTestId('recommended-approach-review')).toContainText(/hipótesis, no plan decidido/i);
 
   const confirmationResponse = page.waitForResponse((response) => {
     if (response.request().method() !== 'POST') return false;
@@ -190,7 +192,8 @@ async function continueThroughAuthenticatedPortfolioEntry(
     }
   });
 
-  await page.getByRole('button', { name: /Est[aá] bien, continuar/i }).click();
+  await page.getByRole('button', { name: /Incluir como hipótesis/i }).click();
+  await page.getByRole('button', { name: /Confirmar esta lectura y continuar/i }).click();
 
   const confirmed = await confirmationResponse;
   const confirmedBodyText = await confirmed.text();
@@ -202,6 +205,12 @@ async function continueThroughAuthenticatedPortfolioEntry(
   }
   expect(confirmed.status(), `handoff confirmation response body: ${confirmedBodyText}`).toBe(200);
   expect(confirmedBody?.data?.lifecycleStatus, `handoff confirmation response body: ${confirmedBodyText}`).toBe('CONFIRMED');
+  const confirmationPayload = confirmed.request().postDataJSON();
+  expect(confirmationPayload.acceptedFields).toEqual(expect.arrayContaining([
+    'understood_need', 'desired_outcome', 'decision_to_enable', 'known_context',
+    'unresolved_context', 'evidence_or_clarity_needed', 'recommended_approach',
+  ]));
+  expect(confirmationPayload.rejectedFields ?? []).not.toContain('recommended_approach');
 
   const continued = await continuationResponse;
   const continuedBodyText = await continued.text();

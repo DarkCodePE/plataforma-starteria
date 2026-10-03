@@ -7,7 +7,6 @@ import { useApp } from '../../context/AppContext';
 import {
   getAuthenticatedProvisionalContinuation,
   confirmAuthenticatedProvisionalContinuation,
-  correctAuthenticatedProvisionalContinuation,
   getPortfolioEntryContexts,
   continuePortfolioEntryToPortfolio,
   normalizePortfolioEntryApiError,
@@ -21,6 +20,30 @@ function displayText(value: { value: string } | 'unresolved' | undefined): strin
   return value.value;
 }
 
+type StrategicReviewDraft = Record<string, string>;
+
+const STRATEGIC_READING_FIELDS = [
+  { key: 'understood_need', label: 'Qué entendió Starteria' },
+  { key: 'desired_outcome', label: 'Resultado deseado' },
+  { key: 'decision_to_enable', label: 'Decisión que buscas habilitar' },
+  { key: 'known_context', label: 'Contexto conocido (una clave: valor por línea)' },
+  { key: 'unresolved_context', label: 'Puntos que siguen sin resolverse (uno por línea)' },
+  { key: 'evidence_or_clarity_needed', label: 'Evidencia o claridad que hace falta (una por línea)' },
+] as const;
+
+function strategicReviewValues(session: PortfolioEntrySessionDto): StrategicReviewDraft {
+  const handoff = session.handoff?.handoff;
+  if (!handoff) return {};
+  return {
+    understood_need: handoff.understanding.value,
+    desired_outcome: handoff.desired_outcome.value,
+    decision_to_enable: handoff.decision_to_enable === 'unresolved' ? '' : handoff.decision_to_enable.value,
+    known_context: handoff.known_context.map((item) => `${item.key}: ${item.value}`).join('\n'),
+    unresolved_context: handoff.unresolved_context.map((item) => item.description).join('\n'),
+    evidence_or_clarity_needed: handoff.evidence_or_clarity_needed.map((item) => item.value).join('\n'),
+  };
+}
+
 export function AuthenticatedProvisionalContinuationPage() {
   const { isAuthenticated, authLoading } = useApp();
   const navigate = useNavigate();
@@ -30,6 +53,9 @@ export function AuthenticatedProvisionalContinuationPage() {
   const [saving, setSaving] = useState(false);
   const [understoodNeed, setUnderstoodNeed] = useState('');
   const [desiredOutcome, setDesiredOutcome] = useState('');
+  const [strategicDraft, setStrategicDraft] = useState<StrategicReviewDraft>({});
+  const [approachDecision, setApproachDecision] = useState<'include' | 'edit' | 'omit' | null>(null);
+  const [approachDraft, setApproachDraft] = useState('');
   const [contexts, setContexts] = useState<PortfolioEntryContextResolution | null>(null);
   const [selectedOrganizationId, setSelectedOrganizationId] = useState<string | null>(null);
 
@@ -54,8 +80,10 @@ export function AuthenticatedProvisionalContinuationPage() {
           setSession(next);
           setContexts(resolvedContexts);
           if (resolvedContexts.contexts.length === 1) setSelectedOrganizationId(resolvedContexts.contexts[0]?.organizationId ?? null);
+          setStrategicDraft(strategicReviewValues(next));
           setUnderstoodNeed(next.provisionalContinuation?.payload.understoodNeed.value ?? '');
           setDesiredOutcome(next.provisionalContinuation?.payload.desiredOutcome.value ?? '');
+          setApproachDraft(next.handoff?.handoff.recommended_approach?.description ?? '');
         }
       })
       .catch((err) => {
@@ -82,8 +110,10 @@ export function AuthenticatedProvisionalContinuationPage() {
 
   const continuation = session.provisionalContinuation;
   const { payload } = continuation;
+  const handoff = session.handoff?.handoff;
 
   const saveConfirmation = async () => {
+    if (!handoff) return;
     if (contexts?.contexts.length === 0) return;
     if (contexts && contexts.contexts.length > 1 && !selectedOrganizationId) {
       setError('Selecciona un espacio autorizado para continuar.');
@@ -92,26 +122,44 @@ export function AuthenticatedProvisionalContinuationPage() {
     setSaving(true);
     setError(null);
     try {
-      const next = editing
-        ? await correctAuthenticatedProvisionalContinuation(continuation.sessionId, {
-          expectedRevision: continuation.revision,
-          idempotencyKey: createIdempotencyKey('portfolio-entry:correction'),
-          correctedFields: { understood_need: understoodNeed, desired_outcome: desiredOutcome },
-        })
-        : await confirmAuthenticatedProvisionalContinuation(continuation.sessionId, {
-          expectedRevision: continuation.revision,
-          idempotencyKey: createIdempotencyKey('portfolio-entry:confirmation'),
-        });
+      if (handoff.recommended_approach && !approachDecision) {
+        setError('Decide si quieres incluir la propuesta de Starteria como hipótesis.');
+        setSaving(false);
+        return;
+      }
+      const original = strategicReviewValues(session);
+      const acceptedFields = Object.entries(strategicDraft)
+        .filter(([field, value]) => value.trim() && value.trim() === (original[field] ?? '').trim())
+        .map(([field]) => field);
+      const rejectedFields = Object.entries(original)
+        .filter(([field, value]) => value.trim() && !(strategicDraft[field] ?? value).trim())
+        .map(([field]) => field);
+      const correctedFields: Record<string, unknown> = {};
+      for (const [field, originalValue] of Object.entries(original)) {
+        const currentValue = (strategicDraft[field] ?? originalValue).trim();
+        if (currentValue && currentValue !== originalValue.trim()) correctedFields[field] = currentValue;
+      }
+      if (handoff.recommended_approach) {
+        if (approachDecision === 'include') acceptedFields.push('recommended_approach');
+        if (approachDecision === 'omit') rejectedFields.push('recommended_approach');
+        if (approachDecision === 'edit' && approachDraft.trim()) correctedFields.recommended_approach = approachDraft.trim();
+        if (approachDecision === 'edit' && !approachDraft.trim()) rejectedFields.push('recommended_approach');
+      }
+      const next = await confirmAuthenticatedProvisionalContinuation(continuation.sessionId, {
+        expectedRevision: continuation.revision,
+        idempotencyKey: createIdempotencyKey('portfolio-entry:confirmation'),
+        acceptedFields,
+        correctedFields,
+        rejectedFields,
+      });
       setSession(next);
       setEditing(false);
-      if (!editing) {
-        const selected = await continuePortfolioEntryToPortfolio(continuation.sessionId, {
-          expectedRevision: next.provisionalContinuation?.revision ?? continuation.revision,
-          organizationId: selectedOrganizationId ?? undefined,
-          idempotencyKey: createIdempotencyKey('portfolio-entry:context-selection'),
-        });
-        navigate(selected.destinationRoute);
-      }
+      const selected = await continuePortfolioEntryToPortfolio(continuation.sessionId, {
+        expectedRevision: next.provisionalContinuation?.revision ?? continuation.revision,
+        organizationId: selectedOrganizationId ?? undefined,
+        idempotencyKey: createIdempotencyKey('portfolio-entry:context-selection'),
+      });
+      navigate(selected.destinationRoute);
     } catch (err) {
       setError(normalizePortfolioEntryApiError(err).message);
     } finally {
@@ -141,7 +189,52 @@ export function AuthenticatedProvisionalContinuationPage() {
         </CardContent>
       </Card>
 
-      <Card>
+      <Card data-testid="strategic-intent-review">
+        <CardHeader>
+          <CardTitle>Confirma esta lectura</CardTitle>
+          <p className="text-sm leading-6 text-text-secondary">Al confirmarla, aceptas este punto de partida. Los puntos abiertos siguen sin resolverse; la propuesta de Starteria requiere una decisión aparte.</p>
+        </CardHeader>
+        <CardContent className="space-y-4 pb-6 text-sm leading-6 text-text-secondary">
+          {STRATEGIC_READING_FIELDS.map(({ key, label }) => (
+            <label key={key} className="block space-y-2 text-text-primary">
+              <span className="font-semibold">{label}</span>
+              {editing ? (
+                <textarea
+                  aria-label={label}
+                  className="min-h-20 w-full rounded-md border border-border-default p-3 font-normal"
+                  value={strategicDraft[key] ?? ''}
+                  onChange={(event) => setStrategicDraft((current) => ({ ...current, [key]: event.target.value }))}
+                />
+              ) : (
+                <span className="block whitespace-pre-wrap font-normal" data-testid={key === 'understood_need' ? 'understood-need' : key === 'desired_outcome' ? 'desired-outcome' : key}>
+                  {strategicDraft[key]?.trim() || 'No incluido en esta lectura.'}
+                </span>
+              )}
+            </label>
+          ))}
+        </CardContent>
+      </Card>
+
+      {handoff?.recommended_approach ? (
+        <Card data-testid="recommended-approach-review">
+          <CardHeader><CardTitle>Propuesta de Starteria · hipótesis, no plan decidido</CardTitle></CardHeader>
+          <CardContent className="space-y-3 pb-6 text-sm leading-6 text-text-secondary">
+            <p>{handoff.recommended_approach.description}</p>
+            <div className="flex flex-wrap gap-2">
+              <Button type="button" variant={approachDecision === 'include' ? 'default' : 'outline'} onClick={() => setApproachDecision('include')} disabled={saving}>Incluir como hipótesis</Button>
+              <Button type="button" variant={approachDecision === 'edit' ? 'default' : 'outline'} onClick={() => setApproachDecision('edit')} disabled={saving}>Ajustar</Button>
+              <Button type="button" variant={approachDecision === 'omit' ? 'default' : 'outline'} onClick={() => setApproachDecision('omit')} disabled={saving}>No incluir</Button>
+            </div>
+            {approachDecision === 'edit' && (
+              <label className="block space-y-2 text-text-primary">Hipótesis ajustada
+                <textarea aria-label="Hipótesis ajustada" className="min-h-20 w-full rounded-md border border-border-default p-3 font-normal" value={approachDraft} onChange={(event) => setApproachDraft(event.target.value)} />
+              </label>
+            )}
+          </CardContent>
+        </Card>
+      ) : null}
+
+      <Card className="hidden">
         <CardHeader><CardTitle>Lo que quieres lograr</CardTitle></CardHeader>
         <CardContent className="space-y-4 pb-6 text-sm leading-6 text-text-secondary">
           {editing ? (
@@ -159,7 +252,7 @@ export function AuthenticatedProvisionalContinuationPage() {
       </Card>
 
       {payload.knownContext.length > 0 && (
-        <Card>
+        <Card className="hidden">
           <CardHeader><CardTitle>Contexto útil que ya conocemos</CardTitle></CardHeader>
           <CardContent className="space-y-3 pb-6 text-sm text-text-secondary">
             {payload.knownContext.map((item) => <p key={item.key}><span className="font-semibold text-text-primary">{item.key}:</span> {item.value}</p>)}
@@ -168,7 +261,7 @@ export function AuthenticatedProvisionalContinuationPage() {
       )}
 
       {(payload.currentOpenItems.length > 0 || payload.organizationalUnknowns.length > 0) && (
-        <Card>
+        <Card className="hidden">
           <CardHeader><CardTitle>Lo que todavía necesitamos resolver</CardTitle></CardHeader>
           <CardContent className="space-y-3 pb-6 text-sm leading-6 text-text-secondary">
             {payload.currentOpenItems.map((item, index) => <p key={`open-${index}`} data-testid="open-item">{displayText(item)}</p>)}
@@ -178,21 +271,20 @@ export function AuthenticatedProvisionalContinuationPage() {
       )}
 
       <Card>
-        <CardHeader><CardTitle>Qué puede pasar ahora</CardTitle></CardHeader>
+        <CardHeader><CardTitle>Confirmación y continuidad</CardTitle></CardHeader>
         <CardContent className="space-y-3 pb-6 text-sm leading-6 text-text-secondary">
-          <p>{payload.continuationSummary?.description ?? 'Podemos seguir ordenando este contexto antes de tomar una decisión.'}</p>
-          {payload.laterWorkItems.length > 0 && <p data-testid="later-work">Hay pasos de preparación que podremos retomar más adelante.</p>}
+          <p>Confirma la lectura estratégica y decide por separado si quieres incluir la propuesta como hipótesis.</p>
         </CardContent>
         <div className="flex flex-wrap gap-3 border-t border-border-default px-6 py-4">
           {editing ? (
             <>
-              <Button type="button" onClick={saveConfirmation} disabled={saving}>{saving ? 'Guardando…' : 'Guardar corrección'}</Button>
+              <Button type="button" onClick={saveConfirmation} disabled={saving}>{saving ? 'Guardando…' : 'Confirmar esta lectura y continuar'}</Button>
               <Button type="button" variant="outline" onClick={() => setEditing(false)} disabled={saving}>Cancelar</Button>
             </>
           ) : (
             <>
-              <Button type="button" variant="outline" onClick={() => setEditing(true)}><PencilLine size={16} /> Corregir</Button>
-              <Button type="button" onClick={saveConfirmation} disabled={saving || contexts?.contexts.length === 0 || (contexts && contexts.contexts.length > 1 && !selectedOrganizationId)}>{saving ? 'Guardando…' : 'Está bien, continuar'} <ArrowRight size={16} /></Button>
+              <Button type="button" variant="outline" onClick={() => setEditing(true)}><PencilLine size={16} /> Ajustar lectura</Button>
+              <Button type="button" onClick={saveConfirmation} disabled={saving || contexts?.contexts.length === 0 || (contexts && contexts.contexts.length > 1 && !selectedOrganizationId) || Boolean(handoff?.recommended_approach && !approachDecision)}>{saving ? 'Guardando…' : 'Confirmar esta lectura y continuar'} <ArrowRight size={16} /></Button>
             </>
           )}
         </div>
