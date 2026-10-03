@@ -42,6 +42,7 @@ export const confirmationBodySchema = expectedRevisionSchema.extend({
 }).strict();
 
 export const claimBodySchema = expectedRevisionSchema.strict();
+export const abandonBodySchema = expectedRevisionSchema.strict();
 
 export type CreateSessionBody = z.infer<typeof createSessionBodySchema>;
 export type SubmitMessageBody = z.infer<typeof submitMessageBodySchema>;

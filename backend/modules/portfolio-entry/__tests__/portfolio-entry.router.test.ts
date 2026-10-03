@@ -85,6 +85,23 @@ describe('Portfolio Entry Experimental Session API', () => {
     })).set('Authorization', 'Bearer user-1').expect(409);
   });
 
+  it('abandons only a confirmed Brief, is idempotent, and makes D1 continuation identity unavailable', async () => {
+    const { app, repository } = makeApp();
+    const fixture = await confirmedBriefFixture(app);
+    const before = await repository.findSessionById(fixture.sessionId);
+    const path = `${base}/sessions/${fixture.sessionId}/abandon`;
+    const first = await request(app).post(path).set('Authorization', 'Bearer user-1')
+      .set('Idempotency-Key', `abandon-${fixture.sessionId}`).send({ expectedRevision: fixture.sessionRevision }).expect(200);
+    expect(first.body.data).toMatchObject({ lifecycleStatus: 'ABANDONED', revision: fixture.sessionRevision + 1 });
+    const second = await request(app).post(path).set('Authorization', 'Bearer user-1')
+      .set('Idempotency-Key', `abandon-repeat-${fixture.sessionId}`).send({ expectedRevision: fixture.sessionRevision }).expect(200);
+    expect(second.body.data).toEqual(first.body.data);
+    const after = await repository.findSessionById(fixture.sessionId);
+    expect(after?.lifecycleStatus).toBe('ABANDONED');
+    expect(after?.revision).toBe(before!.revision + 1);
+    await request(app).get(confirmedBriefPath(fixture)).set('Authorization', 'Bearer user-1').expect(410);
+  });
+
   it('creates an anonymous session without a model call and returns the raw token once', async () => {
     const adapter = new FakeAgentAdapter();
     const { app, repository } = makeApp({ adapter });

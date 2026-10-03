@@ -198,6 +198,26 @@ export class PortfolioEntrySessionService {
     });
   }
 
+  async abandonConfirmedSession(sessionId: string, now = this.now()): Promise<PortfolioEntrySession> {
+    const session = await this.requireSession(sessionId);
+    if (session.lifecycleStatus === 'ABANDONED') return session;
+    assertSessionIsActive(session, now);
+    if (session.lifecycleStatus !== 'CONFIRMED' || session.confirmation?.status !== 'CONFIRMED') {
+      throw PortfolioEntrySessionError.invalidTransition('Only a confirmed Portfolio Entry session can be discarded.');
+    }
+    assertLifecycleTransition(session, 'ABANDONED');
+    try {
+      return await this.repository.saveSessionState({
+        session: { ...session, lifecycleStatus: 'ABANDONED', revision: session.revision + 1, updatedAt: now, lastActivityAt: now },
+        expectedRevision: session.revision,
+      });
+    } catch (error) {
+      const current = await this.repository.findSessionById(sessionId);
+      if (current?.lifecycleStatus === 'ABANDONED') return current;
+      throw error;
+    }
+  }
+
   async recordExecutionStatus(
     sessionId: string,
     executionStatus: PortfolioEntryExecutionStatus,

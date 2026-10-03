@@ -16,6 +16,7 @@ import { Textarea } from '../../../app/components/ui/textarea';
 import { AISuggestionPanel } from '../../../app/components/design-system/patterns';
 import {
   chooseGuidedExploration,
+  abandonPortfolioEntrySession,
   confirmPortfolioEntryHandoff,
   continuePortfolioEntryToPortfolio,
   correctPortfolioEntryHandoff,
@@ -29,10 +30,12 @@ import {
 import { createIdempotencyKey } from './idempotency';
 import { trackPortfolioEntryEvent } from './analytics';
 import { portfolioEntryBriefIdentityFromSession } from './continuationIdentity';
+import { serializeConfirmedBriefMarkdown } from './portfolioEntryBriefExport';
 import {
   clearPortfolioEntryClaimedNotice,
   clearPortfolioEntryConversionState,
   clearPortfolioEntryCurrentSession,
+  clearClaimedPortfolioEntrySession,
   readClaimedPortfolioEntrySession,
   readPortfolioEntryClaimedNotice,
   readPortfolioEntryCurrentSession,
@@ -914,7 +917,7 @@ function LegacyEarlyAccessCard({
     <section className="space-y-5 rounded-ds-lg border border-border-default bg-background-subtle p-5 md:p-6">
       <div>
         <p className="text-xs font-semibold uppercase text-brand-primary">05 · Continúa con Starteria</p>
-        <h2 className="mt-3 text-xl font-semibold leading-tight text-text-primary">Lleva esta lectura a tu portafolio.</h2>
+        <h2 className="mt-3 text-xl font-semibold leading-tight text-text-primary">Sigue trabajando esta lectura en Starteria.</h2>
         <p className="mt-3 text-sm leading-6 text-text-secondary">
           Conserva lo entendido y continúa trabajando sobre los pendientes cuando tu cuenta lo permita.
         </p>
@@ -929,7 +932,7 @@ function LegacyEarlyAccessCard({
       </ul>
       <div className="flex flex-col gap-2">
         <Button type="button" onClick={onConfirm} disabled={pending}>
-          Continuar con mi portafolio
+          Trabajarlo con Starteria
           <ArrowRight size={16} />
         </Button>
         <Button type="button" variant="ghost" onClick={onStartEditing} disabled={pending}>
@@ -961,7 +964,7 @@ function EarlyAccessCard({
       <div className="grid gap-8 p-6 md:grid-cols-[minmax(0,1.35fr)_minmax(16rem,0.65fr)] md:items-center md:p-8">
         <div>
           <p className="text-xs font-semibold uppercase tracking-wide text-cyan-200">Continúa desde esta lectura</p>
-          <h2 className="mt-3 max-w-2xl text-2xl font-semibold leading-tight text-white md:text-3xl">Convierte esta lectura en tu portafolio de trabajo</h2>
+          <h2 className="mt-3 max-w-2xl text-2xl font-semibold leading-tight text-white md:text-3xl">Continúa trabajando esta lectura con Starteria</h2>
           <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-300">
             Guarda este análisis y empieza a ordenar tus iniciativas con los mismos criterios, sin perder el contexto que ya construiste.
           </p>
@@ -976,7 +979,7 @@ function EarlyAccessCard({
         </div>
         <div className="flex flex-col gap-3 md:border-l md:border-white/15 md:pl-8">
           <Button type="button" onClick={onConfirm} disabled={pending} className="w-full">
-            Crear mi portafolio
+            Trabajarlo con Starteria
             <ArrowRight size={16} aria-hidden="true" />
           </Button>
           <Button type="button" variant="ghost" onClick={onStartEditing} disabled={pending} className="w-full text-slate-200 hover:bg-white/10 hover:text-white">
@@ -1161,13 +1164,33 @@ function ConfirmedSummary({
   onConvert,
   conversionPending,
   conversionError,
+  onAbandon,
+  abandonmentPending,
 }: {
   session: PortfolioEntrySessionDto;
   onContinue: () => void;
   onConvert?: () => void;
   conversionPending?: boolean;
   conversionError?: UiError | null;
+  onAbandon: () => void;
+  abandonmentPending: boolean;
 }) {
+  const [downloadMessage, setDownloadMessage] = useState('');
+  const [confirmingAbandon, setConfirmingAbandon] = useState(false);
+  const downloadBrief = () => {
+    try {
+      const { filename, markdown } = serializeConfirmedBriefMarkdown(session);
+      const url = URL.createObjectURL(new Blob([markdown], { type: 'text/markdown;charset=utf-8' }));
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = filename;
+      link.click();
+      URL.revokeObjectURL(url);
+      setDownloadMessage('Brief descargado. La Entry permanece sin cambios.');
+    } catch {
+      setDownloadMessage('No pudimos descargar el Brief. Puedes volver a intentarlo.');
+    }
+  };
   const handoff = session.handoff?.handoff;
   const isClaimed = session.ownership.state === 'CLAIMED';
   return (
@@ -1205,26 +1228,21 @@ function ConfirmedSummary({
               </AlertDescription>
             </Alert>
           ) : null}
-          {isClaimed ? (
-            <Button
-              type="button"
-              onClick={onConvert}
-              disabled={conversionPending}
-              loading={conversionPending}
-              aria-busy={conversionPending}
-            >
-              {!conversionPending ? <ArrowRight size={16} /> : null}
-              Continuar con mi portafolio
-            </Button>
-          ) : (
-            <Button
-              type="button"
-              onClick={onContinue}
-            >
-              Crear cuenta y conservar lectura
-              <ArrowRight size={16} />
-            </Button>
-          )}
+          <section className="space-y-3 border-t border-border-default pt-4" aria-label="Acciones del Brief confirmado" data-testid="portfolio-entry-confirmed-brief-actions">
+            <p role="status" aria-live="polite" className="text-sm text-text-secondary">{downloadMessage || (confirmingAbandon ? 'Si eliminas esta lectura, el Brief quedará invalidado y no podrás trabajarlo con Starteria.' : '')}</p>
+            {confirmingAbandon ? (
+              <div className="flex flex-wrap gap-2" role="group" aria-label="Confirmar eliminación">
+                <Button type="button" variant="destructive" disabled={abandonmentPending} loading={abandonmentPending} onClick={onAbandon}>Sí, eliminar</Button>
+                <Button type="button" variant="secondary" disabled={abandonmentPending} onClick={() => setConfirmingAbandon(false)}>Cancelar</Button>
+              </div>
+            ) : (
+              <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
+                <Button type="button" onClick={downloadBrief}>Descargar</Button>
+                <Button type="button" variant="secondary" disabled={conversionPending || abandonmentPending} onClick={() => setConfirmingAbandon(true)}>Eliminar</Button>
+                <Button type="button" variant="secondary" onClick={isClaimed ? onConvert : onContinue} disabled={conversionPending} loading={conversionPending} aria-busy={conversionPending}>{!conversionPending ? <ArrowRight size={16} /> : null}Trabajarlo con Starteria</Button>
+              </div>
+            )}
+          </section>
         </div>
       </div>
     </section>
@@ -1271,6 +1289,7 @@ export function PortfolioEntryExperience({
   const [claimedNotice, setClaimedNotice] = useState(() => readPortfolioEntryClaimedNotice());
   const [conversionError, setConversionError] = useState<UiError | null>(null);
   const [conversionIdempotencyKey, setConversionIdempotencyKey] = useState<string | null>(null);
+  const [abandonmentPending, setAbandonmentPending] = useState(false);
   const [handoffRetryRevision, setHandoffRetryRevision] = useState<number | null>(null);
   const statusRef = useRef<HTMLDivElement>(null);
   const materializedRevisionRef = useRef<number | null>(null);
@@ -1612,6 +1631,25 @@ export function PortfolioEntryExperience({
     navigate('/auth');
   };
 
+  const abandonConfirmedBrief = async () => {
+    if (!sessionDto || sessionDto.lifecycleStatus !== 'CONFIRMED' || abandonmentPending) return;
+    setAbandonmentPending(true);
+    try {
+      const result = await abandonPortfolioEntrySession(sessionDto.id, {
+        expectedRevision: sessionDto.revision,
+        idempotencyKey: createIdempotencyKey('portfolio-entry:abandon'),
+      });
+      setSessionDto({ ...sessionDto, lifecycleStatus: result.lifecycleStatus, revision: result.revision });
+      clearPortfolioEntryCurrentSession();
+      clearPortfolioEntryConversionState();
+      clearClaimedPortfolioEntrySession();
+    } catch (err) {
+      await handleRequestError(err);
+    } finally {
+      setAbandonmentPending(false);
+    }
+  };
+
   const convertClaimedSession = async () => {
     if (!sessionDto || pending) return;
     if (sessionDto.ownership.state !== 'CLAIMED' || sessionDto.lifecycleStatus !== 'CONFIRMED') return;
@@ -1692,8 +1730,14 @@ export function PortfolioEntryExperience({
           onConvert={convertClaimedSession}
           conversionPending={pendingRequest === 'converting'}
           conversionError={conversionError}
+          onAbandon={abandonConfirmedBrief}
+          abandonmentPending={abandonmentPending}
         />
       );
+    }
+
+    if (sessionDto.lifecycleStatus === 'ABANDONED') {
+      return <section role="status" className="mx-auto max-w-3xl rounded-ds-lg border border-border-default bg-surface-default p-5"><h2 className="font-semibold text-text-primary">Lectura eliminada</h2><p className="mt-2 text-sm text-text-secondary">Este Brief quedó invalidado y ya no puede trabajarse con Starteria. Puedes empezar una nueva lectura cuando quieras.</p><Button type="button" className="mt-4" onClick={restart}>Empezar de nuevo</Button></section>;
     }
 
     if (sessionDto.nextAction === 'offer_guided_exploration') {
