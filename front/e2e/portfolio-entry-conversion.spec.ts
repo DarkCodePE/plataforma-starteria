@@ -494,6 +494,49 @@ test.describe('Portfolio Entry visible UX and Portfolio continuation', () => {
       await continueThroughAuthenticatedPortfolioEntry(page, user, organization);
       await expectScopedPortfolioAccess(page, api, user, organization.id);
       const continuationId = currentContinuationId(page);
+      const continuationIdentity = await page.evaluate(() => {
+        const raw = window.sessionStorage.getItem('starteria.portfolioEntry.claimedSession');
+        return raw ? JSON.parse(raw) : null;
+      });
+      expect(continuationIdentity).toMatchObject({ source: 'portfolio_entry' });
+
+      const login = await api.post('/api/v1/auth/login', {
+        data: { email: user.email, password: user.password },
+        failOnStatusCode: false,
+      });
+      const loginBodyText = await login.text();
+      expect(login.status(), loginBodyText).toBe(200);
+      const accessToken = extractToken(JSON.parse(loginBodyText));
+      const exactIdentity = new URLSearchParams({
+        source: continuationIdentity.source,
+        sessionRevision: String(continuationIdentity.sessionRevision),
+        handoffId: continuationIdentity.handoffId,
+        handoffVersion: String(continuationIdentity.handoffVersion),
+        confirmationId: continuationIdentity.confirmationId,
+        confirmationVersion: String(continuationIdentity.confirmationVersion),
+      });
+      const d1 = await api.get(
+        `/api/v1/public/portfolio-entry/sessions/${encodeURIComponent(continuationIdentity.sessionId)}/confirmed-brief?${exactIdentity}`,
+        { headers: { Authorization: `Bearer ${accessToken}` }, failOnStatusCode: false },
+      );
+      const d1BodyText = await d1.text();
+      expect(d1.status(), `exact confirmed Brief identity: ${d1BodyText}`).toBe(200);
+      expect(JSON.parse(d1BodyText).data).toMatchObject({
+        sessionId: continuationIdentity.sessionId,
+        revision: continuationIdentity.sessionRevision,
+        handoffId: continuationIdentity.handoffId,
+        handoffVersion: continuationIdentity.handoffVersion,
+        confirmationId: continuationIdentity.confirmationId,
+        confirmationVersion: continuationIdentity.confirmationVersion,
+      });
+      const sourceSession = await prisma.portfolioEntrySession.findUniqueOrThrow({
+        where: { id: continuationIdentity.sessionId },
+      });
+      expect(sourceSession.lifecycleStatus).toBe('CONFIRMED');
+      expect(sourceSession.revision).toBe(continuationIdentity.sessionRevision);
+      expect(await prisma.portfolioEntryPortfolioContinuation.count({ where: { id: continuationId } })).toBe(1);
+      expect(await prisma.portfolioEntryConversion.count({ where: { sessionId: continuationIdentity.sessionId } })).toBe(0);
+
       await expect(page.getByText(/Portfolio Bootstrap|Ya tenemos un punto de partida/i)).toBeVisible();
       await expect(page.getByText(/Esto entendimos/i)).toBeVisible();
       await expect(page.getByText(/Todavia falta aclarar|Informacion conocida/i)).toBeVisible();
