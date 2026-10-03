@@ -350,6 +350,18 @@ describe('PortfolioEntrySessionService', () => {
     expect(stored?.lifecycleStatus).toBe('CONFIRMED');
   });
 
+  it('abandons only a confirmed Brief, advances revision once, and is idempotent', async () => {
+    const { service, repository } = makeService();
+    const { session, handoff } = await createSessionWithHandoff(service);
+    await service.transitionLifecycle(session.id, 'AWAITING_CONFIRMATION');
+    await service.saveConfirmation({ sessionId: session.id, handoffId: handoff.id, status: 'CONFIRMED', confirmedByUserId: 'user-1' });
+    const abandoned = await service.abandonConfirmedSession(session.id);
+    const repeated = await service.abandonConfirmedSession(session.id);
+    expect(abandoned.lifecycleStatus).toBe('ABANDONED');
+    expect(abandoned.revision).toBe(repeated.revision);
+    expect((await repository.findSessionById(session.id))?.lifecycleStatus).toBe('ABANDONED');
+  });
+
   it('requires an explicit conversion eligibility guard', async () => {
     const { service, repository } = makeService();
     const { session, handoff } = await createSessionWithHandoff(service);

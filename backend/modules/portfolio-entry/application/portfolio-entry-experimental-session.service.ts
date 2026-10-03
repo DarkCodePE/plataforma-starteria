@@ -14,7 +14,7 @@ import {
   PortfolioEntrySessionController,
 } from '../../portfolio-entry-runtime';
 import { LiveModelExecutionError } from '../../portfolio-entry-runtime/model/live-model-error';
-import { PortfolioEntrySessionService } from '../../portfolio-entry-sessions/application/portfolio-entry-session.service';
+import { hashPublicAccessToken, PortfolioEntrySessionService } from '../../portfolio-entry-sessions/application/portfolio-entry-session.service';
 import type { PortfolioEntrySessionRepository } from '../../portfolio-entry-sessions/application/portfolio-entry-session.repository';
 import { PortfolioEntrySessionError } from '../../portfolio-entry-sessions/application/portfolio-entry-session-errors';
 import type { PortfolioEntrySession, PortfolioEntryTurn } from '../../portfolio-entry-sessions/domain/portfolio-entry-session.types';
@@ -41,7 +41,7 @@ type RequestContext = {
   idempotencyKey?: string;
   idempotencyRecordId?: string;
 };
-type Operation = 'submit_message' | 'guided_exploration_choice' | 'materialize_handoff' | 'confirm_handoff' | 'claim_session';
+type Operation = 'submit_message' | 'guided_exploration_choice' | 'materialize_handoff' | 'confirm_handoff' | 'claim_session' | 'abandon_session';
 const USER_CONFIRMABLE_FIELDS = new Set([
   'understood_need', 'understanding', 'desired_outcome', 'decision_to_enable', 'known_context',
   'unresolved_context', 'evidence_or_clarity_needed', 'recommended_approach',
@@ -309,6 +309,37 @@ export class PortfolioEntryExperimentalSessionService {
 
   async readHandoff(input: { sessionId: string; publicAccessToken?: string; principal?: Principal }): Promise<PortfolioEntrySessionClientDto> {
     return this.readSession(input);
+  }
+
+  async abandonConfirmedSession(sessionId: string, expectedRevision: number, context: RequestContext) {
+    const current = await this.requireSession(sessionId);
+    if (current.lifecycleStatus === 'ABANDONED') {
+      const owned = context.principal
+        ? current.ownershipState === 'CLAIMED' && current.ownerUserId === context.principal.id
+        : Boolean(context.publicAccessToken && current.ownershipState === 'ANONYMOUS'
+          && await this.sessionRepository.findSessionForPublicAccess(sessionId, hashPublicAccessToken(context.publicAccessToken)));
+      if (!owned) throw PortfolioEntrySessionError.unauthorized();
+      return { sessionId: current.id, lifecycleStatus: current.lifecycleStatus, revision: current.revision };
+    }
+    const initial = await this.authorize(sessionId, context);
+    if (initial.lifecycleStatus !== 'CONFIRMED' || initial.confirmation?.status !== 'CONFIRMED' || !initial.latestHandoff) {
+      throw PortfolioEntrySessionError.invalidTransition('Only a confirmed Brief can be discarded.');
+    }
+    this.assertExpectedRevision(initial, expectedRevision);
+    return this.withIdempotency('abandon_session', sessionId, { expectedRevision }, context, async () => {
+      const session = await this.authorize(sessionId, context);
+      if (session.lifecycleStatus !== 'CONFIRMED' || session.confirmation?.status !== 'CONFIRMED' || !session.latestHandoff) {
+        throw PortfolioEntrySessionError.invalidTransition('Only a confirmed Brief can be discarded.');
+      }
+      this.assertExpectedRevision(session, expectedRevision);
+      const abandoned = await this.sessionService.abandonConfirmedSession(sessionId, this.now());
+      return { sessionId: abandoned.id, lifecycleStatus: abandoned.lifecycleStatus, revision: abandoned.revision };
+    }, async () => {
+      const abandoned = await this.requireSession(sessionId);
+      return abandoned.lifecycleStatus === 'ABANDONED'
+        ? { sessionId: abandoned.id, lifecycleStatus: abandoned.lifecycleStatus, revision: abandoned.revision }
+        : null;
+    });
   }
 
   async confirmOrCorrect(sessionId: string, body: ConfirmationBody, context: RequestContext): Promise<PortfolioEntrySessionClientDto> {
