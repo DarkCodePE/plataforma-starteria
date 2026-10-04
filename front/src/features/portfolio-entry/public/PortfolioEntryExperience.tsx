@@ -54,6 +54,7 @@ import type {
   StoredPortfolioEntrySession,
   SuggestedApproach,
 } from './types';
+import { deriveSuggestedRoute } from './suggestedRoute';
 
 type PendingRequest =
   | 'recovering'
@@ -1024,6 +1025,22 @@ function Vh1DecisionSection({ handoff }: { handoff: PortfolioEntryHandoff }) {
   );
 }
 
+function SuggestedRouteSection({ handoff }: { handoff: PortfolioEntryHandoff }) {
+  const route = deriveSuggestedRoute(handoff);
+  return (
+    <section
+      data-testid="portfolio-entry-suggested-route"
+      data-destination={route.destination}
+      className="rounded-ds-lg border border-border-default bg-surface-default p-5 shadow-sm md:p-6"
+    >
+      <p className="text-xs font-semibold uppercase text-brand-primary">Ruta sugerida</p>
+      <p className="mt-3 text-base font-semibold text-text-primary">{route.title}</p>
+      <p className="mt-1 max-w-3xl text-sm leading-6 text-text-secondary">{route.reason}</p>
+      <p className="mt-2 text-xs text-text-muted">Es una orientación: no crea nada ni decide por ti.</p>
+    </section>
+  );
+}
+
 function Vh1ApproachSection({ handoff }: { handoff: PortfolioEntryHandoff }) {
   const steps = handoff.starteria_path
     .filter((step) => step.action.trim() || step.description.trim())
@@ -1104,6 +1121,7 @@ function HandoffReview({
         <div data-testid="handoff-first-view" className="space-y-4">
           <Vh1UnderstandingSection handoff={handoff} />
           <Vh1DecisionSection handoff={handoff} />
+          <SuggestedRouteSection handoff={handoff} />
           <Vh1ApproachSection handoff={handoff} />
           <Vh1GapsSection handoff={handoff} />
         </div>

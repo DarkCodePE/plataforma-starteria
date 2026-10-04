@@ -18,8 +18,8 @@ test queda como regresión.
 | § | Qué pide | Test | Estado |
 |---|---|---|---|
 | §5 | Texto libre → interpretación → qué entendimos → decisión a habilitar → qué falta | `entry-a` · texto libre… | ✅ |
-| §5 | Resultado posible: "todavía no activar trabajo" | `entry-a` · [G9] | GAP G9 |
-| §3, §5 | Ruta sugerida con destinos según Job (portfolio setup, análisis, contexto de org, iniciativa) | `entry-a` · [G9] | GAP G9 |
+| §5 | Resultado posible: "todavía no activar trabajo" | `entry-a` · la ruta sugerida puede ser… | ✅ (orientación; ver CONFLICT) |
+| §3, §5 | Ruta sugerida con destinos según Job (portfolio setup, análisis, explorar, no activar) | `entry-a` · la lectura muestra una ruta sugerida… | ✅ (orientación; ver CONFLICT) |
 | §1, §25 | La entrada pública no pide elegir objetos de dominio | `entry-a` · texto libre… | ✅ |
 | §24–§25 | `/portfolio/iniciar` empieza por el Job, no por "¿Cómo quieres iniciar?" | `entry-b` · /portfolio/iniciar… | ✅ |
 | §6 | Portfolio Home da una lectura | `entry-b` · Portfolio Home… | ✅ (solo carga; la lectura completa es G7) |
@@ -43,20 +43,34 @@ test queda como regresión.
 | §22 | Continuidad: pivotear, buscar capacidad, benefit tracking (Core §26) | `entry-d` · la continuidad admite… | ✅ |
 | §23 | La decisión vuelve al Reto, Frente y Portfolio, con aprendizaje | `entry-d` · la decisión corporativa vuelve… y cerrar con aprendizaje… | ✅ |
 | §16 | Iniciativa independiente sin inventar Frente ni Reto | `entry-e` · se puede crear… | ✅ |
-| §16 | Contexto de Aplicación | `entry-e` · [G10] | GAP G10 |
+| §16 | Contexto de Aplicación | `entry-e` · la iniciativa independiente construye… | ✅ |
 | §20 | Copilot: Orientarme / Trabajar conmigo / Desbloquearme | `entry-e` · [G12] | GAP G12 |
 
 ## Gaps abiertos
 
-Cerrados: G1 y G2 (Ola 1); G3, G4 y G5 (Ola 2); G6 y G7 (Ola 3); G8 (Ola 4).
-
+Cerrados: G1 y G2 (Ola 1); G3, G4 y G5 (Ola 2); G6 y G7 (Ola 3); G9 y G10 (Ola 5).
 | GAP | Qué | Ola |
 |---|---|---|
+| G8 | Retorno de la decisión al portfolio | 4 |
 | G9 | Destinos del routing de entrada (requiere chequeo de CONFLICT con el Portfolio Entry Logic Contract) | 5 |
 | G10 | Contexto de Aplicación | 5 |
 | G11 | Reconstrucción + gating retroactivo | 6 |
 | G12 | Modos del Copilot | 6 |
 | G13 | Capacidad (puede requerir ADR de producto) | 6 |
+
+## CONFLICT abierto (G9)
+
+`doc/experience/portfolio-entry/PORTFOLIO_ENTRY_LOGIC_CONTRACT_v0.1.md` (contrato activo) fija los
+Entry States (§10) y las rutas públicas (§22.1: Early Access / Demo), y
+`PORTFOLIO_POST_ENTRY_CONTINUATION_CONTRACT_v0.1.md` §4 dice que ni `starteria_path` ni el intent
+eligen destino: lo fija el servidor. El doc E2E v0.2 §3/§5 pide destinos según el Job (incluido
+"no activar trabajo todavía") y patrones context-first / challenge-first / independent.
+
+Lo implementado es compatible con ambos: una **ruta sugerida de presentación**
+(`front/src/features/portfolio-entry/public/suggestedRoute.ts`) derivada de campos que el handoff ya
+trae, sin agregar destinos, entry states ni campos al handoff, y sin tocar la continuidad. Agregar
+destinos reales o nuevos entry states requiere decisión de producto (ADR) y actualizar los 32 casos
+del AI Harness.
 
 ## Fuera de alcance de esta suite
 

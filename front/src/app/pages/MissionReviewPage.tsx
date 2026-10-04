@@ -34,6 +34,42 @@ function Field({ label, value }: { label: string; value: string | null | string[
   );
 }
 
+/**
+ * Contexto de Aplicación (E2E Job-Driven §16): dónde pretende generar valor la iniciativa. Opcional;
+ * no prueba alineamiento con ninguna estrategia de esa organización.
+ */
+export function ApplicationContextCard({ review }: { review: Pick<MissionReview, 'applicationContext' | 'independent'> }) {
+  const context = review.applicationContext;
+  if (!context && !review.independent) return null;
+  return (
+    <section className="mt-6 rounded-lg border border-sky-200 bg-sky-50 p-4" aria-label="Contexto de aplicación">
+      <h2 className="text-sm font-semibold text-sky-900">Contexto de aplicación</h2>
+      {context ? (
+        <>
+          <p className="mt-1 text-sm text-sky-900">
+            {context.companyName}
+            {context.area ? ` · ${context.area}` : ''}
+          </p>
+          {context.restrictions.length > 0 ? (
+            <p className="mt-2 text-sm text-sky-900">Restricciones de la organización: {context.restrictions.join(' · ')}</p>
+          ) : null}
+          {context.actors.length > 0 ? <p className="mt-1 text-sm text-sky-900">Actores: {context.actors.join(' · ')}</p> : null}
+          {context.lowCoverage ? (
+            <p className="mt-2 text-xs text-sky-800">
+              El contexto de la organización todavía es parcial ({context.coverage}%). Se completa a medida que avanzas.
+            </p>
+          ) : null}
+        </>
+      ) : (
+        <p className="mt-1 text-sm text-sky-900">
+          Todavía no elegiste en qué organización quieres generar valor. No es obligatorio: puedes agregarlo cuando lo tengas claro.
+        </p>
+      )}
+      <p className="mt-2 text-xs text-sky-700">Es contexto para tu iniciativa, no una alineación con la estrategia de esa organización.</p>
+    </section>
+  );
+}
+
 function inheritedLines(review: MissionReview): string[] {
   const { strategicFront, challenge, initiativeContext } = review.inheritedContext;
   return [
@@ -93,6 +129,8 @@ export function MissionReviewPage() {
         <Field label="Quién puede ayudar" value={review.whoCanHelp} />
         <Field label="Qué decisión debo ayudar a habilitar" value={review.decisionToEnable} />
       </dl>
+
+      <ApplicationContextCard review={review} />
 
       {review.openQuestions.length > 0 && (
         <section className="mt-6 rounded-lg border border-amber-200 bg-amber-50 p-4">
