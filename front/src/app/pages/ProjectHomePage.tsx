@@ -27,6 +27,7 @@ import type { AdaptiveInitiativeCore } from '../../features/adaptive-core/domain
 import { buildAdaptiveJourney, getCurrentAdaptiveJourneyStep } from '../../features/adaptive-core/domain/adaptiveJourney';
 import { canNavigateToAdaptiveStep } from '../../features/adaptive-core/domain/adaptiveAuthority';
 import { getAdaptiveCore } from '../../features/adaptive-core/services/adaptiveCoreService';
+import { STEP_PROGRESS_QUESTION } from '../../features/adaptive-core/domain/adaptiveCore';
 
 const STEP_DESCRIPTIONS = [
   'Entiende el problema con claridad: documenta el proceso actual, mide el impacto y conoce a los actores involucrados.',
@@ -1574,6 +1575,9 @@ export function ProjectHomePage() {
                   </span>
                 </div>
                 <p className="text-sm text-slate-900" style={{ fontWeight: 700 }}>{adaptiveStep?.title ?? config.title}</p>
+                <p className="mt-1 text-xs text-indigo-700" style={{ fontWeight: 600 }}>
+                  {STEP_PROGRESS_QUESTION[config.step as 0 | 1 | 2 | 3 | 4]}
+                </p>
                 <p className="mt-1 line-clamp-3 text-xs leading-5 text-slate-500">{adaptiveStep?.nextAction ?? config.requirements}</p>
                 <p className="mt-2 text-[11px] text-slate-400">
                   {(adaptiveStep?.routeType ?? 'estado_persistido_pendiente').replaceAll('_', ' ')} · {adaptiveStep?.depthLevel ?? 'backend'} · {adaptiveStep?.questionsCount ?? 0} preguntas

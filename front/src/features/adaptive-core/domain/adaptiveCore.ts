@@ -24,6 +24,16 @@ const STABLE_PURPOSE: Record<StepNumber, string> = {
   4: 'Cerrar, transferir, presentar y proyectar continuidad',
 };
 
+// Cada Step es un contrato de rigor, pero la persona lo vive como una pregunta de progreso
+// (doc/STARTERIA_JOB_DRIVEN_E2E_EXPERIENCE_v0.2.md §19). Se muestra junto al nombre del Step.
+export const STEP_PROGRESS_QUESTION: Record<StepNumber, string> = {
+  0: '¿Qué es razonable intentar ahora?',
+  1: '¿Qué sabemos realmente?',
+  2: '¿Qué podemos poner frente a la realidad y cómo observaremos lo ocurrido?',
+  3: '¿Qué ocurrió realmente?',
+  4: '¿Qué decisión está suficientemente sustentada?',
+};
+
 const STEP_OUTPUT_BY_ROUTE: Record<AdaptiveRouteType, Record<StepNumber, string>> = {
   explore_validate: {
     0: 'Context Brief + Validation Contract',

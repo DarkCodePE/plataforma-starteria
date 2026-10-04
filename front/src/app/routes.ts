@@ -11,6 +11,7 @@ import { DashboardPage } from './pages/DashboardPage';
 import { CreateProjectPage } from './pages/CreateProjectPage';
 import { ProjectHomePage } from './pages/ProjectHomePage';
 import { InitiativeOverviewPage } from './pages/InitiativeOverviewPage';
+import { MissionReviewPage } from './pages/MissionReviewPage';
 import { InitiativeReviewStartPage } from '../features/initiative-review/pages/InitiativeReviewStartPage';
 import { InitiativeReviewResultPage } from '../features/initiative-review/pages/InitiativeReviewResultPage';
 import { Step0Page } from './pages/Step0Page';
@@ -96,6 +97,7 @@ export const appRoutes = [
           { path: '/initiatives/new', Component: InitiativeReviewStartPage },
           { path: '/initiatives/review/:reviewId', Component: InitiativeReviewResultPage },
           { path: '/initiatives/:projectId/overview', Component: InitiativeOverviewPage },
+          { path: '/initiatives/:projectId/mission', Component: MissionReviewPage },
           { path: '/projects/:projectId', Component: ProjectHomePage },
           { path: '/projects/:projectId/step/0', Component: Step0Page },
           { path: '/projects/:projectId/step/1', Component: Step1Page },
