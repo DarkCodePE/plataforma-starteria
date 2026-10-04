@@ -26,10 +26,10 @@ test queda como regresión.
 | §7 | Frente con resultado, KPI, baseline, target, horizonte | `entry-b` · un Frente guarda… | ✅ |
 | §7 | Frente con restricciones (Core §13) | `entry-b` · el Frente guarda restricciones… | ✅ |
 | §7 | La pantalla de Frentes pregunta "¿qué resultado quiere mover?" | `entry-b` · la pantalla de Frentes… | ✅ |
-| §8–§11, §26 | Copilot propone partir un Frente en Retos, explica, AI_SUGGESTED/UNREVIEWED, no crea | `entry-b` · [G6] | GAP G6 |
-| §10 | "No parece necesario crear otro Reto" | `entry-b` · [G6] | GAP G6 |
+| §8–§11, §26 | Copilot propone partir un Frente en Retos, explica, AI_SUGGESTED/UNREVIEWED, no crea | `entry-b` · el Copilot propone… y en la UI, el lead revisa… | ✅ |
+| §10 | "No parece necesario crear otro Reto" | `entry-b` · el Copilot puede decir… | ✅ |
 | §13 | Reto con estado de cobertura | `entry-b` · un Reto tiene… | ✅ |
-| §13 | Lectura de cobertura del Reto como conjunto | `entry-b` · [G7] | GAP G7 |
+| §13 | Lectura de cobertura del Reto como conjunto | `entry-b` · lectura de cobertura… | ✅ |
 | §4, §24 | Ver y reasignar capacidad | `entry-b` · [G13] | GAP G13 |
 | §14 | Reconstrucción + gating retroactivo | `entry-c` · [G11] | GAP G11 |
 | §14 | "Importar iniciativas existentes" disponible | `entry-c` · [G11] | GAP G11 |
@@ -48,12 +48,10 @@ test queda como regresión.
 
 ## Gaps abiertos
 
-Cerrados: G1 y G2 (Ola 1); G3, G4 y G5 (Ola 2).
+Cerrados: G1 y G2 (Ola 1); G3, G4 y G5 (Ola 2); G6 y G7 (Ola 3).
 
 | GAP | Qué | Ola |
 |---|---|---|
-| G6 | Copilot sugiere desagregar un Frente en Retos | 3 |
-| G7 | Lectura de cobertura del Reto | 3 |
 | G8 | Retorno de la decisión al portfolio | 4 |
 | G9 | Destinos del routing de entrada (requiere chequeo de CONFLICT con el Portfolio Entry Logic Contract) | 5 |
 | G10 | Contexto de Aplicación | 5 |

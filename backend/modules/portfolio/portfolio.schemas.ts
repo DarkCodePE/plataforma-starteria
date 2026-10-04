@@ -320,3 +320,11 @@ export type UpsertInitiativeMetaInput = z.infer<typeof upsertInitiativeMetaSchem
 export type CreateOverlapInput = z.infer<typeof createOverlapSchema>;
 export type CreateExecutiveOutputInput = z.infer<typeof createExecutiveOutputSchema>;
 export type UpdateExecutiveOutputInput = z.infer<typeof updateExecutiveOutputSchema>;
+
+// Confirmación humana de una sugerencia de desagregación (E2E Job-Driven §26): sólo los retos elegidos.
+export const confirmChallengeSplitSchema = z.object({
+  challenges: z
+    .array(z.object({ title: z.string().min(2).max(300), whatWeWantToMove: z.string().max(2000).optional() }))
+    .min(1)
+    .max(10),
+});

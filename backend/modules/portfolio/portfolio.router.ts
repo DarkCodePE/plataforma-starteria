@@ -3,6 +3,9 @@ import { prisma } from '../../shared/db/prisma';
 import { PortfolioController } from './portfolio.controller';
 import { PortfolioService } from './portfolio.service';
 import { PortfolioHomeReadService } from './portfolio-home.read-service';
+import { ChallengeSplitService } from './challenge-split.service';
+import { ChallengeCoverageReadService } from './challenge-coverage.read-service';
+import type { AuthenticatedRequest } from '../../shared/types/auth.types';
 import { validate } from '../../shared/middleware/validate';
 import { authenticate, requirePermission } from '../auth/auth.middleware';
 import { requireEntitlement } from '../billing/entitlement.middleware';
@@ -22,11 +25,14 @@ import {
   createOverlapSchema,
   createExecutiveOutputSchema,
   updateExecutiveOutputSchema,
+  confirmChallengeSplitSchema,
 } from './portfolio.schemas';
 
 const service = new PortfolioService(prisma);
 const homeReadService = new PortfolioHomeReadService(prisma);
 const controller = new PortfolioController(service, homeReadService);
+const challengeSplit = new ChallengeSplitService(prisma);
+const challengeCoverage = new ChallengeCoverageReadService(prisma);
 
 export const portfolioRouter = Router();
 
@@ -190,6 +196,44 @@ portfolioRouter.put(
   validate(upsertInitiativeMetaSchema),
   controller.upsertInitiativeMeta,
 );
+
+// ─── E2E Job-Driven Ola 3 ─────────────────────────────────────────────────────
+// §8–§11/§26: el Copilot sugiere desagregar un Frente. La sugerencia no escribe; `confirm`
+// crea sólo los retos que la persona eligió.
+portfolioRouter.post(
+  '/strategic-fronts/:id/challenge-split-suggestion',
+  requirePermission('portfolio:write'),
+  async (req, res, next) => {
+    try {
+      res.json({ success: true, data: await challengeSplit.suggest(req.params.id) });
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
+portfolioRouter.post(
+  '/strategic-fronts/:id/challenge-split-suggestion/confirm',
+  requirePermission('portfolio:write'),
+  validate(confirmChallengeSplitSchema),
+  async (req, res, next) => {
+    try {
+      const data = await challengeSplit.confirm(req.params.id, (req as AuthenticatedRequest).body.challenges);
+      res.status(201).json({ success: true, data });
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
+// §13: lectura de cobertura del Reto como conjunto (sólo lectura).
+portfolioRouter.get('/challenges/:challengeId/coverage-reading', async (req, res, next) => {
+  try {
+    res.json({ success: true, data: await challengeCoverage.get(req.params.challengeId) });
+  } catch (err) {
+    next(err);
+  }
+});
 
 // ─── Overlaps ─────────────────────────────────────────────────────────────────
 portfolioRouter.get(

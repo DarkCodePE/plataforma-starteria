@@ -82,7 +82,7 @@ test.describe('Entrada B · dónde intervenir (§6–§13)', () => {
     await expect(page.getByText(/Tengo algo que quiero sacar adelante/)).toBeVisible();
   });
 
-  gapTest('G6', 'el Copilot propone partir un Frente en Retos, explica y pide confirmación sin crearlos (§8–§11, §26)', async () => {
+  test('el Copilot propone partir un Frente en Retos, explica y pide confirmación sin crearlos (§8–§11, §26)', async () => {
     const front = await createFront(api, token, {
       ...FRONT,
       name: `${FRONT.name} split ${Date.now()}`,
@@ -106,7 +106,7 @@ test.describe('Entrada B · dónde intervenir (§6–§13)', () => {
     expect(await prisma.challenge.count({ where: { strategicFrontId: front.id } })).toBe(before);
   });
 
-  gapTest('G6', 'el Copilot puede decir "no parece necesario crear otro Reto" (§10)', async () => {
+  test('el Copilot puede decir "no parece necesario crear otro Reto" (§10)', async () => {
     const front = await createFront(api, token, { name: `${FRONT.name} nosplit ${Date.now()}` });
     await createChallenge(api, token, front.id, { title: 'Reducir abandono durante onboarding' });
     const res = await api.post(`/api/v1/portfolio/strategic-fronts/${front.id}/challenge-split-suggestion`, {
@@ -119,13 +119,45 @@ test.describe('Entrada B · dónde intervenir (§6–§13)', () => {
     expect(suggestion.observed).toBeTruthy();
   });
 
-  gapTest('G7', 'lectura de cobertura del Reto como conjunto (§13)', async () => {
+  test('lectura de cobertura del Reto como conjunto (§13)', async () => {
     const front = await createFront(api, token, { name: `${FRONT.name} reading ${Date.now()}` });
     const challenge = await createChallenge(api, token, front.id, { title: 'Aumentar activación después del alta' });
     const reading = await getOk(api, token, `/api/v1/portfolio/challenges/${challenge.id}/coverage-reading`);
     for (const key of ['initiatives', 'overlaps', 'aggregateEvidence', 'commonDependencies', 'needsMoreCapacity', 'readyToDecide']) {
       expect(reading, key).toHaveProperty(key);
     }
+    // Sin iniciativas: el reto entero queda sin respuesta y falta capacidad.
+    expect(reading.hasWork).toBe(false);
+    expect(reading.needsMoreCapacity.value).toBe(true);
+    expect(reading.readyToDecide.value).toBe(false);
+  });
+
+  test('en la UI, el lead revisa la sugerencia y confirma sólo los retos que elige (§11, §26)', async ({ page }) => {
+    const name = `${FRONT.name} ui ${Date.now()}`;
+    const front = await createFront(api, token, {
+      ...FRONT,
+      name,
+      description: 'Las iniciativas actuales atacan dos momentos distintos: onboarding y uso recurrente, con owners y KPIs diferentes.',
+    });
+    await uiLoginLead(page);
+    await page.goto('/portfolio/frentes-estrategicos');
+    // Cada frente es una tarjeta con su título (h3) y el botón "Ver" que abre el detalle.
+    const card = page.getByRole('article').filter({ has: page.getByRole('heading', { name, level: 3 }) });
+    await card.getByRole('button', { name: /^Ver$/ }).click();
+    await page.getByRole('button', { name: /Analizar si conviene separar/ }).click();
+    const suggestion = page.getByTestId('challenge-split-suggestion');
+    await expect(suggestion).toHaveAttribute('data-recommendation', 'split');
+    await expect(suggestion.getByText('Sugerencia de IA · sin revisar')).toBeVisible();
+    for (const label of ['Qué observó', 'Por qué separar', 'Qué beneficio produce', 'Qué estructura propone', 'Impacto']) {
+      await expect(suggestion.getByText(label)).toBeVisible();
+    }
+    expect(await prisma.challenge.count({ where: { strategicFrontId: front.id } })).toBe(0);
+
+    await suggestion.getByLabel(/Reto sugerido: Uso recurrente/).uncheck();
+    await suggestion.getByRole('button', { name: /Confirmar y crear 1 reto/ }).click();
+    await expect(page.getByText(/Creaste 1 reto\(s\) en borrador: Onboarding/)).toBeVisible();
+    const created = await prisma.challenge.findMany({ where: { strategicFrontId: front.id }, select: { title: true, status: true } });
+    expect(created).toEqual([{ title: 'Onboarding', status: 'draft' }]);
   });
 
   gapTest('G13', 'el portfolio permite ver y reasignar capacidad (§4, §24)', async () => {
