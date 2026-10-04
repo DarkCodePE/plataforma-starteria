@@ -332,6 +332,32 @@ function latestStepOutput(core: any, step: number, status?: string) {
     .sort((a: any, b: any) => Number(b.version ?? 0) - Number(a.version ?? 0))[0] ?? null;
 }
 
+// Rutas de continuidad (Core §26, E2E Job-Driven §22) en lenguaje de la persona.
+const FINAL_STATE_LABEL: Record<string, string> = {
+  completed: 'Implementar',
+  transferred: 'Transferir',
+  scaled: 'Escalar',
+  integrated_to_roadmap: 'Integrar al roadmap',
+  closed_with_learning: 'Cerrar con aprendizaje',
+  paused: 'Pausar',
+  new_iteration_required: 'Iterar (nuevo ciclo)',
+  pivoted: 'Pivotear',
+  seeking_capability: 'Buscar capacidad, sponsor o socio',
+  benefit_tracking: 'Seguimiento de beneficios',
+  presented: 'Presentada al portfolio',
+};
+
+function finalStateLabel(value: unknown) {
+  const key = String(value ?? '');
+  return key ? FINAL_STATE_LABEL[key] ?? key : 'Pendiente';
+}
+
+const ALTERNATIVE_ROLE_LABEL: Record<string, string> = { selected: 'apuesta', backup: 'respaldo', considered: 'considerada' };
+
+function joinOrPending(items: string[], empty: string) {
+  return items.length > 0 ? items.join(' · ') : empty;
+}
+
 function buildStep4ReviewSummary(output: any) {
   const brief = output?.audienceBrief ?? {};
   const transfer = output?.transferOrClosure ?? {};
@@ -342,7 +368,23 @@ function buildStep4ReviewSummary(output: any) {
     { label: 'Audiencia', value: brief.primaryAudience ?? 'Pendiente' },
     { label: 'Decision solicitada', value: brief.requestedDecision ?? transfer.finalDecision ?? 'Pendiente' },
     { label: 'Recomendacion', value: output?.recommendation ?? 'Pendiente' },
-    { label: 'Estado final', value: output?.finalState ?? 'Pendiente' },
+    { label: 'Estado final', value: finalStateLabel(output?.finalState) },
+    // Decision Brief §21: qué podemos sostener, qué no, y qué otras salidas había.
+    {
+      label: 'Lo que podemos sostener',
+      value: joinOrPending((output?.sustainableClaims ?? []).map((claim: any) => claim.text), 'Sin claims con evidencia'),
+    },
+    {
+      label: 'Lo que no podemos afirmar',
+      value: joinOrPending(brief.unsupportedClaims ?? [], 'Nada marcado'),
+    },
+    {
+      label: 'Alternativas',
+      value: joinOrPending(
+        (output?.alternatives ?? []).map((alt: any) => `${alt.name} (${ALTERNATIVE_ROLE_LABEL[alt.role] ?? alt.role})`),
+        'Sin alternativas registradas',
+      ),
+    },
     { label: 'Owner futuro', value: transfer.receiverOwner || transfer.owner || 'Pendiente' },
     { label: 'Handoff', value: transfer.status ?? 'Pendiente' },
     { label: 'Cobertura reto', value: coverage.status ?? 'Sin cobertura' },
@@ -1450,7 +1492,7 @@ ${meetingOwner} / ${meetingRole}
                     <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
                       <p className="text-xs text-slate-500" style={{ fontWeight: 600 }}>Estado final</p>
                       <p className="mt-1 text-sm text-slate-800">
-                        {adaptiveStep4Output?.finalState ?? adaptiveCore?.progressSignal?.finalState ?? 'Pendiente'}
+                        {finalStateLabel(adaptiveStep4Output?.finalState ?? adaptiveCore?.progressSignal?.finalState)}
                       </p>
                     </div>
                   </div>

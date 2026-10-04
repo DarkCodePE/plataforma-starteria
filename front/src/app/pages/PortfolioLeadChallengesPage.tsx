@@ -62,6 +62,11 @@ type ChallengeFormState = {
   objective: string;
   whyNow: string;
   successCriteria: string;
+  knownFacts: string;
+  openQuestions: string;
+  constraints: string;
+  dependencies: string;
+  expectedDecision: string;
   challengeOwner: string;
   sponsorName: string;
   sponsorEmail: string;
@@ -207,6 +212,11 @@ const EMPTY_FORM: ChallengeFormState = {
   objective: '',
   whyNow: '',
   successCriteria: '',
+  knownFacts: '',
+  openQuestions: '',
+  constraints: '',
+  dependencies: '',
+  expectedDecision: '',
   challengeOwner: '',
   sponsorName: '',
   sponsorEmail: '',
@@ -428,6 +438,11 @@ export function PortfolioLeadChallengesPage() {
       objective: form.objective.trim(),
       whyNow: form.whyNow.trim(),
       successCriteria: form.successCriteria.trim(),
+      knownFacts: form.knownFacts.trim(),
+      openQuestions: form.openQuestions.trim(),
+      constraints: form.constraints.trim(),
+      dependencies: form.dependencies.trim(),
+      expectedDecision: form.expectedDecision.trim(),
       challengeOwner: form.challengeOwner.trim(),
       sponsorName: form.sponsorName.trim() || undefined,
       sponsorEmail: form.sponsorEmail.trim() || undefined,
@@ -1564,6 +1579,45 @@ function ChallengeFormDrawer({
                 />
               </div>
 
+              {/* Challenge Constraint Envelope (Core §14.1, E2E Job-Driven §15): lo que necesita
+                  quien recibe el reto para entender qué respuesta tiene sentido. Todo opcional. */}
+              <div className="mt-5 rounded-2xl border border-slate-200 bg-slate-50/60 p-4">
+                <p className="text-sm text-slate-900" style={{ fontWeight: 700 }}>Lo que debe saber quien recibe el reto</p>
+                <p className="mt-1 text-xs text-slate-500">Opcional. Las iniciativas del reto lo heredan y lo ven antes de empezar.</p>
+                <div className="mt-4 grid gap-5 md:grid-cols-2">
+                  <TextAreaField
+                    label="Qué se sabe"
+                    value={form.knownFacts}
+                    onChange={value => onChange(prev => ({ ...prev, knownFacts: value }))}
+                    placeholder="Datos, señales o resultados que ya existen."
+                  />
+                  <TextAreaField
+                    label="Qué está abierto"
+                    value={form.openQuestions}
+                    onChange={value => onChange(prev => ({ ...prev, openQuestions: value }))}
+                    placeholder="Lo que todavía no sabemos y podría cambiar la respuesta."
+                  />
+                  <TextAreaField
+                    label="Restricciones"
+                    value={form.constraints}
+                    onChange={value => onChange(prev => ({ ...prev, constraints: value }))}
+                    placeholder="Lo que ninguna iniciativa de este reto puede romper."
+                  />
+                  <TextAreaField
+                    label="Dependencias"
+                    value={form.dependencies}
+                    onChange={value => onChange(prev => ({ ...prev, dependencies: value }))}
+                    placeholder="Sistemas, equipos o decisiones de las que depende."
+                  />
+                  <TextAreaField
+                    label="Decisión esperada al final"
+                    value={form.expectedDecision}
+                    onChange={value => onChange(prev => ({ ...prev, expectedDecision: value }))}
+                    placeholder="Qué decisión futura necesita evidencia de este reto."
+                  />
+                </div>
+              </div>
+
               <div className="mt-5 grid gap-5 md:grid-cols-2">
                 <SelectField
                   label="Urgencia"
@@ -2080,6 +2134,11 @@ function mapChallengeToForm(challenge: Challenge, front: StrategicFront | null):
     objective: challenge.objective,
     whyNow: challenge.whyNow,
     successCriteria: challenge.successCriteria,
+    knownFacts: challenge.knownFacts ?? '',
+    openQuestions: challenge.openQuestions ?? '',
+    constraints: challenge.constraints ?? '',
+    dependencies: challenge.dependencies ?? '',
+    expectedDecision: challenge.expectedDecision ?? '',
     challengeOwner: challenge.challengeOwner,
     sponsorName: challenge.sponsorName ?? front?.sponsor ?? '',
     sponsorEmail: challenge.sponsorEmail ?? '',
@@ -2110,6 +2169,11 @@ function mapFormToCreateInput(form: ChallengeFormState, status: ChallengeStatus)
     objective: form.objective.trim(),
     whyNow: form.whyNow.trim(),
     successCriteria: form.successCriteria.trim(),
+    knownFacts: form.knownFacts.trim(),
+    openQuestions: form.openQuestions.trim(),
+    constraints: form.constraints.trim(),
+    dependencies: form.dependencies.trim(),
+    expectedDecision: form.expectedDecision.trim(),
     challengeOwner: form.challengeOwner.trim(),
     sponsorName: form.sponsorName.trim() || undefined,
     sponsorEmail: form.sponsorEmail.trim() || undefined,

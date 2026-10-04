@@ -24,7 +24,7 @@ test queda como regresión.
 | §24–§25 | `/portfolio/iniciar` empieza por el Job, no por "¿Cómo quieres iniciar?" | `entry-b` · /portfolio/iniciar… | ✅ |
 | §6 | Portfolio Home da una lectura | `entry-b` · Portfolio Home… | ✅ (solo carga; la lectura completa es G7) |
 | §7 | Frente con resultado, KPI, baseline, target, horizonte | `entry-b` · un Frente guarda… | ✅ |
-| §7 | Frente con restricciones (Core §13) | `entry-b` · [G3] | GAP G3 |
+| §7 | Frente con restricciones (Core §13) | `entry-b` · el Frente guarda restricciones… | ✅ |
 | §7 | La pantalla de Frentes pregunta "¿qué resultado quiere mover?" | `entry-b` · la pantalla de Frentes… | ✅ |
 | §8–§11, §26 | Copilot propone partir un Frente en Retos, explica, AI_SUGGESTED/UNREVIEWED, no crea | `entry-b` · [G6] | GAP G6 |
 | §10 | "No parece necesario crear otro Reto" | `entry-b` · [G6] | GAP G6 |
@@ -34,13 +34,13 @@ test queda como regresión.
 | §14 | Reconstrucción + gating retroactivo | `entry-c` · [G11] | GAP G11 |
 | §14 | "Importar iniciativas existentes" disponible | `entry-c` · [G11] | GAP G11 |
 | §15 | El encargo muestra qué se quiere mover y por qué | `entry-d` · el participante ve… | ✅ |
-| §15 | …y qué se sabe, qué está abierto, restricciones, decisión esperada (Core §14.1) | `entry-d` · [G4] | GAP G4 |
+| §15 | …y qué se sabe, qué está abierto, restricciones, decisión esperada (Core §14.1) | `entry-d` · el encargo muestra… | ✅ |
 | §17 | Step 0–4 → Decision Package → la decisión sube al portfolio | `entry-d` · el ciclo completo… | ✅ |
 | §18 | Mission Review; Start no abre Step 0 | `entry-d` · Mission Review… | ✅ |
 | §19 | Steps como preguntas de progreso | `entry-d` · los Steps… | ✅ |
 | §21 | Decision Brief: decisión, qué hicimos, qué ocurrió, aprendizajes, riesgos, qué no podemos afirmar, siguiente paso | `entry-d` · el Decision Brief trae… | ✅ |
-| §21 | …y alternativas, qué podemos sostener | `entry-d` · [G5] | GAP G5 |
-| §22 | Continuidad: pivotear, buscar capacidad, benefit tracking (Core §26) | `entry-d` · [G5] | GAP G5 |
+| §21 | …y alternativas, qué podemos sostener | `entry-d` · el Decision Brief incluye… | ✅ |
+| §22 | Continuidad: pivotear, buscar capacidad, benefit tracking (Core §26) | `entry-d` · la continuidad admite… | ✅ |
 | §23 | La decisión vuelve al Reto, Frente y Portfolio, con aprendizaje | `entry-d` · [G8] | GAP G8 |
 | §16 | Iniciativa independiente sin inventar Frente ni Reto | `entry-e` · se puede crear… | ✅ |
 | §16 | Contexto de Aplicación | `entry-e` · [G10] | GAP G10 |
@@ -48,13 +48,10 @@ test queda como regresión.
 
 ## Gaps abiertos
 
-Cerrados: G1 y G2 (Ola 1).
+Cerrados: G1 y G2 (Ola 1); G3, G4 y G5 (Ola 2).
 
 | GAP | Qué | Ola |
 |---|---|---|
-| G3 | Frente: restricciones | 2 |
-| G4 | Envelope del Reto | 2 |
-| G5 | Decisión y Brief: rutas de continuidad, alternativas, qué podemos sostener | 2 |
 | G6 | Copilot sugiere desagregar un Frente en Retos | 3 |
 | G7 | Lectura de cobertura del Reto | 3 |
 | G8 | Retorno de la decisión al portfolio | 4 |

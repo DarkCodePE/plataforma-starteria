@@ -38,6 +38,11 @@ const assigned = {
         whatWeWantToMove: 'Bajar el costo por solicitud de 14.20 a 10.00',
         whyNow: 'El presupuesto depende de esta mejora',
         successCriteria: 'Costo bajo 12.00 en el piloto',
+        knownFacts: 'El 40% de las solicitudes son repetidas',
+        openQuestions: 'No sabemos si el canal digital reduce costo',
+        constraints: 'Sin tocar el contrato con el proveedor',
+        dependencies: 'Integración con el CRM',
+        expectedDecision: 'Escalar o no el autoservicio a todas las sucursales',
         challengeOwner: 'Gerencia de Operaciones',
         activationInputs: { timeAvailable: 'acotado', internalCapacity: 'media' },
         challengeTeam: [{ user: null, label: 'Equipo CX' }],
@@ -48,6 +53,7 @@ const assigned = {
           mainKpi: 'Costo por solicitud',
           target: '10.00',
           horizon: '12 meses',
+          constraints: 'Sin aumentar el equipo de soporte',
         },
       },
     },
@@ -64,11 +70,13 @@ describe('MissionReviewReadService', () => {
     expect(view.inheritedContext.challenge).toMatchObject({ title: 'Reducir costo de atención', whyNow: 'El presupuesto depende de esta mejora' });
     expect(view.expectedContribution).toBe('Costo bajo 12.00 en el piloto');
     expect(view.capacity).toEqual(['Tiempo disponible: acotado', 'Capacidad interna: media']);
-    expect(view.dependencies).toEqual(['Acceso a datos del CRM']);
+    expect(view.dependencies).toEqual(['Integración con el CRM', 'Acceso a datos del CRM']);
     expect(view.whoCanHelp).toEqual(['Analista', 'Equipo CX', 'Gerencia de Operaciones', 'Mentora']);
-    expect(view.decisionToEnable).toBe('Escalar o no el autoservicio');
-    expect(view.constraints).toEqual(['El canal digital puede subir reclamos']);
-    expect(view.openQuestions).toEqual(['¿Qué sucursales participan?', 'Presupuesto disponible']);
+    // El envelope del Reto (Core §14.1) manda sobre el prefill de la revisión inicial.
+    expect(view.decisionToEnable).toBe('Escalar o no el autoservicio a todas las sucursales');
+    expect(view.constraints).toEqual(['Sin tocar el contrato con el proveedor', 'Sin aumentar el equipo de soporte', 'El canal digital puede subir reclamos']);
+    expect(view.openQuestions).toEqual(['No sabemos si el canal digital reduce costo', '¿Qué sucursales participan?', 'Presupuesto disponible']);
+    expect(view.inheritedContext.challenge?.knownFacts).toBe('El 40% de las solicitudes son repetidas');
   });
 
   it('una iniciativa independiente no inventa Frente ni Reto (§16)', async () => {

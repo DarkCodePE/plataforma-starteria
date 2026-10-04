@@ -239,6 +239,8 @@ export interface StrategicFront {
   target: string;
   threshold?: string;
   horizon: string;
+  /** Restricciones estratégicas conocidas (Core §13). */
+  constraints?: string;
   endDate?: string;
   area?: string;
   sponsor: string;
@@ -261,6 +263,7 @@ export interface CreateStrategicFrontInput {
   target: string;
   threshold?: string;
   horizon: string;
+  constraints?: string;
   endDate?: string;
   area?: string;
   sponsor: string;
@@ -353,6 +356,12 @@ export interface Challenge {
   objective: string;
   whyNow: string;
   successCriteria: string;
+  // Challenge Constraint Envelope (Core §14.1, E2E Job-Driven §15).
+  knownFacts?: string;
+  openQuestions?: string;
+  constraints?: string;
+  dependencies?: string;
+  expectedDecision?: string;
   challengeOwner: string;
   challengeOwnerName?: string;
   sponsorName?: string;
@@ -651,6 +660,11 @@ export interface CreateChallengeInput {
   objective: string;
   whyNow: string;
   successCriteria: string;
+  knownFacts?: string;
+  openQuestions?: string;
+  constraints?: string;
+  dependencies?: string;
+  expectedDecision?: string;
   challengeOwner: string;
   sponsorName?: string;
   sponsorEmail?: string;

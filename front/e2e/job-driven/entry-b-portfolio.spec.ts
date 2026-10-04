@@ -57,7 +57,7 @@ test.describe('Entrada B · dónde intervenir (§6–§13)', () => {
     expect(updated.coverageStatus).toBe('cobertura_parcial');
   });
 
-  gapTest('G3', 'el Frente guarda restricciones estratégicas (§7, Core §13)', async () => {
+  test('el Frente guarda restricciones estratégicas (§7, Core §13)', async () => {
     const front = await createFront(api, token, {
       name: `${FRONT.name} restr ${Date.now()}`,
       constraints: 'Sin aumentar el equipo de soporte',
