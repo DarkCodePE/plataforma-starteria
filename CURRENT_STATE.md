@@ -206,6 +206,14 @@ but the frontend question DTO omits it, so no reason copy is synthesized in the
 client. See
 `docs/implementation/public-landing/KAN-102_LANDING_ENTRY_CONVERGENCE_v0.1.md`.
 
+KAN-105 resolves the semantic/security authority gap through accepted product
+ADR-007 and `docs/experience/portfolio-entry/PORTFOLIO_ENTRY_REASON_TO_ASK_EXPOSURE_CONTRACT_v0.1.md`:
+`reason_to_ask` is a concise `PUBLIC_EXPLANATION` for the active question, never
+private/model rationale. Runtime projection and rendering remain unimplemented;
+KAN-104 may implement the separately authorized transport path after this
+authority change is merged, without changing question selection logic. The
+Portfolio Entry v0.2 Agent/Skill/Harness reconciliation stack remains candidate.
+
 ## ADRs
 
 - ADRs de harness/documentacion: `docs/adr/`.

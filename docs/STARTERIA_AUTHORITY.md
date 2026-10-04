@@ -55,7 +55,7 @@ Debe registrarse el conflicto y reconciliarse segun esta Authority Map.
 Cuando dos fuentes entren en conflicto, aplicar este orden:
 
 1. `doc/CONTRATO_LOGICA_CORE_STARTERIA_MVP_v0.2_ES(1).md`
-2. ADRs de producto aprobados en `docs/product-adr/`
+2. ADRs de producto aprobados en `doc/product-adr/` (índice canónico: `doc/product-adr/ADR-INDEX.md`)
 3. Experience Logic Contracts aprobados
 4. Agent Contracts
 5. Skill Contracts
@@ -228,6 +228,12 @@ Its presence does NOT automatically supersede:
 Promotion to active authority requires repository validation and an explicit authority update.
 
 `PORTFOLIO_ENTRY_TEST_FINDINGS_REGISTER_v0.2.md` is evidence and does not define product authority.
+
+#### Accepted `reason_to_ask` exposure decision
+
+Product ADR-007, `doc/product-adr/ADR-007-portfolio-entry-reason-to-ask-public-explanation.md`, is accepted authority for the narrow semantic and security boundary of `reason_to_ask`. Its subordinate contract is `docs/experience/portfolio-entry/PORTFOLIO_ENTRY_REASON_TO_ASK_EXPOSURE_CONTRACT_v0.1.md`.
+
+This decision does not promote the candidate v0.2 Clarification/Handoff, Agent, Skill, or Harness documents listed above. Those remain candidate references and may only inherit this narrow rule by explicit citation to ADR-007; no other candidate semantics are promoted.
 
 Nota de estado: implementado no equivale a aprobado ni a probado end-to-end. El Experience Contract v0.1 sigue siendo el contrato activo aprobado para Pantalla 1. Los documentos Agent/Skill conservan su estado propio hasta ratificacion explicita.
 

@@ -2079,3 +2079,5 @@ No:
 Y:
 
 > La infraestructura debe hacer visible cuándo Starteria cumple sus contratos, cuándo genera valor y cuándo simplemente aprendió a pasar un fixture conocido.
+
+**Authority addendum:** Any execution-spec case that evaluates reason_to_ask exposure follows accepted product ADR-007 (../../../doc/product-adr/ADR-007-portfolio-entry-reason-to-ask-public-explanation.md) and PORTFOLIO_ENTRY_REASON_TO_ASK_EXPOSURE_CONTRACT_v0.1.md (../../experience/portfolio-entry/PORTFOLIO_ENTRY_REASON_TO_ASK_EXPOSURE_CONTRACT_v0.1.md). This adds a narrow case boundary only and does not promote this proposed Execution Spec or authorize productive integration.

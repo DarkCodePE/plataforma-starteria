@@ -889,3 +889,7 @@ Y:
 ## Guided Exploration budget alignment
 
 When `interaction_mode = guided_exploration`, the available budget is `0..2` for the single accepted round. The skill emits at most one user-facing question per turn, never renews budget, and leaves convergence to the session controller.
+
+## `reason_to_ask` authority addendum (ADR-007)
+
+The field is a concise `PUBLIC_EXPLANATION` of why answering the active question may materially improve understanding, decision framing, or next movement. It is not a reason why the model selected the question. Follow accepted product [ADR-007](../../../../../doc/product-adr/ADR-007-portfolio-entry-reason-to-ask-public-explanation.md) and the [v0.1 exposure contract](../../../../experience/portfolio-entry/PORTFOLIO_ENTRY_REASON_TO_ASK_EXPOSURE_CONTRACT_v0.1.md), including its security and no-client-rewrite rules. This narrow citation does not promote the proposed skill or its other clauses.
