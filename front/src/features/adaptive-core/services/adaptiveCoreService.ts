@@ -124,6 +124,14 @@ export interface MissionReview {
   whoCanHelp: string[];
   decisionToEnable: string | null;
   openQuestions: string[];
+  applicationContext: {
+    companyName: string;
+    area: string | null;
+    coverage: number;
+    lowCoverage: boolean;
+    restrictions: string[];
+    actors: string[];
+  } | null;
 }
 
 export async function getMissionReview(projectId: string): Promise<MissionReview> {

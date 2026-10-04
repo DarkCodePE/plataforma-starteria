@@ -28,6 +28,19 @@ export interface MissionReviewView {
   whoCanHelp: string[];
   decisionToEnable: string | null;
   openQuestions: string[];
+  /**
+   * Contexto de Aplicación (E2E Job-Driven §16; Core: "Contexto del usuario / organización objetivo
+   * [opcional]", envolvente contextual que no prueba alineamiento). Sale del último snapshot de
+   * empresa de la iniciativa. null si la persona no eligió empresa.
+   */
+  applicationContext: {
+    companyName: string;
+    area: string | null;
+    coverage: number;
+    lowCoverage: boolean;
+    restrictions: string[];
+    actors: string[];
+  } | null;
 }
 
 const text = (value: unknown): string | null => (typeof value === 'string' && value.trim() ? value.trim() : null);
@@ -45,6 +58,37 @@ const CAPACITY_LABEL: Record<string, string> = {
   technicalNeed: 'Necesidad técnica',
 };
 
+// Mismo criterio que AdaptiveCoreService.extractCompanyDimension: busca por palabra clave en el
+// snapshot de empresa sin asumir una forma fija.
+function companyDimension(json: any, keywords: string[]): string[] {
+  const found: string[] = [];
+  const visit = (value: unknown, key = '') => {
+    if (found.length >= 5 || value == null) return;
+    if (typeof value === 'string') {
+      if (keywords.some((keyword) => key.toLowerCase().includes(keyword)) && value.trim()) found.push(value.trim());
+      return;
+    }
+    if (Array.isArray(value)) return value.forEach((item) => visit(item, key));
+    if (typeof value === 'object') Object.entries(value as Record<string, unknown>).forEach(([childKey, child]) => visit(child, `${key}.${childKey}`));
+  };
+  visit(json);
+  return [...new Set(found)];
+}
+
+function applicationContextFrom(snapshot: any): MissionReviewView['applicationContext'] {
+  if (!snapshot) return null;
+  const json = (snapshot.snapshotJson ?? {}) as Record<string, any>;
+  const coverage = Number(snapshot.contextScore ?? json.contextScore ?? 0);
+  return {
+    companyName: String(json.company?.name ?? 'Empresa seleccionada'),
+    area: json.areas?.[0]?.name ?? null,
+    coverage,
+    lowCoverage: coverage < 50,
+    restrictions: companyDimension(json, ['restriction', 'restriccion', 'guardrail']),
+    actors: companyDimension(json, ['actor', 'stakeholder', 'sponsor']),
+  };
+}
+
 export class MissionReviewReadService {
   constructor(private prisma: PrismaClient) {}
 
@@ -53,6 +97,7 @@ export class MissionReviewReadService {
       where: { id: projectId },
       include: {
         teamMembers: { include: { user: { select: { name: true } } } },
+        contextSnapshots: { orderBy: { createdAt: 'desc' }, take: 1 },
         portfolioMeta: {
           include: {
             challenge: {
@@ -121,6 +166,7 @@ export class MissionReviewReadService {
       whoCanHelp: [...new Set(list(...helpers))],
       decisionToEnable: text(challenge?.expectedDecision) ?? text(prefill.decisionRequested) ?? text(prefill.nextRecommendedStep),
       openQuestions: list(challenge?.openQuestions, prefill.pendingQuestions),
+      applicationContext: applicationContextFrom(project.contextSnapshots?.[0]),
     };
   }
 }

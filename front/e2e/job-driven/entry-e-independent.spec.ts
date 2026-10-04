@@ -26,15 +26,19 @@ test.describe('Entrada E · iniciativa independiente (§16)', () => {
     await expect(page.getByText(/Frente estrat[eé]gico obligatorio|Debes elegir un reto/i)).toHaveCount(0);
   });
 
-  gapTest('G10', 'la iniciativa independiente construye un Contexto de Aplicación (§16)', async ({ page }) => {
+  test('la iniciativa independiente construye un Contexto de Aplicación (§16)', async ({ page }) => {
     const owner = await registerAndLogin(api, 'e-appctx');
     const company = await createCompany(api, owner.token, 'Empresa E2E Job E');
     const projectId = await createFromInitialReview(api, owner.token, 'Quiero automatizar cotizaciones en mi empresa.', { companyId: company.id });
-    const state = await getOk(api, owner.token, `/api/v1/projects/${projectId}/adaptive-core`);
-    expect(state.applicationContext).toBeTruthy();
+    const review = await getOk(api, owner.token, `/api/v1/projects/${projectId}/mission-review`);
+    expect(review.independent).toBe(true);
+    expect(review.applicationContext).toMatchObject({ companyName: 'Empresa E2E Job E' });
+
     await browserLogin(page, owner.email, owner.password);
     await page.goto(`/initiatives/${projectId}/overview`);
-    await expect(page.getByText(/Contexto de aplicaci[oó]n/i).first()).toBeVisible({ timeout: GAP_TIMEOUT });
+    await expect(page.getByRole('region', { name: 'Contexto de aplicación' })).toContainText('Empresa E2E Job E');
+    await page.goto(`/initiatives/${projectId}/mission`);
+    await expect(page.getByRole('region', { name: 'Contexto de aplicación' })).toContainText('Empresa E2E Job E');
   });
 
   test('el Copilot ofrece Orientarme / Trabajar conmigo / Desbloquearme (§20)', async ({ page }) => {

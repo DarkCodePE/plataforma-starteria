@@ -216,3 +216,28 @@ describe('PortfolioHomeReadService', () => {
     }
   });
 });
+
+describe('PortfolioHomeReadService — aprendizajes (E2E Job-Driven §23)', () => {
+  it('expone lo que el portfolio aprendió de las últimas decisiones', async () => {
+    const learnings = [{
+      decisionId: 'd1', projectId: 'p1', challengeId: 'c1', strategicFrontId: 'f1', outcome: 'scale',
+      learning: 'La visibilidad reduce retrabajo', nextAction: 'Planificar el escalamiento', coverageBefore: 'sin_cobertura',
+      coverageAfter: 'cobertura_suficiente', suggestedReformulation: null, decidedAt: new Date('2026-10-04T12:00:00Z'),
+      project: { name: 'Tablero comercial' }, challenge: { title: 'Reducir retrabajo' },
+    }];
+    const prisma = {
+      strategicFront: { findMany: vi.fn().mockResolvedValue([]) },
+      portfolioLearning: { findMany: vi.fn().mockResolvedValue(learnings) },
+    };
+    const home = await new PortfolioHomeReadService(prisma as any).getHome('u1');
+    expect(home.learnings).toEqual([expect.objectContaining({
+      decisionId: 'd1', initiativeName: 'Tablero comercial', challengeTitle: 'Reducir retrabajo', outcome: 'scale',
+      coverageAfter: 'cobertura_suficiente', decidedAt: '2026-10-04T12:00:00.000Z',
+    })]);
+  });
+
+  it('sin el modelo devuelve una lista vacía', async () => {
+    const home = await new PortfolioHomeReadService({ strategicFront: { findMany: vi.fn().mockResolvedValue([]) } } as any).getHome('u1');
+    expect(home.learnings).toEqual([]);
+  });
+});

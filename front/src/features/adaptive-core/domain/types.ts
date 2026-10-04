@@ -109,6 +109,10 @@ export interface InitiativeMasterContext {
   risks: string[];
   decisions: string[];
   contextSnapshots: ContextSnapshot[];
+  /** Empresa elegida para la iniciativa: su Contexto de Aplicación (E2E Job-Driven §16). */
+  companySnapshot?: { name: string; area: string | null; coverage: number; lowCoverage: boolean } | null;
+  /** Reto heredado, si la iniciativa está asignada a uno. */
+  challengeSnapshot?: { id: string; title?: string } | null;
   createdAt: string;
 }
 

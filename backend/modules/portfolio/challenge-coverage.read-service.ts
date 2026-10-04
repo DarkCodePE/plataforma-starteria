@@ -33,6 +33,8 @@ export interface ChallengeCoverageReading {
   needsMoreCapacity: { value: boolean; reasons: string[] };
   readyToDecide: { value: boolean; reasons: string[] };
   uncovered: string | null;
+  /** §23: decisiones ya tomadas sobre iniciativas del reto y lo que dejaron. */
+  decisions: Array<{ projectId: string; outcome: string; learning: string | null; nextAction: string | null; suggestedReformulation: string | null; decidedAt: string }>;
 }
 
 export class ChallengeCoverageReadService {
@@ -44,6 +46,7 @@ export class ChallengeCoverageReadService {
       include: {
         initiativeMetas: { include: { project: { select: { id: true, name: true } } } },
         overlaps: true,
+        portfolioLearnings: { orderBy: { decidedAt: 'desc' } },
       },
     });
     if (!challenge) throw AppError.notFound('Reto', 'CHALLENGE_NOT_FOUND', { hint: 'Confirma el ID del reto.' });
@@ -118,6 +121,14 @@ export class ChallengeCoverageReadService {
       readyToDecide: { value: ready.length > 0 || coverageEnough, reasons: readyReasons },
       // Lo que el reto pide mover y ninguna iniciativa atiende todavía.
       uncovered: initiatives.length === 0 ? challenge.whatWeWantToMove?.trim() || challenge.title : null,
+      decisions: (challenge.portfolioLearnings ?? []).map((learning) => ({
+        projectId: learning.projectId,
+        outcome: String(learning.outcome),
+        learning: learning.learning,
+        nextAction: learning.nextAction,
+        suggestedReformulation: learning.suggestedReformulation,
+        decidedAt: learning.decidedAt.toISOString(),
+      })),
     };
   }
 }

@@ -408,6 +408,7 @@ export interface ChallengeCoverageReading {
   needsMoreCapacity: { value: boolean; reasons: string[] };
   readyToDecide: { value: boolean; reasons: string[] };
   uncovered: string | null;
+  decisions?: Array<{ projectId: string; outcome: string; learning: string | null; nextAction: string | null; suggestedReformulation: string | null; decidedAt: string }>;
 }
 
 export async function getChallengeCoverageReading(challengeId: string): Promise<ChallengeCoverageReading> {
@@ -459,4 +460,25 @@ export interface PortfolioCapacityReading {
 export async function getPortfolioCapacity(): Promise<PortfolioCapacityReading> {
   const { data } = await api.get<ApiResponse<PortfolioCapacityReading>>('/portfolio/capacity');
   return data.data;
+
+/** §23: lo que el portfolio aprendió de las últimas decisiones (GET /portfolio/home → learnings). */
+export interface PortfolioLearning {
+  decisionId: string;
+  projectId: string;
+  initiativeName: string | null;
+  challengeId: string | null;
+  challengeTitle: string | null;
+  strategicFrontId: string | null;
+  outcome: string;
+  learning: string | null;
+  nextAction: string | null;
+  coverageBefore: string | null;
+  coverageAfter: string | null;
+  suggestedReformulation: string | null;
+  decidedAt: string;
+}
+
+export async function listPortfolioLearnings(): Promise<PortfolioLearning[]> {
+  const { data } = await api.get<ApiResponse<{ learnings?: PortfolioLearning[] }>>('/portfolio/home');
+  return data.data.learnings ?? [];
 }
