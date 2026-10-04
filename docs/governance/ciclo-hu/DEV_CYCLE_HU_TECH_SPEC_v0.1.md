@@ -234,9 +234,10 @@ aprueba y mergea una persona (INV-4). Con menos de 20, sólo muestra la tabla.
 ```text
 plugins/starteria-desarrollo/
   .claude-plugin/plugin.json      name: starteria-desarrollo
-  skills/hu/ implementar/ verificar/ pr/ jira-hu/ spec/ calibrar/ init/
+  skills/hu/ implementar/ verificar/ pr/ jira-hu/ spec/ calibrar/ init/   (+ retro/ en HU-R)
   agents/delivery-planner.md revisor-starteria.md
   tools/jira-comun.mjs jira-hu.mjs jira-hu-crear.mjs jev-clasificar.mjs env.example
+        pr-peligro.mjs (HU-R)
 ```
 
 Las tools se suben a `tools/` del paquete (hoy están dentro de `skills/*/tools/`) porque las usan
@@ -309,7 +310,7 @@ bloque: eso vive en los archivos del repo.
 
 **D-22. Gate.** `scripts/verify.sh` agrega un bloque 7 "plugin de desarrollo": `claude plugin
 validate plugins/starteria-desarrollo`, que no quede ninguna skill del ciclo en `.claude/skills/`, y
-`ESPERADAS_DESARROLLO=8`. El bloque de `starteria-harness` no cambia.
+`ESPERADAS_DESARROLLO=8`, que HU-R sube a 9. El bloque de `starteria-harness` no cambia.
 
 - *Testing:* el `init` tiene el mejor seam de la épica: función pura `(texto, bloque) → texto | error`,
   con `node --test` sobre los cinco casos de `ADR-013` §5 (archivo con contenido propio, dos corridas,
@@ -332,11 +333,15 @@ freno determinista.
 sigue la regla de `docs/analisis-jev/99-donde-no-aplica.md` (lo que se elige es Jev, lo que se
 deriva es código, lo que se dice es LLM):
 
-1. **Señales duras, código, sin Jev.** Cualquiera fija `una_via`: un archivo en `prisma/migrations/`,
-   `doc/`, `k8s/` o `.github/workflows/cd.yml`; un archivo borrado; un schema zod o pydantic cambiado
-   (`backend/**/*.schemas.ts` y `*.schema.ts`, 29 archivos hoy; `ai-service/schemas/**`); una variable nueva en `.env.example`. Se leen de
-   `git diff --name-status`; no se le pregunta a Jev lo que el diff ya dice.
-2. **Preguntas cerradas a Jev** sobre el diff resumido y la HU: tres sí/no (`borra_o_reescribe_datos`,
+1. **Señales duras, código, sin Jev.** Cualquiera fija `una_via`: un archivo en
+   `**/prisma/migrations/**` (hoy `front/prisma/migrations/`), `doc/`, `k8s/` o `.github/workflows/`
+   (`ci.yml` es también el gate de CD); un archivo borrado; un schema zod o pydantic cambiado
+   (`backend/**/*.schemas.ts` y `*.schema.ts`, 29 archivos hoy; `ai-service/schemas/**`). Salen de
+   `git diff --name-status`. La sexta, una variable nueva en cualquiera de los cuatro `.env.example`
+   (raíz, `front/`, `backend/`, `ai-service/`), sale de `git diff -U0` sobre esos archivos. No se le
+   pregunta a Jev lo que el diff ya dice.
+2. **Preguntas cerradas a Jev.** La entrada es determinista, sin resumen de un LLM: `git diff --stat`,
+   `--name-status`, y el título y los CA de la HU leídos con `jira-hu.mjs`. Las preguntas: tres sí/no (`borra_o_reescribe_datos`,
    `cambia_lo_que_otro_frente_usa`, `cambia_ia_productiva`) y una opción
    (`radio`: `local` | `un_journey` | `varios_journeys` | `plataforma`).
 3. **Derivación, código.** `una_via` si hay una señal dura o un sí ≥ 0.65; en la zona de duda
@@ -362,8 +367,9 @@ lado del otro, sin mezclar ni reordenar hallazgos:
 - **standards**: `CODING_STANDARDS.md` (nuevo, en la raíz) más la línea base de olores de Fowler que
   trae `code-review`, siempre como juicio (`[menor]`), y el control 7 (seguridad y operación).
   `CODING_STANDARDS.md` lo lee sólo el revisor, nunca `/implementar`: quien implementa tiene la
-  ventana más cargada. Arranca con las reglas de juicio que hoy están dispersas en `AGENTS.md` §5 y
-  §6; `AGENTS.md` queda con punteros.
+  ventana más cargada. Arranca con reglas nuevas de estilo y olores; **no le saca nada a
+  `AGENTS.md`**: las recetas de §5 y la tabla de contratos de §6 las necesita quien implementa, y el
+  control 4 (eje spec) sigue citando §6.
 
 El veredicto es `changes_required` si cualquiera de los dos ejes tiene un `[bloqueante]`. Las rondas
 siguen siendo tres en total, no tres por eje.
@@ -377,10 +383,15 @@ mostró el registro). No edita: cada candidato que la persona acepta entra por `
 Es la retro que el brief (P1) quería dentro del ciclo.
 
 **D-29. Freno 1: typecheck bloqueante en CI.** `.github/workflows/ci.yml` suma un job
-`typecheck` (`npm run typecheck` en `front/`, que cubre front y backend). Hoy pasa en main: 0 errores
-en los dos (corrido el 2026-10-04). `lint` y `ruff` siguen como hoy (`lint` fuera de CI, `ruff`
+`typecheck` (`npm run typecheck` en `front/`, que cubre front y backend, después de generar el
+cliente Prisma: sin él `typecheck:backend` falla, `TESTING.md:28`). Hoy pasa en main: 0 errores en los
+dos (corrido el 2026-10-04). El job entra en `needs` del `summary` de `ci.yml`. **Frena también el
+deploy:** `cd.yml:128-135` llama a `ci.yml` como `tests: CI gate` y `build-and-push` depende de él.
+En el mismo PR, `AGENTS.md` §8 y `TESTING.md:15` dejan de decir que CI no corre typecheck. `lint` y `ruff` siguen como hoy (`lint` fuera de CI, `ruff`
 consultivo): volverlos bloqueantes pide primero bajar sus avisos, y eso es otro pedido.
 
+- *Descartado* (D-28): que la retro edite los archivos que propone cambiar. Una retro que se aplica sola
+  es un cambio de alcance sin HU; por eso cada candidato aceptado entra por `/hu`.
 - *Descartado:* que Jev decida la puerta sola. Sabría menos que el diff: una migración es una vía
   sin preguntar.
 - *Descartado:* sólo señales duras, sin Jev. No ven "este cambio de texto reescribe datos" ni el
@@ -394,11 +405,14 @@ consultivo): volverlos bloqueantes pide primero bajar sus avisos, y eso es otro 
 - *Testing:* `pr-peligro.mjs` separa las tres capas en funciones puras: `senalesDuras(nameStatus)` y
   `derivar(senales, jev)` se testean con `node --test` sobre fixtures (una migración, un borrado, un
   diff sólo de `front/`, respuestas de Jev en la zona de duda); la llamada a Jev queda detrás de un
-  seam y en los tests se reemplaza. El revisor de dos ejes se prueba a mano con un diff que cumple
+  seam y en los tests se reemplaza. `/retro` se prueba con un seam de entrada:
+  recibe rutas (transcript, veredictos, registro) y no busca nada solo, así que un fixture con un
+  error que un chequeo habría atrapado tiene que salir como candidato de "chequeos automáticos". El
+  revisor de dos ejes se prueba a mano con un diff que cumple
   la spec y rompe un standard, y viceversa: cada eje marca sólo lo suyo. El job de CI se prueba con
   un commit con un error de tipos en una rama de prueba.
-- *Rollback:* sin `pr-peligro.mjs`, `/pr` vuelve a la puerta a ojo; con `eje` ausente el revisor
-  corre como hoy; el job de typecheck se quita del workflow.
+- *Rollback:* `/retro` no escribe nada; borrar la skill alcanza. Sin `pr-peligro.mjs`, `/pr` vuelve a la puerta a ojo; con `eje` ausente el revisor
+  corre como hoy; el job de typecheck se quita del workflow, y con eso sale también del gate de CD.
 
 # 5. Contratos entre frentes
 
@@ -415,9 +429,9 @@ de D-26) y la salida de `pr-peligro.mjs` (D-26), los tres versionados con `v`.
 | 3 | SUPUESTO | el umbral de 20 resultados para que `/calibrar` proponga | primera corrida de `/calibrar`; lo aprueba una persona |
 | 4 | SUPUESTO | que el issue R0 pueda llevar los CA en su descripción sin una [Funcional] y el revisor los encuentre | HU Triage |
 | 5 | SUPUESTO | `SC-19` (North Star) se cita como cualquier otra fila, aunque es un KPI compuesto | HU Negocio; si confunde, se marca como no citable |
+| 6 | SUPUESTO | los agentes de un plugin se despachan como `starteria-desarrollo:<agente>` | HU Plugin, primer paso, junto con #1 |
 | 7 | SUPUESTO | que todo contrato zod viva en `*.schemas.ts` / `*.schema.ts` (hoy 29 de 29 en `backend/`) | HU-R, con un test que falle si aparece un schema con otro nombre |
 | 8 | SUPUESTO | 14 días como ventana de "revertido" | primera corrida de `/calibrar` |
-| 6 | SUPUESTO | los agentes de un plugin se despachan como `starteria-desarrollo:<agente>` | HU Plugin, primer paso, junto con #1 |
 
 # 7. Corte de la épica
 
@@ -431,7 +445,7 @@ HU-P  Plugin            ← primero: mueve todo lo demás de lugar
  ├─ HU-N  Negocio       bloqueada por HU-P
  ├─ HU-S  /spec         bloqueada por HU-T
  ├─ HU-C  Calibración   bloqueada por HU-T
- ├─ HU-R  Revisión y PR bloqueada por HU-N y HU-C
+ ├─ HU-R  Revisión y PR bloqueada por HU-N, HU-C y HU-S (las dos tocan el revisor y /verificar)
  └─ HU-X  Piloto        bloqueada por HU-S, HU-N, HU-C y HU-R
 ```
 
@@ -499,10 +513,12 @@ la merece.
   mano" cuando Jev falla; el evento `pr` queda en el registro.
 - CA-3 (D-27) `/verificar` muestra los ejes spec y standards por separado, y un `[bloqueante]` en
   cualquiera da `changes_required`.
-- CA-4 (D-27) Existe `CODING_STANDARDS.md` con las reglas de juicio de `AGENTS.md` §5-§6, y
-  `AGENTS.md` las reemplaza por punteros.
-- CA-5 (D-28) `/retro` sobre una sesión real devuelve candidatos por categoría y no edita nada.
-- CA-6 (D-29) El job `typecheck` corre en CI y un error de tipos lo pone en rojo.
+- CA-4 (D-27) Existe `CODING_STANDARDS.md`, lo cita sólo el eje standards del revisor, y
+  `AGENTS.md` §5 y §6 no cambian.
+- CA-5 (D-28) `/retro` sobre el fixture devuelve el candidato esperado en "chequeos automáticos", y
+  sobre una sesión real devuelve candidatos por categoría sin editar nada.
+- CA-6 (D-29) El job `typecheck` corre en CI y en el gate de CD, un error de tipos lo pone en rojo,
+  y `AGENTS.md` §8 y `TESTING.md` dicen que CI lo corre.
 
 **HU-X · Piloto (R2).** Como equipo, quiero correr el ciclo nuevo de punta a punta en la épica de
 observabilidad de ai-service, para validarlo con un pedido grande real.
