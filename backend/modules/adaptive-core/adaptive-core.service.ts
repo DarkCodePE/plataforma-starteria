@@ -2879,7 +2879,7 @@ const sufficiency = this.evaluateCheckpoint(
     }
     if (checkpointKey === 'CP-4.5') {
       add('core', 'Registra transferencia, decision final o cierre: receptor, aceptacion, recursos, documentacion, capacitacion, soporte, permisos, fecha, metricas y seguimiento segun aplique.', 'transferOrClosure', true, 'CP-4.5 materializa transferencia o cierre organizacional.', ['PRD-03:CP-4.5'], { allowsUnknown: false });
-      add('core', 'Confirma estado final: completed, transferred, scaled, integrated_to_roadmap, closed_with_learning, paused o new_iteration_required.', 'finalState', true, 'El estado final se separa de resultado de hipotesis y contribucion al reto.', ['PRD-03:Estados finales'], { answerType: 'single_choice', allowsUnknown: false });
+      add('core', 'Confirma estado final: completed, transferred, scaled, integrated_to_roadmap, closed_with_learning, paused, new_iteration_required, pivoted, seeking_capability o benefit_tracking.', 'finalState', true, 'El estado final se separa de resultado de hipotesis y contribucion al reto.', ['PRD-03:Estados finales'], { answerType: 'single_choice', allowsUnknown: false });
       add('challenge_context', 'Como cambia la cobertura del reto sin marcarlo automaticamente como resuelto?', 'challengeCoverageUpdate', false, 'La cobertura final se actualiza con contribucion, evidencia, solapamiento y metricas.', ['ChallengeContribution']);
     }
     return questions;
@@ -3489,6 +3489,10 @@ const sufficiency = this.evaluateCheckpoint(
     const finalState = this.normalizeFinalState(merged.finalState ?? transferOrClosure.finalState);
     const finalChallengeContribution = this.buildFinalChallengeContribution(masterContext, step3Output, narrative, transferOrClosure, finalState);
     const challengeCoverage = this.buildChallengeCoverage(masterContext, finalChallengeContribution, finalState, merged);
+    // Decision Brief (E2E Job-Driven §21): además de lo que no podemos afirmar
+    // (audienceBrief.unsupportedClaims), qué alternativas existen y qué sí podemos sostener.
+    const alternatives = this.buildBriefAlternatives(masterContext.step2Output, step3Output);
+    const sustainableClaims = this.buildSustainableClaims(narrative, audienceBrief.unsupportedClaims);
     return {
       outputKey,
       routeType,
@@ -3505,6 +3509,8 @@ const sufficiency = this.evaluateCheckpoint(
       transferOrClosure,
       finalChallengeContribution,
       challengeCoverage,
+      alternatives,
+      sustainableClaims,
       sourceRefs: Array.from(new Set([
         ...(step3Output.sourceRefs ?? []),
         ...this.sourceRefsFrom(merged.narrativeEvidenceRefs),
@@ -3513,6 +3519,46 @@ const sufficiency = this.evaluateCheckpoint(
       ])),
       createdAt: new Date().toISOString(),
     };
+  }
+
+  /**
+   * Alternativas del Brief: las que se compararon en Step 2 (CP-2.2) marcando cuál fue la
+   * apuesta y cuál el backup, para que quien decide vea qué otras salidas había.
+   */
+  private buildBriefAlternatives(step2Output: any, step3Output: Record<string, any>) {
+    const alternatives: Array<Record<string, any>> = Array.isArray(step2Output?.alternativeSet?.alternatives)
+      ? step2Output.alternativeSet.alternatives
+      : [];
+    const primary = String(step3Output.selectedBet?.primary ?? step2Output?.selectedBet?.primary ?? '');
+    const backup = String(step2Output?.selectedBet?.backup ?? '');
+    return alternatives
+      .map((alternative) => {
+        const name = String(alternative.name ?? alternative.title ?? alternative.label ?? '');
+        return {
+          name,
+          mode: String(alternative.mode ?? ''),
+          role: name && name === primary ? 'selected' : name && name === backup ? 'backup' : 'considered',
+          evidenceRefs: this.toList(alternative.evidenceRefs),
+        };
+      })
+      .filter((alternative) => alternative.name);
+  }
+
+  /**
+   * Qué podemos sostener: claims críticos con evidencia y confianza no baja, excluyendo los
+   * que la persona marcó como no afirmables. Es lo complementario de unsupportedClaims.
+   */
+  private buildSustainableClaims(narrative: Record<string, any>, unsupportedClaims: string[]) {
+    const unsupported = new Set(unsupportedClaims.map((claim) => claim.toLowerCase()));
+    const claims: Array<Record<string, any>> = Array.isArray(narrative.criticalClaims) ? narrative.criticalClaims : [];
+    return claims
+      .filter((claim) => (claim.evidenceRefs?.length ?? 0) > 0 && claim.confidence !== 'low')
+      .map((claim) => {
+        const value = narrative[claim.key];
+        const text = typeof value === 'string' ? value : String(value?.text ?? '');
+        return { key: claim.key, text, evidenceRefs: claim.evidenceRefs, confidence: claim.confidence };
+      })
+      .filter((claim) => claim.text && !unsupported.has(claim.text.toLowerCase()));
   }
 
   private buildDecisionAudienceBrief(merged: Record<string, any>, masterContext: any, step3Output: Record<string, any>) {
@@ -3640,7 +3686,7 @@ const sufficiency = this.evaluateCheckpoint(
   private buildTransferOrClosure(merged: Record<string, any>, decisionType: string, audienceBrief: Record<string, any>, nextHorizon: Record<string, any>) {
     const raw = this.recordFrom(merged.transferOrClosure);
     const finalState = this.normalizeFinalState(merged.finalState ?? raw.finalState ?? decisionType);
-    const isTransfer = ['transferred', 'scaled', 'integrated_to_roadmap', 'completed'].includes(finalState);
+    const isTransfer = ['transferred', 'scaled', 'integrated_to_roadmap', 'completed', 'benefit_tracking'].includes(finalState);
     const receiverOwner = String(raw.receiverOwner ?? raw.ownerReceptor ?? raw.futureOwner ?? '');
     const blockers = isTransfer && !this.hasValue(receiverOwner) ? ['Owner receptor requerido para transferencia u operacion.'] : this.toList(raw.blockers);
     return {
@@ -3707,9 +3753,10 @@ const sufficiency = this.evaluateCheckpoint(
     const evidenceStrength = String(contribution.evidenceStrength ?? 'medium');
     let status = 'partial';
     if (!contribution.challengeId) status = 'no_coverage';
-    else if (finalState === 'new_iteration_required' || finalState === 'paused') status = 'needs_reformulation';
+    else if (['new_iteration_required', 'pivoted', 'paused'].includes(finalState)) status = 'needs_reformulation';
+    else if (finalState === 'seeking_capability') status = 'partial';
     else if (finalState === 'closed_with_learning') status = result === 'insufficient_evidence' ? 'exploratory_coverage' : 'partial';
-    else if (['scaled', 'transferred', 'integrated_to_roadmap', 'completed'].includes(finalState)) status = evidenceStrength === 'strong' ? 'ready_for_decision' : 'supported';
+    else if (['scaled', 'transferred', 'integrated_to_roadmap', 'completed', 'benefit_tracking'].includes(finalState)) status = evidenceStrength === 'strong' ? 'ready_for_decision' : 'supported';
     return {
       status: contribution.challengeId ? String(requested.status ?? status) : 'no_coverage',
       evidenceStrength,
@@ -3745,7 +3792,13 @@ const sufficiency = this.evaluateCheckpoint(
       repeat_test: 'new_iteration_required',
       expand_sample: 'new_iteration_required',
       change_scope: 'new_iteration_required',
-      pivot: 'new_iteration_required',
+      // Core §25–§26 / E2E Job-Driven §22: pivotear, buscar capacidad y benefit tracking son
+      // rutas de continuidad propias, no variantes de iterar o cerrar.
+      pivot: 'pivoted',
+      seek_capability: 'seeking_capability',
+      seek_external_capability_or_partner: 'seeking_capability',
+      seek_alignment_or_sponsor: 'seeking_capability',
+      benefit_tracking: 'benefit_tracking',
       scale_pilot: 'scaled',
       continue_implementation: 'completed',
       transfer: 'transferred',
@@ -3755,18 +3808,22 @@ const sufficiency = this.evaluateCheckpoint(
       reformulate_challenge: 'new_iteration_required',
     };
     const normalized = byDecision[value] ?? value;
-    const allowed = new Set(['completed', 'transferred', 'scaled', 'integrated_to_roadmap', 'closed_with_learning', 'paused', 'new_iteration_required']);
+    const allowed = new Set([
+      'completed', 'transferred', 'scaled', 'integrated_to_roadmap', 'closed_with_learning', 'paused', 'new_iteration_required',
+      'pivoted', 'seeking_capability', 'benefit_tracking',
+    ]);
     return allowed.has(normalized) ? normalized : 'closed_with_learning';
   }
 
   private projectStatusForFinalState(finalState: string) {
-    if (finalState === 'new_iteration_required') return 'ITERATION';
-    if (finalState === 'paused') return 'IN_PROGRESS';
+    if (finalState === 'new_iteration_required' || finalState === 'pivoted') return 'ITERATION';
+    // Buscar capacidad deja el ciclo abierto: la iniciativa espera sponsor, socio o capacidad.
+    if (finalState === 'paused' || finalState === 'seeking_capability') return 'IN_PROGRESS';
     return 'COMPLETED';
   }
 
   private portfolioMetaFinalUpdate(step4Output: Record<string, any>, finalState: string) {
-    const closed = ['completed', 'transferred', 'scaled', 'integrated_to_roadmap', 'closed_with_learning'].includes(finalState);
+    const closed = ['completed', 'transferred', 'scaled', 'integrated_to_roadmap', 'closed_with_learning', 'benefit_tracking'].includes(finalState);
     return {
       // ADR-030 (reconciliacion): dos arreglos aqui.
       //  1. 'cerrada' -> 'closed': mismo estado, un solo deletreo.
@@ -3856,8 +3913,8 @@ const sufficiency = this.evaluateCheckpoint(
   }
 
   private contributionTypeForFinalState(finalState: string) {
-    if (['scaled', 'transferred', 'integrated_to_roadmap', 'completed'].includes(finalState)) return 'resolver_parcialmente';
-    if (finalState === 'new_iteration_required') return 'validar';
+    if (['scaled', 'transferred', 'integrated_to_roadmap', 'completed', 'benefit_tracking'].includes(finalState)) return 'resolver_parcialmente';
+    if (finalState === 'new_iteration_required' || finalState === 'pivoted') return 'validar';
     return 'descubrir';
   }
 

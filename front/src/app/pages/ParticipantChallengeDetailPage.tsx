@@ -15,6 +15,14 @@ function InfoCard({ label, value }: { label: string; value: string }) {
   );
 }
 
+const ENVELOPE_FIELDS = [
+  ['knownFacts', 'Que se sabe'],
+  ['openQuestions', 'Que esta abierto'],
+  ['constraints', 'Restricciones'],
+  ['dependencies', 'Dependencias'],
+  ['expectedDecision', 'Que decision futura necesita evidencia'],
+] as const;
+
 export function ParticipantChallengeDetailPage() {
   const { challengeId } = useParams();
   const { user } = useApp();
@@ -155,6 +163,16 @@ export function ParticipantChallengeDetailPage() {
                 <p className="text-xs text-slate-500" style={{ fontWeight: 700 }}>Criterio de avance esperado</p>
                 <p className="mt-1 text-sm text-slate-700">{challenge.successCriteria}</p>
               </div>
+              {/* Challenge Constraint Envelope (Core §14.1, E2E Job-Driven §15): lo que la persona
+                  encargada necesita para entender qué respuesta tiene sentido. */}
+              {ENVELOPE_FIELDS.map(([key, label]) => (
+                <div key={key}>
+                  <p className="text-xs text-slate-500" style={{ fontWeight: 700 }}>{label}</p>
+                  <p className={`mt-1 text-sm ${challenge[key] ? 'text-slate-700' : 'text-slate-400'}`}>
+                    {challenge[key] || 'Sin definir'}
+                  </p>
+                </div>
+              ))}
             </div>
           </div>
 

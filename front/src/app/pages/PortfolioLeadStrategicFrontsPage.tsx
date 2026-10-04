@@ -54,6 +54,7 @@ type StrategicFrontFormState = {
   threshold: string;
   area: string;
   horizon: string;
+  constraints: string;
   endDate: string;
   priority: StrategicFrontPriority;
   status: StrategicFrontStatus;
@@ -127,6 +128,7 @@ const EMPTY_FORM: StrategicFrontFormState = {
   threshold: '',
   area: '',
   horizon: '',
+  constraints: '',
   endDate: '',
   priority: 'Alta',
   status: 'draft',
@@ -765,6 +767,14 @@ function StrategicFrontFormDrawer({
                   error={errors.horizon}
                 />
                 <FormField
+                  label="Restricciones estratégicas conocidas"
+                  value={form.constraints}
+                  onChange={value => onChange(prev => ({ ...prev, constraints: value }))}
+                  onFocus={() => onFieldFocus('constraints')}
+                  placeholder="Ej. Sin aumentar el equipo de soporte"
+                  helper="Opcional. Lo que ninguna iniciativa de este frente puede romper; los retos y sus iniciativas lo heredan."
+                />
+                <FormField
                   label="Fecha estimada de término"
                   type="date"
                   value={form.endDate}
@@ -954,6 +964,7 @@ function StrategicFrontDetailDrawer({
                 <InfoCard label="Baseline" value={front.baseline || 'No definido'} />
                 <InfoCard label="Umbral" value={front.threshold || 'No definido'} />
                 <InfoCard label="Horizonte" value={front.horizon} />
+                <InfoCard label="Restricciones" value={front.constraints || 'No definidas'} />
                 <InfoCard label="Fecha estimada de término" value={front.endDate ? formatDisplayDate(front.endDate) : 'No definida'} />
                 <InfoCard label="Sponsor" value={front.sponsor || 'Sin sponsor'} />
                 <InfoCard label="Email sponsor" value={front.sponsorEmail || 'No definido'} />
@@ -1676,6 +1687,7 @@ function mapFrontToForm(front: StrategicFront): StrategicFrontFormState {
     threshold: front.threshold ?? '',
     area: front.area ?? '',
     horizon: front.horizon,
+    constraints: front.constraints ?? '',
     endDate: front.endDate ?? '',
     priority: front.priority,
     status: front.status,
@@ -1694,6 +1706,7 @@ function mapFormToCreateInput(form: StrategicFrontFormState, status: StrategicFr
     target: form.target.trim(),
     threshold: form.threshold.trim() || undefined,
     horizon: form.horizon.trim(),
+    constraints: form.constraints.trim(),
     endDate: form.endDate.trim() || undefined,
     area: form.area.trim() || undefined,
     sponsor: form.sponsor.trim(),

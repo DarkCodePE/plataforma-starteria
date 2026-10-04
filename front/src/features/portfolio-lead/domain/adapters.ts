@@ -41,6 +41,7 @@ export function adaptStrategicFront(raw: Raw): StrategicFront {
     whyNow: raw.whyNow ?? '',
     sponsorEmail: raw.sponsorEmail ?? undefined,
     mainKpi: raw.mainKpi ?? '',
+    constraints: raw.constraints ?? '',
     baseline: raw.baseline ?? '',
     target: raw.target ?? '',
     threshold: raw.threshold ?? undefined,
@@ -83,6 +84,11 @@ export function adaptChallenge(raw: Raw): Challenge {
     objective: raw.objective ?? '',
     whyNow: raw.whyNow ?? '',
     successCriteria: raw.successCriteria ?? '',
+    knownFacts: raw.knownFacts ?? '',
+    openQuestions: raw.openQuestions ?? '',
+    constraints: raw.constraints ?? '',
+    dependencies: raw.dependencies ?? '',
+    expectedDecision: raw.expectedDecision ?? '',
     challengeOwner: raw.challengeOwner ?? '',
     sponsorName: raw.sponsorName ?? undefined,
     sponsorEmail: raw.sponsorEmail ?? undefined,
@@ -165,6 +171,8 @@ export function toBackendStrategicFront(input: Raw): Raw {
   for (const k of ['name', 'strategicObjective', 'whyNow', 'mainKpi', 'baseline', 'target', 'horizon', 'sponsor']) {
     if (has(input[k])) out[k] = input[k];
   }
+  // Restricciones del Frente: opcionales, '' borra.
+  if (typeof input.constraints === 'string') out.constraints = input.constraints;
   if (has(input.status)) out.status = FRONT_STATUS_TO_BACKEND[input.status] ?? 'draft';
   if (has(input.priority)) out.priority = PRIORITY_TO_BACKEND[input.priority] ?? 'Media';
   return out;
@@ -176,6 +184,10 @@ export function toBackendChallenge(input: Raw): Raw {
   if (has(name)) { out.title = name; out.name = name; }
   for (const k of ['whatWeWantToMove', 'objective', 'whyNow', 'successCriteria', 'challengeOwner', 'publicationNotes']) {
     if (has(input[k])) out[k] = input[k];
+  }
+  // Envelope del Reto (Core §14.1): opcional, así que '' es un borrado legítimo y viaja.
+  for (const k of ['knownFacts', 'openQuestions', 'constraints', 'dependencies', 'expectedDecision']) {
+    if (typeof input[k] === 'string') out[k] = input[k];
   }
   if (has(input.challengeType)) { const t = CHALLENGE_TYPE_TO_BACKEND[input.challengeType]; if (t) out.type = t; }
   if (has(input.challengeOwnerStatus)) out.challengeOwnerStatus = input.challengeOwnerStatus;

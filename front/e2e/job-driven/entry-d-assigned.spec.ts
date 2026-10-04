@@ -24,13 +24,17 @@ async function assignedInitiative(owner: Session, tag: string) {
 }
 
 async function runCycle(owner: Session, projectId: string, finalState: string, suffix: string) {
+  // Las rutas de transferencia u operación (incluido benefit tracking, INV-12) exigen owner receptor.
+  const receiverOwner = ['scaled', 'transferred', 'integrated_to_roadmap', 'completed', 'benefit_tracking'].includes(finalState)
+    ? 'Owner receptor de operaciones'
+    : undefined;
   await completeStep0(api, owner.token, projectId);
   await completeStep1(api, owner.token, projectId);
   const step2 = await completeStep2(api, owner.token, projectId);
   await confirmStep2(api, owner.token, projectId, step2.output);
   const step3 = await completeStep3(api, owner.token, projectId, { decision: 'scale_pilot', suffix });
   await confirmStep3(api, owner.token, projectId, step3.output);
-  const step4 = await completeStep4(api, owner.token, projectId, { finalState, suffix });
+  const step4 = await completeStep4(api, owner.token, projectId, { finalState, suffix, receiverOwner });
   await confirmStep4(api, owner.token, projectId, step4.output, `${suffix}-final`);
   return step4.output;
 }
@@ -77,7 +81,7 @@ test.describe('Entrada D · encargo → Mission Review → ciclo → decisión �
     await expect(page.getByText(/Por que importa ahora/i)).toBeVisible();
   });
 
-  gapTest('G4', 'el encargo muestra qué se sabe, qué está abierto, restricciones y qué decisión futura necesita evidencia (§15, Core §14.1)', async ({ page }) => {
+  test('el encargo muestra qué se sabe, qué está abierto, restricciones y qué decisión futura necesita evidencia (§15, Core §14.1)', async ({ page }) => {
     const owner = await registerAndLogin(api, 'd-envelope');
     const { challengeId } = await assignedInitiative(owner, `env-${Date.now()}`);
     await patchOk(api, admin.token, `/api/v1/portfolio/challenges/${challengeId}`, {
@@ -91,13 +95,20 @@ test.describe('Entrada D · encargo → Mission Review → ciclo → decisión �
     await browserLogin(page, owner.email, owner.password);
     await page.goto(`/retos/${challengeId}`);
     for (const label of [/Qu[eé] se sabe/i, /Qu[eé] est[aá] abierto/i, /Restricciones/i, /Qu[eé] decisi[oó]n/i]) {
-      await expect(page.getByText(label).first()).toBeVisible({ timeout: GAP_TIMEOUT });
+      await expect(page.getByText(label).first()).toBeVisible({ timeout: 15_000 });
     }
   });
 
   test('Mission Review antes de empezar: Start no abre directamente Step 0 (§18)', async ({ page }) => {
     const owner = await registerAndLogin(api, 'd-mission');
-    const { projectId } = await assignedInitiative(owner, `mission-${Date.now()}`);
+    const { projectId, challengeId } = await assignedInitiative(owner, `mission-${Date.now()}`);
+    // Envelope del Reto (Core §14.1): con esto Mission Review deja de mostrar "Sin definir".
+    await patchOk(api, admin.token, `/api/v1/portfolio/challenges/${challengeId}`, {
+      constraints: 'Sin tocar el contrato con el proveedor actual',
+      dependencies: 'Integración con el CRM',
+      expectedDecision: 'Escalar o no el autoservicio a todas las sucursales',
+      openQuestions: 'No sabemos si el canal digital reduce costo',
+    });
     await browserLogin(page, owner.email, owner.password);
     await page.goto(`/initiatives/${projectId}/overview`);
     await page.getByRole('button', { name: /Revisar mi misi[oó]n y empezar/i }).click();
@@ -106,8 +117,16 @@ test.describe('Entrada D · encargo → Mission Review → ciclo → decisión �
     for (const label of [/Qu[eé] quiere mover/i, /Contexto heredado/i, /Restricciones/i, /Capacidad/i, /Dependencias/i, /Qui[eé]n puede ayudar/i, /Qu[eé] decisi[oó]n/i]) {
       await expect(page.getByText(label).first()).toBeVisible({ timeout: 15_000 });
     }
-    // Lo heredado del Reto llega a la pantalla, y recién desde acá se abre Step 0.
+    // Lo heredado del Reto llega a la pantalla (incluido el envelope, Ola 2), y recién desde acá se abre Step 0.
     await expect(page.getByText(/Bajar el costo por solicitud de 14.20 a 10.00/)).toBeVisible();
+    for (const inherited of [
+      'Sin tocar el contrato con el proveedor actual',
+      'Integración con el CRM',
+      'Escalar o no el autoservicio a todas las sucursales',
+      'No sabemos si el canal digital reduce costo',
+    ]) {
+      await expect(page.getByText(inherited)).toBeVisible();
+    }
     await page.getByRole('button', { name: /Asumir y empezar Step 0/ }).click();
     await expect(page).toHaveURL(/\/projects\/[^/]+\/step\/0/, { timeout: 15_000 });
   });
@@ -128,22 +147,35 @@ test.describe('Entrada D · encargo → Mission Review → ciclo → decisión �
     }
   });
 
-  gapTest('G5', 'el Decision Brief incluye alternativas y qué podemos sostener (§21)', async () => {
+  test('el Decision Brief incluye alternativas y qué podemos sostener (§21)', async () => {
     const owner = await registerAndLogin(api, 'd-brief2');
     const { projectId } = await assignedInitiative(owner, `brief2-${Date.now()}`);
     const output = await runCycle(owner, projectId, 'closed_with_learning', 'd-brief2');
-    const text = JSON.stringify(output);
-    expect(text).toContain('"alternatives"');
-    expect(text).toContain('"sustainableClaims"');
+    // Las alternativas vienen de CP-2.2 (support/steps.ts): la apuesta y el respaldo.
+    expect(output.alternatives).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ name: 'Prototipo manual', role: 'selected' }),
+        expect.objectContaining({ name: 'No hacer nada', role: 'backup' }),
+      ]),
+    );
+    expect(output.sustainableClaims.length).toBeGreaterThan(0);
+    for (const claim of output.sustainableClaims) {
+      expect(claim.evidenceRefs.length).toBeGreaterThan(0);
+    }
   });
 
-  gapTest('G5', 'la continuidad admite pivotear, buscar capacidad y benefit tracking como rutas propias (§22, Core §26)', async () => {
-    const owner = await registerAndLogin(api, 'd-routes');
-    // Independiente: el owner cierra el ciclo (una ligada a Reto termina en `presented`).
-    const projectId = await createFromInitialReview(api, owner.token, 'Quiero validar si un portal reduce llamadas repetidas.');
-    await runCycle(owner, projectId, 'benefit_tracking', 'd-routes');
-    const state = await getOk(api, owner.token, `/api/v1/projects/${projectId}/adaptive-core`);
-    expect(state.progressSignal.finalState).toBe('benefit_tracking');
+  test('la continuidad admite pivotear, buscar capacidad y benefit tracking como rutas propias (§22, Core §26)', async () => {
+    // Independientes: el owner cierra el ciclo (una ligada a Reto termina en `presented`).
+    for (const finalState of ['pivoted', 'seeking_capability', 'benefit_tracking']) {
+      const owner = await registerAndLogin(api, `d-${finalState}`);
+      const projectId = await createFromInitialReview(api, owner.token, `Quiero validar si un portal reduce llamadas repetidas (${finalState}).`);
+      await runCycle(owner, projectId, finalState, `d-${finalState}`);
+      // progressSignal.finalState es la proyección de ciclo de vida (completed/presented); la ruta
+      // de continuidad queda en el output confirmado de Step 4.
+      const state = await getOk(api, owner.token, `/api/v1/projects/${projectId}/adaptive-core`);
+      const step4 = state.stepOutputs.find((item: { step: number; status: string }) => item.step === 4 && item.status === 'confirmed');
+      expect(step4?.output.finalState, finalState).toBe(finalState);
+    }
   });
 
   gapTest('G8', 'la decisión vuelve al portfolio: actualiza la cobertura del Reto, la lectura del Frente y deja aprendizaje (§23)', async () => {

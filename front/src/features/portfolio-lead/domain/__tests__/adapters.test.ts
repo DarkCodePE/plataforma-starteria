@@ -251,3 +251,22 @@ describe('toBackendChallenge — autoria de la activacion (MVP-P0-02)', () => {
     expect(out.activationMessageDraft).toBe('');
   });
 });
+
+describe('E2E Job-Driven Ola 2: restricciones del Frente y envelope del Reto (Core §13, §14.1)', () => {
+  it('adaptChallenge lee el envelope y toBackendChallenge lo envía, incluido el borrado con ""', () => {
+    const challenge = adaptChallenge({
+      id: 'c1', title: 'Reto', strategicFrontId: 'f1',
+      knownFacts: 'El 40% se repite', openQuestions: null, constraints: 'Sin tocar proveedor',
+      dependencies: 'CRM', expectedDecision: 'Escalar o no',
+    });
+    expect(challenge).toMatchObject({ knownFacts: 'El 40% se repite', openQuestions: '', constraints: 'Sin tocar proveedor', dependencies: 'CRM', expectedDecision: 'Escalar o no' });
+
+    const out = toBackendChallenge({ knownFacts: 'Dato', openQuestions: '', constraints: undefined });
+    expect(out).toEqual({ knownFacts: 'Dato', openQuestions: '' });
+  });
+
+  it('adaptStrategicFront y toBackendStrategicFront transportan las restricciones', () => {
+    expect(adaptStrategicFront({ id: 'f1', name: 'Frente', constraints: 'Sin más headcount' }).constraints).toBe('Sin más headcount');
+    expect(toBackendStrategicFront({ constraints: '' })).toEqual({ constraints: '' });
+  });
+});

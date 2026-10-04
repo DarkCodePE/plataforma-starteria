@@ -1498,6 +1498,8 @@ model StrategicFront {
   target             String?
   horizon            String?
   sponsor            String?
+  // Core §13 / E2E Job-Driven §7: restricciones estratégicas conocidas. Nullable (ADR-018).
+  constraints        String?
   status             StrategicFrontStatus   @default(draft)
   priority           StrategicFrontPriority @default(Media)
   organizationId     String?
@@ -1523,6 +1525,13 @@ model Challenge {
   objective             String?
   whyNow                String?
   successCriteria       String?
+  // Challenge Constraint Envelope (Core §14.1, E2E Job-Driven §15). Nullable (ADR-018):
+  // lo que la persona encargada necesita saber antes de responder al Reto.
+  knownFacts            String?
+  openQuestions         String?
+  constraints           String?
+  dependencies          String?
+  expectedDecision      String?
   challengeOwner        String?
   challengeOwnerStatus  StakeholderStatus       @default(definido)
   sponsorStatus         StakeholderStatus       @default(definido)

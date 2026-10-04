@@ -18,7 +18,7 @@ export interface MissionReviewView {
   whatToMove: string | null;
   inheritedContext: {
     strategicFront: { id: string; name: string; desiredResult: string | null; kpi: string | null; target: string | null; horizon: string | null } | null;
-    challenge: { id: string; title: string; whyNow: string | null; successCriteria: string | null } | null;
+    challenge: { id: string; title: string; whyNow: string | null; successCriteria: string | null; knownFacts: string | null } | null;
     initiativeContext: string | null;
   };
   expectedContribution: string | null;
@@ -101,19 +101,26 @@ export class MissionReviewReadService {
             }
           : null,
         challenge: challenge
-          ? { id: challenge.id, title: challenge.title, whyNow: text(challenge.whyNow), successCriteria: text(challenge.successCriteria) }
+          ? {
+              id: challenge.id,
+              title: challenge.title,
+              whyNow: text(challenge.whyNow),
+              successCriteria: text(challenge.successCriteria),
+              knownFacts: text(challenge.knownFacts),
+            }
           : null,
         initiativeContext: text(prefill.contextInitial),
       },
       expectedContribution: text(meta?.hypothesisCovered) ?? text(challenge?.successCriteria) ?? text(prefill.expectedImpact),
-      constraints: list(prefill.restrictions, prefill.mainRisk),
+      // INV-08 (Core): las restricciones del Reto y del Frente las hereda la iniciativa.
+      constraints: list(challenge?.constraints, front?.constraints, prefill.restrictions, prefill.mainRisk),
       capacity: Object.entries(CAPACITY_LABEL)
         .filter(([key]) => text(activation[key]))
         .map(([key, label]) => `${label}: ${String(activation[key]).replaceAll('_', ' ')}`),
-      dependencies: list(prefill.dependencies, meta?.mainBlocker),
+      dependencies: list(challenge?.dependencies, prefill.dependencies, meta?.mainBlocker),
       whoCanHelp: [...new Set(list(...helpers))],
-      decisionToEnable: text(prefill.decisionRequested) ?? text(prefill.nextRecommendedStep),
-      openQuestions: list(prefill.pendingQuestions),
+      decisionToEnable: text(challenge?.expectedDecision) ?? text(prefill.decisionRequested) ?? text(prefill.nextRecommendedStep),
+      openQuestions: list(challenge?.openQuestions, prefill.pendingQuestions),
     };
   }
 }
