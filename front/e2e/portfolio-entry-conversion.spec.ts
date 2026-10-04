@@ -5,6 +5,113 @@ import * as XLSX from 'xlsx';
 
 const prisma = new PrismaClient();
 
+type CapturedJsonResponse<T = any> = {
+  status: number;
+  url: string;
+  body: T;
+};
+
+type CapturedResponseMeta = {
+  status: number;
+  url: string;
+};
+
+async function readPortfolioEntryIdentity(page: Page) {
+  return page.evaluate(() => {
+    const raw = window.sessionStorage.getItem('starteria.portfolioEntry.claimedSession');
+    if (!raw) return null;
+    const identity = JSON.parse(raw);
+    return {
+      source: identity.source,
+      sessionId: identity.sessionId,
+      sessionRevision: identity.sessionRevision,
+      handoffId: identity.handoffId,
+      handoffVersion: identity.handoffVersion,
+      confirmationId: identity.confirmationId,
+      confirmationVersion: identity.confirmationVersion,
+    };
+  }).catch(() => null);
+}
+
+async function captureJsonResponse<T = any>(page: Page, label: string) {
+  const installCapture = () => {
+    const captureWindow = window as Window & {
+      __starteriaConfirmedBriefCaptures?: Array<{ status: number; url: string; body?: T; bodyError?: string }>;
+      __starteriaConfirmedBriefCaptureInstalled?: boolean;
+    };
+    if (captureWindow.__starteriaConfirmedBriefCaptureInstalled) return;
+    captureWindow.__starteriaConfirmedBriefCaptureInstalled = true;
+    captureWindow.__starteriaConfirmedBriefCaptures = [];
+
+    const originalOpen = XMLHttpRequest.prototype.open;
+    XMLHttpRequest.prototype.open = function (method: string, url: string | URL, ...rest: any[]) {
+      (this as XMLHttpRequest & { __starteriaMethod?: string }).__starteriaMethod = method;
+      return originalOpen.call(this, method, url, ...rest);
+    };
+
+    const originalSend = XMLHttpRequest.prototype.send;
+    XMLHttpRequest.prototype.send = function (...args: Parameters<XMLHttpRequest['send']>) {
+      this.addEventListener('loadend', () => {
+        const method = (this as XMLHttpRequest & { __starteriaMethod?: string }).__starteriaMethod;
+        let url: URL;
+        try {
+          url = new URL(this.responseURL);
+        } catch {
+          return;
+        }
+        if (method !== 'GET' || !url.pathname.endsWith('/confirmed-brief')) return;
+        const capture: { status: number; url: string; body?: T; bodyError?: string } = {
+          status: this.status,
+          url: this.responseURL,
+        };
+        try {
+          capture.body = JSON.parse(this.responseText) as T;
+        } catch (error) {
+          capture.bodyError = error instanceof Error ? error.message : String(error);
+        }
+        captureWindow.__starteriaConfirmedBriefCaptures?.push(capture);
+      }, { once: true });
+      return originalSend.apply(this, args);
+    };
+  };
+
+  await page.addInitScript(installCapture);
+  await page.evaluate(installCapture);
+  const responsePromise = (async (): Promise<CapturedJsonResponse<T>> => {
+    await page.waitForFunction(() => {
+      const captures = (window as Window & { __starteriaConfirmedBriefCaptures?: unknown[] }).__starteriaConfirmedBriefCaptures;
+      return Boolean(captures?.length);
+    });
+    const capture = await page.evaluate(() => {
+      const captures = (window as Window & { __starteriaConfirmedBriefCaptures?: Array<{ status: number; url: string; body?: T; bodyError?: string }> }).__starteriaConfirmedBriefCaptures;
+      return captures?.shift() ?? null;
+    });
+    const identity = await readPortfolioEntryIdentity(page);
+    if (!capture || capture.bodyError || capture.body === undefined) {
+      throw new Error(
+        `${label} response body capture failed; url=${capture?.url ?? 'unavailable'}; ` +
+        `status=${capture?.status ?? 'unavailable'}; pageURL=${page.url()}; ` +
+        `identity=${JSON.stringify(identity)}; cause=${capture?.bodyError ?? 'response body was not captured'}`,
+      );
+    }
+    return { status: capture.status, url: capture.url, body: capture.body };
+  })();
+  void responsePromise.catch(() => undefined);
+  return { response: responsePromise };
+}
+
+function captureResponseMeta(page: Page, label: string, predicate: Parameters<Page['waitForResponse']>[0]) {
+  return page.waitForResponse(predicate).then((response): CapturedResponseMeta => {
+    return { status: response.status(), url: response.url() };
+  }).catch(async (error) => {
+    const identity = await readPortfolioEntryIdentity(page);
+    throw new Error(
+      `${label} response capture failed; pageURL=${page.url()}; ` +
+      `identity=${JSON.stringify(identity)}; cause=${error instanceof Error ? error.message : String(error)}`,
+    );
+  });
+}
+
 type Scenario = {
   id: string;
   input: string;
@@ -745,7 +852,7 @@ test.describe('Portfolio Entry visible UX and Portfolio continuation', () => {
     // granting global portfolio:read.
     const organization = await provisionScopedPortfolioAccess(user.userId);
     const beforeHydration = await canonicalCounts();
-    const d1ResponsePromise = page.waitForResponse(response => response.request().method() === 'GET' && new URL(response.url()).pathname.endsWith('/confirmed-brief'));
+    const d1Capture = await captureJsonResponse(page, 'KAN-96 D1');
 
     await continueThroughAuthenticatedPortfolioEntry(page, user, organization);
     const identity = await page.evaluate(() => JSON.parse(window.sessionStorage.getItem('starteria.portfolioEntry.claimedSession') || 'null'));
@@ -753,9 +860,9 @@ test.describe('Portfolio Entry visible UX and Portfolio continuation', () => {
     await expect(page).toHaveURL(/\/portfolio\/setup$/);
     await expect(page.getByTestId('portfolio-lead-first-value')).toBeVisible();
 
-    const d1Response = await d1ResponsePromise;
-    expect(d1Response.status()).toBe(200);
-    const d1Url = new URL(d1Response.url());
+    const d1Response = await d1Capture.response;
+    expect(d1Response.status, `KAN-96 D1 ${d1Response.url}; pageURL=${page.url()}; identity=${JSON.stringify(identity)}`).toBe(200);
+    const d1Url = new URL(d1Response.url);
     expect(d1Url.pathname).toBe(`/api/v1/public/portfolio-entry/sessions/${identity.sessionId}/confirmed-brief`);
     expect(Object.fromEntries(d1Url.searchParams)).toEqual({
       source: identity.source,
@@ -765,7 +872,13 @@ test.describe('Portfolio Entry visible UX and Portfolio continuation', () => {
       confirmationId: identity.confirmationId,
       confirmationVersion: String(identity.confirmationVersion),
     });
-    const d1 = await d1Response.json();
+    const d1 = d1Response.body;
+    expect(d1.data.sessionId).toBe(identity.sessionId);
+    expect(d1.data.revision).toBe(identity.sessionRevision);
+    expect(d1.data.handoffId).toBe(identity.handoffId);
+    expect(d1.data.handoffVersion).toBe(identity.handoffVersion);
+    expect(d1.data.confirmationId).toBe(identity.confirmationId);
+    expect(d1.data.confirmationVersion).toBe(identity.confirmationVersion);
     expect(d1.data.brief.confirmation.status).toBe('CONFIRMED');
     expect(d1.data.brief.confirmation.acceptedFields).toContain('recommended_approach');
     // D2 must hydrate only from the confirmed projection; rawEntry is not a fallback source.
@@ -775,13 +888,13 @@ test.describe('Portfolio Entry visible UX and Portfolio continuation', () => {
     await expect(page.getByTestId('p3-processing')).toHaveCount(0);
     await expect(page.getByTestId('p1-intent-checkpoint')).toHaveCount(0);
 
-    const refreshedD1Promise = page.waitForResponse(response => response.request().method() === 'GET' && new URL(response.url()).pathname.endsWith('/confirmed-brief'));
+    const refreshedD1Promise = captureResponseMeta(page, 'KAN-96 refreshed D1', response => response.request().method() === 'GET' && new URL(response.url()).pathname.endsWith('/confirmed-brief'));
     await page.reload();
     await expect(page).toHaveURL(/\/portfolio\/setup/);
     expect(await page.evaluate(() => JSON.parse(window.sessionStorage.getItem('starteria.portfolioEntry.claimedSession') || 'null'))).toEqual(identity);
     const refreshedD1 = await refreshedD1Promise;
-    expect(refreshedD1.status()).toBe(200);
-    expect(new URL(refreshedD1.url()).search).toBe(d1Url.search);
+    expect(refreshedD1.status, `KAN-96 refreshed D1 ${refreshedD1.url}; pageURL=${page.url()}; identity=${JSON.stringify(identity)}`).toBe(200);
+    expect(new URL(refreshedD1.url).search).toBe(d1Url.search);
     await expect(page.getByLabel(/qué quieres conseguir/i)).toHaveValue(expectedGoal.value ?? expectedGoal);
 
     await page.getByLabel(/qué quieres conseguir/i).fill('Objetivo editado por la persona');
@@ -809,16 +922,17 @@ test.describe('Portfolio Entry visible UX and Portfolio continuation', () => {
     await expect(page).toHaveURL(/\/(dashboard|portfolio\/inicio)/, { timeout: 20_000 });
     await page.goto('/public/start');
     await expect(page.getByRole('button', { name: /Trabajarlo con Starteria/i })).toBeVisible();
-    const d1ResponsePromise = page.waitForResponse(response => response.request().method() === 'GET' && new URL(response.url()).pathname.endsWith('/confirmed-brief'));
+    const d1Capture = await captureJsonResponse(page, 'KAN-100 D1');
 
     await continueThroughAuthenticatedPortfolioEntry(page, user, organization, { alreadyAuthenticated: true });
     await expect(page).toHaveURL(/\/portfolio\/setup$/);
     await expect(page.getByTestId('portfolio-lead-first-value')).toBeVisible();
     const identity = await page.evaluate(() => JSON.parse(window.sessionStorage.getItem('starteria.portfolioEntry.claimedSession') || 'null'));
     expect(identity).toMatchObject({ source: 'portfolio_entry', sessionId: expect.any(String), sessionRevision: expect.any(Number), handoffId: expect.any(String), handoffVersion: expect.any(Number), confirmationId: expect.any(String), confirmationVersion: expect.any(Number) });
-    const d1 = await d1ResponsePromise;
-    expect(d1.status()).toBe(200);
-    const d1Url = new URL(d1.url());
+    const d1 = await d1Capture.response;
+    expect(d1.status, `KAN-100 D1 ${d1.url}; pageURL=${page.url()}; identity=${JSON.stringify(identity)}`).toBe(200);
+    const d1Url = new URL(d1.url);
+    expect(d1Url.pathname).toBe(`/api/v1/public/portfolio-entry/sessions/${identity.sessionId}/confirmed-brief`);
     expect(Object.fromEntries(d1Url.searchParams)).toEqual({
       source: identity.source,
       sessionRevision: String(identity.sessionRevision),
@@ -827,11 +941,13 @@ test.describe('Portfolio Entry visible UX and Portfolio continuation', () => {
       confirmationId: identity.confirmationId,
       confirmationVersion: String(identity.confirmationVersion),
     });
-    const d1Body = await d1.json();
+    const d1Body = d1.body;
     expect(d1Body.data.sessionId).toBe(identity.sessionId);
     expect(d1Body.data.revision).toBe(identity.sessionRevision);
     expect(d1Body.data.handoffId).toBe(identity.handoffId);
+    expect(d1Body.data.handoffVersion).toBe(identity.handoffVersion);
     expect(d1Body.data.confirmationId).toBe(identity.confirmationId);
+    expect(d1Body.data.confirmationVersion).toBe(identity.confirmationVersion);
     await page.screenshot({ path: testInfo.outputPath('portfolio-entry-first-value-setup.png'), fullPage: true });
     expect(await page.getByLabel(/qué quieres conseguir/i).inputValue()).toBeTruthy();
     legacyNavigation.expectClean();
