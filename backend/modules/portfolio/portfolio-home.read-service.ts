@@ -123,6 +123,22 @@ export type PendingDecisionView = {
   updatedAt: string | null;
 };
 
+export type PortfolioLearningView = {
+  decisionId: string;
+  projectId: string;
+  initiativeName: string | null;
+  challengeId: string | null;
+  challengeTitle: string | null;
+  strategicFrontId: string | null;
+  outcome: string;
+  learning: string | null;
+  nextAction: string | null;
+  coverageBefore: string | null;
+  coverageAfter: string | null;
+  suggestedReformulation: string | null;
+  decidedAt: string;
+};
+
 export type PortfolioHomeReadModel = {
   portfolioReading: PortfolioReadingView;
   governance: {
@@ -164,12 +180,15 @@ export type PortfolioHomeReadModel = {
     generatedAt: string;
   }>;
   generatedAt: string;
+  /** E2E Job-Driven §23: lo que el portfolio aprendió de las últimas decisiones. */
+  learnings: PortfolioLearningView[];
 };
 
 type PrismaLike = {
   strategicFront: { findMany: (args: unknown) => Promise<any[]> };
   portfolioBootstrapSession?: { findFirst: (args: unknown) => Promise<any | null> };
   portfolioHandoffProjection?: { findMany: (args: unknown) => Promise<any[]> };
+  portfolioLearning?: { findMany: (args: unknown) => Promise<any[]> };
 };
 
 const READ_INCLUDE = {
@@ -197,10 +216,11 @@ export class PortfolioHomeReadService {
   constructor(private readonly prisma: PrismaLike) {}
 
   async getHome(userId: string): Promise<PortfolioHomeReadModel> {
-    const [fronts, reading, handoffAssignments] = await Promise.all([
+    const [fronts, reading, handoffAssignments, learnings] = await Promise.all([
       this.prisma.strategicFront.findMany({ include: READ_INCLUDE, orderBy: { updatedAt: 'desc' } }),
       this.loadLatestReading(userId),
       this.loadHandoffAssignments(),
+      this.loadLearnings(),
     ]);
 
     const strategicUnits = (fronts ?? []).map((front) => this.mapStrategicUnit(front));
@@ -224,8 +244,33 @@ export class PortfolioHomeReadService {
       pendingDecisions,
       recommendations: this.mapRecommendations(reading, strategicUnits),
       handoffAssignments,
+      learnings,
       generatedAt,
     };
+  }
+
+  private async loadLearnings(): Promise<PortfolioLearningView[]> {
+    if (!this.prisma.portfolioLearning?.findMany) return [];
+    const rows = await this.prisma.portfolioLearning.findMany({
+      orderBy: { decidedAt: 'desc' },
+      take: 20,
+      include: { project: { select: { name: true } }, challenge: { select: { title: true } } },
+    });
+    return (rows ?? []).map((row: any) => ({
+      decisionId: row.decisionId,
+      projectId: row.projectId,
+      initiativeName: row.project?.name ?? null,
+      challengeId: row.challengeId ?? null,
+      challengeTitle: row.challenge?.title ?? null,
+      strategicFrontId: row.strategicFrontId ?? null,
+      outcome: String(row.outcome),
+      learning: row.learning ?? null,
+      nextAction: row.nextAction ?? null,
+      coverageBefore: row.coverageBefore ?? null,
+      coverageAfter: row.coverageAfter ?? null,
+      suggestedReformulation: row.suggestedReformulation ?? null,
+      decidedAt: toIso(row.decidedAt) ?? new Date(0).toISOString(),
+    }));
   }
 
   private async loadHandoffAssignments() {

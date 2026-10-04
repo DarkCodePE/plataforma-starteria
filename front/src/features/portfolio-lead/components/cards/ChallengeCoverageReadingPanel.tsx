@@ -5,6 +5,7 @@
  */
 import React, { useEffect, useState } from 'react';
 import { getChallengeCoverageReading, type ChallengeCoverageReading } from '../../../../app/services/portfolioService';
+import { DECISION_OUTCOME_LABEL } from './PortfolioLearningsPanel';
 
 function Row({ question, answer, tone = 'slate' }: { question: string; answer: React.ReactNode; tone?: 'slate' | 'amber' | 'emerald' }) {
   const color = tone === 'amber' ? 'text-amber-800' : tone === 'emerald' ? 'text-emerald-800' : 'text-slate-800';
@@ -65,6 +66,14 @@ export function ChallengeCoverageReadingPanel({ challengeId }: { challengeId: st
             question="¿Estamos listos para decidir?"
             answer={`${reading.readyToDecide.value ? 'Sí.' : 'Todavía no.'} ${reading.readyToDecide.reasons.join(' ')}`}
             tone={reading.readyToDecide.value ? 'emerald' : 'slate'}
+          />
+          <Row
+            question="¿Qué decisiones ya se tomaron?"
+            answer={
+              reading.decisions && reading.decisions.length > 0
+                ? reading.decisions.map((decision) => `${DECISION_OUTCOME_LABEL[decision.outcome] ?? decision.outcome}${decision.learning ? `: ${decision.learning}` : ''}`).join(' · ')
+                : 'Ninguna todavía.'
+            }
           />
         </dl>
       ) : null}

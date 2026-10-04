@@ -2,7 +2,7 @@
 // doc/STARTERIA_JOB_DRIVEN_E2E_EXPERIENCE_v0.2.md §15, §17–§23.
 import { expect, request as pwRequest, test, type APIRequestContext } from '@playwright/test';
 import { ADMIN_EMAIL, ADMIN_PASSWORD, BASE, browserLogin, createChallenge, createFromInitialReview, createFront, getOk, login, patchOk, postOk, registerAndLogin, type Session } from '../support/api';
-import { GAP_TIMEOUT, gapTest } from '../support/gap';
+import { ensurePortfolioLead, prisma, uiLoginLead } from '../support/portfolio-lead';
 import { completeStep0, completeStep1, completeStep2, completeStep3, completeStep4, confirmStep2, confirmStep3, confirmStep4 } from '../support/steps';
 
 let api: APIRequestContext;
@@ -41,12 +41,14 @@ async function runCycle(owner: Session, projectId: string, finalState: string, s
 
 test.describe('Entrada D · encargo → Mission Review → ciclo → decisión → portfolio (§15, §17–§23)', () => {
   test.beforeAll(async () => {
+    await ensurePortfolioLead();
     api = await pwRequest.newContext({ baseURL: BASE });
     admin = await login(api, ADMIN_EMAIL, ADMIN_PASSWORD);
   });
 
   test.afterAll(async () => {
     await api.dispose();
+    await prisma.$disconnect();
   });
 
   test('el ciclo completo converge: Step 0–4 → Decision Package → la decisión sube al portfolio (§17, §23)', async () => {
@@ -178,15 +180,62 @@ test.describe('Entrada D · encargo → Mission Review → ciclo → decisión �
     }
   });
 
-  gapTest('G8', 'la decisión vuelve al portfolio: actualiza la cobertura del Reto, la lectura del Frente y deja aprendizaje (§23)', async () => {
+  async function decideOnPortfolio(owner: Session, projectId: string, outcome: string, rationale: string) {
+    // La autoridad de decisión vive en InitiativeGovernance. Ningún flujo de producto la crea
+    // todavía (sólo los tests de integración de adaptive-core), así que se siembra igual que ahí.
+    await prisma.initiativeGovernance.upsert({
+      where: { projectId },
+      update: { mode: 'portfolio_governed', portfolioLeadUserId: admin.userId },
+      create: { projectId, mode: 'portfolio_governed', portfolioLeadUserId: admin.userId },
+    });
+    const request = await postOk(api, owner.token, `/api/v1/projects/${projectId}/adaptive-core/decision-requests`, { idempotencyKey: `${projectId}-request` });
+    // La readiness real decide qué es legítimo: con la evidencia del piloto sembrado, escalar no
+    // está listo (impacto y riesgo insuficientes), seguir experimentando y cerrar sí.
+    const readiness = await getOk(api, admin.token, `/api/v1/projects/${projectId}/adaptive-core/decision-readiness?decisionType=${outcome}`);
+    return postOk(api, admin.token, `/api/v1/projects/${projectId}/adaptive-core/decision-requests/${request.id}/decide`, {
+      idempotencyKey: `${projectId}-decide`,
+      outcome,
+      rationale,
+      acceptedConditionCodes: (readiness.conditions ?? []).map((condition: { code: string }) => condition.code),
+    });
+  }
+
+  test('la decisión corporativa vuelve al portfolio: cobertura del Reto, siguiente acción y aprendizaje (§23)', async ({ page }) => {
     const owner = await registerAndLogin(api, 'd-return');
-    const { projectId, challengeId, frontId } = await assignedInitiative(owner, `return-${Date.now()}`);
+    const { projectId, challengeId } = await assignedInitiative(owner, `return-${Date.now()}`);
     await runCycle(owner, projectId, 'scaled', 'd-return');
-    const challenges = await getOk(api, admin.token, `/api/v1/portfolio/strategic-fronts/${frontId}/challenges`);
-    const challenge = challenges.find((c: { id: string }) => c.id === challengeId);
-    expect(challenge.coverageStatus).not.toBe('sin_cobertura');
-    expect(challenge.lastDecision ?? challenge.decisions?.[0]).toBeTruthy();
-    const home = await getOk(api, admin.token, '/api/v1/portfolio/home');
-    expect(JSON.stringify(home.learnings ?? [])).toContain(projectId);
+    const before = await prisma.challenge.findUniqueOrThrow({ where: { id: challengeId }, select: { title: true, whatWeWantToMove: true } });
+
+    const decision = await decideOnPortfolio(owner, projectId, 'continue_experimenting', 'Queda una pregunta de aprendizaje: si el ahorro se sostiene en sucursales grandes.');
+
+    const learning = await prisma.portfolioLearning.findUniqueOrThrow({ where: { decisionId: decision.id } });
+    expect(learning).toMatchObject({ projectId, challengeId, outcome: 'continue_experimenting', coverageAfter: 'cobertura_parcial', suggestedReformulation: null });
+    const after = await prisma.challenge.findUniqueOrThrow({ where: { id: challengeId }, select: { coverageStatus: true, title: true, whatWeWantToMove: true } });
+    expect(after.coverageStatus).toBe('cobertura_parcial');
+    // Core §30: sólo cambia la proyección de cobertura, no el texto del Reto.
+    expect({ title: after.title, whatWeWantToMove: after.whatWeWantToMove }).toEqual(before);
+
+    const meta = await getOk(api, admin.token, `/api/v1/portfolio/initiatives/${projectId}/meta`);
+    expect(meta.nextActionRecommended).toBe('Abrir un nuevo ciclo con la incertidumbre que quedó abierta.');
+    const reading = await getOk(api, admin.token, `/api/v1/portfolio/challenges/${challengeId}/coverage-reading`);
+    expect(reading.decisions).toEqual([expect.objectContaining({ projectId, outcome: 'continue_experimenting' })]);
+
+    // El portfolio lo muestra en el inicio.
+    await uiLoginLead(page);
+    await page.goto('/portfolio/inicio');
+    const panel = page.getByRole('region', { name: 'Lo que aprendió el portfolio' });
+    await expect(panel.getByTestId('portfolio-learning').filter({ hasText: /E2E Job D return-\d+ Iniciativa/ }).first()).toContainText('Seguir experimentando');
+  });
+
+  test('cerrar con aprendizaje sin otra iniciativa activa sugiere reformular el Reto, sin reescribirlo (§23, Core §30)', async () => {
+    const owner = await registerAndLogin(api, 'd-close');
+    const { projectId, challengeId } = await assignedInitiative(owner, `close-${Date.now()}`);
+    await runCycle(owner, projectId, 'scaled', 'd-close');
+    const decision = await decideOnPortfolio(owner, projectId, 'close_with_learning', 'El piloto no movió el costo; cerramos con lo aprendido.');
+    const learning = await prisma.portfolioLearning.findUniqueOrThrow({ where: { decisionId: decision.id } });
+    expect(learning.coverageAfter).toBe('reformular');
+    expect(learning.suggestedReformulation).toMatch(/reformularse/);
+    const challenge = await prisma.challenge.findUniqueOrThrow({ where: { id: challengeId }, select: { coverageStatus: true, whatWeWantToMove: true } });
+    expect(challenge).toEqual({ coverageStatus: 'reformular', whatWeWantToMove: 'Bajar el costo por solicitud de 14.20 a 10.00' });
   });
 });

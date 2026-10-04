@@ -41,18 +41,17 @@ test queda como regresión.
 | §21 | Decision Brief: decisión, qué hicimos, qué ocurrió, aprendizajes, riesgos, qué no podemos afirmar, siguiente paso | `entry-d` · el Decision Brief trae… | ✅ |
 | §21 | …y alternativas, qué podemos sostener | `entry-d` · el Decision Brief incluye… | ✅ |
 | §22 | Continuidad: pivotear, buscar capacidad, benefit tracking (Core §26) | `entry-d` · la continuidad admite… | ✅ |
-| §23 | La decisión vuelve al Reto, Frente y Portfolio, con aprendizaje | `entry-d` · [G8] | GAP G8 |
+| §23 | La decisión vuelve al Reto, Frente y Portfolio, con aprendizaje | `entry-d` · la decisión corporativa vuelve… y cerrar con aprendizaje… | ✅ |
 | §16 | Iniciativa independiente sin inventar Frente ni Reto | `entry-e` · se puede crear… | ✅ |
 | §16 | Contexto de Aplicación | `entry-e` · [G10] | GAP G10 |
 | §20 | Copilot: Orientarme / Trabajar conmigo / Desbloquearme | `entry-e` · [G12] | GAP G12 |
 
 ## Gaps abiertos
 
-Cerrados: G1 y G2 (Ola 1); G3, G4 y G5 (Ola 2); G6 y G7 (Ola 3).
+Cerrados: G1 y G2 (Ola 1); G3, G4 y G5 (Ola 2); G6 y G7 (Ola 3); G8 (Ola 4).
 
 | GAP | Qué | Ola |
 |---|---|---|
-| G8 | Retorno de la decisión al portfolio | 4 |
 | G9 | Destinos del routing de entrada (requiere chequeo de CONFLICT con el Portfolio Entry Logic Contract) | 5 |
 | G10 | Contexto de Aplicación | 5 |
 | G11 | Reconstrucción + gating retroactivo | 6 |
