@@ -3,9 +3,7 @@ import { useNavigate } from 'react-router';
 import { Button } from '../components/ui/button';
 import { Badge } from '../components/ui/badge';
 import { useApp } from '../context/AppContext';
-import { PortfolioEntryExperience } from '../../features/portfolio-entry/public';
-
-const PLATFORM_PATH = ['Estrategia / necesidad', 'Iniciativas', 'Evidencia + avance', 'Decisiones'];
+const VALUE_FLOW = ['Define la meta', 'Alinea el trabajo', 'Hazlas realidad', 'Decide'];
 
 const PROBLEMS = [
   {
@@ -19,25 +17,6 @@ const PROBLEMS = [
   {
     title: 'Portafolio, retos y ejecucion desconectados',
     body: 'Las conversaciones pasan entre comites, equipos y documentos sin una estructura comun para comparar y aprender.',
-  },
-];
-
-const HOW_IT_WORKS = [
-  {
-    title: 'Explicas lo que necesitas mover',
-    body: 'Empiezas con lenguaje natural: una prioridad, una duda, un bloqueo, una iniciativa o una decision pendiente.',
-  },
-  {
-    title: 'Starteria estructura el contexto',
-    body: 'La plataforma separa lo declarado, lo inferido y lo que todavia requiere aclaracion antes de formalizar trabajo.',
-  },
-  {
-    title: 'Aparecen gaps, retos y caminos',
-    body: 'La lectura ayuda a identificar donde falta foco, evidencia o conexion entre iniciativas y prioridades.',
-  },
-  {
-    title: 'Preparas decisiones con mas claridad',
-    body: 'El resultado orienta el siguiente movimiento sin convertir la IA en autoridad de decision.',
   },
 ];
 
@@ -76,7 +55,7 @@ export function LandingPage() {
   const { isAuthenticated } = useApp();
 
   return (
-    <div className="min-h-screen overflow-hidden bg-[radial-gradient(circle_at_top_left,rgba(79,70,229,0.10),transparent_34%),radial-gradient(circle_at_top_right,rgba(6,182,212,0.09),transparent_32%),linear-gradient(180deg,#f8fafc_0%,#ffffff_45%,#f8fafc_100%)] text-slate-950">
+    <div className="min-h-screen overflow-hidden bg-[linear-gradient(180deg,#f8fafc_0%,#ffffff_45%,#f8fafc_100%)] text-slate-950">
       <header className="sticky top-0 z-40 border-b border-white/70 bg-white/82 backdrop-blur">
         <div className="mx-auto flex max-w-7xl items-center justify-between gap-4 px-4 py-4 sm:px-6 lg:px-8">
           <button
@@ -116,11 +95,17 @@ export function LandingPage() {
               Plataforma de decisiones para portafolios
             </Badge>
             <h1 className="mt-5 max-w-4xl text-4xl font-semibold leading-[1.02] tracking-tight text-slate-950 md:text-6xl">
-              Convierte estrategia e iniciativas en decisiones sustentadas.
+              Haz que la estrategia se haga realidad.
             </h1>
             <p className="mt-6 max-w-2xl text-base leading-7 text-slate-600 md:text-lg">
-              Starteria ayuda a estructurar qué quieres mover, convertirlo en iniciativas accionables, seguir evidencia y bloqueos, y preparar mejores decisiones.
+              Alinea objetivos, conecta equipos y haz avanzar las iniciativas que realmente importan.
             </p>
+            <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-600 md:text-base">
+              Starteria mantiene estrategia, ejecución y evidencia conectadas para que sepas qué mover, qué necesita atención y qué decisión preparar.
+            </p>
+            <Button type="button" className="mt-6" onClick={() => navigate('/auth')}>
+              Ya tengo claro qué quiero mover<ArrowRight size={16} />
+            </Button>
           </div>
 
           <PlatformStructure />
@@ -129,38 +114,23 @@ export function LandingPage() {
         <section aria-labelledby="portfolio-entry-heading" className="border-y border-slate-200/70 bg-white/80">
           <div className="mx-auto grid max-w-7xl gap-8 px-4 py-10 sm:px-6 md:py-14 lg:grid-cols-[minmax(0,0.8fr)_minmax(0,1fr)] lg:items-start lg:px-8">
             <div className="max-w-xl">
-              <p className="text-xs font-semibold uppercase text-indigo-700">Orientación opcional</p>
+              <p className="text-xs font-semibold uppercase text-indigo-700">Una opción si aún buscas claridad</p>
               <h2 id="portfolio-entry-heading" className="mt-3 text-2xl font-semibold tracking-tight text-slate-950 md:text-3xl">
-                ¿Todavía no tienes claro por dónde empezar?
+                Aclara qué quieres conseguir antes de decidir qué hacer.
               </h2>
               <p className="mt-3 text-base leading-7 text-slate-600">
-                Esta orientación te ayuda a ordenar tu objetivo, necesidad, problema, oportunidad, iniciativa y decisión antes de elegir cómo continuar.
+                Prepara una lectura inicial de lo que quieres lograr, por qué importa, qué ocurre y qué decisión necesitas preparar. El punto de partida es una hipótesis; podrás ver qué falta aclarar.
               </p>
+              <Button type="button" variant="secondary" className="mt-5" onClick={() => navigate('/public/start')}>
+                Quiero alinear mi objetivo primero<ArrowRight size={16} />
+              </Button>
             </div>
-            <PortfolioEntryExperience
-              variant="landing"
-              recoverExisting={false}
-              redirectAfterStart="/public/start"
-            />
-          </div>
-        </section>
-
-        <section className="px-4 pb-6 sm:px-6 lg:px-8">
-          <div className="mx-auto grid max-w-7xl gap-4 rounded-[30px] border border-slate-200/80 bg-white/72 p-4 shadow-sm shadow-slate-900/[0.03] backdrop-blur md:grid-cols-[0.8fr_1fr] md:p-5">
-            <div className="rounded-[22px] bg-slate-950 p-5 text-white">
-              <p className="text-xs font-semibold uppercase text-cyan-200">Del texto a la estructura</p>
-              <p className="mt-3 text-xl font-semibold leading-tight">
-                No es solo una respuesta de IA. Es una primera lectura para orientar atencion, evidencia y decision.
+            <div className="rounded-[22px] border border-slate-200 bg-slate-50 p-5 md:p-6">
+              <p className="text-sm font-semibold text-slate-900">Una lectura estratégica provisional</p>
+              <p className="mt-2 text-sm leading-6 text-slate-600">
+                Ordena qué quieres lograr, para qué, qué está pasando, qué parece estar en juego, qué decisión preparar, por dónde podrías empezar y qué necesitas aclarar.
               </p>
-            </div>
-            <div className="grid gap-3 sm:grid-cols-3">
-              {['Prioridad desconectada', 'Evidencia insuficiente', 'Decision pendiente'].map((item) => (
-                <div key={item} className="rounded-[20px] border border-slate-200 bg-white p-4">
-                  <div className="h-1.5 w-10 rounded-full bg-indigo-500" />
-                  <p className="mt-4 text-sm font-semibold text-slate-950">{item}</p>
-                  <p className="mt-2 text-xs leading-5 text-slate-500">Ejemplo ilustrativo de claridad operativa.</p>
-                </div>
-              ))}
+              <p className="mt-3 text-xs leading-5 text-slate-500">No genera un plan definitivo, un portfolio ni iniciativas automáticamente.</p>
             </div>
           </div>
         </section>
@@ -194,23 +164,18 @@ export function LandingPage() {
             <div>
               <p className="text-xs font-semibold uppercase text-indigo-700">Como funciona</p>
               <h2 className="mt-3 text-3xl font-semibold tracking-tight text-slate-950 md:text-4xl">
-                Una lectura guiada, no una conversacion suelta.
+                De la meta a una decisión mejor preparada.
               </h2>
               <p className="mt-4 text-base leading-7 text-slate-600">
-                La entrada libre se convierte en una estructura revisable que ayuda a conectar portafolio, ejecucion y evidencia.
+                Un flujo conceptual para conectar intención, trabajo y aprendizaje continuo.
               </p>
             </div>
-            <div className="grid gap-4">
-              {HOW_IT_WORKS.map((item, index) => (
-                <article key={item.title} className="grid gap-4 rounded-[22px] border border-slate-200 bg-white p-5 shadow-sm shadow-slate-900/[0.03] sm:grid-cols-[56px_1fr]">
-                  <div className="flex h-11 w-11 items-center justify-center rounded-full bg-slate-950 text-sm font-semibold text-white">
-                    {index + 1}
-                  </div>
-                  <div>
-                    <h3 className="text-lg font-semibold text-slate-950">{item.title}</h3>
-                    <p className="mt-2 text-sm leading-6 text-slate-600">{item.body}</p>
-                  </div>
-                </article>
+            <div aria-label="Flujo conceptual de valor" className="grid gap-3 sm:grid-cols-4">
+              {VALUE_FLOW.map((step, index) => (
+                <div key={step} className="flex items-center gap-3">
+                  <p className="min-h-14 flex-1 rounded-[18px] border border-slate-200 bg-white p-4 text-sm font-semibold text-slate-900">{step}</p>
+                  {index < VALUE_FLOW.length - 1 ? <ArrowRight aria-hidden="true" size={16} className="hidden shrink-0 text-slate-400 sm:block" /> : null}
+                </div>
               ))}
             </div>
           </div>
@@ -281,15 +246,14 @@ export function LandingPage() {
                 </Badge>
               </div>
               <h2 className="mt-4 text-3xl font-semibold tracking-tight text-slate-950">
-                Empieza con lo que sabes. Starteria te ayuda a ordenar lo que falta.
+                ¿Ya sabes qué quieres mover?
               </h2>
               <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-600">
-                La primera entrada es publica y revisable. El trabajo formal empieza solo cuando decides continuar.
+                Entra a Starteria y conecta ese objetivo con el trabajo de tu equipo.
               </p>
             </div>
-            <Button type="button" onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}>
-              Analizar mi situacion
-              <ArrowRight size={16} />
+            <Button type="button" onClick={() => navigate('/auth')}>
+              Ir a Starteria<ArrowRight size={16} />
             </Button>
           </div>
         </section>
@@ -300,20 +264,29 @@ export function LandingPage() {
 
 function PlatformStructure() {
   return (
-    <div aria-label="Cómo Starteria conecta el trabajo" className="mt-8 rounded-[24px] border border-slate-200/80 bg-white/75 p-4 shadow-sm shadow-slate-900/[0.03] backdrop-blur sm:p-5">
-      <p className="text-xs font-semibold uppercase text-indigo-700">Cómo Starteria conecta el trabajo</p>
-      <ol className="mt-4 grid list-none gap-2 p-0 sm:grid-cols-2 lg:grid-cols-4">
-        {PLATFORM_PATH.map((item, index) => (
-          <li key={item} className="flex min-w-0 items-center gap-2">
-            <div className="min-w-0 flex-1 rounded-2xl border border-slate-200 bg-white px-3 py-3">
-              <p className="text-sm font-semibold text-slate-950">{item}</p>
-            </div>
-            {index < PLATFORM_PATH.length - 1 ? (
-              <ArrowRight aria-hidden="true" size={14} className="shrink-0 text-slate-400" />
-            ) : null}
-          </li>
-        ))}
-      </ol>
+    <div aria-label="Modelo conceptual de Starteria" className="mt-8 rounded-[24px] border border-slate-200 bg-white p-4 shadow-sm shadow-slate-900/[0.03] sm:p-6">
+      <p className="text-xs font-semibold uppercase text-indigo-700">Modelo conceptual · ilustrativo</p>
+      <p className="mt-1 text-xs leading-5 text-slate-500">Una forma de ver cómo se conectan los elementos del trabajo, sin analizar al visitante ni mostrar datos reales.</p>
+      <div className="mt-5 grid items-center gap-4 md:grid-cols-[1fr_auto_1fr]">
+        <ul className="grid list-none gap-2 p-0 sm:grid-cols-2">
+          {['Objetivos', 'Necesidades', 'Iniciativas', 'Equipos'].map((label) => (
+            <li key={label} className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-sm font-medium text-slate-800">{label}</li>
+          ))}
+        </ul>
+        <div className="flex flex-col items-center justify-center gap-3 text-slate-400">
+          <ArrowRight aria-hidden="true" size={18} className="rotate-90 md:rotate-0" />
+          <span className="rounded-2xl bg-slate-950 px-5 py-4 text-center text-sm font-semibold text-white">
+            Starteria
+            <span className="mt-1 block text-xs font-normal text-slate-300">Contexto. Trabajo. Decisiones.</span>
+          </span>
+          <ArrowRight aria-hidden="true" size={18} className="rotate-90 md:rotate-0" />
+        </div>
+        <ul className="grid list-none gap-2 p-0 sm:grid-cols-2">
+          {['Foco', 'Coordinación', 'Evidencia', 'Decisión'].map((label) => (
+            <li key={label} className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-sm font-medium text-slate-800">{label}</li>
+          ))}
+        </ul>
+      </div>
     </div>
   );
 }

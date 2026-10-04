@@ -189,6 +189,23 @@ Invariantes de esta frontera: `AUTHENTICATION != BUSINESS CANONICALIZATION`,
   to resolve; Jira remains in progress pending the human transition. See
   `docs/portfolio-lead/06-portfolio-monitoring/90-implementation-reports/KAN-99_KAN74_FINAL_ALIGNMENT_REGRESSION_CLOSURE_v0.1.md`.
 
+## Public Landing / KAN-102
+
+KAN-102 aligns `/` with the frozen Landing Hero, an illustrative L2 model
+(`Objetivos / Necesidades / Iniciativas / Equipos → Starteria → Foco /
+Coordinación / Evidencia / Decisión`), and the conceptual value flow
+`Define la meta → Alinea el trabajo → Hazlas realidad → Decide`. The primary
+existing Starteria path remains `/auth`; Portfolio Entry is optional and links
+to the existing `/public/start`. Its framing promises a provisional strategic
+reading before action. Portfolio Entry logic, confirmed final actions and the
+KAN-74 continuation remain unchanged.
+
+Demo/Early Access remain `RUNTIME_PENDING / BLOCKED_BY_DESTINATION`; no
+commercial route is authorized by this slice. The backend has `reason_to_ask`,
+but the frontend question DTO omits it, so no reason copy is synthesized in the
+client. See
+`docs/implementation/public-landing/KAN-102_LANDING_ENTRY_CONVERGENCE_v0.1.md`.
+
 ## ADRs
 
 - ADRs de harness/documentacion: `docs/adr/`.

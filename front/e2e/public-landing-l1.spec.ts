@@ -1,30 +1,38 @@
-import { test, expect } from '@playwright/test';
+import { expect, test } from '@playwright/test';
 
-test.describe('Public Landing L1 product framing', () => {
-  test('explains Starteria before presenting optional Portfolio Entry', async ({ page }) => {
+test.describe('KAN-102 public landing and Portfolio Entry convergence', () => {
+  test('explains Starteria before offering its secondary strategic clarity path', async ({ page }) => {
     await page.goto('/');
 
     await expect(page.getByRole('heading', {
       level: 1,
-      name: 'Convierte estrategia e iniciativas en decisiones sustentadas.',
+      name: 'Haz que la estrategia se haga realidad.',
     })).toBeVisible({ timeout: 15_000 });
     await expect(page.getByText(
-      'Starteria ayuda a estructurar qué quieres mover, convertirlo en iniciativas accionables, seguir evidencia y bloqueos, y preparar mejores decisiones.',
+      'Alinea objetivos, conecta equipos y haz avanzar las iniciativas que realmente importan.',
+    )).toBeVisible();
+    await expect(page.getByText(
+      'Starteria mantiene estrategia, ejecución y evidencia conectadas para que sepas qué mover, qué necesita atención y qué decisión preparar.',
     )).toBeVisible();
 
-    const model = page.getByRole('list').filter({ has: page.getByText('Estrategia / necesidad') });
-    await expect(model.getByRole('listitem')).toHaveText([
-      'Estrategia / necesidad',
-      'Iniciativas',
-      'Evidencia + avance',
-      'Decisiones',
-    ]);
+    const model = page.getByLabel('Modelo conceptual de Starteria');
+    for (const label of ['Objetivos', 'Necesidades', 'Iniciativas', 'Equipos', 'Contexto. Trabajo. Decisiones.', 'Foco', 'Coordinación', 'Evidencia', 'Decisión']) {
+      await expect(model.getByText(label)).toBeVisible();
+    }
+    await expect(page.getByText('Define la meta')).toBeVisible();
+    await expect(page.getByText('Alinea el trabajo')).toBeVisible();
+    await expect(page.getByText('Hazlas realidad')).toBeVisible();
+    await expect(page.getByText('Decide', { exact: true })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Ya tengo claro qué quiero mover' })).toBeVisible();
 
     const optionalEntry = page.getByRole('heading', {
-      name: '¿Todavía no tienes claro por dónde empezar?',
+      name: 'Aclara qué quieres conseguir antes de decidir qué hacer.',
     });
     await expect(optionalEntry).toBeVisible();
-    await expect(optionalEntry.locator('xpath=following::textarea[1]')).toBeVisible();
-    expect(new URL(page.url()).pathname).toBe('/');
+    await expect(page.getByRole('button', { name: 'Quiero alinear mi objetivo primero' })).toBeVisible();
+    await page.getByRole('button', { name: 'Quiero alinear mi objetivo primero' }).click();
+    await expect(page).toHaveURL(/\/public\/start$/);
+    await expect(page.getByRole('heading', { name: 'Aclara qué quieres conseguir antes de decidir qué hacer.' })).toBeVisible();
+    await expect(page.getByRole('textbox', { name: /necesitas conseguir o entender/i })).toBeVisible();
   });
 });

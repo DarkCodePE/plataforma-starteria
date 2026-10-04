@@ -328,8 +328,20 @@ async function expectOneBootstrapSession(continuationId: string) {
   return state;
 }
 
-async function reachHandoff(page: Page, scenario: Scenario, testInfo: TestInfo) {
-  await page.goto('/public/start');
+async function reachHandoff(page: Page, scenario: Scenario, testInfo: TestInfo, viaLanding = false) {
+  if (viaLanding) {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto('/');
+    await expect(page.getByRole('heading', { name: 'Haz que la estrategia se haga realidad.' })).toBeVisible();
+    await expect(page.getByLabel('Modelo conceptual de Starteria')).toBeVisible();
+    await expect(page.getByRole('textbox')).toHaveCount(0);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+    await page.getByRole('button', { name: 'Quiero alinear mi objetivo primero' }).click();
+    await expect(page).toHaveURL(/\/public\/start$/);
+    await page.setViewportSize({ width: 1280, height: 900 });
+  } else {
+    await page.goto('/public/start');
+  }
   await page.evaluate(() => window.sessionStorage.clear());
   await page.goto('/public/start');
 
@@ -468,6 +480,22 @@ test.describe('Portfolio Entry visible UX and Portfolio continuation', () => {
     await expect(page.getByText(/Qué haría Starteria primero/i)).toHaveCount(0);
 
     await page.screenshot({ path: testInfo.outputPath('portfolio-entry-clarification.png'), fullPage: true });
+  });
+
+  test('KAN-102 Landing → optional Entry → clarification → confirmed Strategic Intent → final actions', async ({ page }, testInfo) => {
+    const scenario = SCENARIOS[0];
+    await reachHandoff(page, scenario, testInfo, true);
+    await expect(page.getByText('Lectura inicial lista', { exact: true })).toBeVisible();
+    await expect(page.getByText('Decisión que necesitas habilitar', { exact: true })).toBeVisible();
+
+    const api = await pwRequest.newContext({ baseURL: process.env.E2E_BASE_URL || 'http://127.0.0.1:5176' });
+    const user = await registerPortfolioUser(api);
+    const organization = await provisionScopedPortfolioAccess(user.userId);
+    await continueAndReturnToConfirmedEntryActions(page, user, organization);
+    await expect(page.getByTestId('portfolio-entry-confirmed-brief-actions').getByRole('button', { name: 'Descargar', exact: true })).toBeVisible();
+    await expect(page.getByTestId('portfolio-entry-confirmed-brief-actions').getByRole('button', { name: 'Eliminar', exact: true })).toBeVisible();
+    await expect(page.getByTestId('portfolio-entry-confirmed-brief-actions').getByRole('button', { name: 'Trabajarlo con Starteria', exact: true })).toBeVisible();
+    await api.dispose();
   });
 
   for (const scenario of SCENARIOS) {

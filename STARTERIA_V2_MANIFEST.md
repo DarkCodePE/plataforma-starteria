@@ -173,9 +173,9 @@ HU: KAN-64
 slice: Public Landing - L1 Product Framing & Hero
 surface: /
 logic_status: ACTIVE_V2_BASELINE (framing aprobado por ADR-006; sin cambio de lÃ³gica Core o Portfolio Entry)
-implementation_status: PARTIAL_IMPLEMENTATION (Landing existente; framing L1 objetivo no implementado)
-visual_status: V2_TARGET_DEFINED
-evidence_status: OBSERVED (frontend current-state audit)
+implementation_status: IMPLEMENTED_VERIFIED (KAN-64 resolved; baseline revalidated by KAN-102 focused tests)
+visual_status: V2_PILOT
+evidence_status: LOCAL_REGRESSION_PASS (KAN-102 frontend suite and Landing E2E; no production certification)
 semantic_owner: Public Landing V2
 portfolio_entry_semantic_owner: UNCHANGED (Portfolio Entry V2)
 authority: doc/product-adr/ADR-006-landing-and-portfolio-entry-separation.md
@@ -187,7 +187,7 @@ core_impact: NONE
 step_impact: NONE (Steps 0-4 and Adaptive Cycle unchanged)
 public_start_runtime_impact: NONE (/public/start runtime unchanged)
 early_access_demo_runtime: NOT_AUTHORIZED
-implementation_status_note: AUTHORIZED SUBJECT TO V2_CHANGE_GUARDRAIL_CHECK; this record does not authorize work outside the KAN-64 L1 scope
+implementation_status_note: KAN-64 is RESUELTO in Jira; KAN-102 separately extends the Landing with L2 and convergence framing
 scope: Hero and above-the-fold framing; headline/subcopy; basic illustrative Starteria platform model; Portfolio Entry repositioned as an option; reuse PlatformStructure when compatible per audit; strictly necessary L1 tests
 excluded: Early Access/Demo runtime or routes; Pilot; backend/API/persistence; Email/Calendar/CRM; commercial routes; /public/start internals; Clarification; Handoff; Agent/Skills; Auth; Core; Steps 0-4; Adaptive Cycle
 entry_boundary: public route /
@@ -200,6 +200,28 @@ tests_protecting_current_behavior: PortfolioEntryExperience.test.tsx; routes.pub
 Portfolio Entry conserva su autoridad semÃ¡ntica y comportamiento; esta slice cambia el framing de
 la superficie `/` y no altera la ruta directa `/public/start`. Los caminos de Early Access y Demo,
 incluida cualquier ruta o comportamiento runtime, no estÃ¡n autorizados por KAN-64.
+
+## KAN-102 — PUBLIC_LANDING_L2_PORTFOLIO_ENTRY_CONVERGENCE
+
+```text
+slice_id: PUBLIC_LANDING_L2_PORTFOLIO_ENTRY_CONVERGENCE
+HU: KAN-102
+logic_status: ACTIVE_V2_BASELINE (ADR-006; Portfolio Entry logic unchanged)
+implementation_status: IMPLEMENTED_VERIFIED (local frontend, route and Chromium E2E validation)
+visual_status: V2_PILOT (focused Landing adaptation using current Design System primitives)
+evidence_status: VERIFIED (623 frontend tests; typecheck/lint/build; focused Chromium journeys)
+semantic_owner: Public Landing V2 for /; Portfolio Entry V2 for /public/start
+authority: Jira KAN-102; ADR-006; public Landing UX Spec v0.1; Portfolio Entry Logic Contract v0.1;
+           Portfolio Entry Clarification/Handoff Contract v0.2.1; Design System Contract v0.1
+entry_boundary: / → existing /auth primary Starteria path | optional /public/start strategic clarity path
+exit_boundary: existing Portfolio Entry handoff and KAN-74 continuation unchanged
+implementation_report: docs/implementation/public-landing/KAN-102_LANDING_ENTRY_CONVERGENCE_v0.1.md
+core_impact: NONE
+step_impact: NONE (Steps 0–4 unchanged)
+continuation_impact: NONE (KAN-74, D1/D2 and P1/P2/P3 unchanged)
+reason_to_ask: DTO GAP documented; no client-invented explanation
+commercial_destinations: RUNTIME_PENDING / BLOCKED_BY_DESTINATION (Demo/Early Access routes not invented)
+```
 
 # 2.3 Slice DEV_CYCLE_HU_TOOLING (KAN-91)
 
@@ -444,7 +466,8 @@ HYP-004 Program / accelerator support experience
 | Authority / Governance | ACTIVE_V2_BASELINE but stale index | IMPLEMENTED | NOT_APPLICABLE | SUPPORTED | UPDATE |
 | Core | v0.2 factual current / v0.3 external reconciliation candidate | PARTIAL / PRODUCTIVE dependencies | NOT_APPLICABLE | REQUIRES_RETEST | KEEP v0.2 + ADR/re-test candidate |
 | Crazy 8s E2E | ACTIVE_V2_BASELINE / reference | NOT_APPLICABLE | NOT_APPLICABLE | SUPPORTED | KEEP |
-| Public Landing - L1 Product Framing & Hero (KAN-64) | ACTIVE_V2_BASELINE (ADR-006) | PARTIAL_IMPLEMENTATION; L1 not implemented | V2_TARGET_DEFINED | OBSERVED | AUTHORIZED SUBJECT TO GUARDRAIL; Early Access/Demo runtime excluded |
+| Public Landing - L1 Product Framing & Hero (KAN-64) | ACTIVE_V2_BASELINE (ADR-006) | IMPLEMENTED_VERIFIED; KAN-64 RESUELTO | V2_PILOT | LOCAL_REGRESSION_PASS (KAN-102 revalidation) | KEEP; Early Access/Demo runtime excluded |
+| Public Landing L2 + Portfolio Entry Convergence (KAN-102) | ACTIVE_V2_BASELINE (ADR-006) | IMPLEMENTED_VERIFIED (local) | V2_PILOT | VERIFIED (frontend + focused Chromium) | KEEP; commercial destinations pending authority |
 | Landing V4 | ACTIVE_V2_BASELINE visual spec | VERIFY_IN_REPO | V2_TARGET_DEFINED | SUPPORTED | RECONCILE |
 | Portfolio Entry logic | ACTIVE_V2_BASELINE | PARTIAL_IMPLEMENTATION | V2_PILOT / VERIFY | SUPPORTED | PROMOTE STACK |
 | Clarification | CANDIDATE + hypotheses | EXPERIMENTAL / VERIFY | V2_PILOT | TESTING | TEST |

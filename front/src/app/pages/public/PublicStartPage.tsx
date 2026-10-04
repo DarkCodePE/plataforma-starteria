@@ -12,10 +12,10 @@ export function PublicStartPage() {
         <div className="mb-7 max-w-3xl">
           <p className="text-xs font-semibold uppercase text-indigo-700">Entrada publica Starteria</p>
           <h1 className="mt-3 text-3xl font-semibold leading-tight tracking-tight text-slate-950 md:text-5xl">
-            Aclaremos lo necesario antes de preparar tu lectura.
+            Aclara qué quieres conseguir antes de decidir qué hacer.
           </h1>
           <p className="mt-4 text-base leading-7 text-slate-600 md:text-lg">
-            Responde en lenguaje natural. Starteria ira haciendo las preguntas justas para entender contexto, incertidumbre y siguiente decision.
+            Prepara una lectura inicial de qué quieres lograr, para qué, qué está pasando y qué parece estar en juego. Starteria puede ayudarte a orientar una decisión y un posible punto de partida como hipótesis, y a ver qué falta aclarar.
           </p>
         </div>
 
