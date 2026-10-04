@@ -460,6 +460,7 @@ export interface PortfolioCapacityReading {
 export async function getPortfolioCapacity(): Promise<PortfolioCapacityReading> {
   const { data } = await api.get<ApiResponse<PortfolioCapacityReading>>('/portfolio/capacity');
   return data.data;
+}
 
 /** §23: lo que el portfolio aprendió de las últimas decisiones (GET /portfolio/home → learnings). */
 export interface PortfolioLearning {
