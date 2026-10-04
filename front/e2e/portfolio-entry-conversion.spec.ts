@@ -501,6 +501,18 @@ async function reachHandoff(page: Page, scenario: Scenario, testInfo: TestInfo, 
       await expect(answer).toBeVisible();
       await expect(answer).toBeEnabled();
       await expect(page.getByTestId('portfolio-entry-understanding')).toBeVisible();
+      const activeReason = activeQuestion.getByTestId('portfolio-entry-active-question-reason');
+      if (scenario.id === 'portfolio-first' && attempt === 0) {
+        await expect(activeReason).toBeVisible();
+        await expect(activeQuestion.getByTestId('portfolio-entry-active-question-reason')).toHaveCount(1);
+        const reasonBeforeRefresh = await activeReason.innerText();
+        const questionBeforeRefresh = await activeQuestionText.innerText();
+        await page.reload();
+        await expect(page.getByTestId('portfolio-entry-active-question')).toHaveCount(1);
+        await expect(page.getByTestId('portfolio-entry-active-question-text')).toHaveText(questionBeforeRefresh);
+        await expect(page.getByTestId('portfolio-entry-active-question-reason')).toHaveCount(1);
+        await expect(page.getByTestId('portfolio-entry-active-question-reason')).toHaveText(reasonBeforeRefresh);
+      }
       const guidedMode = await page.getByText(/Exploración guiada/i).isVisible().catch(() => false);
       if (scenario.id === 'portfolio-first' && attempt === 0) {
         await page.screenshot({ path: testInfo.outputPath('portfolio-entry-clarification.png'), fullPage: true });
@@ -525,7 +537,15 @@ async function reachHandoff(page: Page, scenario: Scenario, testInfo: TestInfo, 
         /\/api\/v1\/public\/portfolio-entry\/sessions\/[^/]+\/messages$/.test(response.url()),
       );
       await page.getByRole('button', { name: /Enviar respuesta/i }).click();
-      await clarificationResponse;
+      const answerResponse = await clarificationResponse;
+      const answerPayload = await answerResponse.json();
+      const returnedTurns = answerPayload.data.conversation as Array<{ emittedQuestions: Array<Record<string, unknown>> }>;
+      expect(returnedTurns.at(-1)?.emittedQuestions.length ?? 0).toBeLessThanOrEqual(1);
+      expect(returnedTurns.slice(0, -1).flatMap((turn) => turn.emittedQuestions)
+        .every((question) => !Object.hasOwn(question, 'reason_to_ask'))).toBe(true);
+      expect((returnedTurns.at(-1)?.emittedQuestions ?? [])
+        .filter((question) => typeof question.reason_to_ask === 'string' && question.reason_to_ask.trim()).length)
+        .toBeLessThanOrEqual(1);
       if (guidedMode && guidedAnswers === 2) {
         await expect(page.getByTestId('portfolio-entry-active-question')).toHaveCount(0);
         await expect(page.getByLabel(/Tu respuesta/i)).toHaveCount(0);

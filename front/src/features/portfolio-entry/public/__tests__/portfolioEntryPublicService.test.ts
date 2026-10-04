@@ -73,6 +73,26 @@ describe('portfolioEntryPublicService', () => {
     await getPortfolioEntrySession('11111111-1111-4111-8111-111111111111', 'entry-token');
   });
 
+  it('returns reason_to_ask unchanged on the question DTO', async () => {
+    const reason = 'Puede cambiar la decisión que necesitas preparar.';
+    server.use(http.get('*/public/portfolio-entry/sessions/:sessionId', () => HttpResponse.json({
+      success: true,
+      data: makeSession({
+        conversation: [{
+          id: 'turn-1', turnIndex: 0, userInput: 'Necesito priorizar.', matchedQuestionIds: [], respondedResolves: [],
+          createdAt: new Date().toISOString(),
+          emittedQuestions: [{
+            id: 'q-1', question: '¿Qué decisión necesitas habilitar?', reason_to_ask: reason, resolves: [],
+            turn_index: 0, interaction_mode: 'quick_clarification', asked_at_budget_remaining: 3,
+          }],
+        }],
+      }),
+    })));
+
+    const session = await getPortfolioEntrySession('11111111-1111-4111-8111-111111111111', 'entry-token');
+    expect(session.conversation[0]?.emittedQuestions[0]?.reason_to_ask).toBe(reason);
+  });
+
   it('sends expectedRevision and a stable Idempotency-Key supplied by the caller', async () => {
     const key = 'stable-key-1';
     server.use(

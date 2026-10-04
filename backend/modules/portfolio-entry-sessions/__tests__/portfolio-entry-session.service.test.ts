@@ -128,7 +128,9 @@ describe('PortfolioEntrySessionService', () => {
     await service.appendTurn(makeTurnInput(session.id, 1, 'questions_required'));
     await service.appendTurn(makeTurnInput(session.id, 2, 'no_questions_required'));
 
-    expect((await repository.listTurns(session.id)).map((turn) => turn.turnIndex)).toEqual([1, 2]);
+    const turns = await repository.listTurns(session.id);
+    expect(turns.map((turn) => turn.turnIndex)).toEqual([1, 2]);
+    expect(turns[0]?.emittedQuestions[0]?.reason_to_ask).toBe('Aclarar decision');
   });
 
   it('preserves responded_resolves without answered gap promotion', async () => {
@@ -520,6 +522,7 @@ function makeRuntimeTurn(
     ? [{
         id: 'q1',
         question: 'Que decision quieres habilitar?',
+        reason_to_ask: 'Aclarar decision',
         question_type: 'clarification',
         resolves: ['decision_to_enable'],
         turn_index: turnIndex,

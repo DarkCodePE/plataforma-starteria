@@ -193,6 +193,15 @@ describe('Portfolio Entry Experimental Session API', () => {
     expect(first.body.data.nextAction).toBe('answer_clarification');
     expect(first.body.data.clarification.quickQuestionsAsked).toBe(1);
     expect(first.body.data.conversation[0].emittedQuestions).toHaveLength(1);
+    const governedReason = first.body.data.conversation[0].emittedQuestions[0].reason_to_ask;
+    expect(typeof governedReason).toBe('string');
+    expect(governedReason.length).toBeGreaterThan(0);
+
+    const refreshed = await request(app)
+      .get(`${base}/sessions/${created.sessionId}`)
+      .set('X-Starteria-Entry-Token', created.token)
+      .expect(200);
+    expect(refreshed.body.data.conversation[0].emittedQuestions[0].reason_to_ask).toBe(governedReason);
 
     const questionIds = first.body.data.conversation[0].emittedQuestions.map((question: { id: string }) => question.id);
     const resolves = first.body.data.conversation[0].emittedQuestions[0].resolves;
@@ -211,6 +220,8 @@ describe('Portfolio Entry Experimental Session API', () => {
     expect(checkpoint.body.data.lifecycleStatus).toBe('CLARIFYING');
     expect(checkpoint.body.data.nextAction).toBe('offer_guided_exploration');
     expect(checkpoint.body.data.clarification.quickQuestionsAsked).toBeLessThanOrEqual(3);
+    expect(checkpoint.body.data.conversation.at(-1).emittedQuestions).toEqual([]);
+    expect(checkpoint.body.data.conversation[0].emittedQuestions[0]).not.toHaveProperty('reason_to_ask');
 
     const handoff = await request(app)
       .post(`${base}/sessions/${created.sessionId}/guided-exploration`)

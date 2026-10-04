@@ -91,6 +91,7 @@ describeIntegration('PrismaPortfolioEntrySessionRepository', () => {
     const turns = await repository.listTurns(session.id);
     const stored = await repository.findSessionById(session.id);
     expect(turns.map((turn) => turn.turnIndex)).toEqual([1, 2]);
+    expect(turns[0]?.emittedQuestions[0]?.reason_to_ask).toBe('Aclarar decision');
     expect(first.respondedResolves).toEqual(['decision_to_enable']);
     expect(stored?.semanticState.answeredGaps).toEqual([]);
     expect(JSON.stringify(turns)).not.toContain('response_rule_ids_used');
@@ -412,6 +413,7 @@ function makeRuntimeTurn(
     ? [{
         id: 'q1',
         question: 'Que decision quieres habilitar?',
+        reason_to_ask: 'Aclarar decision',
         question_type: 'clarification',
         resolves: ['decision_to_enable'],
         turn_index: turnIndex,

@@ -485,6 +485,14 @@ function ConversationPanel({
               >
                 {activeQuestion.question}
               </p>
+              {activeQuestion.reason_to_ask?.trim() ? (
+                <p
+                  className="mt-2 text-xs leading-5 text-text-muted"
+                  data-testid="portfolio-entry-active-question-reason"
+                >
+                  {activeQuestion.reason_to_ask}
+                </p>
+              ) : null}
             </div>
           ) : null}
 

@@ -40,6 +40,7 @@ export type SessionContext = {
 export type QuestionRecord = {
   id: string;
   question: string;
+  reason_to_ask?: string | null;
   question_type?: string;
   resolves: string[];
   turn_index: number;
