@@ -198,8 +198,9 @@ evidence_status: NO_EVIDENCE
 semantic_owner: harness productor (ADR-009), no el producto
 authority: AGENTS.md §3 (ciclo de vida de una tarea)
            docs/adr/ADR-009-dos-harnesses-el-producto-y-el-productor.md
-           ADR de proceso (KAN-93, pendiente) y ADR de distribución (KAN-94, pendiente)
-           Tech Spec del ciclo (KAN-95, pendiente; manda desde que se mergea su PR)
+           docs/adr/ADR-012-el-ciclo-de-hu-se-paga-por-ruta.md (KAN-93, proposed)
+           docs/adr/ADR-013-el-ciclo-de-desarrollo-se-distribuye-como-plugin-aparte.md (KAN-94, proposed)
+           docs/governance/ciclo-hu/DEV_CYCLE_HU_TECH_SPEC_v0.1.md (KAN-95; manda desde que se mergea su PR)
 scope: triage por rutas R0/R1/R2/Q; skill /spec y corte de HU desde la spec; capa de negocio (scorecard C1 a C4, "Por qué importa", Resumen ejecutivo); calibración de Jev con registro en estado/; plugin starteria-desarrollo con init idempotente
 exclusions: plugin de producto starteria-harness y sus skills starteria*; ajuste automático de umbrales de Jev; priorización del backlog por scorecard; front, backend, Prisma, ai-service y Core
 core_impact: NONE
