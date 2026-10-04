@@ -140,11 +140,14 @@ describe('InitiativeOverviewPage (IR-F2)', () => {
     expect(screen.getByText(/2 pasan al Step 0/)).toBeInTheDocument(); // preguntas pendientes
   });
 
-  it('el CTA "Empezar Step 0" navega al Step 0 (AC-OV-006)', async () => {
+  // AC-OV-006 navegaba directo a Step 0; el E2E Job-Driven §18 lo reemplaza: Start pasa por
+  // Mission Review y es esa pantalla la que abre Step 0.
+  it('el CTA lleva a Mission Review, no directo a Step 0 (§18)', async () => {
     render(<InitiativeOverviewPage />);
-    const cta = await screen.findByRole('button', { name: /Empezar Step 0/i });
+    const cta = await screen.findByRole('button', { name: /Revisar mi misi[oó]n y empezar/i });
     fireEvent.click(cta);
-    expect(navigate).toHaveBeenCalledWith('/projects/p1/step/0');
+    expect(navigate).toHaveBeenCalledWith('/initiatives/p1/mission');
+    expect(navigate).not.toHaveBeenCalledWith('/projects/p1/step/0');
   });
 
   it('muestra un error si no se puede cargar la iniciativa', async () => {

@@ -95,20 +95,24 @@ test.describe('Entrada D · encargo → Mission Review → ciclo → decisión �
     }
   });
 
-  gapTest('G1', 'Mission Review antes de empezar: Start no abre directamente Step 0 (§18)', async ({ page }) => {
+  test('Mission Review antes de empezar: Start no abre directamente Step 0 (§18)', async ({ page }) => {
     const owner = await registerAndLogin(api, 'd-mission');
     const { projectId } = await assignedInitiative(owner, `mission-${Date.now()}`);
     await browserLogin(page, owner.email, owner.password);
     await page.goto(`/initiatives/${projectId}/overview`);
-    await page.getByRole('button', { name: /Empezar|Comenzar|Revisar mi misi[oó]n/i }).first().click();
-    await expect(page).not.toHaveURL(/\/step\/0/, { timeout: GAP_TIMEOUT });
-    await expect(page).toHaveURL(/\/initiatives\/[^/]+\/mission/, { timeout: GAP_TIMEOUT });
+    await page.getByRole('button', { name: /Revisar mi misi[oó]n y empezar/i }).click();
+    await expect(page).toHaveURL(/\/initiatives\/[^/]+\/mission/, { timeout: 15_000 });
+    await expect(page.getByRole('heading', { name: /¿Qu[eé] estoy asumiendo exactamente\?/ })).toBeVisible();
     for (const label of [/Qu[eé] quiere mover/i, /Contexto heredado/i, /Restricciones/i, /Capacidad/i, /Dependencias/i, /Qui[eé]n puede ayudar/i, /Qu[eé] decisi[oó]n/i]) {
-      await expect(page.getByText(label).first()).toBeVisible({ timeout: GAP_TIMEOUT });
+      await expect(page.getByText(label).first()).toBeVisible({ timeout: 15_000 });
     }
+    // Lo heredado del Reto llega a la pantalla, y recién desde acá se abre Step 0.
+    await expect(page.getByText(/Bajar el costo por solicitud de 14.20 a 10.00/)).toBeVisible();
+    await page.getByRole('button', { name: /Asumir y empezar Step 0/ }).click();
+    await expect(page).toHaveURL(/\/projects\/[^/]+\/step\/0/, { timeout: 15_000 });
   });
 
-  gapTest('G2', 'los Steps se presentan como preguntas de progreso (§19)', async ({ page }) => {
+  test('los Steps se presentan como preguntas de progreso (§19)', async ({ page }) => {
     const owner = await registerAndLogin(api, 'd-steps');
     const { projectId } = await assignedInitiative(owner, `steps-${Date.now()}`);
     await browserLogin(page, owner.email, owner.password);
@@ -120,7 +124,7 @@ test.describe('Entrada D · encargo → Mission Review → ciclo → decisión �
       /¿Qu[eé] ocurri[oó] realmente\?/i,
       /¿Qu[eé] decisi[oó]n est[aá] suficientemente sustentada\?/i,
     ]) {
-      await expect(page.getByText(question).first()).toBeVisible({ timeout: GAP_TIMEOUT });
+      await expect(page.getByText(question).first()).toBeVisible({ timeout: 15_000 });
     }
   });
 

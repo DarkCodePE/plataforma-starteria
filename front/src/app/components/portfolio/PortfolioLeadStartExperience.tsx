@@ -24,7 +24,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from '../ui/dialog';
-import { PortfolioLeadContextStrip } from './PortfolioLeadPageElements';
 
 type StartOptionTone = 'emerald' | 'amber' | 'violet' | 'sky';
 
@@ -63,23 +62,26 @@ export function PortfolioLeadStartExperience({
   onImportOpenChange: (open: boolean) => void;
   onNavigate: (path: string) => void;
 }) {
+  // Las opciones nombran el Job, no el objeto de dominio (doc/STARTERIA_JOB_DRIVEN_E2E_EXPERIENCE_v0.2.md
+  // §1, §24–§25). El mecanismo de Starteria queda como etiqueta secundaria: con sesión iniciada sigue
+  // siendo útil saber adónde lleva cada acción.
   const options: StartOption[] = [
     {
       id: 'front',
-      title: 'Crear frente estratégico',
-      description: 'Define una prioridad del negocio, su KPI y los retos que la activan.',
-      actionLabel: 'Crear frente',
-      badge: 'Prioridad',
+      title: 'Tengo un resultado de negocio que quiero mover',
+      description: 'Aclara qué quiere conseguir el negocio, cómo se notaría (KPI, baseline, meta) y en qué horizonte.',
+      actionLabel: 'Definir el resultado',
+      badge: 'Frente estratégico',
       tone: 'emerald',
       icon: Target,
       onClick: () => onNavigate('/portfolio/frentes-estrategicos'),
     },
     {
       id: 'import',
-      title: 'Importar iniciativas existentes',
-      description: 'Sube Excel, texto o documentos para ordenarlos por frente y reto.',
+      title: 'Ya hay mucho trabajo y necesito saber dónde estamos',
+      description: 'Trae iniciativas, pilotos o documentos existentes para leer qué se puede sostener y qué falta para decidir.',
       actionLabel: 'Preparar importación',
-      badge: 'Siguiente paso',
+      badge: 'Siguiente fase',
       tone: 'amber',
       icon: UploadCloud,
       onClick: () => onImportOpenChange(true),
@@ -87,20 +89,20 @@ export function PortfolioLeadStartExperience({
     },
     {
       id: 'challenge',
-      title: 'Crear reto rápido',
-      description: 'Aterriza un objetivo en un reto accionable para activar equipos.',
-      actionLabel: 'Crear reto',
-      badge: 'Rápido',
+      title: 'Tengo un problema u oportunidad concreta para activar equipos',
+      description: 'Convierte una prioridad en un espacio de intervención con contexto, restricciones y una decisión esperada.',
+      actionLabel: 'Definir el espacio de intervención',
+      badge: 'Reto',
       tone: 'violet',
       icon: Flag,
       onClick: () => onNavigate('/portfolio/retos'),
     },
     {
       id: 'initiative',
-      title: 'Crear iniciativa individual',
-      description: 'Registra una iniciativa independiente para desarrollarla con Step 0–4.',
-      actionLabel: 'Ir a iniciativas',
-      badge: 'Step 0–4',
+      title: 'Tengo algo que quiero sacar adelante',
+      description: 'Empieza una iniciativa propia sin inventar estructura corporativa: el contexto se arma en el camino.',
+      actionLabel: 'Empezar una iniciativa',
+      badge: 'Iniciativa',
       tone: 'sky',
       icon: Rocket,
       onClick: () => onNavigate('/portfolio/iniciativas'),
@@ -116,20 +118,13 @@ export function PortfolioLeadStartExperience({
             PUNTO DE ENTRADA
           </div>
           <h1 className="mt-4 text-3xl text-slate-950 md:text-4xl" style={{ fontWeight: 700, letterSpacing: '-0.03em' }}>
-            ¿Cómo quieres iniciar?
+            ¿Qué necesitas mover?
           </h1>
           <p className="mt-3 max-w-3xl text-sm text-slate-600 md:text-[15px]">
-            Elige si quieres partir desde una prioridad estratégica, un reto concreto o información que ya existe.
+            Elige lo que más se parece a tu situación. Starteria propone la estructura después; no hace falta decidir de
+            entrada si esto es un frente, un reto o una iniciativa.
           </p>
         </div>
-
-        <PortfolioLeadContextStrip
-          items={[
-            { label: 'Ruta segura', value: 'Sin flujo real todavía' },
-            { label: 'Importación', value: 'Siguiente fase' },
-            { label: 'Secuencia', value: 'Frente → Reto → Activación → Iniciativas → Decisión' },
-          ]}
-        />
       </section>
 
       <section className="grid gap-4 xl:grid-cols-2">
@@ -175,16 +170,6 @@ export function PortfolioLeadStartExperience({
             </Card>
           );
         })}
-      </section>
-
-      <section className="rounded-[28px] border border-slate-200 bg-white p-6 md:p-7">
-        <div className="max-w-3xl">
-          <p className="text-xs text-slate-500" style={{ fontWeight: 700 }}>SECUENCIA STARTERÍA</p>
-          <h2 className="mt-1 text-xl text-slate-950" style={{ fontWeight: 700 }}>Frente estratégico → Reto → Activación → Iniciativas → Decisión</h2>
-          <p className="mt-2 text-sm text-slate-600">
-            La pantalla solo ayuda a elegir el punto de entrada correcto. El flujo detallado seguirá en los pasos existentes.
-          </p>
-        </div>
       </section>
 
       <Dialog open={importOpen} onOpenChange={onImportOpenChange}>
