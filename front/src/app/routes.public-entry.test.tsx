@@ -1,6 +1,6 @@
 import React from 'react';
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent } from '@testing-library/react';
 import { appRoutes } from './routes';
 import { LandingPage } from './pages/LandingPage';
 
@@ -95,23 +95,20 @@ describe('public entry routing', () => {
     expect(navigate).toHaveBeenCalledWith('/auth');
   });
 
-  it('expone Portfolio Entry desde la landing sin CTA legacy de preproyecto', async () => {
+  it('expone Portfolio Entry como camino opcional hacia /public/start', async () => {
     render(<LandingPage />);
 
     expect(screen.getByRole('heading', {
-      name: /Convierte estrategia e iniciativas en decisiones sustentadas/i,
+      name: /Haz que la estrategia se haga realidad/i,
     })).toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: /Todavía no tienes claro por dónde empezar/i })).toBeInTheDocument();
-    expect(screen.getByText('Cómo Starteria conecta el trabajo')).toBeInTheDocument();
-    expect(screen.getAllByRole('button', { name: /Analizar mi situaci[oó]n/i }).length).toBeGreaterThan(0);
+    expect(screen.getByRole('heading', { name: /Aclara qué quieres conseguir antes de decidir qué hacer/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Quiero alinear mi objetivo primero/i })).toBeInTheDocument();
+    expect(screen.queryByRole('textbox', { name: /necesitas conseguir o entender/i })).not.toBeInTheDocument();
     expect(screen.queryByText(/Crear pre proyecto/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/proposal editor/i)).not.toBeInTheDocument();
 
-    fireEvent.change(screen.getByRole('textbox', { name: /necesitas conseguir o entender/i }), {
-      target: { value: 'Necesito ordenar mis iniciativas antes del comite de direccion.' },
-    });
-    fireEvent.click(screen.getAllByRole('button', { name: /Analizar mi situaci[oó]n/i })[0]);
+    fireEvent.click(screen.getByRole('button', { name: /Quiero alinear mi objetivo primero/i }));
 
-    await waitFor(() => expect(navigate).toHaveBeenCalledWith('/public/start'));
+    expect(navigate).toHaveBeenCalledWith('/public/start');
   });
 });
