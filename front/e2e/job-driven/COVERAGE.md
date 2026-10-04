@@ -21,11 +21,11 @@ test queda como regresión.
 | §5 | Resultado posible: "todavía no activar trabajo" | `entry-a` · [G9] | GAP G9 |
 | §3, §5 | Ruta sugerida con destinos según Job (portfolio setup, análisis, contexto de org, iniciativa) | `entry-a` · [G9] | GAP G9 |
 | §1, §25 | La entrada pública no pide elegir objetos de dominio | `entry-a` · texto libre… | ✅ |
-| §24–§25 | `/portfolio/iniciar` empieza por el Job, no por "¿Cómo quieres iniciar?" | `entry-b` · [G2] | GAP G2 |
+| §24–§25 | `/portfolio/iniciar` empieza por el Job, no por "¿Cómo quieres iniciar?" | `entry-b` · /portfolio/iniciar… | ✅ |
 | §6 | Portfolio Home da una lectura | `entry-b` · Portfolio Home… | ✅ (solo carga; la lectura completa es G7) |
 | §7 | Frente con resultado, KPI, baseline, target, horizonte | `entry-b` · un Frente guarda… | ✅ |
 | §7 | Frente con restricciones (Core §13) | `entry-b` · [G3] | GAP G3 |
-| §7 | La pantalla de Frentes pregunta "¿qué resultado quiere mover?" | `entry-b` · [G2] | GAP G2 |
+| §7 | La pantalla de Frentes pregunta "¿qué resultado quiere mover?" | `entry-b` · la pantalla de Frentes… | ✅ |
 | §8–§11, §26 | Copilot propone partir un Frente en Retos, explica, AI_SUGGESTED/UNREVIEWED, no crea | `entry-b` · [G6] | GAP G6 |
 | §10 | "No parece necesario crear otro Reto" | `entry-b` · [G6] | GAP G6 |
 | §13 | Reto con estado de cobertura | `entry-b` · un Reto tiene… | ✅ |
@@ -36,8 +36,8 @@ test queda como regresión.
 | §15 | El encargo muestra qué se quiere mover y por qué | `entry-d` · el participante ve… | ✅ |
 | §15 | …y qué se sabe, qué está abierto, restricciones, decisión esperada (Core §14.1) | `entry-d` · [G4] | GAP G4 |
 | §17 | Step 0–4 → Decision Package → la decisión sube al portfolio | `entry-d` · el ciclo completo… | ✅ |
-| §18 | Mission Review; Start no abre Step 0 | `entry-d` · [G1] | GAP G1 |
-| §19 | Steps como preguntas de progreso | `entry-d` · [G2] | GAP G2 |
+| §18 | Mission Review; Start no abre Step 0 | `entry-d` · Mission Review… | ✅ |
+| §19 | Steps como preguntas de progreso | `entry-d` · los Steps… | ✅ |
 | §21 | Decision Brief: decisión, qué hicimos, qué ocurrió, aprendizajes, riesgos, qué no podemos afirmar, siguiente paso | `entry-d` · el Decision Brief trae… | ✅ |
 | §21 | …y alternativas, qué podemos sostener | `entry-d` · [G5] | GAP G5 |
 | §22 | Continuidad: pivotear, buscar capacidad, benefit tracking (Core §26) | `entry-d` · [G5] | GAP G5 |
@@ -48,10 +48,10 @@ test queda como regresión.
 
 ## Gaps abiertos
 
+Cerrados: G1 y G2 (Ola 1).
+
 | GAP | Qué | Ola |
 |---|---|---|
-| G1 | Mission Review entre iniciativa y Step 0 | 1 |
-| G2 | Lenguaje de Jobs: `/portfolio/iniciar`, Steps como preguntas, Frente | 1 |
 | G3 | Frente: restricciones | 2 |
 | G4 | Envelope del Reto | 2 |
 | G5 | Decisión y Brief: rutas de continuidad, alternativas, qué podemos sostener | 2 |

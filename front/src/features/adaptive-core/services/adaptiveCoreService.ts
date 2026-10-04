@@ -105,3 +105,28 @@ export async function registerCriticalChange(
   const { data } = await api.post<ApiResponse<AdaptiveInitiativeCore>>(`/projects/${projectId}/adaptive-core/critical-change`, input);
   return data.data;
 }
+
+/** Mission Review (§18): lectura de lo que la iniciativa hereda antes de empezar Step 0. */
+export interface MissionReview {
+  projectId: string;
+  initiativeName: string;
+  independent: boolean;
+  whatToMove: string | null;
+  inheritedContext: {
+    strategicFront: { id: string; name: string; desiredResult: string | null; kpi: string | null; target: string | null; horizon: string | null } | null;
+    challenge: { id: string; title: string; whyNow: string | null; successCriteria: string | null } | null;
+    initiativeContext: string | null;
+  };
+  expectedContribution: string | null;
+  constraints: string[];
+  capacity: string[];
+  dependencies: string[];
+  whoCanHelp: string[];
+  decisionToEnable: string | null;
+  openQuestions: string[];
+}
+
+export async function getMissionReview(projectId: string): Promise<MissionReview> {
+  const { data } = await api.get<ApiResponse<MissionReview>>(`/projects/${projectId}/mission-review`);
+  return data.data;
+}

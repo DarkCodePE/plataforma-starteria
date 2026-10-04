@@ -65,19 +65,21 @@ test.describe('Entrada B · dónde intervenir (§6–§13)', () => {
     expect(front.constraints).toBe('Sin aumentar el equipo de soporte');
   });
 
-  gapTest('G2', 'la pantalla de Frentes pregunta "¿qué resultado quiere mover el negocio?" (§7)', async ({ page }) => {
+  test('la pantalla de Frentes pregunta "¿qué resultado quiere mover el negocio?" (§7)', async ({ page }) => {
     await uiLoginLead(page);
     await page.goto('/portfolio/frentes-estrategicos');
-    await expect(page.getByText(/qu[eé] resultado quiere mover/i).first()).toBeVisible({ timeout: GAP_TIMEOUT });
+    await expect(page.getByText(/qu[eé] resultado quiere mover/i).first()).toBeVisible({ timeout: 15_000 });
   });
 
-  gapTest('G2', '/portfolio/iniciar empieza por el Job, no por "¿Cómo quieres iniciar?" con objetos de dominio (§24–§25)', async ({ page }) => {
+  test('/portfolio/iniciar empieza por el Job, no por "¿Cómo quieres iniciar?" con objetos de dominio (§24–§25)', async ({ page }) => {
     await uiLoginLead(page);
     await page.goto('/portfolio/iniciar');
     // Sin esto, una página que no cargó haría "pasar" la ausencia de textos.
     await expect(page.getByText('Iniciar', { exact: true }).first()).toBeVisible({ timeout: 20_000 });
-    await expect(page.getByRole('heading', { name: /¿C[oó]mo quieres iniciar\?/i })).toHaveCount(0, { timeout: GAP_TIMEOUT });
-    await expect(page.getByText(/Frente → Reto → Activación/i)).toHaveCount(0, { timeout: GAP_TIMEOUT });
+    await expect(page.getByRole('heading', { name: /¿C[oó]mo quieres iniciar\?/i })).toHaveCount(0, { timeout: 15_000 });
+    await expect(page.getByText(/Frente → Reto → Activación/i)).toHaveCount(0, { timeout: 15_000 });
+    await expect(page.getByRole('heading', { name: /¿Qu[eé] necesitas mover\?/ })).toBeVisible();
+    await expect(page.getByText(/Tengo algo que quiero sacar adelante/)).toBeVisible();
   });
 
   gapTest('G6', 'el Copilot propone partir un Frente en Retos, explica y pide confirmación sin crearlos (§8–§11, §26)', async () => {
