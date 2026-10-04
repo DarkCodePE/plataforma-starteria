@@ -181,6 +181,25 @@ describe('PortfolioEntryExperience', () => {
     vi.clearAllMocks();
   });
 
+  it('recovers the claimed Brief before a stale anonymous current-session credential', async () => {
+    const sessionId = '11111111-1111-4111-8111-111111111111';
+    savePortfolioEntryCurrentSession({ sessionId, credential: 'stale-anonymous-credential' });
+    saveClaimedPortfolioEntrySession({ sessionId });
+    serviceMocks.getPortfolioEntrySession.mockRejectedValue({ kind: 'expired', status: 410 });
+    serviceMocks.getClaimedPortfolioEntrySession.mockResolvedValue(sessionWithHandoff({
+      lifecycleStatus: 'CONFIRMED',
+      revision: 9,
+      ownership: { state: 'CLAIMED', ownerUserId: 'user-1' },
+      confirmation: { id: 'confirmation-1', version: 1, status: 'CONFIRMED', acceptedFields: ['understanding'], correctedFields: {}, rejectedFields: [], createdAt: new Date().toISOString() },
+    }));
+
+    renderExperience();
+
+    expect(await screen.findByTestId('portfolio-entry-confirmed-brief-actions')).toBeInTheDocument();
+    expect(serviceMocks.getClaimedPortfolioEntrySession).toHaveBeenCalledWith(sessionId);
+    expect(serviceMocks.getPortfolioEntrySession).not.toHaveBeenCalled();
+  });
+
   it('exports only confirmed handoff fields and never substitutes rawEntry', () => {
     const session = sessionWithHandoff({
       lifecycleStatus: 'CONFIRMED',
