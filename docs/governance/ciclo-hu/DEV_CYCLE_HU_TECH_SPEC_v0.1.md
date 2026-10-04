@@ -39,7 +39,7 @@ puede, la HU está inventando y vuelve a `/hu` (`AGENTS.md` §3).
 | Pieza | Hoy | Hecho que importa para esta spec |
 |---|---|---|
 | `jev-clasificar.mjs` | 7 preguntas a Jev (4 sí/no, 2 opción, 1 puntaje); la clase la deriva el código con cortes 0.65/0.35/0.5 y sube un escalón por duda (`:30-32`, `:126-162`) | La salida `--json` ya trae `respuestas{}` y `confianzas{}`: es la materia prima de la calibración. No escribe nada; `/hu` guarda `estado/hu/<slug>.clase.json` |
-| `/hu` | clasificar → grill → brief → planner (`SKILL.md:19-21`) | La clase no cambia el camino, sólo cuántas HU salen (`SKILL.md:43-47`) |
+| `/hu` | clasificar → grill → brief → planner (`SKILL.md:19-22`) | La clase no cambia el camino, sólo cuántas HU salen (`SKILL.md:43-47`) |
 | `delivery-planner` | HU + `funcional[]` + `tecnica[]` con `bloqueadaPor` (`delivery-planner.md:84-131`) | No pide "Por qué importa" ni fila de scorecard. No conoce rutas |
 | `jira-hu-crear.mjs` | exige ≥1 funcional y ≥1 técnica (`:83-85`); `epica` sólo como clave existente (`:203`); responsables opcionales por `.env` (`:120-127`) | No puede crear un R0 (issue sin subtareas) ni una épica |
 | `/pr` y plantilla | 6 secciones: HU, CA, Resumen, Evidencia, Peligro, Chequeos | No hay "Resumen ejecutivo" |
@@ -66,11 +66,13 @@ sus seams y rollback.
 | `clase` hoy | `ruta` | Regla adicional del agente (lo que Jev no ve) |
 |---|---|---|
 | `pregunta` | `Q` | |
-| `acotado` | `R1` | baja a **propuesta** `R0` sólo si: `capas = una`, `interfaz_compartida < 0.35`, y el agente verifica con `Grep`/`Glob` que el flujo existe y que el diff esperado no toca `backend/`, `prisma/`, `ai-service/` ni un contrato entre frentes |
+| `acotado` | `R1`, o `R0` propuesto | el agente propone `R0` en lugar de `R1` sólo si: `subio_por_duda = false`, `dudas` vacío, `capas = una`, `interfaz_compartida < 0.35`, y verifica con `Grep`/`Glob` que el flujo existe y que el diff esperado no toca `backend/`, `prisma/`, `ai-service/` ni un contrato entre frentes |
 | `grande` | `R2` | |
 
-"Baja a propuesta R0" no contradice INV-2: la ruta todavía no está fijada; lo que nunca baja es una
-ruta **confirmada**. La persona confirma la ruta antes del grill.
+Proponer R0 no contradice INV-2: Jev no tiene una clase equivalente a R0, y `ADR-012` §2 le da al
+agente justamente verificar contra el repo lo que Jev no ve. Una ruta todavía no confirmada no
+"baja"; lo que nunca baja es una ruta **confirmada**. Si Jev subió la clase por duda, el agente no
+propone R0: la duda manda hacia el más pesado. La persona confirma la ruta antes del grill.
 
 **D-2. El script agrega `ruta` y `ruta_motivos` a su `--json`**, sin quitar `clase` (compatibilidad
 con `estado/hu/*.clase.json` ya escritos). La regla de R0 que necesita el repo la aplica el agente,
@@ -92,8 +94,15 @@ queda igual. Con `epica: {crear: "<nombre>"}` crea la épica y cuelga la HU de e
 como hoy.
 
 **D-5. Subir la ruta a mitad de camino** se hace con `/hu --subir KAN-nnn <ruta> "<motivo>"`: no
-reescribe el ticket, comenta en Jira el motivo y escribe el evento en el registro (§4.4). Si sube a
+reescribe el ticket y comenta en Jira el motivo. El evento `subida` en el registro (§4.4) lo agrega
+HU-C, que llega después. Si sube a
 R2 con código ya escrito, la rama se para hasta que haya spec.
+
+**D-23. `AGENTS.md` §3 se reescribe así:** el bloque de fases pasa de una sola línea de tiempo a
+la tabla de rutas de `ADR-012` §2 seguida de la línea de tiempo de R1 (la de hoy) y las diferencias
+de R0, R2 y Q en una línea cada una; `/hu` gana la fase "0. triage" en su bloque de `SKILL.md`. El
+resto de §3 (implementar, verificar, revisar, cerrar, "Volver a `/hu`") no cambia. `CLAUDE.md`
+copia la tabla corta de rutas en su "Ciclo de una tarea".
 
 - *Descartado:* un agente `triage` separado. Agrega un despacho más por pedido y duplica la lectura
   del pedido que `/hu` ya hace; el triage necesita la misma conversación que el grill.
@@ -146,7 +155,7 @@ la [Técnica] de cada HU cita sus `D-n` en `## Enfoque`. La épica cierra con un
 ## 4.3 Capa de negocio
 
 **D-10. El scorecard vive en `docs/governance/scorecard/STARTERIA_SCORECARD_C1_C4.md`**, con una
-fila por objetivo y un id estable por fila (`SC-01` a `SC-18`, en el orden de la fuente). El
+fila por objetivo y un id estable por fila (`SC-01` a `SC-19`, en el orden de la fuente; `SC-19` es North Star). El
 contenido sale de `estado/hu/ciclo-hu-spec.scorecard-fuente.md` sin cambios de texto. Cuando cambia
 el ciclo C1 a C4 se edita en un PR; los ids no se reusan.
 
@@ -158,13 +167,24 @@ el ciclo C1 a C4 se edita en un PR; los ids no se reusan.
 | `Scorecard: SC-nn · <perspectiva> · <objetivo>` | primera línea de `## Contexto` de la HU | `delivery-planner` | si no hay fila: `Scorecard: sin fila (aviso)` |
 | `## Resumen ejecutivo` | primera sección del PR | `/pr`, y la plantilla de `.github/` | 3 a 5 líneas: qué cambia para el usuario, por qué, qué `SC-nn`, riesgo |
 
-**D-12. El revisor suma el control 8, "Capa de negocio":** marca `[menor]` si falta cualquiera de
-los tres bloques o si el `SC-nn` no existe en el scorecard. Nunca `[bloqueante]`: es aviso, como dice
-`ADR-012`.
+**D-12. El revisor suma el control 8, "Capa de negocio":**
+- falta `## Por qué importa` en la HU o en una subtarea, o falta `## Resumen ejecutivo` en el PR →
+  `[bloqueante]`. Son bloques fijos (brief P10; `ADR-012` §2: "el revisor marca su ausencia").
+- falta la línea `Scorecard:`, o cita un `SC-nn` inexistente → `[menor]`. Sin fila es aviso, no
+  bloqueo (brief P9; `ADR-012` §2).
 
-- *Testing:* el seam es el JSON del plan. Un test de `jira-hu-crear` en dry-run rechaza (aviso, no
-  error) una HU sin `## Por qué importa`. El control 8 del revisor se prueba a mano con un PR sin
-  resumen ejecutivo.
+- *Descartado:* las tres faltas como `[menor]`. Dejaría pasar un PR que nadie de producto puede leer,
+  que es lo que el bloque fijo existe para impedir.
+- *Descartado:* el scorecard en `docs/` raíz o junto a la spec. `docs/governance/` ya es donde viven
+  los documentos de cómo trabaja el equipo; el scorecard cambia con los ciclos C1 a C4, no con esta
+  spec, y por eso tiene carpeta propia.
+- *Descartado:* citar la fila por su texto en vez de un id. El texto cambia entre ciclos y la cita
+  quedaría rota sin aviso; `SC-nn` se valida contra el archivo.
+
+- *Testing:* el seam es la lista de `SC-nn` del archivo del scorecard: una función que la lee y
+  valida una línea `Scorecard:` se testea con `node --test`. `jira-hu-crear` no valida la capa de
+  negocio (eso es del revisor). El control 8 se prueba a mano con un PR sin resumen ejecutivo
+  (bloqueante) y una HU con `SC-99` (menor).
 - *Rollback:* quitar los bloques de las plantillas; los tickets viejos no se tocan.
 
 ## 4.4 Calibración
@@ -172,14 +192,14 @@ los tres bloques o si el `SC-nn` no existe en el scorecard. Nunca `[bloqueante]`
 **D-13. El registro es `estado/calibracion/triage.jsonl`**, una línea por evento, append-only:
 
 ```json
-{"v":1,"t":"2026-10-04T12:00:00Z","evento":"triage","pedido_slug":"ciclo-hu-spec",
- "jev":{"respuestas":{},"confianzas":{},"modelo":"jev-latest","clase":"grande"},
- "ruta_propuesta":"R2","ruta_confirmada":"R2","confirmo":"Orlando","hu":null}
+{"v":1,"t":"2026-10-04T12:00:00Z","evento":"triage","pedido_slug":"ciclo-hu-spec","jev":{"respuestas":{},"confianzas":{},"modelo":"jev-latest","clase":"grande"},"ruta_propuesta":"R2","ruta_confirmada":"R2","confirmo":"Orlando","hu":null}
 {"v":1,"t":"...","evento":"creada","pedido_slug":"ciclo-hu-spec","hu":"KAN-91"}
 {"v":1,"t":"...","evento":"subida","hu":"KAN-91","de":"R1","a":"R2","motivo":"..."}
-{"v":1,"t":"...","evento":"resultado","hu":"KAN-91","cerrada":"2026-10-20",
- "senales":["r2_sin_spec","subtarea_inventa","skill_equivocada","init_rompe","ruta_subida"]}
+{"v":1,"t":"...","evento":"resultado","hu":"KAN-91","cerrada":"2026-10-20","senales":["r2_sin_spec","subtarea_inventa","skill_equivocada","init_rompe","ruta_subida","negocio_sin_marcar"]}
 ```
+
+Las seis `senales` son las del brief ("Cómo se sabría que salió mal"); `negocio_sin_marcar` es
+"un PR o ticket sin resumen ejecutivo o Por qué importa que el revisor no marcó".
 
 `estado/` está ignorado (`.gitignore:20`): el registro es local de quien conduce el ciclo, como el
 brief. `pedido_slug` une los eventos antes de que exista la clave.
@@ -212,7 +232,12 @@ plugins/starteria-desarrollo/
 ```
 
 Las tools se suben a `tools/` del paquete (hoy están dentro de `skills/*/tools/`) porque las usan
-varias skills y los agentes. `.claude-plugin/marketplace.json` agrega la entrada
+varias skills y los agentes.
+
+**D-24. El paquete se publica sólo en `.claude-plugin/marketplace.json`**, no en el catálogo neutral
+`.agents/plugins/marketplace.json` de `ADR-011`. Ese catálogo existe para que Codex instale el
+producto; el ciclo de desarrollo corre en una terminal de quien mantiene la plataforma (`ADR-009`) y
+hoy no hay pedido de usarlo desde Codex. Si aparece, es un ADR nuevo. `.claude-plugin/marketplace.json` agrega la entrada
 `{"name":"starteria-desarrollo","source":"./plugins/starteria-desarrollo"}` junto a la de
 `starteria-harness`. `.claude/skills/graft/` no se muda.
 
@@ -225,27 +250,54 @@ ruta de la tool en el prompt de la skill que lo despacha.
 §8.4 → borrar `.claude/skills/{hu,implementar,verificar,pr,jira-hu}` y los dos agentes → ajustar
 `.gitignore:16-17`. Un estado intermedio con dos copias no se mergea (`ADR-013` §2.1, propuesta
 aprobada). En este repo el plugin se habilita con `.claude/settings.json` commiteado
-(`extraKnownMarketplaces` apuntando a `./` y el plugin habilitado). **SUPUESTO:** el nombre exacto de
-la clave para habilitar un plugin en settings; la doc no lo confirmó y la HU lo verifica antes de
-escribirlo.
+(`extraKnownMarketplaces` apuntando a `./` y el plugin habilitado). Para commitearlo, `.gitignore` suma `!.claude/settings.json` (hoy `.claude/*`
+lo ignora). **SUPUESTO:** el nombre exacto de la clave para habilitar un plugin en settings; la doc
+no lo confirmó y la HU lo verifica antes de escribirlo.
 
-**D-19. Nombres.** Las skills quedan como `/starteria-desarrollo:hu`, etc. `AGENTS.md` §3 se reescribe
-con esos nombres. No se agregan alias.
+**D-19. Nombres.** Las skills quedan como `/starteria-desarrollo:hu`, etc. y los agentes con el mismo
+prefijo. En el mismo PR de la mudanza se actualizan **por nombre**: `AGENTS.md` §3, la tabla de
+`CLAUDE.md` (`/hu`, `/implementar`, `/verificar`, `/pr`), los despachos de agentes dentro de las
+skills (`subagent_type: delivery-planner`, `revisor-starteria`) y `TESTING.md`. No se agregan alias.
 
 **D-20. `.env`.** `jira-comun.mjs` exporta `buscarEnv()`, la única función de búsqueda, y
 `jev-clasificar.mjs` la importa (hoy duplica la lógica). Orden: `JIRA_ENV_FILE` → cwd y 6 ancestros →
 `dirname(git rev-parse --path-format=absolute --git-common-dir)`. Se quita "junto al script".
 
-**D-21. `init`.** Skill `init` del plugin, con `--dry-run`. Marcadores:
+**D-21. `init`.** Skill `init` del plugin, con `--dry-run`. Texto exacto de los marcadores (puerta
+de una vía, `ADR-013` §4):
 
 ```text
-<!-- starteria-desarrollo:init v=<versión> inicio -->
+<!-- starteria-desarrollo:init v=<versión del plugin> inicio -->
 <!-- starteria-desarrollo:init fin -->
 ```
 
-Algoritmo: leer el archivo (o vacío si no existe); contar inicios y fines; si no son 0/0 ni 1/1 en
-ese orden, abortar sin escribir; si 0/0, agregar el bloque al final con una línea en blanco antes;
-si 1/1, reemplazar sólo el interior; si el interior ya es idéntico, no escribir. No toca settings.
+- Una línea de **inicio** es la que empieza con `<!-- starteria-desarrollo:init v=` y termina con
+  ` inicio -->`; una de **fin** es exactamente `<!-- starteria-desarrollo:init fin -->`.
+- El **bloque** va de la línea de inicio a la de fin, las dos incluidas.
+
+Algoritmo: leer el archivo; contar inicios y fines; si no son 0/0 ni 1/1 con el inicio antes del fin,
+abortar sin escribir y decir qué encontró. Archivo inexistente o vacío: escribir el bloque solo, sin
+línea en blanco antes. 0/0 con contenido: agregar al final una línea en blanco y el bloque. 1/1:
+reemplazar el bloque entero, incluida la línea de inicio (así se actualiza `v=`). Si el bloque nuevo
+es idéntico al existente, no escribir. No toca settings.
+
+**D-25. Contenido del bloque del `init`.** Cuatro partes, cortas: (1) "Este repo usa el ciclo de
+`starteria-desarrollo`" y la tabla de rutas de `ADR-012`; (2) los comandos por fase con su nombre de
+plugin; (3) qué archivos del repo destino espera el ciclo (`AGENTS.md`, `TESTING.md`, un manifiesto)
+y que cada skill avisa si falta uno; (4) cómo habilitar el plugin por settings, como instrucción para
+una persona. Nada específico de Starteria (slices, Portfolio Entry, Jev con su clave) entra en el
+bloque: eso vive en los archivos del repo.
+
+- *Descartado:* dejar las tools en `skills/jira-hu/tools/`. Las llaman `/hu`, `/implementar` y los dos
+  agentes; una ruta dentro de una skill ajena es la clase de referencia cruzada que se rompe al
+  renombrar.
+- *Descartado:* exigir `--plugin-dir` siempre en este repo, sin `settings.json`. Funciona, pero la
+  sesión normal no tendría el ciclo, y el error más probable es abrir Claude y no encontrar `/hu`.
+- *Descartado:* buscar el `.env` primero en el checkout principal. Un `.env` en el worktree (el de
+  una rama que prueba otra cuenta de Jira) tiene que ganar; por eso el principal va al final.
+- *Descartado:* marcadores `init:start` / `init:end` como la forma ilustrativa de `ADR-013`. Se usa
+  `inicio` / `fin` para que el bloque se lea en la lengua del repo; la forma es libre hasta que esté
+  en uso, y por eso se fija acá y no después.
 
 **D-22. Gate.** `scripts/verify.sh` agrega un bloque 7 "plugin de desarrollo": `claude plugin
 validate plugins/starteria-desarrollo`, que no quede ninguna skill del ciclo en `.claude/skills/`, y
@@ -253,7 +305,8 @@ validate plugins/starteria-desarrollo`, que no quede ninguna skill del ciclo en 
 
 - *Testing:* el `init` tiene el mejor seam de la épica: función pura `(texto, bloque) → texto | error`,
   con `node --test` sobre los cinco casos de `ADR-013` §5 (archivo con contenido propio, dos corridas,
-  inexistente, marcadores rotos, settings presente) más "interior idéntico no escribe". `buscarEnv`
+  inexistente, marcadores rotos, settings presente) más "bloque idéntico no escribe" y "cambio de
+  versión reescribe la línea de inicio". `buscarEnv`
   con un repo temporal y un worktree real (`git worktree add` en `os.tmpdir()`). La mudanza se prueba
   con `verify.sh` bloque 7 y abriendo `claude --plugin-dir plugins/starteria-desarrollo` desde un
   worktree: el inventario tiene que mostrar las 8 skills.
@@ -273,6 +326,7 @@ No hay contratos de la plataforma. Los dos contratos internos del ciclo son el p
 | 2 | SUPUESTO | clave de settings para habilitar un plugin en el proyecto | HU Plugin, antes de escribir `settings.json` |
 | 3 | SUPUESTO | el umbral de 20 resultados para que `/calibrar` proponga | primera corrida de `/calibrar`; lo aprueba una persona |
 | 4 | SUPUESTO | que el issue R0 pueda llevar los CA en su descripción sin una [Funcional] y el revisor los encuentre | HU Triage |
+| 5 | SUPUESTO | `SC-19` (North Star) se cita como cualquier otra fila, aunque es un KPI compuesto | HU Negocio; si confunde, se marca como no citable |
 
 # 7. Corte de la épica
 
@@ -286,21 +340,29 @@ HU-P  Plugin            ← primero: mueve todo lo demás de lugar
  ├─ HU-N  Negocio       bloqueada por HU-P
  ├─ HU-S  /spec         bloqueada por HU-T
  ├─ HU-C  Calibración   bloqueada por HU-T
- └─ HU-X  Piloto        bloqueada por HU-S y HU-N
+ └─ HU-X  Piloto        bloqueada por HU-S, HU-N y HU-C
 ```
 
 HU-P va primero porque mueve los archivos que las demás editan; hacerla al final obliga a rebasear
-todas.
+todas. HU-T no escribe en el registro (lo agrega HU-C), así que no depende de HU-C.
+
+Los cambios de código de la plataforma que aparecen en el corte (el R0 de prueba en `front/` de
+HU-T CA-4 y la épica de observabilidad de ai-service de HU-X) **no** entran por este slice, que los
+excluye: cada uno va bajo su propio slice, con su propia HU y su `V2_CHANGE_GUARDRAIL_CHECK`. Lo que
+este corte valida es el recorrido del ciclo, no ese código.
 
 **HU-P · Plugin starteria-desarrollo (R1).** Como desarrollador, quiero el ciclo como plugin con un
 `init` que no pise mi `AGENTS.md`, para usarlo desde cualquier checkout o repo.
-- CA-1 (D-16, D-18) `.claude-plugin/marketplace.json` lista `starteria-desarrollo` y no queda ninguna
-  skill ni agente del ciclo en `.claude/`.
+- CA-1 (D-16, D-18, D-24) `.claude-plugin/marketplace.json` lista `starteria-desarrollo`, el catálogo
+  neutral no cambia, y no queda ninguna skill ni agente del ciclo en `.claude/`.
+- CA-6 (D-19) `CLAUDE.md`, `AGENTS.md`, `TESTING.md` y los despachos de agentes usan los nombres con
+  prefijo, y `.gitignore` permite `.claude/settings.json`.
 - CA-2 (D-17) Una sesión abierta con `--plugin-dir` desde un worktree muestra las 8 skills y los 2
   agentes, y `/starteria-desarrollo:jira-hu KAN-91` responde.
 - CA-3 (D-20) Desde un worktree hermano, sin `JIRA_ENV_FILE`, `jira-hu.mjs` y `jev-clasificar.mjs`
   encuentran el `.env`; test con worktree real.
-- CA-4 (D-21) Los seis casos del `init` pasan en `node --test`.
+- CA-4 (D-21, D-25) Los siete casos del `init` pasan en `node --test`, y el bloque tiene las cuatro
+  partes de D-25.
 - CA-5 (D-22) `verify.sh` pasa con el bloque 7 y sigue diciendo `Skills (10)` para el producto.
 
 **HU-T · Triage por rutas (R1).** Como quien trae un pedido, quiero que se clasifique en R0, R1, R2 o
@@ -311,15 +373,16 @@ Q, para pagar sólo el ciclo que necesita.
 - CA-3 (D-4) `jira-hu-crear` en dry-run acepta un plan R0 sin subtareas y uno con `epica.crear`.
 - CA-4 (D-3) Un R0 de prueba (un texto en `front/`) recorre issue → `/implementar` → `/verificar` →
   `/pr` sin subtareas.
-- CA-5 (D-5) `/hu --subir` comenta en Jira y escribe el evento.
-- CA-6 `AGENTS.md` §3 describe las cuatro rutas.
+- CA-5 (D-5) `/hu --subir` comenta en Jira el motivo y no reescribe el ticket.
+- CA-6 (D-23) `AGENTS.md` §3 y `CLAUDE.md` describen las cuatro rutas con la forma de D-23.
 
 **HU-N · Capa de negocio (R1).** Como persona de producto o lead, quiero un resumen ejecutivo en cada
 PR y un "Por qué importa" ligado al scorecard en cada ticket, para entender el cambio sin leer código.
-- CA-1 (D-10) El scorecard está en `docs/governance/scorecard/` con ids `SC-01` a `SC-18`.
+- CA-1 (D-10) El scorecard está en `docs/governance/scorecard/` con ids `SC-01` a `SC-19`.
 - CA-2 (D-11) El planner genera "Por qué importa" en HU y subtareas y la línea `Scorecard:`.
 - CA-3 (D-11) `/pr` y la plantilla abren con "Resumen ejecutivo".
-- CA-4 (D-12) El revisor marca `[menor]` un PR sin resumen ejecutivo o con un `SC-nn` inexistente.
+- CA-4 (D-12) El revisor marca `[bloqueante]` un PR sin resumen ejecutivo y `[menor]` una HU con un
+  `SC-nn` inexistente.
 
 **HU-S · /spec y corte desde la spec (R1).** Como quien desarrolla un pedido grande, quiero una spec
 aprobada antes de los tickets, para que las [Técnica] citen decisiones.
@@ -331,7 +394,8 @@ aprobada antes de los tickets, para que las [Técnica] citen decisiones.
 **HU-C · Calibración (R1).** Como quien mantiene el triage, quiero cada clasificación registrada con
 su resultado y un `/calibrar` que proponga ajustes, para afinar a Jev con datos.
 - CA-1 (D-13) El escritor de eventos valida el esquema `v:1` en `node --test`.
-- CA-2 (D-14) `/hu`, `jira-hu-crear --aplicar` y `/hu --subir` escriben sus eventos.
+- CA-2 (D-14) `/hu`, `jira-hu-crear --aplicar` y `/hu --subir` (que ya existe desde HU-T) escriben
+  sus eventos.
 - CA-3 (D-15) `/calibrar` sobre el fixture muestra la tabla y no propone con menos de 20 resultados.
 
 **HU-X · Piloto (R2).** Como equipo, quiero correr el ciclo nuevo de punta a punta en la épica de
@@ -339,12 +403,15 @@ observabilidad de ai-service, para validarlo con un pedido grande real.
 - CA-1 El pedido entra por triage y sale R2 confirmado.
 - CA-2 Su spec se escribe con `/spec` y se mergea antes de cualquier HU de código.
 - CA-3 Su épica cierra con la revisión de la épica, y el registro tiene su evento `resultado`.
+- CA-4 (D-9) Al cerrar, `revisor-starteria` en modo épica revisa **esta** épica (KAN-91 y las seis HU)
+  contra esta spec. Es la revisión final que `ADR-012` §2 regla 3 exige; va acá porque es la última
+  HU y porque el modo épica lo entrega HU-S.
 
 # 8. Autorevisión
 
-1. Cada CA del §7 cita al menos un `D-n`, salvo HU-T CA-6 (cita `ADR-012` §5) y los de HU-X, que
-   validan el ciclo completo y no una decisión.
-2. Cada `D-n` con código tiene testing con seam y rollback (D-1 a D-22).
+1. Cada CA del §7 cita al menos un `D-n`, salvo HU-X CA-1 a CA-3, que validan el ciclo completo y
+   no una decisión.
+2. Cada componente tiene alternativas descartadas, testing con seam y rollback (D-1 a D-25).
 3. Rutas citadas: verificadas en el PR (ver evidencia).
 4. Referencias que rompe la mudanza (D-18), de la verificación del estado actual: `AGENTS.md:89,91,
    105,107,122,129`; `TESTING.md:4`; `.github/PULL_REQUEST_TEMPLATE.md:2`;
