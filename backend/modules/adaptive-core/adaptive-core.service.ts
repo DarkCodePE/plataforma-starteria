@@ -1,5 +1,6 @@
 import type { PrismaClient } from '@prisma/client';
 import { AppError } from '../../shared/errors/AppError';
+import { propagateDecisionToPortfolioTx } from './decision-portfolio-return';
 import { syncInitiativeProgress } from '../portfolio/initiative-progress';
 import { TruthService, type EvidenceReferenceBindingInput, type ValidatedSupportBindingInput } from '../truth/truth.service';
 import { getCheckpointEvidencePolicy } from './checkpoint-evidence-policy';
@@ -607,6 +608,8 @@ const responses = instanceIds.length > 0
         where: { id: request.id },
         data: { status: 'resolved' },
       });
+      // E2E Job-Driven §23: la decisión vuelve al Reto, al Frente y al Portfolio.
+      await propagateDecisionToPortfolioTx(tx, created);
       await this.recordEventTx(tx, projectId, 'organizational_decision_created', 'Decision organizacional registrada por Portfolio Lead.', {
         decisionId: created.id,
         decisionRequestId: request.id,
