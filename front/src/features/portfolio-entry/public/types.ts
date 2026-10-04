@@ -26,6 +26,7 @@ export type PortfolioEntryLifecycleStatus =
 export type PortfolioEntryQuestion = {
   id: string;
   question: string;
+  reason_to_ask?: string | null;
   question_type?: string;
   resolves: string[];
   turn_index: number;
@@ -59,7 +60,7 @@ export type PortfolioEntrySessionDto = {
     quickQuestionsAsked: number;
     explorationRound: number;
     questionsAskedCurrentRound: number;
-    previousQuestions: PortfolioEntryQuestion[];
+    previousQuestions: Array<Omit<PortfolioEntryQuestion, 'reason_to_ask'>>;
     answeredGaps: string[];
     checkpoint?: 'quick' | 'guided';
   };

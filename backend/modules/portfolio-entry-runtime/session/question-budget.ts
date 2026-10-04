@@ -27,6 +27,7 @@ export function applyQuestionBudget(
     .map<QuestionRecord>((question) => ({
     id: question.id,
     question: question.question,
+    reason_to_ask: question.reason_to_ask,
     question_type: question.question_type,
     resolves: question.resolves,
     turn_index: turnIndex,

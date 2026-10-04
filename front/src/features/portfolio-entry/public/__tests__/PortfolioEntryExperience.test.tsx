@@ -137,6 +137,7 @@ function sessionWithQuestion(): PortfolioEntrySessionDto {
           {
             id: 'q-1',
             question: 'Que decision necesitas habilitar con esta lectura?',
+            reason_to_ask: 'Puede cambiar la decisión que necesitas preparar.',
             resolves: ['decision_need'],
             turn_index: 0,
             interaction_mode: 'quick_clarification',
@@ -298,6 +299,10 @@ describe('PortfolioEntryExperience', () => {
     const clarificationLabel = await screen.findByText(/Para afinarlo un poco m/i);
     const currentClarification = within(clarificationLabel.parentElement as HTMLElement);
     expect(await currentClarification.findByText(/que decision necesitas habilitar/i)).toBeInTheDocument();
+    expect(currentClarification.getByTestId('portfolio-entry-active-question-reason')).toHaveTextContent(
+      'Puede cambiar la decisión que necesitas preparar.',
+    );
+    expect(currentClarification.getAllByTestId('portfolio-entry-active-question-reason')).toHaveLength(1);
     expect(serviceMocks.submitPortfolioEntryMessage).toHaveBeenCalledWith(
       '11111111-1111-4111-8111-111111111111',
       'entry-token',
@@ -471,14 +476,20 @@ describe('PortfolioEntryExperience', () => {
       lifecycleStatus: 'CLARIFYING',
       revision: 2,
       nextAction: 'answer_clarification',
-      conversation: [{
-        id: 'turn-1',
-        turnIndex: 0,
-        userInput: 'Tenemos varias iniciativas.',
-        respondedResolves: [],
-        createdAt: new Date().toISOString(),
-        emittedQuestions: [],
-      }],
+      conversation: [
+        {
+          id: 'turn-0', turnIndex: 0, userInput: 'Tenemos varias iniciativas.', matchedQuestionIds: [],
+          respondedResolves: [], createdAt: new Date().toISOString(),
+          emittedQuestions: [{
+            id: 'q-retired', question: '¿Qué decisión necesitas habilitar?', reason_to_ask: 'Explicación anterior.',
+            resolves: [], turn_index: 0, interaction_mode: 'quick_clarification', asked_at_budget_remaining: 3,
+          }],
+        },
+        {
+          id: 'turn-1', turnIndex: 1, userInput: 'Ya respondí.', matchedQuestionIds: ['q-retired'],
+          respondedResolves: [], createdAt: new Date().toISOString(), emittedQuestions: [],
+        },
+      ],
     }));
 
     renderExperience();
@@ -487,6 +498,7 @@ describe('PortfolioEntryExperience', () => {
     expect(screen.queryByLabelText(/tu respuesta/i)).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /enviar respuesta/i })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /no lo se todavia/i })).not.toBeInTheDocument();
+    expect(screen.queryByTestId('portfolio-entry-active-question-reason')).not.toBeInTheDocument();
   });
 
   it('renders structured conversational understanding before an active question', async () => {
@@ -515,6 +527,20 @@ describe('PortfolioEntryExperience', () => {
     expect(await screen.findByTestId('portfolio-entry-active-question')).toBeInTheDocument();
     expect(screen.queryByTestId('portfolio-entry-understanding')).not.toBeInTheDocument();
     expect(screen.getByLabelText(/tu respuesta/i)).toBeInTheDocument();
+  });
+
+  it.each([null, undefined, '', '   '])('hides an absent reason_to_ask (%s)', async (reason) => {
+    savePortfolioEntryCurrentSession({ sessionId: '11111111-1111-4111-8111-111111111111', credential: 'entry-token' });
+    const session = sessionWithQuestion();
+    const question = session.conversation[0]?.emittedQuestions[0];
+    if (question) question.reason_to_ask = reason as string | null | undefined;
+    serviceMocks.getPortfolioEntrySession.mockResolvedValue(session);
+
+    renderExperience();
+
+    expect(await screen.findByTestId('portfolio-entry-active-question')).toBeInTheDocument();
+    expect(screen.queryByTestId('portfolio-entry-active-question-reason')).not.toBeInTheDocument();
+    expect(screen.getAllByTestId('portfolio-entry-active-question-text')).toHaveLength(1);
   });
 
   it('materializes handoff and routes public signup through authentication', async () => {

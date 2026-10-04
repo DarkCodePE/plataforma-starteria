@@ -8,6 +8,16 @@ import { applyQuestionBudget } from '../session/question-budget';
 import { DeterministicPortfolioEntryAgentAdapter } from '../../portfolio-entry/application/portfolio-entry-experimental-session.service';
 
 describe('Portfolio Entry value handoff cognition', () => {
+  it('preserves the planner reason on the emitted QuestionRecord', () => {
+    const result = applyQuestionBudget(createInitialSessionContext({ initial_mode: 'quick_clarification', quick_question_budget: 3 }), {
+      questions: [{
+        id: 'decision-gap', question: '¿Qué decisión necesitas habilitar?', reason_to_ask: 'Aclarar la decisión que debes preparar.',
+        resolves: ['decision_to_enable'], priority: 1, expected_answer_type: 'text',
+      }], question_count: 1, status: 'questions_required',
+    }, 1);
+    expect(result.emitted_questions[0]?.reason_to_ask).toBe('Aclarar la decisión que debes preparar.');
+  });
+
   it('preserves an explicit decision from a deterministic entry turn', async () => {
     const result = await new DeterministicPortfolioEntryAgentAdapter().analyzeTurn({
       entryId: 'entry-1',

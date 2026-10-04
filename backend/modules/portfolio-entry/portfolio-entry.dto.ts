@@ -31,7 +31,7 @@ export type PortfolioEntrySessionClientDto = {
     quickQuestionsAsked: number;
     explorationRound: number;
     questionsAskedCurrentRound: number;
-    previousQuestions: PortfolioEntrySession['semanticState']['previousQuestions'];
+    previousQuestions: Array<Omit<PortfolioEntrySession['semanticState']['previousQuestions'][number], 'reason_to_ask'>>;
     answeredGaps: string[];
     checkpoint?: 'quick' | 'guided';
   };
@@ -150,6 +150,7 @@ export function toPortfolioEntrySessionClientDto(
   session: PortfolioEntrySession,
   turns: PortfolioEntryTurn[],
 ): PortfolioEntrySessionClientDto {
+  const activeTurnId = turns.at(-1)?.id;
   return {
     id: session.id,
     lifecycleStatus: session.lifecycleStatus,
@@ -165,7 +166,11 @@ export function toPortfolioEntrySessionClientDto(
       id: turn.id,
       turnIndex: turn.turnIndex,
       userInput: turn.userInput,
-      emittedQuestions: turn.emittedQuestions,
+      emittedQuestions: turn.emittedQuestions.map((question, index) => {
+        if (turn.id === activeTurnId && index === 0) return question;
+        const { reason_to_ask: _retiredReason, ...historicalQuestion } = question;
+        return historicalQuestion;
+      }),
       matchedQuestionIds: turn.matchedQuestionIds,
       respondedResolves: turn.respondedResolves,
       createdAt: turn.createdAt.toISOString(),
@@ -176,7 +181,7 @@ export function toPortfolioEntrySessionClientDto(
       quickQuestionsAsked: session.questionBudget.quickQuestionsAsked,
       explorationRound: session.questionBudget.explorationRound,
       questionsAskedCurrentRound: session.questionBudget.questionsAskedCurrentRound,
-      previousQuestions: session.semanticState.previousQuestions,
+      previousQuestions: session.semanticState.previousQuestions.map(({ reason_to_ask: _reason, ...question }) => question),
       answeredGaps: session.semanticState.answeredGaps,
       checkpoint: session.semanticState.runtimeClarificationStatus === 'exploration_offered'
         ? session.interactionMode === 'guided_exploration' ? 'guided' : 'quick'

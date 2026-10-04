@@ -52,6 +52,7 @@ export const PORTFOLIO_ENTRY_PROFILES = [
 const questionRecordSchema = z.object({
   id: z.string(),
   question: z.string(),
+  reason_to_ask: z.string().nullable().optional(),
   question_type: z.string(),
   resolves: z.array(z.string()),
   turn_index: z.number(),

@@ -219,8 +219,9 @@ implementation_report: docs/implementation/public-landing/KAN-102_LANDING_ENTRY_
 core_impact: NONE
 step_impact: NONE (Steps 0–4 unchanged)
 continuation_impact: NONE (KAN-74, D1/D2 and P1/P2/P3 unchanged)
-reason_to_ask: DTO GAP documented; no client-invented explanation
-reason_to_ask_authority: REASON_TO_ASK_AUTHORIZED by accepted ADR-007; PUBLIC_EXPLANATION only; runtime transport/rendering remains NOT_IMPLEMENTED and requires its own implementation authorization
+reason_to_ask: transported unchanged from planner QuestionRecord through persisted turn/API/frontend DTO; rendered once only for the active question; missing/null/empty omitted
+reason_to_ask_authority: REASON_TO_ASK_AUTHORIZED by accepted ADR-007; PUBLIC_EXPLANATION only; no private/model rationale exposure
+reason_to_ask_implementation: IMPLEMENTED_VERIFIED locally by backend/frontend suites, typechecks, builds, lint and isolated Portfolio Entry Chromium E2E; see docs/implementation/portfolio-entry/KAN-104_REASON_TO_ASK_FRONTEND_CONVERGENCE_v0.1.md
 commercial_destinations: RUNTIME_PENDING / BLOCKED_BY_DESTINATION (Demo/Early Access routes not invented)
 ```
 
