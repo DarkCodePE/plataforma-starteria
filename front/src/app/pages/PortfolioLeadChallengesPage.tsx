@@ -49,6 +49,7 @@ import { Button } from '../components/ui/button';
 import { Progress } from '../components/ui/progress';
 import { PortfolioLeadBreadcrumbs } from '../components/portfolio/PortfolioLeadPageElements';
 import { buildLegacyChallengeProjectPath } from '../routes/legacy-route-boundary';
+import { ChallengeCoverageReadingPanel } from '../../features/portfolio-lead/components/cards/ChallengeCoverageReadingPanel';
 
 type TabKey = 'all' | 'ready' | 'active' | 'blocked' | 'with_initiatives' | 'decision';
 type DrawerMode = 'create' | 'edit' | null;
@@ -976,6 +977,8 @@ function ChallengeAccordionDetail({
         />
 
         <ChallengeInitiativesPreview initiatives={initiatives} onExploreInitiative={onExploreInitiative} />
+
+        <ChallengeCoverageReadingPanel challengeId={challenge.id} />
 
         <section className="rounded-2xl border border-slate-200 bg-white p-4">
           <p className="text-sm text-slate-500" style={{ fontWeight: 700 }}>Contribución de iniciativas a la métrica</p>

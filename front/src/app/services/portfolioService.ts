@@ -361,3 +361,56 @@ export async function updateSponsorData(
 
 // Re-export activation mode and stakeholder status types for convenience
 export type { ChallengeActivationMode, StakeholderStatus };
+
+// ---------- E2E Job-Driven Ola 3 ----------
+
+/** Sugerencia de desagregación de un Frente en Retos (§8–§11). No escribe nada. */
+export interface ChallengeSplitSuggestion {
+  frontId: string;
+  recommendation: 'split' | 'no_split';
+  provenance: 'AI_SUGGESTED';
+  reviewStatus: 'UNREVIEWED';
+  observed: string;
+  signals: Array<{ id: string; description: string }>;
+  whySplit: string | null;
+  benefits: string[];
+  proposedChallenges: Array<{ title: string; whatWeWantToMove: string; rationale: string }>;
+  impact: { challengesToCreate: number; existingChallenges: number; initiativesMoved: number; note: string } | null;
+  stillInference: string;
+}
+
+export async function suggestChallengeSplit(frontId: string): Promise<ChallengeSplitSuggestion> {
+  const { data } = await api.post<ApiResponse<ChallengeSplitSuggestion>>(`/portfolio/strategic-fronts/${frontId}/challenge-split-suggestion`);
+  return data.data;
+}
+
+/** Crea sólo los Retos que la persona confirmó (§26). */
+export async function confirmChallengeSplit(
+  frontId: string,
+  challenges: Array<{ title: string; whatWeWantToMove?: string }>,
+): Promise<Array<{ id: string; title: string }>> {
+  const { data } = await api.post<ApiResponse<Array<{ id: string; title: string }>>>(
+    `/portfolio/strategic-fronts/${frontId}/challenge-split-suggestion/confirm`,
+    { challenges },
+  );
+  return data.data;
+}
+
+/** Lectura de cobertura del Reto como conjunto (§13). */
+export interface ChallengeCoverageReading {
+  challengeId: string;
+  coverageStatus: string;
+  hasWork: boolean;
+  initiatives: Array<{ projectId: string; name: string; status: string; currentStep: string | null; readyForDecision: boolean; estimatedContribution: string; blocker: string | null }>;
+  overlaps: Array<{ initiativeAId: string; initiativeBId: string; level: string; recommendation: string }>;
+  aggregateEvidence: { contributionByLevel: Record<'bajo' | 'medio' | 'alto', number>; partialSignals: number; withRecommendation: number };
+  commonDependencies: string[];
+  needsMoreCapacity: { value: boolean; reasons: string[] };
+  readyToDecide: { value: boolean; reasons: string[] };
+  uncovered: string | null;
+}
+
+export async function getChallengeCoverageReading(challengeId: string): Promise<ChallengeCoverageReading> {
+  const { data } = await api.get<ApiResponse<ChallengeCoverageReading>>(`/portfolio/challenges/${challengeId}/coverage-reading`);
+  return data.data;
+}

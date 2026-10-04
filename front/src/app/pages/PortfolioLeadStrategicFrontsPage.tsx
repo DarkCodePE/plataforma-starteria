@@ -38,6 +38,7 @@ import {
 } from '../components/design-system/patterns';
 import { Button } from '../components/ui/button';
 import { PortfolioLeadBreadcrumbs } from '../components/portfolio/PortfolioLeadPageElements';
+import { ChallengeSplitSuggestionPanel } from '../../features/portfolio-lead/components/cards/ChallengeSplitSuggestionPanel';
 
 type DrawerMode = 'create' | 'edit' | 'view' | null;
 type DrawerIntent = 'general' | 'sponsor' | 'status';
@@ -920,6 +921,7 @@ function StrategicFrontDetailDrawer({
   onReactivate: () => void;
   onCloseFront: () => void;
 }) {
+  const { refreshPortfolioData } = usePortfolioLead();
   return (
     <div className="fixed inset-0 z-50 bg-slate-950/35 p-3 md:p-6">
       <div className="ml-auto flex h-full w-full max-w-4xl overflow-hidden rounded-[28px] bg-white shadow-2xl">
@@ -974,6 +976,8 @@ function StrategicFrontDetailDrawer({
                 <InfoCard label="Última actualización" value={formatRelativeLabel(front.lastUpdatedAt ?? front.createdAt)} />
               </div>
             </section>
+
+            <ChallengeSplitSuggestionPanel frontId={front.id} onConfirmed={() => void refreshPortfolioData()} />
 
             <section className="rounded-3xl border border-slate-200 bg-slate-50 p-5">
               <p className="text-xs text-slate-500" style={{ fontWeight: 700 }}>Acciones rápidas</p>
