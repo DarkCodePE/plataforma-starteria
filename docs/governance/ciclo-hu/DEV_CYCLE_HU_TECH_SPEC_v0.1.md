@@ -380,7 +380,8 @@ ordenados por severidad en las categorías de `retro`: navegación, chequeos aut
 (un error mecánico pide un chequeo, no una regla), `AGENTS.md` sobrecargado, economía de tools,
 instrucciones que no cambian nada, acceso a información; más una nuestra, **calibración** (lo que
 mostró el registro). No edita: cada candidato que la persona acepta entra por `/hu`, normalmente R0.
-Es la retro que el brief (P1) quería dentro del ciclo.
+Va como skill aparte por decisión de Orlando del 2026-10-04, que reemplaza la [F] P1 del brief
+("la retro entra como parte del triage, no como pieza aparte").
 
 **D-29. Freno 1: typecheck bloqueante en CI.** `.github/workflows/ci.yml` suma un job
 `typecheck` (`npm run typecheck` en `front/`, que cubre front y backend, después de generar el
