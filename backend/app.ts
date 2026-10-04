@@ -37,6 +37,7 @@ import { truthRouter } from './modules/truth/truth.router';
 import { strategicFramingRouter } from './modules/strategic-framing/strategic-framing.router';
 import { portfolioHandoffInvitationRouter, portfolioHandoffDeliveryRouter, portfolioHandoffResponseRouter } from './modules/portfolio-handoff/portfolio-handoff-invitation.router';
 import { firstValueP3Router } from './modules/first-value-p3/first-value-p3.router';
+import { reconstructionRouter } from './modules/reconstruction/reconstruction.router';
 
 export function createApp() {
   const app = express();
@@ -81,6 +82,7 @@ export function createApp() {
   // TASK-006: PDF storage + extraction routes mirror evidence/step registration.
   app.use('/api/v1/initiatives', pdfRouter);
   app.use('/api/v1/initiatives', initiativeContextRouter);
+  app.use('/api/v1/initiatives', reconstructionRouter);
   // issue #23: PUBLIC (no-auth) PDF extraction for the anonymous landing flow.
   // Hardened, Project-row-free, Step0-scoped, PII-redaction-enforced. NO
   // `authenticate` middleware — guardrails live in the router/multipart layer.

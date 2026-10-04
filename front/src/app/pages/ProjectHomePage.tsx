@@ -28,6 +28,7 @@ import { buildAdaptiveJourney, getCurrentAdaptiveJourneyStep } from '../../featu
 import { canNavigateToAdaptiveStep } from '../../features/adaptive-core/domain/adaptiveAuthority';
 import { getAdaptiveCore } from '../../features/adaptive-core/services/adaptiveCoreService';
 import { STEP_PROGRESS_QUESTION } from '../../features/adaptive-core/domain/adaptiveCore';
+import { CopilotIntentModes } from '../../features/adaptive-core/components/CopilotIntentModes';
 
 const STEP_DESCRIPTIONS = [
   'Entiende el problema con claridad: documenta el proceso actual, mide el impacto y conoce a los actores involucrados.',
@@ -1554,6 +1555,7 @@ export function ProjectHomePage() {
           </div>
         )}
 
+        {projectId ? <div className="mb-4"><CopilotIntentModes projectId={projectId} /></div> : null}
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-5">
           {journeySteps.map(({ config, status, canNavigate, adaptiveStep }) => {
             const style = STEP_STATUS_COPY[status];

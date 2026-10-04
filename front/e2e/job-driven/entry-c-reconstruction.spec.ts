@@ -2,7 +2,6 @@
 // doc/STARTERIA_JOB_DRIVEN_E2E_EXPERIENCE_v0.2.md §14.
 import { expect, request as pwRequest, test, type APIRequestContext } from '@playwright/test';
 import { BASE, auth, registerAndLogin } from '../support/api';
-import { GAP_TIMEOUT, gapTest } from '../support/gap';
 import { ensurePortfolioLead, prisma, uiLoginLead } from '../support/portfolio-lead';
 
 let api: APIRequestContext;
@@ -26,7 +25,7 @@ test.describe('Entrada C · reconstruir lo que ya existe (§14)', () => {
     await prisma.$disconnect();
   });
 
-  gapTest('G11', 'importar una iniciativa existente devuelve qué se puede sostener, contradicciones, gaps y la siguiente incertidumbre (§14)', async () => {
+  test('importar una iniciativa existente devuelve qué se puede sostener, contradicciones, gaps y la siguiente incertidumbre (§14)', async () => {
     const owner = await registerAndLogin(api, 'c-recon');
     const res = await api.post('/api/v1/initiatives/reconstruction', { headers: auth(owner.token), data: PILOT, failOnStatusCode: false });
     expect(res.ok(), await res.text()).toBeTruthy();
@@ -39,12 +38,21 @@ test.describe('Entrada C · reconstruir lo que ya existe (§14)', () => {
     expect(reading.restartFromStep0).not.toBe(true);
   });
 
-  gapTest('G11', '"Importar iniciativas existentes" deja de ser "Siguiente fase" en /portfolio/iniciar (§14)', async ({ page }) => {
+  test('/portfolio/iniciar abre la reconstrucción y devuelve la lectura (§14)', async ({ page }) => {
     await ensurePortfolioLead();
     await uiLoginLead(page);
     await page.goto('/portfolio/iniciar');
-    // Sin esto, una página que no cargó haría "pasar" la ausencia de textos.
-    await expect(page.getByText('Iniciar', { exact: true }).first()).toBeVisible({ timeout: 20_000 });
-    await expect(page.getByText(/Siguiente fase/i)).toHaveCount(0, { timeout: GAP_TIMEOUT });
+    await expect(page.getByText(/Siguiente fase/i)).toHaveCount(0, { timeout: 15_000 });
+    await page.getByRole('button', { name: /Leer lo que ya existe/ }).click();
+    await page.getByLabel('Nombre del trabajo').fill(PILOT.name);
+    await page.getByLabel(/Qué se hizo/).fill(PILOT.summary);
+    await page.getByLabel('Evidencia 1', { exact: true }).fill(PILOT.evidence[0].summary);
+    await page.getByRole('button', { name: '+ Agregar evidencia' }).click();
+    await page.getByLabel('Evidencia 2', { exact: true }).fill(PILOT.evidence[1].summary);
+    await page.getByLabel('Qué indica la evidencia 2').selectOption('contradicts');
+    await page.getByRole('button', { name: /Leer qué podemos sostener/ }).click();
+    const reading = page.getByTestId('reconstruction-reading');
+    await expect(reading).toContainText('Contradicciones');
+    await expect(reading).toContainText('No hace falta empezar de cero');
   });
 });

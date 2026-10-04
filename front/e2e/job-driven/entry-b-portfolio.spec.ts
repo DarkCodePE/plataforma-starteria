@@ -160,11 +160,16 @@ test.describe('Entrada B · dónde intervenir (§6–§13)', () => {
     expect(created).toEqual([{ title: 'Onboarding', status: 'draft' }]);
   });
 
-  gapTest('G13', 'el portfolio permite ver y reasignar capacidad (§4, §24)', async () => {
-    const res = await api.get('/api/v1/portfolio/capacity', {
-      headers: { Authorization: `Bearer ${token}` },
-      failOnStatusCode: false,
-    });
-    expect(res.ok()).toBeTruthy();
+  test('el portfolio muestra dónde está la capacidad y señales para reasignar (§4, §24)', async ({ page }) => {
+    const name = `${FRONT.name} cap ${Date.now()}`;
+    const front = await createFront(api, token, { name, priority: 'Alta' });
+    await createChallenge(api, token, front.id, { title: 'Reto sin iniciativas' });
+    const capacity = await getOk(api, token, '/api/v1/portfolio/capacity');
+    expect(capacity.unit).toBe('active_initiatives');
+    expect(capacity.signals).toEqual(expect.arrayContaining([expect.objectContaining({ kind: 'uncovered_priority', frontId: front.id })]));
+    await uiLoginLead(page);
+    await page.goto('/portfolio/inicio');
+    const panel = page.getByRole('region', { name: 'Dónde está puesta la capacidad' });
+    await expect(panel.getByTestId('capacity-signal').filter({ hasText: name })).toBeVisible({ timeout: 15_000 });
   });
 });

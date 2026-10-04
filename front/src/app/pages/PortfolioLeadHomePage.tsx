@@ -25,6 +25,7 @@ import { PortfolioCopilotDrawer, PortfolioCopilotLauncher } from '../../features
 import { isPortfolioCopilotEnabled } from '../services/featureFlags';
 import { PortfolioBootstrapHome, usePortfolioBootstrap } from '../../features/portfolio-lead/bootstrap';
 import { usePortfolioHomeEntryContext } from '../../features/portfolio-entry/home/usePortfolioHomeEntryContext';
+import { PortfolioCapacityPanel } from '../../features/portfolio-lead/components/cards/PortfolioCapacityPanel';
 
 export function PortfolioLeadHomePage() {
   const navigate = useNavigate();
@@ -220,6 +221,8 @@ export function PortfolioLeadHomePage() {
           </section>
 
           <StrategicObjectivesOverview overview={model.strategicOverview} onNavigate={path => navigate(path)} />
+
+          <PortfolioCapacityPanel />
 
           <section className="rounded-ds-lg border border-border-default bg-surface-default p-6 md:p-7">
             <div className="max-w-3xl">
