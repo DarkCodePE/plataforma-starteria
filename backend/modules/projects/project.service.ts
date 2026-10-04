@@ -11,6 +11,7 @@ import { validateTransition } from './state-machine';
 import { syncInitiativeProgress } from '../portfolio/initiative-progress';
 import { CreateProjectInput, UpdateProjectInput, UpdateSponsorDataInput } from './project.schemas';
 import { calculateContextScore } from '../companies/context-score';
+import { ensureChallengeGovernanceTx } from '../adaptive-core/initiative-governance';
 
 export const DEFAULT_STEPS = [
   {
@@ -315,6 +316,7 @@ export class ProjectService {
       });
 
       if (linkedChallenge) {
+        await ensureChallengeGovernanceTx(tx, created.id, linkedChallenge.id);
         await tx.initiativePortfolioMeta.create({
           data: {
             projectId: created.id,
@@ -348,6 +350,7 @@ export class ProjectService {
           select: { id: true, strategicFrontId: true },
         });
         if (legacyChallenge) {
+          await ensureChallengeGovernanceTx(tx, created.id, legacyChallenge.id);
           await tx.initiativePortfolioMeta.upsert({
             where: {
               projectId_challengeId: { projectId: created.id, challengeId: legacyChallenge.id },

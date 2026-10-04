@@ -54,7 +54,9 @@ export class PortfolioController {
     next: NextFunction,
   ) => {
     try {
-      const data = await this.service.createStrategicFront(req.body);
+      // Sin owner explícito, quien crea el frente es su owner: así hereda la autoridad de decisión
+      // de las iniciativas que nazcan de sus retos (initiative-governance.ts).
+      const data = await this.service.createStrategicFront({ ...req.body, ownerId: req.body.ownerId ?? req.user?.id });
       res.status(201).json({ success: true, data });
     } catch (err) {
       next(err);
@@ -108,7 +110,7 @@ export class PortfolioController {
     next: NextFunction,
   ) => {
     try {
-      const data = await this.service.createChallenge(req.params.frontId, req.body);
+      const data = await this.service.createChallenge(req.params.frontId, { ...req.body, ownerId: req.body.ownerId ?? req.user?.id });
       res.status(201).json({ success: true, data });
     } catch (err) {
       next(err);

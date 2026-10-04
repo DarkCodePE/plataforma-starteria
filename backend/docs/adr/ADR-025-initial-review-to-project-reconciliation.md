@@ -3,6 +3,7 @@
 ## Status
 
 Proposed — 2026-07-05
+Updated — 2026-10-04: el Overview ya no abre Step 0 directamente; pasa por Mission Review (ver "Actualización 2026-10-04").
 
 ## Date
 
@@ -195,6 +196,21 @@ El ADR se considera implementado cuando:
 - **IR-F1** Cards faltantes (UnderstandingSummary, ChallengeTypeSuggestion) en Result.
 - **IR-F2** Pantalla **Overview** (`/initiatives/:id/overview`).
 - **IR-F3** Cablear la feature FE del mock (#122) a las APIs reales.
+
+## Actualización 2026-10-04 — Overview → Mission Review → Step 0
+
+`doc/STARTERIA_JOB_DRIVEN_E2E_EXPERIENCE_v0.2.md` §18 (estado: propuesto) pide que `Start` no abra
+directamente un formulario de Step 0. Desde el PR #124 (E2E Job-Driven, G1):
+
+- el CTA del Overview es "Revisar mi misión y empezar" y lleva a `/initiatives/:id/mission`
+  (Mission Review: qué se quiere mover, contexto heredado, restricciones, capacidad,
+  dependencias, quién puede ayudar, qué decisión habilitar);
+- Step 0 se abre desde Mission Review, sin cambios en lo que este ADR fija: sigue precargado desde
+  el snapshot (`step0Data`) y sin quedar aprobado (punto 4 de Verificación).
+
+Esto reemplaza **AC-OV-006** ("el CTA navega a Step 0"); el test unitario del Overview se actualizó.
+El resto del ADR no cambia. **Pendiente:** este ADR sigue *Proposed*; quien lo apruebe debe
+confirmar también el reemplazo de AC-OV-006, que deriva de un doc todavía propuesto.
 
 ## Related
 

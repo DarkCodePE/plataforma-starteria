@@ -1,3 +1,4 @@
+import { AppError } from '../../shared/errors/AppError';
 import { Router } from 'express';
 import { prisma } from '../../shared/db/prisma';
 import { PortfolioController } from './portfolio.controller';
@@ -27,6 +28,7 @@ import {
   createExecutiveOutputSchema,
   updateExecutiveOutputSchema,
   confirmChallengeSplitSchema,
+  assignInitiativeGovernanceSchema,
 } from './portfolio.schemas';
 
 const service = new PortfolioService(prisma);
@@ -222,6 +224,46 @@ portfolioRouter.post(
     try {
       const data = await challengeSplit.confirm(req.params.id, (req as AuthenticatedRequest).body.challenges);
       res.status(201).json({ success: true, data });
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
+// Quién decide sobre una iniciativa de Reto. Las iniciativas nuevas lo heredan del owner del Reto
+// o del Frente (initiative-governance.ts); esto permite asignarlo o cambiarlo explícitamente.
+portfolioRouter.get('/initiatives/:projectId/governance', async (req, res, next) => {
+  try {
+    const governance = await prisma.initiativeGovernance.findUnique({
+      where: { projectId: req.params.projectId },
+      include: { portfolioLeadUser: { select: { id: true, name: true, email: true } } },
+    });
+    res.json({ success: true, data: governance ?? { projectId: req.params.projectId, mode: 'owner_governed', portfolioLeadUserId: null } });
+  } catch (err) {
+    next(err);
+  }
+});
+
+portfolioRouter.put(
+  '/initiatives/:projectId/governance',
+  requirePermission('portfolio:write'),
+  validate(assignInitiativeGovernanceSchema),
+  async (req, res, next) => {
+    try {
+      const { projectId } = req.params;
+      const { portfolioLeadUserId } = req.body as { portfolioLeadUserId: string | null };
+      const project = await prisma.project.findUnique({ where: { id: projectId }, select: { id: true } });
+      if (!project) throw AppError.notFound('Proyecto', 'PROJECT_NOT_FOUND');
+      if (portfolioLeadUserId) {
+        const lead = await prisma.user.findUnique({ where: { id: portfolioLeadUserId }, select: { id: true } });
+        if (!lead) throw AppError.notFound('Usuario', 'USER_NOT_FOUND', { hint: 'El Portfolio Lead debe ser un usuario existente.' });
+      }
+      const data = await prisma.initiativeGovernance.upsert({
+        where: { projectId },
+        update: { mode: 'portfolio_governed', portfolioLeadUserId },
+        create: { projectId, mode: 'portfolio_governed', portfolioLeadUserId },
+      });
+      res.json({ success: true, data });
     } catch (err) {
       next(err);
     }

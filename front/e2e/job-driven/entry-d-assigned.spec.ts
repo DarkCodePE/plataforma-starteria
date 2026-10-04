@@ -181,13 +181,10 @@ test.describe('Entrada D · encargo → Mission Review → ciclo → decisión �
   });
 
   async function decideOnPortfolio(owner: Session, projectId: string, outcome: string, rationale: string) {
-    // La autoridad de decisión vive en InitiativeGovernance. Ningún flujo de producto la crea
-    // todavía (sólo los tests de integración de adaptive-core), así que se siembra igual que ahí.
-    await prisma.initiativeGovernance.upsert({
-      where: { projectId },
-      update: { mode: 'portfolio_governed', portfolioLeadUserId: admin.userId },
-      create: { projectId, mode: 'portfolio_governed', portfolioLeadUserId: admin.userId },
-    });
+    // La governance la crea el flujo real: el admin creó Frente y Reto, así que es su owner y
+    // queda como Portfolio Lead de la iniciativa (initiative-governance.ts). No se siembra nada.
+    const governance = await getOk(api, admin.token, `/api/v1/portfolio/initiatives/${projectId}/governance`);
+    expect(governance).toMatchObject({ mode: 'portfolio_governed', portfolioLeadUserId: admin.userId });
     const request = await postOk(api, owner.token, `/api/v1/projects/${projectId}/adaptive-core/decision-requests`, { idempotencyKey: `${projectId}-request` });
     // La readiness real decide qué es legítimo: con la evidencia del piloto sembrado, escalar no
     // está listo (impacto y riesgo insuficientes), seguir experimentando y cerrar sí.
@@ -225,6 +222,27 @@ test.describe('Entrada D · encargo → Mission Review → ciclo → decisión �
     await page.goto('/portfolio/inicio');
     const panel = page.getByRole('region', { name: 'Lo que aprendió el portfolio' });
     await expect(panel.getByTestId('portfolio-learning').filter({ hasText: /E2E Job D return-\d+ Iniciativa/ }).first()).toContainText('Seguir experimentando');
+  });
+
+  test('el Portfolio Lead de una iniciativa se puede reasignar, y sólo él decide (§23)', async () => {
+    const owner = await registerAndLogin(api, 'd-gov');
+    const otherLead = await registerAndLogin(api, 'd-gov-lead');
+    const { projectId } = await assignedInitiative(owner, `gov-${Date.now()}`);
+    const res = await api.put(`/api/v1/portfolio/initiatives/${projectId}/governance`, {
+      headers: { Authorization: `Bearer ${admin.token}` },
+      data: { portfolioLeadUserId: otherLead.userId },
+      failOnStatusCode: false,
+    });
+    expect(res.ok(), await res.text()).toBeTruthy();
+    const governance = await getOk(api, admin.token, `/api/v1/portfolio/initiatives/${projectId}/governance`);
+    expect(governance.portfolioLeadUserId).toBe(otherLead.userId);
+    // Un participante sin portfolio:write no puede reasignarse la autoridad.
+    const forbidden = await api.put(`/api/v1/portfolio/initiatives/${projectId}/governance`, {
+      headers: { Authorization: `Bearer ${owner.token}` },
+      data: { portfolioLeadUserId: owner.userId },
+      failOnStatusCode: false,
+    });
+    expect(forbidden.status()).toBe(403);
   });
 
   test('cerrar con aprendizaje sin otra iniciativa activa sugiere reformular el Reto, sin reescribirlo (§23, Core §30)', async () => {

@@ -1,3 +1,4 @@
+import { ensureChallengeGovernanceTx } from '../adaptive-core/initiative-governance';
 import { PrismaClient } from '@prisma/client';
 import { AppError } from '../../shared/errors/AppError';
 import {
@@ -518,6 +519,8 @@ export class PortfolioService {
       }
     }
 
+    // Ligar una iniciativa a un Reto le da un Portfolio Lead que pueda decidir (initiative-governance.ts).
+    await ensureChallengeGovernanceTx(this.prisma, projectId, challengeId);
     return this.prisma.initiativePortfolioMeta.upsert({
       where: { projectId_challengeId: { projectId, challengeId } },
       create: {
