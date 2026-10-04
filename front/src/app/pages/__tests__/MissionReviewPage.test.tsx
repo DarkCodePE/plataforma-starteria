@@ -33,6 +33,7 @@ const REVIEW = {
   whoCanHelp: ['Mentora', 'Equipo CX'],
   decisionToEnable: 'Escalar o no el autoservicio',
   openQuestions: ['¿Qué sucursales participan?'],
+  applicationContext: null,
 };
 
 describe('MissionReviewPage', () => {
@@ -75,6 +76,19 @@ describe('MissionReviewPage', () => {
     render(<MissionReviewPage />);
     expect(await screen.findByText('Contexto de partida')).toBeInTheDocument();
     expect(screen.queryByText('Contexto heredado')).not.toBeInTheDocument();
+  });
+
+  it('una iniciativa independiente muestra su Contexto de Aplicación (§16)', async () => {
+    getMissionReview.mockResolvedValue({
+      ...REVIEW,
+      independent: true,
+      inheritedContext: { strategicFront: null, challenge: null, initiativeContext: null },
+      applicationContext: { companyName: 'Ferretería Andina', area: 'Ventas', coverage: 40, lowCoverage: true, restrictions: ['Sin cambiar el ERP'], actors: [] },
+    });
+    render(<MissionReviewPage />);
+    expect(await screen.findByRole('region', { name: 'Contexto de aplicación' })).toHaveTextContent('Ferretería Andina · Ventas');
+    expect(screen.getByText(/Sin cambiar el ERP/)).toBeInTheDocument();
+    expect(screen.getByText(/todavía es parcial \(40%\)/)).toBeInTheDocument();
   });
 
   it('muestra error si no carga', async () => {

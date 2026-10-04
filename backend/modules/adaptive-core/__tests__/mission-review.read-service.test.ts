@@ -89,6 +89,34 @@ describe('MissionReviewReadService', () => {
     expect(view.expectedContribution).toBe('Bajar el costo por solicitud');
   });
 
+  it('arma el Contexto de Aplicación desde el snapshot de empresa (§16)', async () => {
+    const view = await new MissionReviewReadService(
+      makePrisma(project({
+        contextSnapshots: [{
+          contextScore: 40,
+          snapshotJson: {
+            company: { name: 'Ferretería Andina' },
+            areas: [{ name: 'Ventas' }],
+            dimensions: { restrictions: 'Sin cambiar el ERP', stakeholders: ['Gerencia comercial'] },
+          },
+        }],
+      })),
+    ).get('p1', 'owner', 'participante');
+    expect(view.applicationContext).toEqual({
+      companyName: 'Ferretería Andina',
+      area: 'Ventas',
+      coverage: 40,
+      lowCoverage: true,
+      restrictions: ['Sin cambiar el ERP'],
+      actors: ['Gerencia comercial'],
+    });
+  });
+
+  it('sin empresa no inventa Contexto de Aplicación', async () => {
+    const view = await new MissionReviewReadService(makePrisma(project())).get('p1', 'owner', 'participante');
+    expect(view.applicationContext).toBeNull();
+  });
+
   it('niega el acceso a quien no es del equipo', async () => {
     const service = new MissionReviewReadService(makePrisma(project()));
     await expect(service.get('p1', 'stranger', 'participante')).rejects.toMatchObject({ code: 'PROJECT_ACCESS_DENIED' });

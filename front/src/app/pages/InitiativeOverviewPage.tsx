@@ -222,6 +222,19 @@ export function InitiativeOverviewPage() {
         )}
       </section>
 
+      {adaptiveCore && !adaptiveCore.masterContext.challengeSnapshot ? (
+        // Iniciativa independiente (§16): sin Frente ni Reto, el contexto es la organización donde
+        // quiere generar valor. Opcional.
+        <section aria-label="Contexto de aplicación" className="mt-6 rounded-lg border border-sky-200 bg-sky-50 p-4">
+          <h2 className="text-sm font-semibold text-sky-900">Contexto de aplicación</h2>
+          <p className="mt-1 text-sm text-sky-900">
+            {adaptiveCore.masterContext.companySnapshot
+              ? `${adaptiveCore.masterContext.companySnapshot.name}${adaptiveCore.masterContext.companySnapshot.area ? ` · ${adaptiveCore.masterContext.companySnapshot.area}` : ''}`
+              : 'Iniciativa independiente: todavía sin organización elegida. Puedes sumarla cuando la tengas clara.'}
+          </p>
+        </section>
+      ) : null}
+
       <section aria-label="Resumen de revisión inicial" className="mt-6 grid gap-3">
         <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">Resumen de la revisión inicial</h2>
         {challengeType && (
