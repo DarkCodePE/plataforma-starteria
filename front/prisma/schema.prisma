@@ -720,6 +720,7 @@ model Project {
   // ≤1 Project, RB-IR-017/018) ya la garantizan RouteConfirmation.reviewId @@unique + el
   // claim-antes-de-crear en RouteConfirmationService, así que el unique aquí era redundante.
   @@index([initialReviewSnapshotId])
+  portfolioLearnings PortfolioLearning[]
 }
 
 model Step {
@@ -1041,6 +1042,7 @@ model Decision {
   @@index([decidedById])
   @@index([outcome])
   @@index([decidedAt])
+  portfolioLearning PortfolioLearning?
 }
 
 model ContinuationRoute {
@@ -1511,6 +1513,7 @@ model StrategicFront {
 
   @@index([status])
   @@index([organizationId])
+  portfolioLearnings PortfolioLearning[]
 }
 
 model Challenge {
@@ -1571,6 +1574,7 @@ model Challenge {
 
   @@index([strategicFrontId])
   @@index([status])
+  portfolioLearnings PortfolioLearning[]
 }
 
 model ChallengeInvitation {
@@ -3680,4 +3684,33 @@ model ActionExecution {
   @@index([status, updatedAt])
   @@index([correlationId])
   @@index([reconciliationClaimId])
+}
+
+// E2E Job-Driven §23 / Core §30: lo que el portfolio aprende de una decisión. Proyección de
+// sólo lectura: la escribe la decisión organizacional y no reescribe el Reto ni el Frente.
+model PortfolioLearning {
+  id                  String          @id @default(cuid())
+  decisionId          String          @unique
+  decision            Decision        @relation(fields: [decisionId], references: [id], onDelete: Cascade)
+  projectId           String
+  project             Project         @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  challengeId         String?
+  challenge           Challenge?      @relation(fields: [challengeId], references: [id], onDelete: SetNull)
+  strategicFrontId    String?
+  strategicFront      StrategicFront? @relation(fields: [strategicFrontId], references: [id], onDelete: SetNull)
+  outcome             DecisionOutcome
+  rationale           String
+  learning            String?
+  nextAction          String?
+  coverageBefore      String?
+  coverageAfter       String?
+  // Cambio material sugerido al Reto: queda como propuesta, nunca se aplica solo (Core §30).
+  suggestedReformulation String?
+  decidedAt           DateTime
+  createdAt           DateTime        @default(now())
+
+  @@index([projectId])
+  @@index([challengeId])
+  @@index([strategicFrontId])
+  @@index([decidedAt])
 }
