@@ -15,7 +15,7 @@ gates, por qué las skills se empaquetan como plugin y cómo se separan las deci
 
 `ADR-001` de una serie no tiene nada que ver con `ADR-001` de la otra. Cuando
 `/starteria-decision` redacte el primer ADR de producto, va a ser el `ADR-001` **de esa serie**, y
-no se numera después del undécimo de acá.
+no sigue la numeración de esta serie.
 
 ## Casi todos están en `proposed`, a propósito
 
@@ -51,6 +51,8 @@ Los ADRs de producto se consultan aparte en `doc/product-adr/ADR-INDEX.md`.
 | [ADR-010](ADR-010-un-solo-runtime-y-el-estado-como-artefacto.md) | Un solo runtime, y el estado del harness como artefacto encadenado que una memoria indexa | **accepted** | se pierde ChatGPT, y el harness gana una dependencia de servicio |
 | [ADR-011](ADR-011-dos-runtimes-una-sola-fuente-de-skills.md) | Dos runtimes otra vez, pero con una sola fuente de skills y las degradaciones declaradas | proposed | un `PASS` ya no vale lo mismo en todos lados |
 | [ADR-013](ADR-013-el-ciclo-de-desarrollo-se-distribuye-como-plugin-aparte.md) | El ciclo de desarrollo se distribuye como un segundo plugin, starteria-desarrollo, con un init por marcadores y el .env resuelto desde el checkout principal | proposed | en este repo el ciclo deja de cargar solo, y el formato del init es una puerta de una vía |
+| [ADR-012](ADR-012-el-ciclo-de-hu-se-paga-por-ruta.md) | El ciclo de HU se paga por ruta: triage R0/R1/R2/Q, spec antes de los tickets en lo grande, y cada ticket y PR legible para negocio | proposed | el triage es un punto de falla nuevo, y R2 espera una spec antes del código |
+
 
 
 La columna de la derecha existe porque un registro de decisiones que solo cuenta las ventajas no
