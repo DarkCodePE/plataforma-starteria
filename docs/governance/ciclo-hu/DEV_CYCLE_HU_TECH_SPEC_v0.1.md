@@ -55,6 +55,9 @@ las skills del ciclo (6), `.gitignore` (2).
 
 # 4. Decisiones por componente
 
+D-23 a D-25 se agregaron en la revisión y quedan junto al componente que tocan: D-23 en §4.1,
+D-24 y D-25 en §4.5.
+
 Cada componente: decisión, alternativas descartadas acá (las de fondo están en los ADR), testing con
 sus seams y rollback.
 
@@ -101,8 +104,8 @@ R2 con código ya escrito, la rama se para hasta que haya spec.
 **D-23. `AGENTS.md` §3 se reescribe así:** el bloque de fases pasa de una sola línea de tiempo a
 la tabla de rutas de `ADR-012` §2 seguida de la línea de tiempo de R1 (la de hoy) y las diferencias
 de R0, R2 y Q en una línea cada una; `/hu` gana la fase "0. triage" en su bloque de `SKILL.md`. El
-resto de §3 (implementar, verificar, revisar, cerrar, "Volver a `/hu`") no cambia. `CLAUDE.md`
-copia la tabla corta de rutas en su "Ciclo de una tarea".
+resto de §3 (implementar, verificar, revisar, cerrar, "Volver a `/hu`") no cambia. `CLAUDE.md` no
+copia la tabla: su "Ciclo de una tarea" enlaza a `AGENTS.md` §3, que es la única que manda.
 
 - *Descartado:* un agente `triage` separado. Agrega un despacho más por pedido y duplica la lectura
   del pedido que `/hu` ya hace; el triage necesita la misma conversación que el grill.
@@ -232,14 +235,14 @@ plugins/starteria-desarrollo/
 ```
 
 Las tools se suben a `tools/` del paquete (hoy están dentro de `skills/*/tools/`) porque las usan
-varias skills y los agentes.
+varias skills y los agentes. `.claude-plugin/marketplace.json` agrega la entrada
+`{"name":"starteria-desarrollo","source":"./plugins/starteria-desarrollo"}` junto a la de
+`starteria-harness`.
 
 **D-24. El paquete se publica sólo en `.claude-plugin/marketplace.json`**, no en el catálogo neutral
 `.agents/plugins/marketplace.json` de `ADR-011`. Ese catálogo existe para que Codex instale el
 producto; el ciclo de desarrollo corre en una terminal de quien mantiene la plataforma (`ADR-009`) y
-hoy no hay pedido de usarlo desde Codex. Si aparece, es un ADR nuevo. `.claude-plugin/marketplace.json` agrega la entrada
-`{"name":"starteria-desarrollo","source":"./plugins/starteria-desarrollo"}` junto a la de
-`starteria-harness`. `.claude/skills/graft/` no se muda.
+hoy no hay pedido de usarlo desde Codex. Si aparece, es un ADR nuevo. `.claude/skills/graft/` no se muda.
 
 **D-17. Invocación de tools.** En skills, `${CLAUDE_PLUGIN_ROOT}/tools/<x>.mjs` (confirmado por la
 doc). **SIN RESOLVER para agentes:** la doc no dice si la variable se expande en `agents/*.md`. La HU
@@ -254,8 +257,8 @@ aprobada). En este repo el plugin se habilita con `.claude/settings.json` commit
 lo ignora). **SUPUESTO:** el nombre exacto de la clave para habilitar un plugin en settings; la doc
 no lo confirmó y la HU lo verifica antes de escribirlo.
 
-**D-19. Nombres.** Las skills quedan como `/starteria-desarrollo:hu`, etc. y los agentes con el mismo
-prefijo. En el mismo PR de la mudanza se actualizan **por nombre**: `AGENTS.md` §3, la tabla de
+**D-19. Nombres.** Las skills quedan como `/starteria-desarrollo:hu`, etc. (confirmado por la doc). Los
+agentes, con el mismo prefijo: **SUPUESTO** (§6 #6), que la HU verifica antes de reescribir despachos. En el mismo PR de la mudanza se actualizan **por nombre**: `AGENTS.md` §3, la tabla de
 `CLAUDE.md` (`/hu`, `/implementar`, `/verificar`, `/pr`), los despachos de agentes dentro de las
 skills (`subagent_type: delivery-planner`, `revisor-starteria`) y `TESTING.md`. No se agregan alias.
 
@@ -327,6 +330,7 @@ No hay contratos de la plataforma. Los dos contratos internos del ciclo son el p
 | 3 | SUPUESTO | el umbral de 20 resultados para que `/calibrar` proponga | primera corrida de `/calibrar`; lo aprueba una persona |
 | 4 | SUPUESTO | que el issue R0 pueda llevar los CA en su descripción sin una [Funcional] y el revisor los encuentre | HU Triage |
 | 5 | SUPUESTO | `SC-19` (North Star) se cita como cualquier otra fila, aunque es un KPI compuesto | HU Negocio; si confunde, se marca como no citable |
+| 6 | SUPUESTO | los agentes de un plugin se despachan como `starteria-desarrollo:<agente>` | HU Plugin, primer paso, junto con #1 |
 
 # 7. Corte de la épica
 
@@ -355,8 +359,6 @@ este corte valida es el recorrido del ciclo, no ese código.
 `init` que no pise mi `AGENTS.md`, para usarlo desde cualquier checkout o repo.
 - CA-1 (D-16, D-18, D-24) `.claude-plugin/marketplace.json` lista `starteria-desarrollo`, el catálogo
   neutral no cambia, y no queda ninguna skill ni agente del ciclo en `.claude/`.
-- CA-6 (D-19) `CLAUDE.md`, `AGENTS.md`, `TESTING.md` y los despachos de agentes usan los nombres con
-  prefijo, y `.gitignore` permite `.claude/settings.json`.
 - CA-2 (D-17) Una sesión abierta con `--plugin-dir` desde un worktree muestra las 8 skills y los 2
   agentes, y `/starteria-desarrollo:jira-hu KAN-91` responde.
 - CA-3 (D-20) Desde un worktree hermano, sin `JIRA_ENV_FILE`, `jira-hu.mjs` y `jev-clasificar.mjs`
@@ -364,6 +366,8 @@ este corte valida es el recorrido del ciclo, no ese código.
 - CA-4 (D-21, D-25) Los siete casos del `init` pasan en `node --test`, y el bloque tiene las cuatro
   partes de D-25.
 - CA-5 (D-22) `verify.sh` pasa con el bloque 7 y sigue diciendo `Skills (10)` para el producto.
+- CA-6 (D-19) `CLAUDE.md`, `AGENTS.md`, `TESTING.md` y los despachos de agentes usan los nombres con
+  prefijo, y `.gitignore` permite `.claude/settings.json`.
 
 **HU-T · Triage por rutas (R1).** Como quien trae un pedido, quiero que se clasifique en R0, R1, R2 o
 Q, para pagar sólo el ciclo que necesita.
