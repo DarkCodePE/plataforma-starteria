@@ -4,7 +4,8 @@
  * Pantalla de transición POST-confirmación: tras aceptar la ruta, el usuario aterriza
  * aquí (no en Step 0). Confirma que la iniciativa fue creada (Draft), muestra el mapa
  * Step 0–4 (Step 0 activo, 1–4 bloqueados), un resumen de la revisión inicial (desde
- * el prefill en step0Data) y el CTA "Empezar Step 0".
+ * el prefill en step0Data) y el CTA que lleva a Mission Review (/initiatives/:id/mission),
+ * que es la que abre Step 0.
  *
  * Independiente del scaffold de #122: lee el Project real vía projectService.getById
  * (que consume la API verificada IR-B2/B4). No aprueba Step 0 (AC-OV-008).
@@ -271,11 +272,12 @@ export function InitiativeOverviewPage() {
               initiativeId: projectId,
               snapshotId: project.initialReviewSnapshotId,
             });
-            navigate(`/projects/${projectId}/step/0`);
+            // §18 del E2E Job-Driven: Start pasa por Mission Review, que es la que abre Step 0.
+            navigate(`/initiatives/${projectId}/mission`);
           }}
           className="rounded-lg bg-emerald-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-emerald-700"
         >
-          Empezar Step 0
+          Revisar mi misión y empezar
         </button>
       </div>
     </div>

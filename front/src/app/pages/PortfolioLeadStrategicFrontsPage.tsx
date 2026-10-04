@@ -295,7 +295,7 @@ export function PortfolioLeadStrategicFrontsPage() {
       <PageHeader
         eyebrow="Frentes estrategicos"
         title="Frentes estrategicos"
-        description="Crea y actualiza las prioridades estrategicas que quieres mover desde Starteria."
+        description="¿Qué resultado quiere mover realmente el negocio? Cada frente separa lo que queremos conseguir de lo que estamos haciendo."
         metadata={[
           { label: 'Frentes visibles', value: strategicFronts.length },
           { label: 'Filtrados', value: filteredFronts.length },
@@ -404,7 +404,8 @@ function StrategicFrontsHeader({ onCreate }: { onCreate: () => void }) {
             Frentes estratégicos
           </h1>
           <p className="mt-3 text-sm text-slate-600 md:text-base">
-            Crea y actualiza las prioridades estratégicas que quieres mover desde Starteria.
+            ¿Qué resultado quiere mover realmente el negocio? Cada frente separa lo que queremos conseguir de lo que
+            estamos haciendo, con su señal, su baseline, su meta y su horizonte.
           </p>
         </div>
 
@@ -658,7 +659,8 @@ function StrategicFrontFormDrawer({
                   {mode === 'edit' ? 'Editar frente estratégico' : 'Crear frente estratégico'}
                 </h2>
                 <p className="mt-2 text-sm text-slate-600">
-                  Define una prioridad del negocio que luego podrás convertir en retos accionables.
+                  ¿Qué resultado quiere mover el negocio? Descríbelo como un resultado, no como una actividad o una
+                  tecnología; los retos llegan después, cuando separar ayude a gobernar mejor.
                 </p>
               </div>
               <button
