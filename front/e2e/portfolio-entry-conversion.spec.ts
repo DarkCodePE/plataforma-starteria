@@ -165,7 +165,7 @@ async function continueThroughAuthenticatedPortfolioEntry(
   page: Page,
   user: { email: string; password: string },
   organization: { name: string },
-  options: { openPortfolioHomeForHomeCoverage?: boolean; alreadyAuthenticated?: boolean; stopAtBriefActions?: boolean } = {},
+  options: { openPortfolioHomeForHomeCoverage?: boolean; alreadyAuthenticated?: boolean } = {},
 ): Promise<string> {
   await page.getByRole('button', { name: /Trabajarlo con Starteria/i }).click();
   if (options.alreadyAuthenticated) {
@@ -188,7 +188,7 @@ async function continueThroughAuthenticatedPortfolioEntry(
       return false;
     }
   });
-  const continuationResponse = options.stopAtBriefActions ? null : page.waitForResponse((response) => {
+  const continuationResponse = page.waitForResponse((response) => {
     if (response.request().method() !== 'POST') return false;
     try {
       return /^\/api\/v1\/public\/portfolio-entry\/sessions\/[^/]+\/continue-portfolio$/.test(new URL(response.url()).pathname);
@@ -216,19 +216,7 @@ async function continueThroughAuthenticatedPortfolioEntry(
   ]));
   expect(confirmationPayload.rejectedFields ?? []).not.toContain('recommended_approach');
 
-  if (options.stopAtBriefActions) {
-    const briefIdentity = {
-      source: 'portfolio_entry', sessionId: confirmedBody.data.id, sessionRevision: confirmedBody.data.revision,
-      handoffId: confirmedBody.data.handoff.id, handoffVersion: confirmedBody.data.handoff.version,
-      confirmationId: confirmedBody.data.confirmation.id, confirmationVersion: confirmedBody.data.confirmation.version,
-    };
-    await page.evaluate((identity) => window.sessionStorage.setItem('starteria.portfolioEntry.claimedSession', JSON.stringify(identity)), briefIdentity);
-    await page.goto('/public/start');
-    await expect(page.getByTestId('portfolio-entry-confirmed-brief-actions')).toBeVisible();
-    return confirmedBody.data.id;
-  }
-
-  const continued = await continuationResponse!;
+  const continued = await continuationResponse;
   const continuedBodyText = await continued.text();
   let continuedBody: any;
   try {
@@ -438,40 +426,23 @@ async function reachHandoff(page: Page, scenario: Scenario, testInfo: TestInfo) 
   await expect(page.getByText(/Esto estoy entendiendo/i)).toBeVisible({ timeout: 30_000 });
 }
 
-async function confirmCurrentEntryForFinalActions(page: Page, api: APIRequestContext, user: { email: string; password: string }) {
-  const stored = await page.evaluate(() => JSON.parse(window.sessionStorage.getItem('starteria.portfolioEntry.current') || 'null'));
-  expect(stored?.sessionId).toBeTruthy();
-  expect(stored?.credential).toBeTruthy();
-  const session = await prisma.portfolioEntrySession.findUniqueOrThrow({ where: { id: stored.sessionId } });
-  const login = await api.post('/api/v1/auth/login', { data: { email: user.email, password: user.password } });
-  const authorization = `Bearer ${extractToken(await login.json())}`;
-  const claimed = await api.post(`/api/v1/public/portfolio-entry/sessions/${stored.sessionId}/claim`, {
-    headers: { Authorization: authorization, 'X-Starteria-Entry-Token': stored.credential, 'Idempotency-Key': `kan101-claim-${stored.sessionId}` },
-    data: { expectedRevision: session.revision },
-  });
-  expect(claimed.status(), await claimed.text()).toBe(200);
-  const claimedBody = await claimed.json();
-  const confirmed = await api.post(`/api/v1/public/portfolio-entry/sessions/${stored.sessionId}/handoff/confirmation`, {
-    headers: { Authorization: authorization, 'Idempotency-Key': `kan101-confirm-${stored.sessionId}` },
-    data: { expectedRevision: claimedBody.data.revision, action: 'confirm', acceptedFields: [
-      'understood_need', 'desired_outcome', 'decision_to_enable', 'known_context',
-      'unresolved_context', 'evidence_or_clarity_needed', 'recommended_approach',
-    ] },
-  });
-  expect(confirmed.status(), await confirmed.text()).toBe(200);
-  const body = await confirmed.json();
-  const identity = {
-    source: 'portfolio_entry', sessionId: stored.sessionId, sessionRevision: body.data.revision,
-    handoffId: body.data.handoff.id, handoffVersion: body.data.handoff.version,
-    confirmationId: body.data.confirmation.id, confirmationVersion: body.data.confirmation.version,
-  };
-  await page.evaluate((briefIdentity) => {
-    window.sessionStorage.removeItem('starteria.portfolioEntry.current');
-    window.sessionStorage.setItem('starteria.portfolioEntry.claimedSession', JSON.stringify(briefIdentity));
-  }, identity);
+async function continueAndReturnToConfirmedEntryActions(
+  page: Page,
+  user: { email: string; password: string },
+  organization: { name: string },
+) {
+  await continueThroughAuthenticatedPortfolioEntry(page, user, organization);
+  await expect(page).toHaveURL(/\/portfolio\/setup$/);
+  const identity = await page.evaluate(() => JSON.parse(window.sessionStorage.getItem('starteria.portfolioEntry.claimedSession') || 'null'));
+  expect(identity).toMatchObject({ source: 'portfolio_entry', sessionId: expect.any(String) });
   await page.goto('/public/start');
-  await expect(page.getByTestId('portfolio-entry-confirmed-brief-actions')).toBeVisible();
-  return stored.sessionId as string;
+  const actions = page.getByTestId('portfolio-entry-confirmed-brief-actions');
+  await expect(actions).toBeVisible();
+  await expect(actions.getByRole('button', { name: 'Descargar', exact: true })).toBeVisible();
+  await expect(actions.getByRole('button', { name: 'Eliminar', exact: true })).toBeVisible();
+  await expect(actions.getByRole('button', { name: 'Trabajarlo con Starteria', exact: true })).toBeVisible();
+  await expect(actions.getByRole('button', { name: /Crear mi portafolio/i })).toHaveCount(0);
+  return identity.sessionId as string;
 }
 
 test.describe('Portfolio Entry visible UX and Portfolio continuation', () => {
@@ -741,10 +712,9 @@ test.describe('Portfolio Entry visible UX and Portfolio continuation', () => {
     await reachHandoff(page, SCENARIOS[0], testInfo);
     const api = await pwRequest.newContext({ baseURL: process.env.E2E_BASE_URL || 'http://127.0.0.1:5176' });
     const user = await registerPortfolioUser(api);
-    // First Value remains behind its existing portfolio:read gate (KAN-83/KAN-89).
-    // Give this test user the established dual role so D2 can be exercised without
-    // changing scoped-continuation or route authorization semantics.
-    await prisma.user.update({ where: { id: user.userId }, data: { role: 'portfolio_lead', roles: ['participante', 'portfolio_lead'] } });
+    // Keep this user at the base participant role. The continuation grants only
+    // scoped access; the setup route must authorize that exact handoff without
+    // granting global portfolio:read.
     const organization = await provisionScopedPortfolioAccess(user.userId);
     const beforeHydration = await canonicalCounts();
     const d1ResponsePromise = page.waitForResponse(response => response.request().method() === 'GET' && new URL(response.url()).pathname.endsWith('/confirmed-brief'));
@@ -804,16 +774,16 @@ test.describe('Portfolio Entry visible UX and Portfolio continuation', () => {
     const legacyNavigation = watchForbiddenPortfolioEntryNavigation(page);
     const api = await pwRequest.newContext({ baseURL: process.env.E2E_BASE_URL || 'http://127.0.0.1:5176' });
     const user = await registerPortfolioUser(api);
-    await prisma.user.update({ where: { id: user.userId }, data: { role: 'portfolio_lead', roles: ['participante', 'portfolio_lead'] } });
     const organization = await provisionScopedPortfolioAccess(user.userId);
+    await reachHandoff(page, SCENARIOS[0], testInfo);
     await page.goto('/auth');
     await loginThroughUi(page, user.email, user.password);
     await expect(page).toHaveURL(/\/(dashboard|portfolio\/inicio)/, { timeout: 20_000 });
-    await reachHandoff(page, SCENARIOS[0], testInfo);
+    await page.goto('/public/start');
+    await expect(page.getByRole('button', { name: /Trabajarlo con Starteria/i })).toBeVisible();
     const d1ResponsePromise = page.waitForResponse(response => response.request().method() === 'GET' && new URL(response.url()).pathname.endsWith('/confirmed-brief'));
 
-    await continueThroughAuthenticatedPortfolioEntry(page, user, organization, { alreadyAuthenticated: true, stopAtBriefActions: true });
-    await page.getByRole('button', { name: 'Trabajarlo con Starteria', exact: true }).click();
+    await continueThroughAuthenticatedPortfolioEntry(page, user, organization, { alreadyAuthenticated: true });
     await expect(page).toHaveURL(/\/portfolio\/setup$/);
     await expect(page.getByTestId('portfolio-lead-first-value')).toBeVisible();
     const identity = await page.evaluate(() => JSON.parse(window.sessionStorage.getItem('starteria.portfolioEntry.claimedSession') || 'null'));
@@ -834,6 +804,7 @@ test.describe('Portfolio Entry visible UX and Portfolio continuation', () => {
     expect(d1Body.data.revision).toBe(identity.sessionRevision);
     expect(d1Body.data.handoffId).toBe(identity.handoffId);
     expect(d1Body.data.confirmationId).toBe(identity.confirmationId);
+    await page.screenshot({ path: testInfo.outputPath('portfolio-entry-first-value-setup.png'), fullPage: true });
     expect(await page.getByLabel(/qué quieres conseguir/i).inputValue()).toBeTruthy();
     legacyNavigation.expectClean();
     legacyNavigation.dispose();
@@ -844,15 +815,12 @@ test.describe('Portfolio Entry visible UX and Portfolio continuation', () => {
     const legacyNavigation = watchForbiddenPortfolioEntryNavigation(page);
     const api = await pwRequest.newContext({ baseURL: process.env.E2E_BASE_URL || 'http://127.0.0.1:5176' });
     const user = await registerPortfolioUser(api);
-    await prisma.user.update({ where: { id: user.userId }, data: { role: 'portfolio_lead', roles: ['participante', 'portfolio_lead'] } });
-    await provisionScopedPortfolioAccess(user.userId);
-    await page.goto('/auth');
-    await loginThroughUi(page, user.email, user.password);
-    await expect(page).toHaveURL(/\/(dashboard|portfolio\/inicio)/, { timeout: 20_000 });
+    const organization = await provisionScopedPortfolioAccess(user.userId);
     await reachHandoff(page, SCENARIOS[0], testInfo);
-    const sessionId = await confirmCurrentEntryForFinalActions(page, api, user);
+    const sessionId = await continueAndReturnToConfirmedEntryActions(page, user, organization);
     const before = await prisma.portfolioEntrySession.findUniqueOrThrow({ where: { id: sessionId } });
     const portfolioBefore = await canonicalCounts();
+    await page.screenshot({ path: testInfo.outputPath('portfolio-entry-confirmed-brief-actions.png'), fullPage: true });
     const downloadReady = page.waitForEvent('download');
     await page.getByRole('button', { name: 'Descargar', exact: true }).click();
     const download = await downloadReady;
@@ -876,15 +844,13 @@ test.describe('Portfolio Entry visible UX and Portfolio continuation', () => {
     const legacyNavigation = watchForbiddenPortfolioEntryNavigation(page);
     const api = await pwRequest.newContext({ baseURL: process.env.E2E_BASE_URL || 'http://127.0.0.1:5176' });
     const user = await registerPortfolioUser(api);
-    await prisma.user.update({ where: { id: user.userId }, data: { role: 'portfolio_lead', roles: ['participante', 'portfolio_lead'] } });
     const organization = await provisionScopedPortfolioAccess(user.userId);
-    await page.goto('/auth');
-    await loginThroughUi(page, user.email, user.password);
-    await expect(page).toHaveURL(/\/(dashboard|portfolio\/inicio)/, { timeout: 20_000 });
     await reachHandoff(page, SCENARIOS[0], testInfo);
-    const sessionId = await confirmCurrentEntryForFinalActions(page, api, user);
+    const sessionId = await continueAndReturnToConfirmedEntryActions(page, user, organization);
+    const briefIdentity = await page.evaluate(() => JSON.parse(window.sessionStorage.getItem('starteria.portfolioEntry.claimedSession') || 'null'));
     const before = await prisma.portfolioEntrySession.findUniqueOrThrow({ where: { id: sessionId } });
     const portfolioBefore = await canonicalCounts();
+    await page.screenshot({ path: testInfo.outputPath('portfolio-entry-delete-confirmation.png'), fullPage: true });
     await page.getByRole('button', { name: 'Eliminar', exact: true }).click();
     await expect(page.getByText(/Si eliminas esta lectura/i)).toBeVisible();
     await page.getByRole('button', { name: 'Sí, eliminar', exact: true }).click();
@@ -894,8 +860,22 @@ test.describe('Portfolio Entry visible UX and Portfolio continuation', () => {
     expect(after.lifecycleStatus).toBe('ABANDONED');
     expect(after.revision).toBe(before.revision + 1);
     const login = await api.post('/api/v1/auth/login', { data: { email: user.email, password: user.password } });
+    const authorization = `Bearer ${extractToken(await login.json())}`;
+    const d1Query = new URLSearchParams({
+      source: briefIdentity.source,
+      sessionRevision: String(briefIdentity.sessionRevision),
+      handoffId: briefIdentity.handoffId,
+      handoffVersion: String(briefIdentity.handoffVersion),
+      confirmationId: briefIdentity.confirmationId,
+      confirmationVersion: String(briefIdentity.confirmationVersion),
+    });
+    const d1 = await api.get(`/api/v1/public/portfolio-entry/sessions/${sessionId}/confirmed-brief?${d1Query}`, {
+      headers: { Authorization: authorization },
+      failOnStatusCode: false,
+    });
+    expect(d1.status()).toBe(410);
     const blocked = await api.post(`/api/v1/public/portfolio-entry/sessions/${sessionId}/continue-portfolio`, {
-      headers: { Authorization: `Bearer ${extractToken(await login.json())}`, 'Idempotency-Key': `kan101-blocked-${sessionId}` },
+      headers: { Authorization: authorization, 'Idempotency-Key': `kan101-blocked-${sessionId}` },
       data: { expectedRevision: after.revision, organizationId: organization.id }, failOnStatusCode: false,
     });
     expect(blocked.status()).toBe(410);

@@ -1378,8 +1378,10 @@ export function PortfolioEntryExperience({
 
   useEffect(() => {
     if (!recoverExisting) return;
-    const stored = readPortfolioEntryCurrentSession();
     const claimed = readClaimedPortfolioEntrySession() ?? claimedNotice;
+    // A completed auth claim supersedes the anonymous credential. Prefer the
+    // authenticated identity when both storage records survive a navigation.
+    const stored = claimed ? null : readPortfolioEntryCurrentSession();
     if (!stored && !claimed) return;
     let cancelled = false;
     setPendingRequest('recovering');

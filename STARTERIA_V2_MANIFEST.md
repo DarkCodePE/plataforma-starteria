@@ -132,7 +132,7 @@ integration_status: INTEGRATED_IN_GOVERNED_BASELINE (origin/main @ 1b44bc1 / PR 
 ```text
 slice_id: FIRST_VALUE_RUNTIME_HARDENING_PROMOTION
 logic_status: ACTIVE_V2_BASELINE (KAN-63/A.3.2 checkpoints; P3 capability bounded by KAN-85)
-implementation_status: READY_FOR_PROMOTION (branch-level verification complete)
+implementation_status: IMPLEMENTED_VERIFIED (integrated in governed baseline; KAN-99 focused local regression revalidated 2026-10-04)
 visual_status: V2_PILOT
 evidence_status: SUPPORTED_LOCAL_VALIDATION (real provider and deployed network not verified)
 authority: Jira KAN-83 + KAN-63; docs/portfolio-lead/06-portfolio-monitoring/experience/STARTERIA_PORTFOLIO_LEAD_A32_CHECKPOINT_INLINE_REVIEW_v0.1.md; KAN-85 P3 contract
@@ -141,8 +141,26 @@ exit_boundary: provisional P3 reading and local-only global confirmation; no can
 implementation: front/src/features/portfolio-lead/first-value/PortfolioLeadFirstValuePage.tsx
 backend_capability: POST /api/v1/first-value/p3/analyze (KAN-86; integrated)
 implementation_report: docs/portfolio-lead/06-portfolio-monitoring/90-implementation-reports/KAN-83_FIRST_VALUE_RUNTIME_HARDENING_PROMOTION_v0.2.md
-integration_status: NOT_MERGED (branch ready for promotion)
+integration_status: INTEGRATED_IN_GOVERNED_BASELINE (KAN-83/KAN-96 runtime present on current origin/main)
 exclusions: D1/D2, Portfolio Entry, Core, Steps 0-4, canonical portfolio writes
+```
+
+## Slice KAN74_PORTFOLIO_ENTRY_TO_FIRST_VALUE (KAN-74 / KAN-99)
+
+```text
+slice_id: KAN74_PORTFOLIO_ENTRY_TO_FIRST_VALUE
+HU: KAN-74; final closure: KAN-99
+logic_status: ACTIVE_V2_BASELINE (Portfolio Entry confirmed Brief; exact KAN-97 identity; D1/D2; KAN-63 First Value)
+implementation_status: IMPLEMENTED_VERIFIED (KAN-99 full regression and real exit-action journey verified 2026-10-04)
+visual_status: V2_PILOT
+evidence_status: LOCAL_REGRESSION_PASS (full frontend/backend/typecheck/lint/build matrix and complete portfolio-entry-conversion E2E wrapper pass)
+semantic_owner: Portfolio Entry through confirmed Brief; Portfolio Lead interprets organizational context; KAN-63 governs P1/P2/P3
+authority: Jira KAN-74/KAN-99; KAN-88/89/90/96/97/98/100/101; KAN-63; approved Portfolio Entry Logic Contract
+entry_boundary: /public/start → final strategic reading → confirmed Brief
+target_exit_boundary: Download | Delete | Work with Starteria → auth/claim if needed → /portfolio/setup → exact D1 → Strategic Intent hydration → explicit P1
+canonical_write_boundary: zero StrategicFront/Challenge/Initiative/Step/canonical Portfolio writes before governed Portfolio Lead action
+implementation_report: docs/portfolio-lead/06-portfolio-monitoring/90-implementation-reports/KAN-99_KAN74_FINAL_ALIGNMENT_REGRESSION_CLOSURE_v0.1.md
+closure_status: KAN74_READY_TO_RESOLVE (real final-action reachability, scoped auth, full E2E wrapper, and quality matrix pass)
 ```
 
 # 2.2 Slice KAN-64_PUBLIC_LANDING_L1_PRODUCT_FRAMING_HERO

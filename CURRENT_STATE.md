@@ -178,12 +178,16 @@ Invariantes de esta frontera: `AUTHENTICATION != BUSINESS CANONICALIZATION`,
   has no canonical or durable P3 writes; live provider and deployed network
   remain unverified. See
   `docs/portfolio-lead/06-portfolio-monitoring/90-implementation-reports/KAN-86_FIRST_VALUE_P3_RUNTIME_PROCESSOR_IMPLEMENTATION_v0.1.md`.
-- KAN-83 implements the autonomous First Value experience at `/portfolio/setup`
-  on `feat/KAN-83-first-value-runtime-hardening`, under the existing
-  `PortfolioLeadLayout` and auth gate. It is ready for promotion after local
-  frontend/backend verification and the directed route/auth E2E; it does not
-  consume D1 or implement D2. See
-  `docs/portfolio-lead/06-portfolio-monitoring/90-implementation-reports/KAN-83_FIRST_VALUE_RUNTIME_HARDENING_PROMOTION_v0.2.md`.
+- KAN-83 First Value and KAN-96 D2 hydration are integrated in the current
+  governed baseline at `/portfolio/setup`. KAN-100 aligns the confirmed
+  Portfolio Entry continuation to that route; scoped setup access is validated
+  without global `portfolio:read`. KAN-101 restores Download/Delete behavior
+  for a confirmed Brief. KAN-99's final closure was revalidated on governed
+  main: claimed identity now wins over any stale anonymous session during Entry
+  recovery, the real journey reaches Download/Delete and `/portfolio/setup`,
+  and the complete E2E wrapper and local regression matrix pass. KAN-74 is ready
+  to resolve; Jira remains in progress pending the human transition. See
+  `docs/portfolio-lead/06-portfolio-monitoring/90-implementation-reports/KAN-99_KAN74_FINAL_ALIGNMENT_REGRESSION_CLOSURE_v0.1.md`.
 
 ## ADRs
 
