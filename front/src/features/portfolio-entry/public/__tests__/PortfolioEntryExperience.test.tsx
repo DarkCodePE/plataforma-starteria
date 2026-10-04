@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router';
 import { PortfolioEntryExperience } from '../PortfolioEntryExperience';
+import { serializeConfirmedBriefMarkdown } from '../portfolioEntryBriefExport';
 import type { PortfolioEntryHandoff, PortfolioEntrySessionDto } from '../types';
 import {
   readPendingPortfolioEntryClaim,
@@ -21,6 +22,7 @@ const serviceMocks = vi.hoisted(() => ({
   correctPortfolioEntryHandoff: vi.fn(),
   confirmPortfolioEntryHandoff: vi.fn(),
   continuePortfolioEntryToPortfolio: vi.fn(),
+  abandonPortfolioEntrySession: vi.fn(),
   normalizePortfolioEntryApiError: vi.fn((err: { kind?: string; status?: number }) => ({
     kind: err.kind ?? 'network',
     status: err.status,
@@ -177,6 +179,71 @@ describe('PortfolioEntryExperience', () => {
     window.sessionStorage.clear();
     navigateSpy.mockClear();
     vi.clearAllMocks();
+  });
+
+  it('exports only confirmed handoff fields and never substitutes rawEntry', () => {
+    const session = sessionWithHandoff({
+      lifecycleStatus: 'CONFIRMED',
+      revision: 17,
+      confirmation: {
+        id: 'confirmation-1', version: 1, status: 'CONFIRMED',
+        acceptedFields: ['desired_outcome', 'understanding', 'decision_to_enable'],
+        correctedFields: {}, rejectedFields: [], createdAt: new Date().toISOString(),
+      },
+    });
+    const exported = serializeConfirmedBriefMarkdown(session);
+    expect(exported.filename).toBe('starteria-brief-r17.md');
+    expect(exported.markdown).toContain('Qué quiero lograr');
+    expect(exported.markdown).toContain('Situación y entendimiento');
+    expect(exported.markdown).toContain('Decisión a preparar');
+    expect(exported.markdown).not.toContain('Propuesta de Starteria');
+    expect(exported.markdown).not.toContain('rawEntry');
+    expect(() => serializeConfirmedBriefMarkdown(makeSession({ lifecycleStatus: 'HANDOFF_READY' }))).toThrow(/confirmed Brief/i);
+  });
+
+  it('requires explicit confirmation before delete and then abandons the confirmed Brief', async () => {
+    saveClaimedPortfolioEntrySession({ sessionId: '11111111-1111-4111-8111-111111111111' });
+    serviceMocks.getClaimedPortfolioEntrySession.mockResolvedValue(sessionWithHandoff({
+      lifecycleStatus: 'CONFIRMED', revision: 8, ownership: { state: 'CLAIMED', ownerUserId: 'user-1' },
+      confirmation: { id: 'confirmation-1', version: 1, status: 'CONFIRMED', acceptedFields: ['understanding'], correctedFields: {}, rejectedFields: [], createdAt: new Date().toISOString() },
+    }));
+    serviceMocks.abandonPortfolioEntrySession.mockResolvedValue({ sessionId: '11111111-1111-4111-8111-111111111111', lifecycleStatus: 'ABANDONED', revision: 9 });
+    renderExperience();
+    const actions = await screen.findByTestId('portfolio-entry-confirmed-brief-actions');
+    fireEvent.click(within(actions).getByRole('button', { name: 'Eliminar' }));
+    expect(serviceMocks.abandonPortfolioEntrySession).not.toHaveBeenCalled();
+    fireEvent.click(within(actions).getByRole('button', { name: 'Sí, eliminar' }));
+    await screen.findByText('Lectura eliminada');
+    expect(serviceMocks.abandonPortfolioEntrySession).toHaveBeenCalledWith('11111111-1111-4111-8111-111111111111', expect.objectContaining({ expectedRevision: 8 }));
+    expect(serviceMocks.continuePortfolioEntryToPortfolio).not.toHaveBeenCalled();
+  });
+
+  it('downloads a confirmed Markdown Brief without calling lifecycle or Portfolio mutation services', async () => {
+    saveClaimedPortfolioEntrySession({ sessionId: '11111111-1111-4111-8111-111111111111' });
+    serviceMocks.getClaimedPortfolioEntrySession.mockResolvedValue(sessionWithHandoff({
+      lifecycleStatus: 'CONFIRMED', revision: 12, ownership: { state: 'CLAIMED', ownerUserId: 'user-1' },
+      confirmation: { id: 'confirmation-1', version: 1, status: 'CONFIRMED', acceptedFields: ['desired_outcome', 'understanding', 'decision_to_enable'], correctedFields: {}, rejectedFields: [], createdAt: new Date().toISOString() },
+    }));
+    const originalCreateUrl = Object.getOwnPropertyDescriptor(URL, 'createObjectURL');
+    const originalRevokeUrl = Object.getOwnPropertyDescriptor(URL, 'revokeObjectURL');
+    const createUrl = vi.fn().mockReturnValue('blob:confirmed-brief');
+    Object.defineProperty(URL, 'createObjectURL', { configurable: true, value: createUrl });
+    Object.defineProperty(URL, 'revokeObjectURL', { configurable: true, value: vi.fn() });
+    const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => undefined);
+    renderExperience();
+    const actions = await screen.findByTestId('portfolio-entry-confirmed-brief-actions');
+    fireEvent.click(within(actions).getByRole('button', { name: 'Descargar' }));
+    expect(click).toHaveBeenCalledOnce();
+    expect((createUrl.mock.calls[0][0] as Blob).type).toBe('text/markdown;charset=utf-8');
+    expect(createUrl.mock.calls[0][0]).toBeInstanceOf(Blob);
+    expect(serviceMocks.abandonPortfolioEntrySession).not.toHaveBeenCalled();
+    expect(serviceMocks.continuePortfolioEntryToPortfolio).not.toHaveBeenCalled();
+    expect(screen.getByRole('status')).toHaveTextContent('La Entry permanece sin cambios');
+    if (originalCreateUrl) Object.defineProperty(URL, 'createObjectURL', originalCreateUrl);
+    else delete (URL as typeof URL & { createObjectURL?: unknown }).createObjectURL;
+    if (originalRevokeUrl) Object.defineProperty(URL, 'revokeObjectURL', originalRevokeUrl);
+    else delete (URL as typeof URL & { revokeObjectURL?: unknown }).revokeObjectURL;
+    click.mockRestore();
   });
 
   it('keeps public examples editable before explicit analysis', () => {
@@ -463,8 +530,8 @@ describe('PortfolioEntryExperience', () => {
     const expandedAnalysis = screen.getByTestId('handoff-expanded-analysis');
     expect(expandedAnalysis).toBeInTheDocument();
     const conversionCta = screen.getByTestId('portfolio-entry-conversion-cta');
-    expect(conversionCta).toHaveTextContent('Convierte esta lectura en tu portafolio de trabajo');
-    expect(within(conversionCta).getByRole('button', { name: /crear mi portafolio/i })).toBeInTheDocument();
+    expect(conversionCta).toHaveTextContent('Continúa trabajando esta lectura con Starteria');
+    expect(within(conversionCta).getByRole('button', { name: /trabajarlo con starteria/i })).toBeInTheDocument();
     expect(within(conversionCta).getAllByRole('listitem')).toHaveLength(3);
     expect(conversionCta).toHaveTextContent('Tu lectura se conserva. No tendrás que empezar de nuevo.');
     expect(conversionCta).not.toHaveTextContent('Ruta completa en Starteria');
@@ -477,7 +544,7 @@ describe('PortfolioEntryExperience', () => {
     expect(screen.getByText(/Tu lectura se conserva/i)).toBeInTheDocument();
     expect(screen.queryByText('source_path')).not.toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: /crear mi portafolio/i }));
+    fireEvent.click(screen.getByRole('button', { name: /trabajarlo con starteria/i }));
 
     expect(navigateSpy).toHaveBeenCalledWith('/auth');
     expect(serviceMocks.confirmPortfolioEntryHandoff).not.toHaveBeenCalled();
@@ -616,7 +683,7 @@ describe('PortfolioEntryExperience', () => {
     expect(await screen.findByText('Esto estoy entendiendo')).toBeVisible();
     expect(screen.getByText(/Pendiente adicional para el .*lisis completo/)).not.toBeVisible();
     expect(screen.getByTestId('handoff-starteria-path-expanded')).not.toBeVisible();
-    expect(screen.getByRole('button', { name: /crear mi portafolio/i })).toBeVisible();
+    expect(screen.getByRole('button', { name: /trabajarlo con starteria/i })).toBeVisible();
 
     fireEvent.click(screen.getByText(/Ver an.*lisis completo/));
 
@@ -627,7 +694,7 @@ describe('PortfolioEntryExperience', () => {
     expect(screen.getByText('Ruta completa en Starteria')).toBeVisible();
     expect(screen.getByTestId('handoff-starteria-path-expanded')).toBeVisible();
     expect(screen.getByTestId('handoff-provenance-detail')).toBeVisible();
-    expect(screen.getByRole('button', { name: /crear mi portafolio/i })).toBeVisible();
+    expect(screen.getByRole('button', { name: /trabajarlo con starteria/i })).toBeVisible();
 
     fireEvent.click(screen.getByText(/Ver an.*lisis completo/));
     expect(screen.getByText(/Pendiente adicional para el .*lisis completo/)).not.toBeVisible();
@@ -660,7 +727,7 @@ describe('PortfolioEntryExperience', () => {
     expect(window.sessionStorage.getItem('starteria.portfolioEntry.current')).toBeNull();
   });
 
-  it('hides conversion CTA before claim and keeps signup as the explicit next action', async () => {
+  it('shows three distinct decisions only for a confirmed Brief', async () => {
     savePortfolioEntryCurrentSession({ sessionId: '11111111-1111-4111-8111-111111111111', credential: 'entry-token' });
     serviceMocks.getPortfolioEntrySession.mockResolvedValue(sessionWithHandoff({
       lifecycleStatus: 'CONFIRMED',
@@ -671,8 +738,8 @@ describe('PortfolioEntryExperience', () => {
 
     renderExperience();
 
-    expect(await screen.findByRole('button', { name: /crear cuenta y conservar lectura/i })).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /continuar con mi portafolio/i })).not.toBeInTheDocument();
+    const actions = await screen.findByTestId('portfolio-entry-confirmed-brief-actions');
+    expect(within(actions).getAllByRole('button').map((button) => button.textContent)).toEqual(['Descargar', 'Eliminar', 'Trabajarlo con Starteria']);
   });
 
   it('does not confirm the handoff from the anonymous CTA', async () => {
@@ -684,7 +751,7 @@ describe('PortfolioEntryExperience', () => {
     }));
     renderExperience();
 
-    fireEvent.click(await screen.findByRole('button', { name: /crear mi portafolio/i }));
+    fireEvent.click(await screen.findByRole('button', { name: /trabajarlo con starteria/i }));
 
     expect(navigateSpy).toHaveBeenCalledWith('/auth');
     expect(readPendingPortfolioEntryClaim()).toEqual({
@@ -717,7 +784,7 @@ describe('PortfolioEntryExperience', () => {
 
     renderExperience();
 
-    const cta = await screen.findByRole('button', { name: /continuar con mi portafolio/i });
+    const cta = await screen.findByRole('button', { name: /trabajarlo con starteria/i });
     expect(serviceMocks.continuePortfolioEntryToPortfolio).not.toHaveBeenCalled();
 
     fireEvent.click(cta);
@@ -761,13 +828,13 @@ describe('PortfolioEntryExperience', () => {
 
     renderExperience();
 
-    const cta = await screen.findByRole('button', { name: /continuar con mi portafolio/i });
+    const cta = await screen.findByRole('button', { name: /trabajarlo con starteria/i });
     fireEvent.click(cta);
 
     expect(await screen.findByText(/continuidad Portfolio todavia/i)).toBeInTheDocument();
     const firstKey = serviceMocks.continuePortfolioEntryToPortfolio.mock.calls[0][1].idempotencyKey;
 
-    fireEvent.click(screen.getByRole('button', { name: /continuar con mi portafolio/i }));
+    fireEvent.click(screen.getByRole('button', { name: /trabajarlo con starteria/i }));
 
     await waitFor(() => expect(serviceMocks.continuePortfolioEntryToPortfolio).toHaveBeenCalledTimes(2));
     expect(serviceMocks.continuePortfolioEntryToPortfolio.mock.calls[1][1].idempotencyKey).toBe(firstKey);
@@ -793,7 +860,7 @@ describe('PortfolioEntryExperience', () => {
 
     renderExperience();
 
-    fireEvent.click(await screen.findByRole('button', { name: /continuar con mi portafolio/i }));
+    fireEvent.click(await screen.findByRole('button', { name: /trabajarlo con starteria/i }));
 
     await waitFor(() => expect(serviceMocks.getClaimedPortfolioEntrySession).toHaveBeenCalledTimes(2));
     expect(serviceMocks.continuePortfolioEntryToPortfolio).toHaveBeenCalledTimes(1);

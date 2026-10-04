@@ -216,6 +216,9 @@ export class PortfolioEntryContinuationService {
       const created = await this.prisma.$transaction(async (tx) => {
         const row = await tx.portfolioEntrySession.findUnique({ where: { id: input.sessionId } });
         if (!row) throw AppError.notFound('Portfolio Entry session', 'PORTFOLIO_ENTRY_SESSION_NOT_FOUND');
+        if (row.lifecycleStatus === 'ABANDONED') {
+          throw new AppError(410, 'El Brief fue descartado.', 'PORTFOLIO_ENTRY_SESSION_ABANDONED');
+        }
         if (row.expiresAt <= this.now() || row.expiredAt || row.lifecycleStatus === 'EXPIRED') {
           throw new AppError(410, 'La sesion de Portfolio Entry expiro.', 'PORTFOLIO_ENTRY_SESSION_EXPIRED');
         }

@@ -298,6 +298,16 @@ export async function continuePortfolioEntryToPortfolio(
   return unwrap(response);
 }
 
+export async function abandonPortfolioEntrySession(sessionId: string, input: MutationOptions): Promise<{ sessionId: string; lifecycleStatus: 'ABANDONED'; revision: number }> {
+  const { default: api } = await import('../../../app/services/api');
+  const response = await api.post<PortfolioEntryApiEnvelope<{ sessionId: string; lifecycleStatus: 'ABANDONED'; revision: number }>>(
+    `/public/portfolio-entry/sessions/${encodeURIComponent(sessionId)}/abandon`,
+    { expectedRevision: input.expectedRevision },
+    { headers: { [IDEMPOTENCY_HEADER]: input.idempotencyKey } },
+  );
+  return unwrap(response);
+}
+
 export async function getPortfolioEntryContexts(sessionId: string): Promise<PortfolioEntryContextResolution> {
   const { default: api } = await import('../../../app/services/api');
   const response = await api.get<PortfolioEntryApiEnvelope<PortfolioEntryContextResolution>>(
