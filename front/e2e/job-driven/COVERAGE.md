@@ -1,0 +1,72 @@
+# Cobertura E2E Job-Driven
+
+Mide el producto contra `doc/STARTERIA_JOB_DRIVEN_E2E_EXPERIENCE_v0.2.md` (estado del doc:
+*propuesto para contraste y validación*; no figura en `doc/STARTERIA_AUTHORITY.md`). Los cinco
+escenarios A–E son fixtures representativos (§2), no cinco entradas canónicas.
+
+```bash
+cd front && npm run test:e2e:job-driven
+```
+
+Un test `[Gn]` es un **gap abierto**: corre con `test.fail()` (`e2e/support/gap.ts`), así que la suite
+queda verde mientras el gap exista. Cuando el producto lo cumple, Playwright lo reporta como
+"Expected to fail, but passed": ahí se cambia `gapTest` por `test`, se actualiza esta tabla y el
+test queda como regresión.
+
+## Por sección del doc
+
+| § | Qué pide | Test | Estado |
+|---|---|---|---|
+| §5 | Texto libre → interpretación → qué entendimos → decisión a habilitar → qué falta | `entry-a` · texto libre… | ✅ |
+| §5 | Resultado posible: "todavía no activar trabajo" | `entry-a` · [G9] | GAP G9 |
+| §3, §5 | Ruta sugerida con destinos según Job (portfolio setup, análisis, contexto de org, iniciativa) | `entry-a` · [G9] | GAP G9 |
+| §1, §25 | La entrada pública no pide elegir objetos de dominio | `entry-a` · texto libre… | ✅ |
+| §24–§25 | `/portfolio/iniciar` empieza por el Job, no por "¿Cómo quieres iniciar?" | `entry-b` · [G2] | GAP G2 |
+| §6 | Portfolio Home da una lectura | `entry-b` · Portfolio Home… | ✅ (solo carga; la lectura completa es G7) |
+| §7 | Frente con resultado, KPI, baseline, target, horizonte | `entry-b` · un Frente guarda… | ✅ |
+| §7 | Frente con restricciones (Core §13) | `entry-b` · [G3] | GAP G3 |
+| §7 | La pantalla de Frentes pregunta "¿qué resultado quiere mover?" | `entry-b` · [G2] | GAP G2 |
+| §8–§11, §26 | Copilot propone partir un Frente en Retos, explica, AI_SUGGESTED/UNREVIEWED, no crea | `entry-b` · [G6] | GAP G6 |
+| §10 | "No parece necesario crear otro Reto" | `entry-b` · [G6] | GAP G6 |
+| §13 | Reto con estado de cobertura | `entry-b` · un Reto tiene… | ✅ |
+| §13 | Lectura de cobertura del Reto como conjunto | `entry-b` · [G7] | GAP G7 |
+| §4, §24 | Ver y reasignar capacidad | `entry-b` · [G13] | GAP G13 |
+| §14 | Reconstrucción + gating retroactivo | `entry-c` · [G11] | GAP G11 |
+| §14 | "Importar iniciativas existentes" disponible | `entry-c` · [G11] | GAP G11 |
+| §15 | El encargo muestra qué se quiere mover y por qué | `entry-d` · el participante ve… | ✅ |
+| §15 | …y qué se sabe, qué está abierto, restricciones, decisión esperada (Core §14.1) | `entry-d` · [G4] | GAP G4 |
+| §17 | Step 0–4 → Decision Package → la decisión sube al portfolio | `entry-d` · el ciclo completo… | ✅ |
+| §18 | Mission Review; Start no abre Step 0 | `entry-d` · [G1] | GAP G1 |
+| §19 | Steps como preguntas de progreso | `entry-d` · [G2] | GAP G2 |
+| §21 | Decision Brief: decisión, qué hicimos, qué ocurrió, aprendizajes, riesgos, qué no podemos afirmar, siguiente paso | `entry-d` · el Decision Brief trae… | ✅ |
+| §21 | …y alternativas, qué podemos sostener | `entry-d` · [G5] | GAP G5 |
+| §22 | Continuidad: pivotear, buscar capacidad, benefit tracking (Core §26) | `entry-d` · [G5] | GAP G5 |
+| §23 | La decisión vuelve al Reto, Frente y Portfolio, con aprendizaje | `entry-d` · [G8] | GAP G8 |
+| §16 | Iniciativa independiente sin inventar Frente ni Reto | `entry-e` · se puede crear… | ✅ |
+| §16 | Contexto de Aplicación | `entry-e` · [G10] | GAP G10 |
+| §20 | Copilot: Orientarme / Trabajar conmigo / Desbloquearme | `entry-e` · [G12] | GAP G12 |
+
+## Gaps abiertos
+
+| GAP | Qué | Ola |
+|---|---|---|
+| G1 | Mission Review entre iniciativa y Step 0 | 1 |
+| G2 | Lenguaje de Jobs: `/portfolio/iniciar`, Steps como preguntas, Frente | 1 |
+| G3 | Frente: restricciones | 2 |
+| G4 | Envelope del Reto | 2 |
+| G5 | Decisión y Brief: rutas de continuidad, alternativas, qué podemos sostener | 2 |
+| G6 | Copilot sugiere desagregar un Frente en Retos | 3 |
+| G7 | Lectura de cobertura del Reto | 3 |
+| G8 | Retorno de la decisión al portfolio | 4 |
+| G9 | Destinos del routing de entrada (requiere chequeo de CONFLICT con el Portfolio Entry Logic Contract) | 5 |
+| G10 | Contexto de Aplicación | 5 |
+| G11 | Reconstrucción + gating retroactivo | 6 |
+| G12 | Modos del Copilot | 6 |
+| G13 | Capacidad (puede requerir ADR de producto) | 6 |
+
+## Fuera de alcance de esta suite
+
+- jev-regresion (`scripts/jev-regresion.py`) solo navega (`NO_WRITE`): no puede recorrer A–E, que
+  escriben datos. Cuando una ola agregue una pantalla navegable (p. ej. Mission Review), suma su caso
+  con `hu: "E2E-JOB"` en `scripts/jev-regresion.cases.json`.
+- Las variantes LLM reales (`PORTFOLIO_ENTRY_RUNTIME_MODE=deterministic` en el runner).
