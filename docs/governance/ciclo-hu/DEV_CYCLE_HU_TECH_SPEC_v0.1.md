@@ -13,7 +13,8 @@ HU: KAN-91 (HU-0), subtarea KAN-95. Cierra CA-4 y CA-5.
 # 0. Objetivo
 
 Fijar el **cómo** de las decisiones de `ADR-012` (proceso) y `ADR-013` (distribución), y cortar
-desde acá las seis HU de la épica. Esta spec no reabre lo que los ADR decidieron: los cita. Lo que
+desde acá las siete HU de la épica. La séptima (revisión y PR, §4.6) entró el 2026-10-04 por
+decisión de Orlando, registrada como adenda del brief. Esta spec no reabre lo que los ADR decidieron: los cita. Lo que
 una HU de la épica implemente tiene que poder señalar una decisión de esta spec (`D-n`); si no
 puede, la HU está inventando y vuelve a `/hu` (`AGENTS.md` §3).
 
@@ -56,7 +57,7 @@ las skills del ciclo (6), `.gitignore` (2).
 # 4. Decisiones por componente
 
 D-23 a D-25 se agregaron en la revisión y quedan junto al componente que tocan: D-23 en §4.1,
-D-24 y D-25 en §4.5.
+D-24 y D-25 en §4.5. D-26 a D-29 son la adenda del 2026-10-04 y forman §4.6.
 
 Cada componente: decisión, alternativas descartadas acá (las de fondo están en los ADR), testing con
 sus seams y rollback.
@@ -201,6 +202,10 @@ el ciclo C1 a C4 se edita en un PR; los ids no se reusan.
 {"v":1,"t":"...","evento":"resultado","hu":"KAN-91","cerrada":"2026-10-20","senales":["r2_sin_spec","subtarea_inventa","skill_equivocada","init_rompe","ruta_subida","negocio_sin_marcar"]}
 ```
 
+El evento `pr` (D-26) se agrega con
+`{"v":1,"evento":"pr","hu":"KAN-nnn","pr":123,"puerta_propuesta":"dos_vias","puerta_firmada":"dos_vias","radio_propuesto":"local","radio_firmado":"local","senales_duras":[],"jev":{}}`
+y `revertido` con `{"v":1,"evento":"revertido","pr":123,"dias":3}`.
+
 Las seis `senales` son las del brief ("Cómo se sabría que salió mal"); `negocio_sin_marcar` es
 "un PR o ticket sin resumen ejecutivo o Por qué importa que el revisor no marcó".
 
@@ -316,10 +321,90 @@ validate plugins/starteria-desarrollo`, que no quede ninguna skill del ciclo en 
 - *Rollback:* la mudanza es un PR; revertirlo devuelve `.claude/`. Los repos que ya corrieron el
   `init` conservan un bloque inerte entre marcadores que se borra a mano.
 
+## 4.6 Revisión y PR (adenda 2026-10-04)
+
+Fuente de método: `doc/skills/skills/engineering/{code-review,pr,retro}` (mattpocock/skills v1.3),
+contrastado con nuestras `/pr` y `revisor-starteria`. `/pr` ya es casi la misma skill; lo que falta
+es que la puerta y el radio no se escriban a ojo, un eje de standards en la revisión, la retro y un
+freno determinista.
+
+**D-26. Puerta y radio del PR: señales del diff, Jev y código.** Una tool `tools/pr-peligro.mjs`
+sigue la regla de `docs/analisis-jev/99-donde-no-aplica.md` (lo que se elige es Jev, lo que se
+deriva es código, lo que se dice es LLM):
+
+1. **Señales duras, código, sin Jev.** Cualquiera fija `una_via`: un archivo en `prisma/migrations/`,
+   `doc/`, `k8s/` o `.github/workflows/cd.yml`; un archivo borrado; un schema zod o pydantic cambiado
+   (`backend/**/*.schemas.ts` y `*.schema.ts`, 29 archivos hoy; `ai-service/schemas/**`); una variable nueva en `.env.example`. Se leen de
+   `git diff --name-status`; no se le pregunta a Jev lo que el diff ya dice.
+2. **Preguntas cerradas a Jev** sobre el diff resumido y la HU: tres sí/no (`borra_o_reescribe_datos`,
+   `cambia_lo_que_otro_frente_usa`, `cambia_ia_productiva`) y una opción
+   (`radio`: `local` | `un_journey` | `varios_journeys` | `plataforma`).
+3. **Derivación, código.** `una_via` si hay una señal dura o un sí ≥ 0.65; en la zona de duda
+   (0.35 a 0.65) también `una_via`; si no, `dos_vias`. El radio es el de Jev; con confianza < 0.5
+   sube un escalón. Mismos cortes que `jev-clasificar.mjs`, y provisionales igual que ellos.
+4. **Profundidad de la revisión humana**, derivada: `dos_vias` + `local` → revisión rápida; `una_via`
+   o radio ≥ `varios_journeys` → revisión exhaustiva, y `/pr` lo dice en la primera línea del Peligro
+   de mergear.
+5. **La prosa** (el "por qué" de la puerta) la sigue escribiendo `/pr`; la tool sólo entrega la
+   clasificación y sus motivos.
+
+Sin Jev (sin clave o sin red, salida 2) quedan las señales duras y Claude completa a mano, y el PR
+dice "puerta clasificada a mano". La persona puede cambiar la puerta al firmar; lo que propuso la
+tool y lo que firmó van al registro (evento `pr`, D-13), y un revert dentro de 14 días agrega
+`revertido`: con eso `/calibrar` mide si las puertas propuestas aciertan.
+
+**D-27. El revisor revisa dos ejes por separado.** `/verificar` despacha dos corridas de
+`revisor-starteria` en paralelo, con `eje: spec` y `eje: standards`, y muestra los dos informes uno al
+lado del otro, sin mezclar ni reordenar hallazgos:
+
+- **spec**: los controles 1 a 6 y 8 de hoy (criterios, alcance, guardrail, contratos, tests,
+  evidencia, capa de negocio).
+- **standards**: `CODING_STANDARDS.md` (nuevo, en la raíz) más la línea base de olores de Fowler que
+  trae `code-review`, siempre como juicio (`[menor]`), y el control 7 (seguridad y operación).
+  `CODING_STANDARDS.md` lo lee sólo el revisor, nunca `/implementar`: quien implementa tiene la
+  ventana más cargada. Arranca con las reglas de juicio que hoy están dispersas en `AGENTS.md` §5 y
+  §6; `AGENTS.md` queda con punteros.
+
+El veredicto es `changes_required` si cualquiera de los dos ejes tiene un `[bloqueante]`. Las rondas
+siguen siendo tres en total, no tres por eje.
+
+**D-28. `/retro`, de sólo lectura.** Lee la sesión que le indiquen (por defecto, la actual), los
+veredictos del revisor de la semana y `estado/calibracion/triage.jsonl`, y propone candidatos
+ordenados por severidad en las categorías de `retro`: navegación, chequeos automáticos, standards
+(un error mecánico pide un chequeo, no una regla), `AGENTS.md` sobrecargado, economía de tools,
+instrucciones que no cambian nada, acceso a información; más una nuestra, **calibración** (lo que
+mostró el registro). No edita: cada candidato que la persona acepta entra por `/hu`, normalmente R0.
+Es la retro que el brief (P1) quería dentro del ciclo.
+
+**D-29. Freno 1: typecheck bloqueante en CI.** `.github/workflows/ci.yml` suma un job
+`typecheck` (`npm run typecheck` en `front/`, que cubre front y backend). Hoy pasa en main: 0 errores
+en los dos (corrido el 2026-10-04). `lint` y `ruff` siguen como hoy (`lint` fuera de CI, `ruff`
+consultivo): volverlos bloqueantes pide primero bajar sus avisos, y eso es otro pedido.
+
+- *Descartado:* que Jev decida la puerta sola. Sabría menos que el diff: una migración es una vía
+  sin preguntar.
+- *Descartado:* sólo señales duras, sin Jev. No ven "este cambio de texto reescribe datos" ni el
+  radio, que son justamente las preguntas difíciles.
+- *Descartado:* un revisor que commitea sus arreglos, como el `code-review` de referencia. El nuestro
+  es de sólo lectura a propósito (`CLAUDE.md`, `AGENTS.md` §3): quien revisa no se aprueba a sí mismo.
+- *Descartado:* pre-commit en lugar de CI. Corre en cada máquina, se saltea con `--no-verify`, y no
+  protege `main`.
+- *Descartado:* reglas de standards en `AGENTS.md`. Ese archivo entra en la ventana de todos los
+  agentes; las reglas de juicio sólo las necesita el revisor.
+- *Testing:* `pr-peligro.mjs` separa las tres capas en funciones puras: `senalesDuras(nameStatus)` y
+  `derivar(senales, jev)` se testean con `node --test` sobre fixtures (una migración, un borrado, un
+  diff sólo de `front/`, respuestas de Jev en la zona de duda); la llamada a Jev queda detrás de un
+  seam y en los tests se reemplaza. El revisor de dos ejes se prueba a mano con un diff que cumple
+  la spec y rompe un standard, y viceversa: cada eje marca sólo lo suyo. El job de CI se prueba con
+  un commit con un error de tipos en una rama de prueba.
+- *Rollback:* sin `pr-peligro.mjs`, `/pr` vuelve a la puerta a ojo; con `eje` ausente el revisor
+  corre como hoy; el job de typecheck se quita del workflow.
+
 # 5. Contratos entre frentes
 
-No hay contratos de la plataforma. Los dos contratos internos del ciclo son el plan JSON (agrega
-`ruta` y `epica.crear`, D-4) y el registro `triage.jsonl` (D-13), los dos versionados con `v`.
+No hay contratos de la plataforma. Los tres contratos internos del ciclo son el plan JSON (agrega
+`ruta` y `epica.crear`, D-4), el registro `triage.jsonl` (D-13, con los eventos `pr` y `revertido`
+de D-26) y la salida de `pr-peligro.mjs` (D-26), los tres versionados con `v`.
 
 # 6. SUPUESTO / SIN RESOLVER
 
@@ -330,11 +415,13 @@ No hay contratos de la plataforma. Los dos contratos internos del ciclo son el p
 | 3 | SUPUESTO | el umbral de 20 resultados para que `/calibrar` proponga | primera corrida de `/calibrar`; lo aprueba una persona |
 | 4 | SUPUESTO | que el issue R0 pueda llevar los CA en su descripción sin una [Funcional] y el revisor los encuentre | HU Triage |
 | 5 | SUPUESTO | `SC-19` (North Star) se cita como cualquier otra fila, aunque es un KPI compuesto | HU Negocio; si confunde, se marca como no citable |
+| 7 | SUPUESTO | que todo contrato zod viva en `*.schemas.ts` / `*.schema.ts` (hoy 29 de 29 en `backend/`) | HU-R, con un test que falle si aparece un schema con otro nombre |
+| 8 | SUPUESTO | 14 días como ventana de "revertido" | primera corrida de `/calibrar` |
 | 6 | SUPUESTO | los agentes de un plugin se despachan como `starteria-desarrollo:<agente>` | HU Plugin, primer paso, junto con #1 |
 
 # 7. Corte de la épica
 
-Seis HU. La épica se crea con el nombre que ya se aprobó ("Ciclo de HU por rutas con spec antes de
+Siete HU. La épica se crea con el nombre que ya se aprobó ("Ciclo de HU por rutas con spec antes de
 los tickets y plugin de desarrollo") cuando D-4 exista; hasta entonces se crea a mano y KAN-91 se
 cuelga de ella.
 
@@ -344,7 +431,8 @@ HU-P  Plugin            ← primero: mueve todo lo demás de lugar
  ├─ HU-N  Negocio       bloqueada por HU-P
  ├─ HU-S  /spec         bloqueada por HU-T
  ├─ HU-C  Calibración   bloqueada por HU-T
- └─ HU-X  Piloto        bloqueada por HU-S, HU-N y HU-C
+ ├─ HU-R  Revisión y PR bloqueada por HU-N y HU-C
+ └─ HU-X  Piloto        bloqueada por HU-S, HU-N, HU-C y HU-R
 ```
 
 HU-P va primero porque mueve los archivos que las demás editan; hacerla al final obliga a rebasear
@@ -401,6 +489,20 @@ su resultado y un `/calibrar` que proponga ajustes, para afinar a Jev con datos.
 - CA-2 (D-14) `/hu`, `jira-hu-crear --aplicar` y `/hu --subir` (que ya existe desde HU-T) escriben
   sus eventos.
 - CA-3 (D-15) `/calibrar` sobre el fixture muestra la tabla y no propone con menos de 20 resultados.
+
+**HU-R · Revisión y PR (R1).** Como quien revisa y mergea, quiero que la puerta y el radio de cada PR
+salgan de señales del diff y de Jev, y una revisión en dos ejes, para dedicarle atención a lo que
+la merece.
+- CA-1 (D-26) `pr-peligro.mjs` da `una_via` para una migración o un borrado sin consultar a Jev, y
+  `una_via` con respuestas de Jev en la zona de duda; `node --test` con el seam de Jev reemplazado.
+- CA-2 (D-26) `/pr` escribe la puerta, el radio y la profundidad de revisión desde la tool, y "a
+  mano" cuando Jev falla; el evento `pr` queda en el registro.
+- CA-3 (D-27) `/verificar` muestra los ejes spec y standards por separado, y un `[bloqueante]` en
+  cualquiera da `changes_required`.
+- CA-4 (D-27) Existe `CODING_STANDARDS.md` con las reglas de juicio de `AGENTS.md` §5-§6, y
+  `AGENTS.md` las reemplaza por punteros.
+- CA-5 (D-28) `/retro` sobre una sesión real devuelve candidatos por categoría y no edita nada.
+- CA-6 (D-29) El job `typecheck` corre en CI y un error de tipos lo pone en rojo.
 
 **HU-X · Piloto (R2).** Como equipo, quiero correr el ciclo nuevo de punta a punta en la épica de
 observabilidad de ai-service, para validarlo con un pedido grande real.
