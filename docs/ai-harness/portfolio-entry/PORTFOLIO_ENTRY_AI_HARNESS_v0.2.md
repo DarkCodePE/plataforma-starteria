@@ -8,6 +8,8 @@
 **Vertical slice:** Portfolio Entry
 **Alcance:** Agent + Skills + Clarification Session + Handoff
 
+**Authority addendum:** Any evaluation of `reason_to_ask` exposure follows accepted product [ADR-007](../../../doc/product-adr/ADR-007-portfolio-entry-reason-to-ask-public-explanation.md) and [PORTFOLIO_ENTRY_REASON_TO_ASK_EXPOSURE_CONTRACT_v0.1.md](../../experience/portfolio-entry/PORTFOLIO_ENTRY_REASON_TO_ASK_EXPOSURE_CONTRACT_v0.1.md). This adds a narrow case boundary only and does not promote this proposed Harness or its other content.
+
 ---
 
 # 0. Autoridad

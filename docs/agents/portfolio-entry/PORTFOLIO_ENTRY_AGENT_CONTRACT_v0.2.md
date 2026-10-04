@@ -935,3 +935,7 @@ Y:
 ## Guided Exploration convergence amendment
 
 For this slice, Guided Exploration is one explicit round with at most 2 additional user-facing questions. The Quick Clarification budget is independent and is never reset. Completion converges to a second proposal checkpoint and cannot offer another Guided Exploration opt-in.
+
+## `reason_to_ask` authority addendum (ADR-007)
+
+When handling the active question, `reason_to_ask` is only the short user-facing explanation defined by accepted product [ADR-007](../../../doc/product-adr/ADR-007-portfolio-entry-reason-to-ask-public-explanation.md) and its [v0.1 exposure contract](../../experience/portfolio-entry/PORTFOLIO_ENTRY_REASON_TO_ASK_EXPOSURE_CONTRACT_v0.1.md). It must not carry private/model rationale. This narrow citation does not promote this proposed Agent Contract or its other clauses.
