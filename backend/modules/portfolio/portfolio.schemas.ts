@@ -328,3 +328,8 @@ export const confirmChallengeSplitSchema = z.object({
     .min(1)
     .max(10),
 });
+
+// Asignación del Portfolio Lead que decide sobre una iniciativa de Reto (InitiativeGovernance).
+export const assignInitiativeGovernanceSchema = z.object({
+  portfolioLeadUserId: z.string().min(1).nullable(),
+});
