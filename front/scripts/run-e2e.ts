@@ -1,4 +1,5 @@
 import { spawn, spawnSync, type ChildProcess } from 'node:child_process';
+import { randomBytes } from 'node:crypto';
 import fs from 'node:fs';
 import net from 'node:net';
 import path from 'node:path';
@@ -9,14 +10,26 @@ const frontRoot = path.resolve(currentDir, '..');
 const repoRoot = path.resolve(frontRoot, '..');
 const isWindows = process.platform === 'win32';
 const npmCmd = isWindows ? 'npm.cmd' : 'npm';
-const npxCmd = isWindows ? 'npx.cmd' : 'npx';
 const dockerCmd = isWindows ? 'docker.exe' : 'docker';
+
+const runId = (process.env.E2E_RUN_ID || `${Date.now()}-${randomBytes(4).toString('hex')}`)
+  .toLowerCase()
+  .replace(/[^a-z0-9_-]/g, '-');
+if (!runId) throw new Error('E2E_RUN_ID must contain at least one letter, number, hyphen, or underscore.');
+const dockerProjectName = process.env.E2E_DOCKER_PROJECT_NAME || `starteria-e2e-${runId}`;
+if (!/^[a-z0-9][a-z0-9_-]*$/.test(dockerProjectName)) {
+  throw new Error(`Invalid E2E_DOCKER_PROJECT_NAME: ${dockerProjectName}`);
+}
 
 const backendPort = Number(process.env.E2E_BACKEND_PORT || process.env.PORT || 4100);
 const frontendPort = Number(process.env.E2E_FRONTEND_PORT || 5176);
 const e2ePostgresPort = Number(process.env.E2E_POSTGRES_PORT || 55433);
 const frontendHost = process.env.E2E_FRONTEND_HOST || '127.0.0.1';
 const backendHost = process.env.E2E_BACKEND_HOST || '127.0.0.1';
+const localStorageDir = path.join(
+  process.env.LOCAL_STORAGE_DIR || path.join(repoRoot, 'storage', 'e2e'),
+  runId,
+);
 const baseURL = process.env.E2E_BASE_URL || `http://${frontendHost}:${frontendPort}`;
 const backendHealthURL = process.env.E2E_BACKEND_HEALTH_URL || `http://${backendHost}:${backendPort}/api/health`;
 const databaseURL =
@@ -26,13 +39,14 @@ const adminDatabaseURL =
 
 const children: ChildProcess[] = [];
 let shuttingDown = false;
+let dockerProjectOwnedByRun = false;
 
 function runChecked(command: string, args: string[], cwd: string, env: NodeJS.ProcessEnv = process.env) {
   const result = spawnSync(command, args, {
     cwd,
     env,
     stdio: 'inherit',
-    shell: isWindows,
+    shell: isWindows && (command === npmCmd || command === dockerCmd),
   });
   if (result.status !== 0) {
     const detail = result.error instanceof Error ? `: ${result.error.message}` : '';
@@ -45,7 +59,7 @@ function start(command: string, args: string[], cwd: string, env: NodeJS.Process
     cwd,
     env,
     stdio: 'inherit',
-    shell: isWindows,
+    shell: false,
   });
   children.push(child);
   child.on('error', (error) => {
@@ -69,6 +83,42 @@ function start(command: string, args: string[], cwd: string, env: NodeJS.Process
 function parsePostgresHostPort(url: string): { host: string; port: number } {
   const parsed = new URL(url);
   return { host: parsed.hostname || '127.0.0.1', port: Number(parsed.port || 5432) };
+}
+
+async function assertPortAvailable(port: number, label: string) {
+  await new Promise<void>((resolve, reject) => {
+    const server = net.createServer();
+    server.once('error', (error) => {
+      reject(new Error(`${label} port ${port} is unavailable; refusing to reuse another E2E run: ${error.message}`));
+    });
+    server.listen({ host: '0.0.0.0', port, exclusive: true }, () => {
+      server.close((error) => error ? reject(error) : resolve());
+    });
+  });
+}
+
+async function assertRunIsolation() {
+  const ports = [
+    [backendPort, 'backend'],
+    [frontendPort, 'frontend'],
+    ...(process.env.E2E_SKIP_DOCKER === 'true' ? [] : [[e2ePostgresPort, 'postgres'] as [number, string]]),
+  ] as const;
+  if (new Set(ports.map(([port]) => port)).size !== ports.length) {
+    throw new Error(`E2E backend, frontend, and postgres ports must be distinct: ${ports.map(([port]) => port).join(', ')}`);
+  }
+  for (const [port, label] of ports) await assertPortAvailable(port, label);
+
+  if (process.env.E2E_SKIP_DOCKER !== 'true') {
+    const result = spawnSync(dockerCmd, [
+      'compose', '-f', 'docker-compose.e2e.yml', '-p', dockerProjectName, 'ps', '--all', '--quiet',
+    ], { cwd: repoRoot, env: process.env, encoding: 'utf8', shell: isWindows });
+    if (result.status !== 0) {
+      throw new Error(`Could not verify Docker project ${dockerProjectName}: ${result.stderr || result.error?.message || 'docker compose failed'}`);
+    }
+    if (result.stdout.trim()) {
+      throw new Error(`Docker project ${dockerProjectName} already contains containers; refusing to reuse a prior E2E run.`);
+    }
+  }
 }
 
 async function waitForTcp(host: string, port: number, label: string, timeoutMs = 90_000) {
@@ -117,22 +167,25 @@ async function waitForURL(url: string, label: string, timeoutMs = 90_000) {
 async function stopChildren() {
   shuttingDown = true;
   for (const child of children.reverse()) {
-    if (child.killed || child.exitCode !== null || !child.pid) continue;
-    if (isWindows) {
-      spawnSync('taskkill.exe', ['/PID', String(child.pid), '/T', '/F'], { stdio: 'ignore' });
-    } else {
-      child.kill('SIGTERM');
-    }
+    if (child.exitCode !== null || child.signalCode !== null || !child.pid) continue;
+    child.kill('SIGTERM');
   }
-  await new Promise((resolve) => setTimeout(resolve, 1500));
+  const exited = Promise.all(children.map((child) => child.exitCode !== null || child.signalCode !== null
+    ? Promise.resolve()
+    : new Promise<void>((resolve) => child.once('exit', () => resolve()))));
+  let cleanupTimer: NodeJS.Timeout | undefined;
+  await Promise.race([exited, new Promise<void>((resolve) => { cleanupTimer = setTimeout(resolve, 3_000); })]);
+  if (cleanupTimer) clearTimeout(cleanupTimer);
   for (const child of children) {
-    if (!child.killed && child.exitCode === null) child.kill('SIGKILL');
+    if (child.exitCode !== null || child.signalCode !== null || !child.pid) continue;
+    if (isWindows) spawnSync('taskkill.exe', ['/PID', String(child.pid), '/T', '/F'], { stdio: 'ignore' });
+    else child.kill('SIGKILL');
   }
 }
 
 function stopDocker(env: NodeJS.ProcessEnv) {
-  if (process.env.E2E_SKIP_DOCKER === 'true' || process.env.E2E_KEEP_DOCKER === 'true') return;
-  runChecked(dockerCmd, ['compose', '-f', 'docker-compose.e2e.yml', '-p', 'starteria-e2e', 'down'], repoRoot, env);
+  if (!dockerProjectOwnedByRun || process.env.E2E_SKIP_DOCKER === 'true' || process.env.E2E_KEEP_DOCKER === 'true') return;
+  runChecked(dockerCmd, ['compose', '-f', 'docker-compose.e2e.yml', '-p', dockerProjectName, 'down'], repoRoot, env);
 }
 
 async function main() {
@@ -160,12 +213,16 @@ async function main() {
     VITE_ENABLE_INITIAL_REVIEW: process.env.VITE_ENABLE_INITIAL_REVIEW || 'true',
     E2E_BASE_URL: baseURL,
     E2E_API_URL: process.env.E2E_API_URL || '',
-    LOCAL_STORAGE_DIR: process.env.LOCAL_STORAGE_DIR || path.join(repoRoot, 'storage', 'e2e'),
+    LOCAL_STORAGE_DIR: localStorageDir,
     INITIAL_REVIEW_AI: process.env.INITIAL_REVIEW_AI || '',
     PDF_EXTRACTION_E2E_MODE: process.env.PDF_EXTRACTION_E2E_MODE || 'terminal-failed',
   };
 
   fs.mkdirSync(env.LOCAL_STORAGE_DIR, { recursive: true });
+
+  console.log(`[E2E] Run ${runId}; Docker project ${dockerProjectName}; backend ${backendPort}; frontend ${frontendPort}; postgres ${e2ePostgresPort}`);
+  console.log(`[E2E] Isolated storage ${env.LOCAL_STORAGE_DIR}`);
+  await assertRunIsolation();
 
   if (process.env.E2E_SKIP_DOCKER !== 'true') {
     console.log('[E2E] Start isolated postgres via docker compose');
@@ -173,7 +230,8 @@ async function main() {
     // docker-proxy accepts the TCP connection the instant the container is created,
     // so the waitForTcp gate below is satisfied while postgres is still booting and
     // the next step (prisma provisioning) fails with "Can't reach database server".
-    runChecked(dockerCmd, ['compose', '-f', 'docker-compose.e2e.yml', '-p', 'starteria-e2e', 'up', '-d', '--wait', 'postgres'], repoRoot, env);
+    dockerProjectOwnedByRun = true;
+    runChecked(dockerCmd, ['compose', '-f', 'docker-compose.e2e.yml', '-p', dockerProjectName, 'up', '-d', '--wait', 'postgres'], repoRoot, env);
   } else {
     console.log('[E2E] E2E_SKIP_DOCKER=true; using existing E2E_DATABASE_URL');
   }
@@ -185,15 +243,15 @@ async function main() {
   runChecked(npmCmd, ['run', 'db:e2e:provision'], frontRoot, env);
 
   console.log(`[E2E] Start backend on ${backendHealthURL}`);
-  start(npxCmd, ['tsx', '../backend/server.ts'], frontRoot, env);
+  start(process.execPath, [path.join(frontRoot, 'node_modules', 'tsx', 'dist', 'cli.mjs'), '../backend/server.ts'], frontRoot, env);
   await waitForURL(backendHealthURL, 'backend');
 
   console.log(`[E2E] Start frontend on ${baseURL}`);
-  start(npxCmd, ['vite', '--host', frontendHost, '--port', String(frontendPort), '--strictPort'], frontRoot, env);
+  start(process.execPath, [path.join(frontRoot, 'node_modules', 'vite', 'bin', 'vite.js'), '--host', frontendHost, '--port', String(frontendPort), '--strictPort'], frontRoot, env);
   await waitForURL(baseURL, 'frontend');
 
   console.log('[E2E] Run Playwright');
-  runChecked(npxCmd, ['playwright', 'test', ...process.argv.slice(2)], frontRoot, env);
+  runChecked(process.execPath, [path.join(frontRoot, 'node_modules', 'playwright', 'cli.js'), 'test', ...process.argv.slice(2)], frontRoot, env);
 }
 
 main()
