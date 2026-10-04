@@ -138,3 +138,18 @@ export async function getMissionReview(projectId: string): Promise<MissionReview
   const { data } = await api.get<ApiResponse<MissionReview>>(`/projects/${projectId}/mission-review`);
   return data.data;
 }
+
+/** Modos del Copilot por intención (E2E Job-Driven §20). Lectura del estado persistido. */
+export type CopilotIntentMode = 'orient' | 'work_with_me' | 'unblock';
+export interface CopilotModeResponse {
+  mode: CopilotIntentMode;
+  title: string;
+  answer: string;
+  actions: Array<{ label: string; target: string }>;
+  sources: string[];
+}
+
+export async function getCopilotMode(projectId: string, mode: CopilotIntentMode): Promise<CopilotModeResponse> {
+  const { data } = await api.get<ApiResponse<CopilotModeResponse>>(`/projects/${projectId}/copilot-mode/${mode}`);
+  return data.data;
+}

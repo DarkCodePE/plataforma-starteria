@@ -30,9 +30,9 @@ test queda como regresión.
 | §10 | "No parece necesario crear otro Reto" | `entry-b` · el Copilot puede decir… | ✅ |
 | §13 | Reto con estado de cobertura | `entry-b` · un Reto tiene… | ✅ |
 | §13 | Lectura de cobertura del Reto como conjunto | `entry-b` · lectura de cobertura… | ✅ |
-| §4, §24 | Ver y reasignar capacidad | `entry-b` · [G13] | GAP G13 |
-| §14 | Reconstrucción + gating retroactivo | `entry-c` · [G11] | GAP G11 |
-| §14 | "Importar iniciativas existentes" disponible | `entry-c` · [G11] | GAP G11 |
+| §4, §24 | Ver dónde está la capacidad y señales para reasignar | `entry-b` · el portfolio muestra dónde está la capacidad… | ✅ (lectura; reasignar requiere ADR) |
+| §14 | Reconstrucción + gating retroactivo | `entry-c` · importar una iniciativa existente… | ✅ |
+| §14 | "Importar iniciativas existentes" disponible | `entry-c` · /portfolio/iniciar abre la reconstrucción… | ✅ |
 | §15 | El encargo muestra qué se quiere mover y por qué | `entry-d` · el participante ve… | ✅ |
 | §15 | …y qué se sabe, qué está abierto, restricciones, decisión esperada (Core §14.1) | `entry-d` · el encargo muestra… | ✅ |
 | §17 | Step 0–4 → Decision Package → la decisión sube al portfolio | `entry-d` · el ciclo completo… | ✅ |
@@ -44,19 +44,19 @@ test queda como regresión.
 | §23 | La decisión vuelve al Reto, Frente y Portfolio, con aprendizaje | `entry-d` · la decisión corporativa vuelve… y cerrar con aprendizaje… | ✅ |
 | §16 | Iniciativa independiente sin inventar Frente ni Reto | `entry-e` · se puede crear… | ✅ |
 | §16 | Contexto de Aplicación | `entry-e` · la iniciativa independiente construye… | ✅ |
-| §20 | Copilot: Orientarme / Trabajar conmigo / Desbloquearme | `entry-e` · [G12] | GAP G12 |
+| §20 | Copilot: Orientarme / Trabajar conmigo / Desbloquearme | `entry-e` · el Copilot ofrece… | ✅ |
 
 ## Gaps abiertos
 
-Cerrados: G1 y G2 (Ola 1); G3, G4 y G5 (Ola 2); G6 y G7 (Ola 3); G9 y G10 (Ola 5).
-| GAP | Qué | Ola |
-|---|---|---|
-| G8 | Retorno de la decisión al portfolio | 4 |
-| G9 | Destinos del routing de entrada (requiere chequeo de CONFLICT con el Portfolio Entry Logic Contract) | 5 |
-| G10 | Contexto de Aplicación | 5 |
-| G11 | Reconstrucción + gating retroactivo | 6 |
-| G12 | Modos del Copilot | 6 |
-| G13 | Capacidad (puede requerir ADR de producto) | 6 |
+Ninguno. Cerrados: G1 y G2 (Ola 1); G3, G4 y G5 (Ola 2); G6 y G7 (Ola 3); G8 (Ola 4); G9 y G10
+(Ola 5); G11, G12 y G13 (Ola 6). Lo que queda son decisiones de producto, abajo.
+
+## Pendiente de decisión de producto (G13)
+
+El Core (§17) pide saber si la capacidad está puesta en el trabajo correcto, pero no define una
+unidad de capacidad (horas, FTE, presupuesto) ni una operación de reasignación. Lo implementado es
+una lectura en iniciativas activas con señales para decidir. Reasignar personas o presupuesto
+desde Starteria requiere ADR de producto.
 
 ## CONFLICT abierto (G9)
 

@@ -25,7 +25,10 @@ import { PortfolioCopilotDrawer, PortfolioCopilotLauncher } from '../../features
 import { isPortfolioCopilotEnabled } from '../services/featureFlags';
 import { PortfolioBootstrapHome, usePortfolioBootstrap } from '../../features/portfolio-lead/bootstrap';
 import { usePortfolioHomeEntryContext } from '../../features/portfolio-entry/home/usePortfolioHomeEntryContext';
+
+import { PortfolioCapacityPanel } from '../../features/portfolio-lead/components/cards/PortfolioCapacityPanel';
 import { PortfolioLearningsPanel } from '../../features/portfolio-lead/components/cards/PortfolioLearningsPanel';
+
 
 export function PortfolioLeadHomePage() {
   const navigate = useNavigate();
@@ -222,6 +225,7 @@ export function PortfolioLeadHomePage() {
 
           <StrategicObjectivesOverview overview={model.strategicOverview} onNavigate={path => navigate(path)} />
 
+          <PortfolioCapacityPanel />
           <PortfolioLearningsPanel />
 
           <section className="rounded-ds-lg border border-border-default bg-surface-default p-6 md:p-7">

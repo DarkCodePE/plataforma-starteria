@@ -7,6 +7,7 @@ import { createProjectSchema, updateProjectSchema, updateStep0Schema, updateSpon
 import { AdaptiveCoreController } from '../adaptive-core/adaptive-core.controller';
 import { AdaptiveCoreService } from '../adaptive-core/adaptive-core.service';
 import { MissionReviewReadService } from '../adaptive-core/mission-review.read-service';
+import { resolveCopilotMode, type CopilotIntentMode } from '../copilot/application/copilot-intent-modes';
 import { checkpointResponseSchema, confirmBriefSchema, confirmCriticalChangeTransitionSchema, criticalChangeSchema, decisionAuthorityQuerySchema, decisionReadinessQuerySchema, decisionRequestCreateSchema, organizationalDecisionSchema } from '../adaptive-core/adaptive-core.schemas';
 
 import { authenticate } from '../auth/auth.middleware';
@@ -14,7 +15,8 @@ import type { AuthenticatedRequest } from '../../shared/types/auth.types';
 import { requireEntitlement } from '../billing/entitlement.middleware';
 const service = new ProjectService(prisma);
 const controller = new ProjectController(service);
-const adaptiveCoreController = new AdaptiveCoreController(new AdaptiveCoreService(prisma));
+const adaptiveCoreService = new AdaptiveCoreService(prisma);
+const adaptiveCoreController = new AdaptiveCoreController(adaptiveCoreService);
 const missionReview = new MissionReviewReadService(prisma);
 
 export const projectRouter = Router();
@@ -39,6 +41,23 @@ projectRouter.delete('/:id', controller.archive);
 projectRouter.get('/:id/step0', controller.getStep0);
 projectRouter.patch('/:id/step0', validate(updateStep0Schema), controller.updateStep0);
 projectRouter.get('/:id/adaptive-core', adaptiveCoreController.get);
+// Modos del Copilot por intención (E2E Job-Driven §20): lectura del estado persistido, igual en
+// todos los canales.
+projectRouter.get('/:id/copilot-mode/:mode', async (req, res, next) => {
+  try {
+    const mode = req.params.mode as CopilotIntentMode;
+    if (!['orient', 'work_with_me', 'unblock'].includes(mode)) {
+      res.status(400).json({ success: false, error: { code: 'COPILOT_MODE_INVALID', message: 'Modo desconocido.' } });
+      return;
+    }
+    const user = (req as AuthenticatedRequest).user!;
+    const state = await adaptiveCoreService.getState(req.params.id, user.id, user.role);
+    res.json({ success: true, data: resolveCopilotMode(req.params.id, mode, state as any) });
+  } catch (err) {
+    next(err);
+  }
+});
+
 // Mission Review (doc/STARTERIA_JOB_DRIVEN_E2E_EXPERIENCE_v0.2.md §18): lectura previa a Step 0.
 projectRouter.get('/:id/mission-review', async (req, res, next) => {
   try {

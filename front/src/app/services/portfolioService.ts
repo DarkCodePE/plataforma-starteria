@@ -416,6 +416,52 @@ export async function getChallengeCoverageReading(challengeId: string): Promise<
   return data.data;
 }
 
+// ---------- E2E Job-Driven Ola 6 ----------
+
+/** Lectura de reconstrucción con gating retroactivo (§14). No persiste nada. */
+export interface ReconstructionReading {
+  provenance: 'USER_DECLARED';
+  restartFromStep0: false;
+  sustainableClaims: Array<{ claim: string; evidence: string[] }>;
+  availableEvidence: { supports: number; contradicts: number; insufficient: number };
+  contradictions: Array<{ supports: string; contradicts: string }>;
+  gaps: Array<{ step: number; question: string }>;
+  gates: Array<{ step: number; question: string; status: 'met' | 'partial' | 'missing' }>;
+  nextMaterialUncertainty: string;
+  suggestedReentryStep: number;
+}
+
+export async function reconstructExistingWork(input: {
+  name: string;
+  summary: string;
+  goal?: string;
+  evidence: Array<{ summary: string; classification: 'supports' | 'contradicts' | 'insufficient' }>;
+}): Promise<ReconstructionReading> {
+  const { data } = await api.post<ApiResponse<ReconstructionReading>>('/initiatives/reconstruction', input);
+  return data.data;
+}
+
+/** Lectura de capacidad del portafolio (§4/§24, Core §17). Señales para decidir; no reasigna nada. */
+export interface PortfolioCapacityReading {
+  unit: 'active_initiatives';
+  totalActiveInitiatives: number;
+  fronts: Array<{
+    frontId: string;
+    name: string;
+    priority: string;
+    activeInitiatives: number;
+    share: number;
+    challenges: Array<{ challengeId: string; title: string; coverageStatus: string; activeInitiatives: number; blockedInitiatives: number; declaredInternalCapacity: string | null; requiresExternalCapability: boolean }>;
+  }>;
+  signals: Array<{ kind: string; frontId: string; challengeId?: string; message: string }>;
+  note: string;
+}
+
+export async function getPortfolioCapacity(): Promise<PortfolioCapacityReading> {
+  const { data } = await api.get<ApiResponse<PortfolioCapacityReading>>('/portfolio/capacity');
+  return data.data;
+}
+
 /** §23: lo que el portfolio aprendió de las últimas decisiones (GET /portfolio/home → learnings). */
 export interface PortfolioLearning {
   decisionId: string;

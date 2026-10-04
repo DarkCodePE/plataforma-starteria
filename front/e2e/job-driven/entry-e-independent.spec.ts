@@ -41,13 +41,18 @@ test.describe('Entrada E · iniciativa independiente (§16)', () => {
     await expect(page.getByRole('region', { name: 'Contexto de aplicación' })).toContainText('Empresa E2E Job E');
   });
 
-  gapTest('G12', 'el Copilot ofrece Orientarme / Trabajar conmigo / Desbloquearme (§20)', async ({ page }) => {
+  test('el Copilot ofrece Orientarme / Trabajar conmigo / Desbloquearme (§20)', async ({ page }) => {
     const owner = await registerAndLogin(api, 'e-copilot');
     const projectId = await createFromInitialReview(api, owner.token, 'Quiero validar si un bot reduce consultas repetidas.');
+    // La misma respuesta por API que en la UI: la lógica vive en el backend (§20, consistente entre canales).
+    const orient = await getOk(api, owner.token, `/api/v1/projects/${projectId}/copilot-mode/orient`);
+    expect(orient.answer).toMatch(/^Estás en el Step \d: ¿/);
     await browserLogin(page, owner.email, owner.password);
     await page.goto(`/projects/${projectId}`);
     for (const mode of [/Orientarme/i, /Trabajar conmigo/i, /Desbloquearme/i]) {
-      await expect(page.getByRole('button', { name: mode }).first()).toBeVisible({ timeout: GAP_TIMEOUT });
+      await expect(page.getByRole('button', { name: mode }).first()).toBeVisible({ timeout: 15_000 });
     }
+    await page.getByRole('button', { name: /Orientarme/ }).click();
+    await expect(page.getByTestId('copilot-mode-response')).toContainText(orient.answer);
   });
 });

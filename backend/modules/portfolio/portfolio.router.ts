@@ -5,6 +5,7 @@ import { PortfolioService } from './portfolio.service';
 import { PortfolioHomeReadService } from './portfolio-home.read-service';
 import { ChallengeSplitService } from './challenge-split.service';
 import { ChallengeCoverageReadService } from './challenge-coverage.read-service';
+import { PortfolioCapacityReadService } from './portfolio-capacity.read-service';
 import type { AuthenticatedRequest } from '../../shared/types/auth.types';
 import { validate } from '../../shared/middleware/validate';
 import { authenticate, requirePermission } from '../auth/auth.middleware';
@@ -33,6 +34,7 @@ const homeReadService = new PortfolioHomeReadService(prisma);
 const controller = new PortfolioController(service, homeReadService);
 const challengeSplit = new ChallengeSplitService(prisma);
 const challengeCoverage = new ChallengeCoverageReadService(prisma);
+const portfolioCapacity = new PortfolioCapacityReadService(prisma);
 
 export const portfolioRouter = Router();
 
@@ -225,6 +227,15 @@ portfolioRouter.post(
     }
   },
 );
+
+// §4/§24 y Core §17: dónde está puesta la capacidad y señales de reasignación (sólo lectura).
+portfolioRouter.get('/capacity', async (_req, res, next) => {
+  try {
+    res.json({ success: true, data: await portfolioCapacity.get() });
+  } catch (err) {
+    next(err);
+  }
+});
 
 // §13: lectura de cobertura del Reto como conjunto (sólo lectura).
 portfolioRouter.get('/challenges/:challengeId/coverage-reading', async (req, res, next) => {

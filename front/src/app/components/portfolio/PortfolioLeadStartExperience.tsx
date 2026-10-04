@@ -24,6 +24,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '../ui/dialog';
+import { ReconstructionPanel } from '../../../features/portfolio-lead/components/cards/ReconstructionPanel';
 
 type StartOptionTone = 'emerald' | 'amber' | 'violet' | 'sky';
 
@@ -80,12 +81,11 @@ export function PortfolioLeadStartExperience({
       id: 'import',
       title: 'Ya hay mucho trabajo y necesito saber dónde estamos',
       description: 'Trae iniciativas, pilotos o documentos existentes para leer qué se puede sostener y qué falta para decidir.',
-      actionLabel: 'Preparar importación',
-      badge: 'Siguiente fase',
+      actionLabel: 'Leer lo que ya existe',
+      badge: 'Reconstrucción',
       tone: 'amber',
       icon: UploadCloud,
       onClick: () => onImportOpenChange(true),
-      muted: true,
     },
     {
       id: 'challenge',
@@ -173,19 +173,18 @@ export function PortfolioLeadStartExperience({
       </section>
 
       <Dialog open={importOpen} onOpenChange={onImportOpenChange}>
-        <DialogContent className="sm:max-w-lg">
+        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
           <DialogHeader>
-            <DialogTitle>Importación en la siguiente fase</DialogTitle>
+            <DialogTitle>¿Dónde estamos realmente?</DialogTitle>
             <DialogDescription>
-              En el siguiente paso podrás subir Excel, texto o documentos para que Starteria detecte iniciativas y proponga frentes y retos.
+              Describe un piloto o una iniciativa en curso y la evidencia que ya tienen. Starteria lee qué se puede
+              sostener, qué se contradice y qué falta para decidir, sin reiniciar el trabajo desde cero.
             </DialogDescription>
           </DialogHeader>
-          <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700">
-            Por ahora esta pantalla solo prepara el punto de entrada. No sube archivos ni clasifica datos todavía.
-          </div>
+          <ReconstructionPanel />
           <DialogFooter>
-            <Button type="button" onClick={() => onImportOpenChange(false)} className="rounded-2xl">
-              Entendido
+            <Button type="button" variant="secondary" onClick={() => onImportOpenChange(false)} className="rounded-2xl">
+              Cerrar
             </Button>
           </DialogFooter>
         </DialogContent>
