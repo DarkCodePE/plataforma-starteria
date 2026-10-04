@@ -34,14 +34,36 @@ async function readPortfolioEntryIdentity(page: Page) {
 }
 
 async function captureJsonResponse<T = any>(page: Page, label: string) {
-  const installCapture = () => {
+  const bindingName = `__starteriaConfirmedBriefCapture_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+  let resolveCapture!: (capture: { status: number; url: string; body?: T; bodyError?: string }) => void;
+  const capturePromise = new Promise<{ status: number; url: string; body?: T; bodyError?: string }>(resolve => {
+    resolveCapture = resolve;
+  });
+
+  await page.exposeBinding(bindingName, (_source, capture: { status: number; url: string; body?: T; bodyError?: string }) => {
+    resolveCapture(capture);
+  });
+
+  const responsePromise = capturePromise.then(async capture => {
+    if (capture.bodyError || capture.body === undefined) {
+      const identity = await readPortfolioEntryIdentity(page);
+      throw new Error(
+        `${label} response body capture failed; url=${capture.url}; status=${capture.status}; ` +
+        `pageURL=${page.url()}; identity=${JSON.stringify(identity)}; ` +
+        `cause=${capture.bodyError ?? 'response body was not captured'}`,
+      );
+    }
+    return { status: capture.status, url: capture.url, body: capture.body };
+  });
+
+  const installCapture = (exposedBindingName: string) => {
     const captureWindow = window as Window & {
-      __starteriaConfirmedBriefCaptures?: Array<{ status: number; url: string; body?: T; bodyError?: string }>;
       __starteriaConfirmedBriefCaptureInstalled?: boolean;
+      __starteriaConfirmedBriefCaptureSink?: string;
     };
+    captureWindow.__starteriaConfirmedBriefCaptureSink = exposedBindingName;
     if (captureWindow.__starteriaConfirmedBriefCaptureInstalled) return;
     captureWindow.__starteriaConfirmedBriefCaptureInstalled = true;
-    captureWindow.__starteriaConfirmedBriefCaptures = [];
 
     const originalOpen = XMLHttpRequest.prototype.open;
     XMLHttpRequest.prototype.open = function (method: string, url: string | URL, ...rest: any[]) {
@@ -59,44 +81,26 @@ async function captureJsonResponse<T = any>(page: Page, label: string) {
         } catch {
           return;
         }
-        if (method !== 'GET' || !url.pathname.endsWith('/confirmed-brief')) return;
-        const capture: { status: number; url: string; body?: T; bodyError?: string } = {
+        if (method !== 'GET' || !/^\/api\/v1\/public\/portfolio-entry\/sessions\/[^/]+\/confirmed-brief$/.test(url.pathname)) return;
+        const capture: { status: number; url: string; body?: unknown; bodyError?: string } = {
           status: this.status,
           url: this.responseURL,
         };
         try {
-          capture.body = JSON.parse(this.responseText) as T;
-        } catch (error) {
-          capture.bodyError = error instanceof Error ? error.message : String(error);
+          capture.body = JSON.parse(this.responseText);
+        } catch {
+          capture.bodyError = 'response body was not valid JSON';
         }
-        captureWindow.__starteriaConfirmedBriefCaptures?.push(capture);
+        const sinkName = captureWindow.__starteriaConfirmedBriefCaptureSink;
+        const sink = sinkName && (window as unknown as Record<string, (payload: typeof capture) => Promise<void>>)[sinkName];
+        if (sink) void sink(capture);
       }, { once: true });
       return originalSend.apply(this, args);
     };
   };
 
-  await page.addInitScript(installCapture);
-  await page.evaluate(installCapture);
-  const responsePromise = (async (): Promise<CapturedJsonResponse<T>> => {
-    await page.waitForFunction(() => {
-      const captures = (window as Window & { __starteriaConfirmedBriefCaptures?: unknown[] }).__starteriaConfirmedBriefCaptures;
-      return Boolean(captures?.length);
-    });
-    const capture = await page.evaluate(() => {
-      const captures = (window as Window & { __starteriaConfirmedBriefCaptures?: Array<{ status: number; url: string; body?: T; bodyError?: string }> }).__starteriaConfirmedBriefCaptures;
-      return captures?.shift() ?? null;
-    });
-    const identity = await readPortfolioEntryIdentity(page);
-    if (!capture || capture.bodyError || capture.body === undefined) {
-      throw new Error(
-        `${label} response body capture failed; url=${capture?.url ?? 'unavailable'}; ` +
-        `status=${capture?.status ?? 'unavailable'}; pageURL=${page.url()}; ` +
-        `identity=${JSON.stringify(identity)}; cause=${capture?.bodyError ?? 'response body was not captured'}`,
-      );
-    }
-    return { status: capture.status, url: capture.url, body: capture.body };
-  })();
-  void responsePromise.catch(() => undefined);
+  await page.addInitScript(installCapture, bindingName);
+  await page.evaluate(installCapture, bindingName);
   return { response: responsePromise };
 }
 
