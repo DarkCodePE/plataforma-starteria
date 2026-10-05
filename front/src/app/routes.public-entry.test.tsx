@@ -2,9 +2,9 @@ import React from 'react';
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { appRoutes } from './routes';
+import { MemoryRouter, useLocation } from 'react-router';
 import { LandingPage } from './pages/LandingPage';
 
-const navigate = vi.hoisted(() => vi.fn());
 const serviceMocks = vi.hoisted(() => ({
   createPortfolioEntrySession: vi.fn(),
   submitPortfolioEntryMessage: vi.fn(),
@@ -42,14 +42,6 @@ const entrySession = {
   nextAction: 'submit_message',
 };
 
-vi.mock('react-router', async () => {
-  const actual = await vi.importActual<typeof import('react-router')>('react-router');
-  return {
-    ...actual,
-    useNavigate: () => navigate,
-  };
-});
-
 vi.mock('./context/AppContext', () => ({
   useApp: () => ({
     isAuthenticated: false,
@@ -66,9 +58,13 @@ vi.mock('../features/portfolio-entry/public/analytics', () => ({
   trackPortfolioEntryEvent: vi.fn(),
 }));
 
+function CurrentPath() {
+  const { pathname } = useLocation();
+  return <output data-testid="current-path">{pathname}</output>;
+}
+
 describe('public entry routing', () => {
   beforeEach(() => {
-    navigate.mockReset();
     serviceMocks.createPortfolioEntrySession.mockResolvedValue({
       session: entrySession,
       publicAccessToken: 'public-token',
@@ -88,27 +84,37 @@ describe('public entry routing', () => {
   });
 
   it('permite ir desde la landing al login real', () => {
-    render(<LandingPage />);
+    render(
+      <MemoryRouter initialEntries={['/']}>
+        <LandingPage />
+        <CurrentPath />
+      </MemoryRouter>,
+    );
 
-    fireEvent.click(screen.getByRole('button', { name: /iniciar sesi/i }));
+    fireEvent.click(screen.getAllByRole('link', { name: /iniciar sesi/i })[0]);
 
-    expect(navigate).toHaveBeenCalledWith('/auth');
+    expect(screen.getByTestId('current-path')).toHaveTextContent('/auth');
   });
 
   it('expone Portfolio Entry como camino opcional hacia /public/start', async () => {
-    render(<LandingPage />);
+    render(
+      <MemoryRouter initialEntries={['/']}>
+        <LandingPage />
+        <CurrentPath />
+      </MemoryRouter>,
+    );
 
     expect(screen.getByRole('heading', {
       name: /Haz que la estrategia se haga realidad/i,
     })).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: /Aclara qué quieres conseguir antes de decidir qué hacer/i })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /Quiero alinear mi objetivo primero/i })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /Quiero alinear mi objetivo primero/i })).toHaveAttribute('href', '/public/start');
     expect(screen.queryByRole('textbox', { name: /necesitas conseguir o entender/i })).not.toBeInTheDocument();
     expect(screen.queryByText(/Crear pre proyecto/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/proposal editor/i)).not.toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: /Quiero alinear mi objetivo primero/i }));
+    fireEvent.click(screen.getByRole('link', { name: /Quiero alinear mi objetivo primero/i }));
 
-    expect(navigate).toHaveBeenCalledWith('/public/start');
+    expect(screen.getByTestId('current-path')).toHaveTextContent('/public/start');
   });
 });
