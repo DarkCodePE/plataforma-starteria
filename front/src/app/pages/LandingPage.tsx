@@ -167,7 +167,6 @@ function PlatformStructure() {
   return (
     <section
       id="como-funciona"
-      aria-labelledby="platform-structure-title"
       aria-label="Modelo conceptual de Starteria"
       className="scroll-mt-24 border-y border-border-default bg-surface-default"
     >

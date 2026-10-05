@@ -447,7 +447,7 @@ async function reachHandoff(page: Page, scenario: Scenario, testInfo: TestInfo, 
     await expect(page.getByLabel('Modelo conceptual de Starteria')).toBeVisible();
     await expect(page.getByRole('textbox')).toHaveCount(0);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
-    await page.getByRole('button', { name: 'Quiero alinear mi objetivo primero' }).click();
+    await page.getByRole('link', { name: 'Quiero alinear mi objetivo primero' }).click();
     await expect(page).toHaveURL(/\/public\/start$/);
     await page.setViewportSize({ width: 1280, height: 900 });
   } else {
