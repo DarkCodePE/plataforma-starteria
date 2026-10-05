@@ -183,11 +183,13 @@ Invariantes de esta frontera: `AUTHENTICATION != BUSINESS CANONICALIZATION`,
   Portfolio Entry continuation to that route; scoped setup access is validated
   without global `portfolio:read`. KAN-101 restores Download/Delete behavior
   for a confirmed Brief. KAN-99's final closure was revalidated on governed
-  main: claimed identity now wins over any stale anonymous session during Entry
-  recovery, the real journey reaches Download/Delete and `/portfolio/setup`,
-  and the complete E2E wrapper and local regression matrix pass. KAN-74 is ready
-  to resolve; Jira remains in progress pending the human transition. See
-  `docs/portfolio-lead/06-portfolio-monitoring/90-implementation-reports/KAN-99_KAN74_FINAL_ALIGNMENT_REGRESSION_CLOSURE_v0.1.md`.
+  main. KAN-109 then stabilized claimed-session recovery by waiting for auth
+  hydration: baseline DELETE reproduced the missing actions panel in 5/10;
+  after the fix DELETE x10, Portfolio-first continuation/reload x10, and five
+  complete conversion E2E invocations passed locally. The change preserves the
+  exact claimed identity and scoped server authorization; review/merge and Jira
+  transition remain pending. See
+  `docs/implementation/testing/KAN-109_AUTH_RECOVERY_STABILIZATION_v0.1.md`.
 
 ## Public Landing / KAN-102
 

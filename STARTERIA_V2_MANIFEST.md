@@ -153,13 +153,13 @@ HU: KAN-74; final closure: KAN-99
 logic_status: ACTIVE_V2_BASELINE (Portfolio Entry confirmed Brief; exact KAN-97 identity; D1/D2; KAN-63 First Value)
 implementation_status: IMPLEMENTED_VERIFIED (KAN-99 full regression and real exit-action journey verified 2026-10-04)
 visual_status: V2_PILOT
-evidence_status: LOCAL_REGRESSION_PASS (full frontend/backend/typecheck/lint/build matrix and complete portfolio-entry-conversion E2E wrapper pass)
+evidence_status: LOCAL_REGRESSION_PASS (KAN-99 baseline; KAN-109 auth recovery: DELETE x10, Portfolio-first continuation/reload x10, full conversion spec x5 and frontend matrix PASS locally)
 semantic_owner: Portfolio Entry through confirmed Brief; Portfolio Lead interprets organizational context; KAN-63 governs P1/P2/P3
-authority: Jira KAN-74/KAN-99; KAN-88/89/90/96/97/98/100/101; KAN-63; approved Portfolio Entry Logic Contract
+authority: Jira KAN-74/KAN-99/KAN-109; KAN-88/89/90/96/97/98/100/101; KAN-63; approved Portfolio Entry Logic Contract
 entry_boundary: /public/start → final strategic reading → confirmed Brief
 target_exit_boundary: Download | Delete | Work with Starteria → auth/claim if needed → /portfolio/setup → exact D1 → Strategic Intent hydration → explicit P1
 canonical_write_boundary: zero StrategicFront/Challenge/Initiative/Step/canonical Portfolio writes before governed Portfolio Lead action
-implementation_report: docs/portfolio-lead/06-portfolio-monitoring/90-implementation-reports/KAN-99_KAN74_FINAL_ALIGNMENT_REGRESSION_CLOSURE_v0.1.md
+implementation_report: docs/implementation/testing/KAN-109_AUTH_RECOVERY_STABILIZATION_v0.1.md; historical closure: docs/portfolio-lead/06-portfolio-monitoring/90-implementation-reports/KAN-99_KAN74_FINAL_ALIGNMENT_REGRESSION_CLOSURE_v0.1.md
 closure_status: KAN74_READY_TO_RESOLVE (real final-action reachability, scoped auth, full E2E wrapper, and quality matrix pass)
 ```
 

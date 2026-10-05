@@ -1010,11 +1010,40 @@ test.describe('Portfolio Entry visible UX and Portfolio continuation', () => {
 
   test('KAN-101 DELETE confirms abandonment, blocks continuation and performs zero Portfolio writes', async ({ page }, testInfo) => {
     const legacyNavigation = watchForbiddenPortfolioEntryNavigation(page);
+    const sessionReadResponses: Array<Promise<{ sessionId: string; status: number; authorization?: string }>> = [];
+    page.on('response', (response) => {
+      const request = response.request();
+      const sessionPath = new URL(response.url()).pathname.match(/\/public\/portfolio-entry\/sessions\/([^/]+)$/);
+      if (request.method() !== 'GET' || !sessionPath) return;
+      sessionReadResponses.push(request.allHeaders().then((headers) => ({
+        sessionId: decodeURIComponent(sessionPath[1]),
+        status: response.status(),
+        authorization: headers.authorization ? 'Bearer [redacted]' : undefined,
+      })));
+    });
     const api = await pwRequest.newContext({ baseURL: process.env.E2E_BASE_URL || 'http://127.0.0.1:5176' });
     const user = await registerPortfolioUser(api);
     const organization = await provisionScopedPortfolioAccess(user.userId);
     await reachHandoff(page, SCENARIOS[0], testInfo);
-    const sessionId = await continueAndReturnToConfirmedEntryActions(page, user, organization);
+    let sessionId: string;
+    try {
+      sessionId = await continueAndReturnToConfirmedEntryActions(page, user, organization);
+    } catch (error) {
+      const claimed = await page.evaluate(() => JSON.parse(window.sessionStorage.getItem('starteria.portfolioEntry.claimedSession') || 'null'));
+      const observations = await Promise.all(sessionReadResponses);
+      const recoveryReads = claimed ? observations.filter((read) => read.sessionId === claimed.sessionId) : observations;
+      expect(
+        recoveryReads.filter((read) => read.status === 401 && !read.authorization?.startsWith('Bearer ')),
+        `GET claimed sin Bearer → 401 antes de panel: ${JSON.stringify(recoveryReads)}`,
+      ).toHaveLength(0);
+      throw error;
+    }
+    const sessionReads = (await Promise.all(sessionReadResponses)).filter((read) => read.sessionId === sessionId);
+    expect(sessionReads, 'La recuperación debe leer la sesión reclamada').not.toHaveLength(0);
+    expect(
+      sessionReads.filter((read) => read.status === 401 && !read.authorization?.startsWith('Bearer ')),
+      `GET claimed sin Bearer → 401: ${JSON.stringify(sessionReads)}`,
+    ).toHaveLength(0);
     const briefIdentity = await page.evaluate(() => JSON.parse(window.sessionStorage.getItem('starteria.portfolioEntry.claimedSession') || 'null'));
     const before = await prisma.portfolioEntrySession.findUniqueOrThrow({ where: { id: sessionId } });
     const portfolioBefore = await canonicalCounts();
