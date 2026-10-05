@@ -40,7 +40,7 @@ describe('KAN-112 public landing visual preview', () => {
     renderLanding();
 
     const model = screen.getByRole('region', {
-      name: 'De la meta a una decisión mejor preparada.',
+      name: 'Modelo conceptual de Starteria',
     });
     expect(
       within(model).getByText('Objetivos / Necesidades / Iniciativas / Equipos'),
