@@ -723,17 +723,42 @@ test.describe('Portfolio Entry visible UX and Portfolio continuation', () => {
       await expect(page.getByText(/Todavia falta aclarar|Informacion conocida/i)).toBeVisible();
       let dbState = await expectOneBootstrapSession(continuationId);
       const bootstrapSessionId = dbState.session.id;
-      const anchorId = dbState.session.anchor.id;
-      const confirmAnchor = page.getByRole('button', { name: /Confirmar punto de partida/i });
-      if (await confirmAnchor.isVisible().catch(() => false)) {
-        await confirmAnchor.dblclick();
-        await expect(page.getByText('Confirmado', { exact: true })).toBeVisible({ timeout: 15_000 });
-      }
-      dbState = await expectOneBootstrapSession(continuationId);
-      expect(dbState.session.id).toBe(bootstrapSessionId);
-      expect(dbState.session.anchor.id).toBe(anchorId);
-      expect(dbState.session.anchor.status).toBe('anchor_confirmed');
-      expect(dbState.session.workItems).toHaveLength(0);
+    const anchorId = dbState.session.anchor.id;
+    const confirmAnchor = page.getByRole('button', { name: /Confirmar punto de partida/i });
+    const anchorConfirmStatuses: number[] = [];
+    if (scenario.id === 'portfolio-first') {
+      page.on('response', (response) => {
+        const pathname = new URL(response.url()).pathname;
+        if (
+          response.request().method() === 'POST'
+          && /\/api\/v1\/portfolio-bootstrap\/sessions\/[^/]+\/anchor\/confirm$/.test(pathname)
+        ) {
+          anchorConfirmStatuses.push(response.status());
+        }
+      });
+    }
+    if (await confirmAnchor.isVisible().catch(() => false)) {
+      await confirmAnchor.dblclick();
+      await expect(page.getByText('Confirmado', { exact: true })).toBeVisible({ timeout: 15_000 });
+    }
+    if (scenario.id === 'portfolio-first') {
+      await expect.poll(() => anchorConfirmStatuses.length).toBe(2);
+      expect(anchorConfirmStatuses).toEqual([200, 200]);
+    }
+    dbState = await expectOneBootstrapSession(continuationId);
+    expect(dbState.session.id).toBe(bootstrapSessionId);
+    expect(dbState.session.anchor.id).toBe(anchorId);
+    expect(dbState.session.anchor.status).toBe('anchor_confirmed');
+    if (scenario.id === 'portfolio-first') {
+      expect(dbState.session.anchor.version).toBe(2);
+      const anchorHistory = await prisma.portfolioAnchorHistory.findMany({
+        where: { anchorId },
+        orderBy: { version: 'asc' },
+        select: { version: true },
+      });
+      expect(anchorHistory.map((item) => item.version)).toEqual([1]);
+    }
+    expect(dbState.session.workItems).toHaveLength(0);
       await page.reload();
       await expect(page.getByRole('button', { name: /Incorporar trabajo existente/i })).toBeVisible();
       dbState = await expectOneBootstrapSession(continuationId);
