@@ -1,6 +1,6 @@
 import React from 'react';
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, within } from '@testing-library/react';
 import { appRoutes } from './routes';
 import { MemoryRouter, useLocation } from 'react-router';
 import { LandingPage } from './pages/LandingPage';
@@ -107,13 +107,18 @@ describe('public entry routing', () => {
     expect(screen.getByRole('heading', {
       name: /Haz que la estrategia se haga realidad/i,
     })).toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: /Aclara qué quieres conseguir antes de decidir qué hacer/i })).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: /Quiero alinear mi objetivo primero/i })).toHaveAttribute('href', '/public/start');
+    const closingHeading = screen.getByRole('heading', {
+      name: 'Empieza con lo que sabes. Starteria te ayuda a ordenar lo que falta.',
+    });
+    expect(closingHeading).toBeInTheDocument();
+    const closingSection = closingHeading.closest('section') as HTMLElement;
+    const closingCta = within(closingSection).getByRole('link', { name: 'Analizar mi situación' });
+    expect(closingCta).toHaveAttribute('href', '/public/start');
     expect(screen.queryByRole('textbox', { name: /necesitas conseguir o entender/i })).not.toBeInTheDocument();
     expect(screen.queryByText(/Crear pre proyecto/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/proposal editor/i)).not.toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('link', { name: /Quiero alinear mi objetivo primero/i }));
+    fireEvent.click(closingCta);
 
     expect(screen.getByTestId('current-path')).toHaveTextContent('/public/start');
   });
