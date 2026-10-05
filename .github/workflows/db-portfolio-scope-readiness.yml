@@ -1,0 +1,121 @@
+# Auditoría de solo lectura para desplegar con seguridad el alcance por organización del
+# portafolio (PR #136, backend/modules/portfolio/portfolio-scope.ts) y la governance de
+# iniciativas de Reto (PR #131, P-04). Mismo patrón que db-adaptive-cycle-readonly.yml:
+# sin checkout, sin Prisma, BEGIN TRANSACTION READ ONLY + ROLLBACK y guard de sentencias.
+name: DB Portfolio Scope Readiness (readonly)
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: db-portfolio-scope-readiness
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  NAMESPACE: starteria
+
+jobs:
+  portfolio-scope-readiness:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Install kubectl
+        uses: azure/setup-kubectl@v4
+        with:
+          version: 'v1.30.0'
+
+      - name: Fetch kubeconfig from Rackspace Spot API
+        env:
+          RACKSPACE_REFRESH_TOKEN: ${{ secrets.RACKSPACE_REFRESH_TOKEN }}
+          RACKSPACE_ORG_NAME: ${{ secrets.RACKSPACE_ORG_NAME }}
+          RACKSPACE_CLOUDSPACE_NAME: ${{ secrets.RACKSPACE_CLOUDSPACE_NAME }}
+        run: |
+          set -euo pipefail
+          payload=$(jq -nc \
+            --arg org "$RACKSPACE_ORG_NAME" \
+            --arg cs  "$RACKSPACE_CLOUDSPACE_NAME" \
+            --arg rt  "$RACKSPACE_REFRESH_TOKEN" \
+            '{organization_name:$org, cloudspace_name:$cs, refresh_token:$rt}')
+          http_status=$(curl -sS -o /tmp/spot-response.json -w '%{http_code}' \
+            -X POST 'https://spot.rackspace.com/apis/auth.ngpc.rxt.io/v1/generate-kubeconfig' \
+            -H 'Content-Type: application/json' \
+            --data "$payload")
+          if [ "$http_status" != "200" ]; then
+            echo "::error::Rackspace API returned HTTP $http_status. Refresh token may be expired."
+            exit 1
+          fi
+          mkdir -p "$RUNNER_TEMP/kube"
+          jq -er '.data.kubeconfig' /tmp/spot-response.json > "$RUNNER_TEMP/kube/config"
+          chmod 600 "$RUNNER_TEMP/kube/config"
+          rm -f /tmp/spot-response.json
+          echo "KUBECONFIG=$RUNNER_TEMP/kube/config" >> "$GITHUB_ENV"
+
+      - name: Run portfolio scope readiness queries
+        run: |
+          set -euo pipefail
+          readonly_sql="$RUNNER_TEMP/portfolio-scope-readiness.sql"
+          cat > "$readonly_sql" <<'SQL'
+          BEGIN TRANSACTION READ ONLY;
+
+          \echo === 1. PORTFOLIO LEADS SIN ORGANIZACION (despues de #136 solo ven frentes sin organizacion) ===
+          SELECT u."id", u."email", u."role", u."organizationId",
+            (SELECT COUNT(*) FROM "OrganizationMember" m WHERE m."userId" = u."id")::int AS memberships,
+            (SELECT COUNT(*) FROM "OrganizationPortfolioAccessGrant" g WHERE g."userId" = u."id")::int AS grants
+          FROM "User" u
+          WHERE (u."role" = 'portfolio_lead' OR 'portfolio_lead' = ANY(u."roles"))
+            AND u."organizationId" IS NULL
+            AND NOT EXISTS (SELECT 1 FROM "OrganizationMember" m WHERE m."userId" = u."id")
+            AND NOT EXISTS (SELECT 1 FROM "OrganizationPortfolioAccessGrant" g WHERE g."userId" = u."id")
+          ORDER BY u."email";
+
+          \echo === 2. FRENTES POR ORGANIZACION (NULL = visibles para todo lead durante la transicion) ===
+          SELECT COALESCE(o."name", '(sin organizacion)') AS organizacion, COUNT(f."id")::int AS frentes
+          FROM "StrategicFront" f
+          LEFT JOIN "Organization" o ON o."id" = f."organizationId"
+          GROUP BY 1
+          ORDER BY 2 DESC;
+
+          \echo === 3. FRENTES SIN ORGANIZACION CUYO OWNER SI TIENE (candidatos a asignar) ===
+          SELECT f."id", f."name", u."email" AS owner, u."organizationId" AS owner_org
+          FROM "StrategicFront" f
+          JOIN "User" u ON u."id" = f."ownerId"
+          WHERE f."organizationId" IS NULL AND u."organizationId" IS NOT NULL
+          ORDER BY f."name";
+
+          \echo === 4. INICIATIVAS DE RETO SIN GOVERNANCE (P-04: no pueden recibir decision organizacional) ===
+          SELECT COUNT(DISTINCT m."projectId")::int AS iniciativas_sin_governance
+          FROM "InitiativePortfolioMeta" m
+          WHERE NOT EXISTS (SELECT 1 FROM "InitiativeGovernance" g WHERE g."projectId" = m."projectId");
+
+          \echo === 5. DE ESAS, CUANTAS TENDRIAN LEAD CON LA REGLA DE P-04 (owner del reto o del frente) ===
+          SELECT
+            COUNT(DISTINCT m."projectId") FILTER (WHERE COALESCE(c."ownerId", f."ownerId") IS NOT NULL)::int AS con_lead_derivado,
+            COUNT(DISTINCT m."projectId") FILTER (WHERE COALESCE(c."ownerId", f."ownerId") IS NULL)::int AS sin_lead
+          FROM "InitiativePortfolioMeta" m
+          JOIN "Challenge" c ON c."id" = m."challengeId"
+          JOIN "StrategicFront" f ON f."id" = c."strategicFrontId"
+          WHERE NOT EXISTS (SELECT 1 FROM "InitiativeGovernance" g WHERE g."projectId" = m."projectId");
+
+          ROLLBACK;
+          SQL
+
+          # Mismo guard que db-adaptive-cycle-readonly.yml (palabras partidas para no
+          # dispararse con su propio fuente). La protección real es READ ONLY + ROLLBACK.
+          unsafe_pattern="$(printf '%s|' INS'ERT' UP'DATE' DEL'ETE' AL'TER' DR'OP' CR'EATE' TRUN'CATE')"
+          unsafe_pattern="${unsafe_pattern%|}"
+          if grep -Eiq "\\b(${unsafe_pattern})\\b" "$readonly_sql"; then
+            echo "::error::Readonly audit SQL contains a mutating statement."
+            exit 1
+          fi
+
+          kubectl exec -i -n "$NAMESPACE" statefulset/starteria-db -- \
+            psql -U starteria -d starteria_db -P pager=off -v ON_ERROR_STOP=1 \
+            -f - < "$readonly_sql"
+
+      - name: Cleanup kubeconfig
+        if: always()
+        run: |
+          set -euo pipefail
+          rm -f "$RUNNER_TEMP/kube/config" || true

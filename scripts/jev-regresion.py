@@ -31,8 +31,8 @@ BASE = os.environ.get("STARTERIA_URL", "https://starter-ia.com").rstrip("/")
 NO_WRITE = " Only navigate: do not create, edit, submit or delete anything."
 CASES_FILE = os.environ.get("JEV_REGRESION_CASES", os.path.join(os.path.dirname(os.path.abspath(__file__)), "jev-regresion.cases.json"))
 _cases = json.load(open(CASES_FILE, encoding="utf-8"))
-CASES = [(c["name"], c["start"], c["goal"], c["expect"]) for c in _cases["journeys"]]
-DEEP_LINKS = [d["path"] for d in _cases["deep_links"]]
+CASES = [(c["name"], c["start"], c["goal"], c["expect"], c.get("expect_text", [])) for c in _cases["journeys"]]
+DEEP_LINKS = [(d["path"], d.get("expect_text", [])) for d in _cases["deep_links"]]
 
 class NotRendered(Exception):
     pass
@@ -54,18 +54,31 @@ def wait_rendered(agent, timeout=12, settle=1.5):
     return False
 
 
+def missing_text(agent, expected, timeout=10):
+    """Textos de `expected` que no aparecen en la página (espera a que el SPA termine de cargar datos)."""
+    if not expected:
+        return []
+    deadline = time.monotonic() + timeout
+    while True:
+        body = (agent.browser.evaluate("document.body.innerText") or "").lower()
+        missing = [t for t in expected if t.lower() not in body]
+        if not missing or time.monotonic() >= deadline:
+            return missing
+        time.sleep(0.5)
+
+
 args = sys.argv[1:]
 hu = args[args.index("--hu") + 1] if "--hu" in args else None
 if hu:
     names = {c["name"] for c in _cases["journeys"] if c.get("hu") == hu}
     CASES = [c for c in CASES if c[0] in names]
-    DEEP_LINKS = [d["path"] for d in _cases["deep_links"] if d.get("hu") == hu]
+    DEEP_LINKS = [(d["path"], d.get("expect_text", [])) for d in _cases["deep_links"] if d.get("hu") == hu]
     args = [a for a in args if a not in ("--hu", hu)]
     if not CASES and not DEEP_LINKS:
         sys.exit(f"no hay casos con hu={hu} en {CASES_FILE}")
 only = set(args)
 results = []
-for name, start, goal, expect in CASES:
+for name, start, goal, expect, expect_text in CASES:
     if only and name not in only:
         continue
     t0 = time.perf_counter()
@@ -79,9 +92,12 @@ for name, start, goal, expect in CASES:
                 pass
             url = agent.browser.evaluate("location.href")
             path = url.replace(BASE, "").split("?")[0].rstrip("/") or "/"
-            ok = path == expect
+            # La ruta prueba que se llegó; expect_text prueba que la pantalla es la versión
+            # esperada (sin esto, una ruta vieja con el mismo path pasaría).
+            missing = missing_text(agent, expect_text)
+            ok = path == expect and not missing
             steps = [h["action"] for h in state["history"]]
-            detail = f"jev={state['status']}, url={path}"
+            detail = f"jev={state['status']}, url={path}" + (f", falta: {missing}" if missing else "")
             results.append((name, "PASA" if ok else "FALLA", detail, url, steps, len(state["decisions"])))
     except NotRendered:
         pass
@@ -91,7 +107,7 @@ for name, start, goal, expect in CASES:
 
 # Links directos: se abre la URL y NO se deja actuar a Jev. Si la app redirige, es bug,
 # aunque el agente pudiera volver por el menú (eso tapó el bug en la primera versión).
-for path in DEEP_LINKS if not only else []:
+for path, expect_text in DEEP_LINKS if not only else []:
     t0 = time.perf_counter()
     with Agent(BASE + path, "noop") as agent:
         seen, end = [], time.monotonic() + 6
@@ -100,8 +116,9 @@ for path in DEEP_LINKS if not only else []:
             if not seen or seen[-1] != u:
                 seen.append(u)
             time.sleep(0.3)
-    ok = seen[-1] == path
-    results.append((f"link {path}", "PASA" if ok else "FALLA", " → ".join(seen), seen[-1], [], 0,
+        missing = missing_text(agent, expect_text)
+    ok = seen[-1] == path and not missing
+    results.append((f"link {path}", "PASA" if ok else "FALLA", " → ".join(seen) + (f" | falta: {missing}" if missing else ""), seen[-1], [], 0,
                     round((time.perf_counter() - t0) * 1000)))
 
 print(f"\n{'caso':34} {'resultado':9} {'ms':>6} {'llamadas':>8}  detalle / acciones")

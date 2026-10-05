@@ -1,5 +1,5 @@
 {
-  "_doc": "Casos de scripts/jev-regresion.py. Cada HU con cambios visibles agrega acá su recorrido (ver TESTING.md §9). 'goal' en lenguaje natural; 'expect' es la ruta que se verifica por fuera del agente.",
+  "_doc": "Casos de scripts/jev-regresion.py. Cada HU con cambios visibles agrega acá su recorrido (ver TESTING.md §9). 'goal' en lenguaje natural; 'expect' es la ruta que se verifica por fuera del agente. 'expect_text' (opcional): textos que deben estar en la pantalla final; prueba que está desplegada la versión esperada, no sólo que la ruta existe.",
   "journeys": [
     {
       "name": "PL frentes",
@@ -70,6 +70,27 @@
       "start": "/",
       "goal": "Click 'Ir al panel', then open 'Revisiones pendientes' from the left navigation. Stop when that page is visible.",
       "expect": "/mentor"
+    },
+    {
+      "name": "PL reconstruccion",
+      "hu": "E2E-JOB",
+      "start": "/portfolio/inicio",
+      "goal": "Click 'Importar iniciativas' on the portfolio home. Stop when a dialog about existing work is visible.",
+      "expect": "/portfolio/iniciar",
+      "expect_text": [
+        "¿Dónde estamos realmente?",
+        "Leer qué podemos sostener"
+      ]
+    },
+    {
+      "name": "PL frentes resultado",
+      "hu": "E2E-JOB",
+      "start": "/portfolio/inicio",
+      "goal": "Open 'Frentes estratégicos' from the left navigation. Stop when that page is visible.",
+      "expect": "/portfolio/frentes-estrategicos",
+      "expect_text": [
+        "qué resultado quiere mover"
+      ]
     }
   ],
   "deep_links": [
@@ -116,6 +137,21 @@
     {
       "path": "/public/start",
       "hu": "KAN-72"
+    },
+    {
+      "path": "/portfolio/inicio",
+      "hu": "E2E-JOB",
+      "expect_text": [
+        "Lo que aprendió el portfolio",
+        "¿Dónde está puesta la capacidad?"
+      ]
+    },
+    {
+      "path": "/portfolio/iniciar",
+      "hu": "E2E-JOB",
+      "expect_text": [
+        "¿Qué necesitas mover?"
+      ]
     }
   ]
 }
