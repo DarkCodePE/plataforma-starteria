@@ -4,188 +4,151 @@ const HERO_HEADLINE = 'Haz que la estrategia se haga realidad.';
 const PRIMARY_SUPPORT = 'Alinea objetivos, conecta equipos y haz avanzar las iniciativas que realmente importan.';
 const SECONDARY_SUPPORT =
   'Starteria mantiene estrategia, ejecución y evidencia conectadas para que sepas qué mover, qué necesita atención y qué decisión preparar.';
-const OPTIONAL_ENTRY_TITLE = 'Aclara qué quieres conseguir antes de decidir qué hacer.';
-const OPTIONAL_ENTRY_CTA = 'Quiero alinear mi objetivo primero';
+const DEMO_CTA = 'Reservar demo';
+const HERO_ENTRY_CTA = 'Quiero alinear mi objetivo primero';
+const CLOSING_CTA = 'Analizar mi situación';
+const PREVIEW_TITLE = 'Meta → Alineación → Ejecución → Decisión';
+const CLOSING_TITLE = 'Empieza con lo que sabes. Starteria te ayuda a ordenar lo que falta.';
 
-test.describe('KAN-112 public landing visual preview', () => {
-  test('preserves the product framing and existing Portfolio Entry journey', async ({ page }, testInfo) => {
+test.describe('KAN-113 public landing commercial alignment', () => {
+  test('aligns the visual story and preserves the existing Portfolio Entry route', async ({ page }, testInfo) => {
     await page.setViewportSize({ width: 1440, height: 900 });
     await page.goto('/');
 
+    const hero = page.locator('main > section').first();
     await expect(page.getByRole('heading', { level: 1, name: HERO_HEADLINE })).toBeVisible();
+    await expect(page.getByText('De la estrategia al impacto real')).toBeVisible();
     await expect(page.getByText(PRIMARY_SUPPORT)).toBeVisible();
     await expect(page.getByText(SECONDARY_SUPPORT)).toBeVisible();
 
-    const model = page.getByRole('region', {
-      name: 'De la meta a una decisión mejor preparada.',
-    });
-    await expect(model.getByText('Objetivos / Necesidades / Iniciativas / Equipos')).toBeVisible();
+    const model = page.getByRole('region', { name: 'Modelo conceptual de Starteria' });
+    for (const item of ['Objetivos', 'Necesidades', 'Iniciativas', 'Equipos']) {
+      await expect(model.getByRole('list').nth(0).getByText(item)).toBeVisible();
+    }
     await expect(model.getByText('Starteria', { exact: true })).toBeVisible();
-    await expect(model.getByText('Foco / Coordinación / Evidencia / Decisión')).toBeVisible();
-    for (const step of ['Define la meta', 'Alinea el trabajo', 'Hazlas realidad', 'Decide']) {
-      await expect(model.getByText(step, { exact: true })).toBeVisible();
+    await expect(model.getByText('Contexto. Trabajo. Decisiones.')).toBeVisible();
+    for (const item of ['Foco', 'Coordinación', 'Evidencia', 'Decisión']) {
+      await expect(model.getByRole('list').nth(1).getByText(item)).toBeVisible();
     }
 
-    const preview = page.getByRole('region', {
-      name: 'Así puede verse el trabajo cuando está conectado',
-    });
+    const benefits = page.getByRole('region', { name: 'Beneficios rápidos' });
+    for (const benefit of [
+      'Más claridad en menos tiempo',
+      'Equipos alineados',
+      'Decisiones con evidencia',
+    ]) {
+      await expect(benefits.getByText(benefit)).toBeVisible();
+    }
+
+    const valueFlow = page.getByRole('group', { name: 'Flujo conceptual de valor' });
+    for (const [index, step] of ['Define la meta', 'Alinea el trabajo', 'Hazlas realidad', 'Decide'].entries()) {
+      await expect(valueFlow.getByText(String(index + 1).padStart(2, '0'))).toBeVisible();
+      await expect(valueFlow.getByText(step, { exact: true })).toBeVisible();
+    }
+
+    const preview = page.getByRole('region', { name: PREVIEW_TITLE });
+    for (const stage of ['Meta', 'Alineación', 'Ejecución', 'Decisión']) {
+      await expect(preview.getByRole('heading', { name: stage, level: 3 })).toBeVisible();
+    }
+    await expect(preview.getByText('Meta hipotética')).toBeVisible();
     await expect(preview.getByText('Ejemplo ilustrativo · no es un análisis real')).toBeVisible();
     await expect(preview.getByText('Contenido, nombres, relaciones y estados ficticios.')).toBeVisible();
-    await expect(preview.getByText('Mejorar adopción del canal digital')).toBeVisible();
-    await expect(preview.getByText('Bloqueo ilustrativo: dependencia de soporte por aclarar')).toBeVisible();
-    await expect(preview.getByText('Decisión a preparar')).toBeVisible();
+    await expect(preview.getByText('Bloqueo ficticio: dependencia de soporte por aclarar')).toBeVisible();
+    await expect(preview.getByText('Invertir')).toBeVisible();
+    await expect(preview.locator('button, a, input, textarea, select, [tabindex]')).toHaveCount(0);
 
-    await expect(page.getByRole('link', { name: /ya tengo claro qué quiero mover/i })).toHaveAttribute('href', '/auth');
-    await expect(page.getByRole('link', { name: OPTIONAL_ENTRY_CTA })).toHaveAttribute('href', '/public/start');
-    await expect(page.getByRole('link', { name: /early access|demo/i })).toHaveCount(0);
-    await expect(page.getByRole('button', { name: /early access|demo/i })).toHaveCount(0);
+    const gap = page.getByRole('region', { name: 'La brecha entre estrategia y ejecución' });
+    await expect(gap.getByRole('heading', { name: 'Hoy: fragmentado' })).toBeVisible();
+    await expect(gap.getByRole('heading', { name: 'Con Starteria: conectado' })).toBeVisible();
+    await expect(gap.getByText('La brecha', { exact: true })).toBeVisible();
+    for (const item of [
+      'Objetivos aislados',
+      'Equipos desconectados',
+      'Contexto perdido',
+      'Decisiones tardías',
+      'Foco compartido',
+      'Trabajo coordinado',
+      'Evidencia conectada',
+      'Decisiones trazables',
+    ]) {
+      await expect(gap.getByText(item)).toBeVisible();
+    }
 
-    const entrySection = page.locator('section[aria-labelledby="portfolio-entry-heading"]');
-    await expect(entrySection.getByRole('heading', { name: OPTIONAL_ENTRY_TITLE })).toBeVisible();
+    const trust = page.getByRole('region', {
+      name: 'Starteria estructura tu contexto sin sustituir tu criterio.',
+    });
+    await expect(trust.getByText('Puedes empezar con contexto incompleto.')).toBeVisible();
+    await expect(trust.getByText('Nada se convierte en trabajo formal sin revisión.')).toBeVisible();
+    await expect(trust.getByText('La IA estructura y propone; las decisiones siguen siendo humanas.')).toBeVisible();
+    await expect(trust.getByText('Tu entrada pública no crea iniciativas ni lanza trabajo automáticamente.')).toBeVisible();
 
-    await page.screenshot({
-      path: testInfo.outputPath('kan112-desktop-1440-full.png'),
-      fullPage: true,
-    });
-    await page.locator('main > section').first().screenshot({
-      path: testInfo.outputPath('kan112-desktop-1440-hero.png'),
-    });
-    await preview.screenshot({
-      path: testInfo.outputPath('kan112-desktop-1440-preview.png'),
-    });
-    await entrySection.screenshot({
-      path: testInfo.outputPath('kan112-desktop-1440-entry.png'),
-    });
+    const header = page.locator('header.sticky');
+    const headerDemo = header.getByRole('link', { name: DEMO_CTA, exact: true });
+    const heroDemo = hero.getByRole('link', { name: DEMO_CTA, exact: true });
+    const demoHref = await headerDemo.getAttribute('href');
+    await expect(header.getByRole('link', { name: /iniciar sesión/i })).toHaveAttribute('href', '/auth');
+    await expect(headerDemo).toHaveAttribute('href', /^https:\/\//);
+    await expect(headerDemo).toHaveAttribute('target', '_blank');
+    await expect(headerDemo).toHaveAttribute('rel', 'noopener noreferrer');
+    await expect(heroDemo).toHaveAttribute('href', demoHref!);
+    await expect(heroDemo).toHaveAttribute('target', '_blank');
+    await expect(heroDemo).toHaveAttribute('rel', 'noopener noreferrer');
+    await expect(hero.getByRole('link', { name: HERO_ENTRY_CTA })).toHaveAttribute('href', '/public/start');
 
-    await page.getByRole('link', { name: 'Producto', exact: true }).click();
-    const stickyHeaderBox = await page.getByRole('banner').boundingBox();
-    const anchoredPreviewHeadingBox = await preview
-      .getByRole('heading', { name: 'Así puede verse el trabajo cuando está conectado' })
-      .boundingBox();
-    expect(anchoredPreviewHeadingBox?.y).toBeGreaterThanOrEqual(
-      (stickyHeaderBox?.y ?? 0) + (stickyHeaderBox?.height ?? 0),
-    );
+    const closing = page.locator('section[aria-labelledby="landing-closing-title"]');
+    await expect(closing.getByRole('heading', { name: CLOSING_TITLE })).toBeVisible();
+    await expect(closing.getByRole('link', { name: CLOSING_CTA })).toHaveAttribute('href', '/public/start');
+    await expect(closing.getByRole('link', { name: DEMO_CTA })).toHaveCount(0);
+    await expect(page.getByRole('navigation', { name: 'Navegación del pie de página' })).toBeVisible();
 
-    await page.setViewportSize({ width: 1280, height: 800 });
-    await page.evaluate(() => window.scrollTo(0, 0));
-    const previewHeadingBox = await page
-      .getByRole('heading', { name: 'Así puede verse el trabajo cuando está conectado' })
-      .boundingBox();
-    expect(previewHeadingBox?.y).toBeLessThan(800);
-    await page.screenshot({
-      path: testInfo.outputPath('kan112-laptop-1280-full.png'),
-      fullPage: true,
-    });
-    await page.locator('main > section').first().screenshot({
-      path: testInfo.outputPath('kan112-laptop-1280-hero.png'),
-    });
-    await page.getByRole('region', {
-      name: 'Así puede verse el trabajo cuando está conectado',
-    }).screenshot({
-      path: testInfo.outputPath('kan112-laptop-1280-preview.png'),
-    });
-    await entrySection.screenshot({
-      path: testInfo.outputPath('kan112-laptop-1280-entry.png'),
-    });
+    const viewportChecks = [
+      { width: 1440, height: 900, name: '1440' },
+      { width: 1280, height: 800, name: '1280' },
+      { width: 1024, height: 900, name: '1024' },
+      { width: 768, height: 900, name: '768' },
+      { width: 390, height: 844, name: '390' },
+    ];
 
-    for (const width of [1024, 768]) {
-      await page.setViewportSize({ width, height: 900 });
+    for (const viewport of viewportChecks) {
+      await page.setViewportSize({ width: viewport.width, height: viewport.height });
       await page.evaluate(() => window.scrollTo(0, 0));
 
       const dimensions = await page.evaluate(() => ({
         documentWidth: document.documentElement.scrollWidth,
         viewportWidth: document.documentElement.clientWidth,
       }));
-      expect(dimensions.documentWidth).toBeLessThanOrEqual(dimensions.viewportWidth);
+      expect(dimensions.documentWidth, `horizontal overflow at ${viewport.width}px`).toBeLessThanOrEqual(
+        dimensions.viewportWidth,
+      );
       await expect(page.getByRole('heading', { level: 1, name: HERO_HEADLINE })).toBeVisible();
+      await expect(model.getByText('Objetivos')).toBeVisible();
+      await expect(model.getByText('Decisión')).toBeVisible();
       await expect(preview.getByText('Ejemplo ilustrativo · no es un análisis real')).toBeVisible();
+
+      const heroHeadingBox = await hero.getByRole('heading', { level: 1 }).boundingBox();
+      if (viewport.width < 1280) {
+        const heroCtaBox = await heroDemo.boundingBox();
+        const modelBox = await model.boundingBox();
+        expect(modelBox?.y).toBeGreaterThan(heroCtaBox?.y ?? 0);
+      } else {
+        const modelBox = await model.boundingBox();
+        expect(modelBox?.x).toBeGreaterThan(heroHeadingBox?.x ?? 0);
+      }
+
       await page.screenshot({
-        path: testInfo.outputPath(`kan112-tablet-${width}-full.png`),
+        path: testInfo.outputPath(`kan113-${viewport.name}-full.png`),
         fullPage: true,
       });
-
-      if (width === 768) {
-        await preview.scrollIntoViewIfNeeded();
-        const frontBox = await preview.getByText('Experiencia digital').boundingBox();
-        const challengeBox = await preview.getByText('Facilitar la activación inicial').boundingBox();
-        expect(frontBox?.y).toBeLessThan(challengeBox?.y ?? 0);
-      }
+      await hero.screenshot({ path: testInfo.outputPath(`kan113-${viewport.name}-hero.png`) });
+      await preview.screenshot({ path: testInfo.outputPath(`kan113-${viewport.name}-preview.png`) });
     }
 
     await page.setViewportSize({ width: 1280, height: 800 });
-    await page.evaluate(() => window.scrollTo(0, 0));
-    await page.getByRole('link', { name: OPTIONAL_ENTRY_CTA }).click();
+    await closing.getByRole('link', { name: CLOSING_CTA }).click();
     await expect(page).toHaveURL(/\/public\/start$/);
-    await expect(page.getByRole('heading', { name: OPTIONAL_ENTRY_TITLE })).toBeVisible();
+    await expect(page.getByRole('heading', {
+      name: 'Aclara qué quieres conseguir antes de decidir qué hacer.',
+    })).toBeVisible();
     await expect(page.getByRole('textbox', { name: /necesitas conseguir o entender/i })).toBeVisible();
-  });
-
-  test('keeps hierarchy and disclaimer readable at 390px without horizontal overflow', async ({ page }, testInfo) => {
-    await page.setViewportSize({ width: 390, height: 844 });
-    await page.goto('/');
-
-    await expect(page.getByRole('heading', { level: 1, name: HERO_HEADLINE })).toBeVisible();
-    const heroCta = page.getByRole('link', { name: /ya tengo claro qué quiero mover/i });
-    await expect(heroCta).toBeVisible();
-
-    const modelHeadingBox = await page
-      .getByRole('heading', { name: 'De la meta a una decisión mejor preparada.' })
-      .boundingBox();
-    const heroHeadingBox = await page.getByRole('heading', { level: 1, name: HERO_HEADLINE }).boundingBox();
-    const heroCtaBox = await heroCta.boundingBox();
-    const entrySection = page.locator('section[aria-labelledby="portfolio-entry-heading"]');
-    const entryHeadingBox = await entrySection.getByRole('heading', { name: OPTIONAL_ENTRY_TITLE }).boundingBox();
-    await expect(entrySection.getByRole('heading', { name: OPTIONAL_ENTRY_TITLE })).toBeVisible();
-    await expect(entrySection.getByRole('link', { name: OPTIONAL_ENTRY_CTA })).toHaveAttribute('href', '/public/start');
-    const preview = page.getByRole('region', {
-      name: 'Así puede verse el trabajo cuando está conectado',
-    });
-    const previewHeadingBox = await preview
-      .getByRole('heading', { name: 'Así puede verse el trabajo cuando está conectado' })
-      .boundingBox();
-    expect(heroHeadingBox?.y).toBeLessThan(heroCtaBox?.y ?? 0);
-    expect(heroCtaBox?.y).toBeLessThan(modelHeadingBox?.y ?? 0);
-    expect(modelHeadingBox?.y).toBeLessThan(previewHeadingBox?.y ?? 0);
-    expect(previewHeadingBox?.y).toBeLessThan(entryHeadingBox?.y ?? 0);
-
-    const dimensions = await page.evaluate(() => ({
-      documentWidth: document.documentElement.scrollWidth,
-      viewportWidth: document.documentElement.clientWidth,
-    }));
-    expect(dimensions.documentWidth).toBeLessThanOrEqual(dimensions.viewportWidth);
-
-    await preview.scrollIntoViewIfNeeded();
-    await expect(preview.getByText('Ejemplo ilustrativo · no es un análisis real')).toBeVisible();
-    await expect(preview.getByText('Evidencia pendiente: qué facilita la activación inicial')).toBeVisible();
-    await expect(preview.getByText('Bloqueo ilustrativo: dependencia de soporte por aclarar')).toBeVisible();
-    await expect(preview.getByText('La decisión sigue siendo de las personas.')).toBeVisible();
-
-    const frontBox = await preview.getByText('Experiencia digital').boundingBox();
-    const challengeBox = await preview.getByText('Facilitar la activación inicial').boundingBox();
-    const initiativeBox = await preview.getByText('Rediseño onboarding').boundingBox();
-    const signalsBox = await preview.getByRole('heading', { name: 'Señales y evidencia' }).boundingBox();
-    const gapBox = await preview.getByText(/Gap de evidencia:/).boundingBox();
-    const decisionBox = await preview.getByRole('heading', { name: 'Decisión a preparar' }).boundingBox();
-    expect(frontBox?.y).toBeLessThan(challengeBox?.y ?? 0);
-    expect(challengeBox?.y).toBeLessThan(initiativeBox?.y ?? 0);
-    expect(initiativeBox?.y).toBeLessThan(signalsBox?.y ?? 0);
-    expect(signalsBox?.y).toBeLessThan(gapBox?.y ?? 0);
-    expect(gapBox?.y).toBeLessThan(decisionBox?.y ?? 0);
-
-    await page.screenshot({
-      path: testInfo.outputPath('kan112-mobile-390-full.png'),
-      fullPage: true,
-    });
-    await page.locator('main > section').first().screenshot({
-      path: testInfo.outputPath('kan112-mobile-390-hero.png'),
-    });
-    const previewTop = await preview.evaluate(element => element.getBoundingClientRect().top + window.scrollY);
-    await page.evaluate(top => window.scrollTo(0, Math.max(0, top - 80)), previewTop);
-    await page.screenshot({
-      path: testInfo.outputPath('kan112-mobile-390-preview.png'),
-    });
-    await entrySection.screenshot({
-      path: testInfo.outputPath('kan112-mobile-390-entry.png'),
-    });
   });
 });
