@@ -63,20 +63,20 @@ No hay porcentajes, métricas, Steps, kanban, chatbot ni controles en la preview
 | `npm run typecheck:front` | PASS |
 | `npm run lint` | PASS |
 | `npm run build` | PASS; warnings de import dinámico/estático de `api.ts` y chunk principal >500 kB |
-| `npm run test:e2e -- e2e/public-landing-l1.spec.ts` | BLOCKED antes de ejecutar tests: Docker no expone `dockerDesktopLinuxEngine` en este entorno |
+| `npm run test:e2e -- e2e/public-landing-l1.spec.ts` | PASS — `2 passed (18.7s)`. El runner levantó PostgreSQL aislado, aplicó 48 migraciones, ejecutó seed E2E, inició backend/frontend de test y validó el recorrido Landing → `/public/start` y responsive a 390 px. |
 | Playwright local: viewports + Landing → `/public/start` | PASS para jerarquía, ausencia de overflow, ancla de producto, navegación a la ruta y heading de Entry |
 
-Las capturas se generaron en `front/test-results/kan112-visual/`: full page en 1440, 1280, 1024, 768 y 390; Hero/Preview/Entry en 1440, 1280 y 390; además, ancla de producto a 1440 y preview móvil con el disclaimer visible. El Vite aislado produjo errores de red/API 500 porque el backend no estaba levantado (`localhost:3001` no disponible); por ello no se valida la sesión ni el textbox de Entry en navegador.
+Las capturas se generaron en `front/test-results/kan112-visual/`: full page en 1440, 1280, 1024, 768 y 390; Hero/Preview/Entry en 1440, 1280 y 390; además, ancla de producto a 1440 y preview móvil con el disclaimer visible. El E2E oficial se ejecutó correctamente después de recuperar Docker Desktop y generar Prisma Client. Los `401` observados en `/api/v1/auth/refresh` corresponden al intento esperado de refresh sin sesión en contexto público y no produjeron fallo. El AC8 queda acreditado para el alcance de KAN-112.
 
 ## O–R. Manifest, comercial and remaining findings
 
 - **Manifest:** Public Landing permanece en `V2_PILOT`. Una mejora visual no justifica `V2_MIGRATED` ni estado `PRODUCTIVE`; no se actualizó Manifest/CURRENT_STATE.
 - **Commercial destinations:** siguen `RUNTIME_PENDING / BLOCKED_BY_DESTINATION`; no se renderizan destinos o CTAs falsos.
-- **Findings remaining:** levantar Docker/backend y completar el E2E oficial, incluida la interacción disponible en `/public/start`; BrowserSkill ausente. Los warnings del build siguen pendientes de evaluación aparte de KAN-112.
+- **Findings remaining:** BrowserSkill continúa ausente en este entorno. Los warnings del build sobre imports dinámicos/estáticos y tamaño del chunk principal quedan pendientes de evaluación fuera del alcance de KAN-112. Los destinos comerciales Demo/Early Access continúan `RUNTIME_PENDING / BLOCKED_BY_DESTINATION`.
 - **Report path:** `docs/implementation/public-landing/KAN-112_LANDING_L3_IMPLEMENTATION_v0.1.md`.
 
 ## S–T. Status
 
-**STATUS: BLOCKED** — la composición y la QA visual local están listas, pero el AC8 no queda completamente acreditado mientras el E2E oficial no pueda ejecutarse en un entorno con Docker/backend.
+**STATUS: READY_FOR_REVIEW** — la composición Landing L3, QA visual local, checks técnicos y E2E oficial específico están completos. AC8 queda satisfecho para el alcance de KAN-112.
 
-**SAFE_TO_COMMIT: NO** — completar el E2E requerido antes de declarar la subtarea lista para review. No se creó commit.
+**SAFE_TO_COMMIT: YES** — la implementación principal quedó congelada en `e9ae2e7 feat(KAN-112): implement landing L3 visual composition`. Esta actualización documental registra el PASS del E2E oficial y deja KAN-112 listo para push, PR y revisión.
