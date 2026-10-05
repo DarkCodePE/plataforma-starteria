@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router';
+import { useApp } from '../../../app/context/AppContext';
 import { authService } from '../../../app/services/auth.service';
 import {
   AlertCircle,
@@ -1304,6 +1305,7 @@ export function PortfolioEntryExperience({
   redirectAfterStart,
 }: PortfolioEntryExperienceProps = {}) {
   const navigate = useNavigate();
+  const { authLoading } = useApp();
   const [sessionRef, setSessionRef] = useState<StoredPortfolioEntrySession | null>(null);
   const [sessionDto, setSessionDto] = useState<PortfolioEntrySessionDto | null>(null);
   const [currentInput, setCurrentInput] = useState('');
@@ -1403,7 +1405,7 @@ export function PortfolioEntryExperience({
   };
 
   useEffect(() => {
-    if (!recoverExisting) return;
+    if (!recoverExisting || authLoading) return;
     const claimed = readClaimedPortfolioEntrySession() ?? claimedNotice;
     // A completed auth claim supersedes the anonymous credential. Prefer the
     // authenticated identity when both storage records survive a navigation.
@@ -1439,7 +1441,7 @@ export function PortfolioEntryExperience({
     };
     // Run only once on mount; recovery state lives in sessionStorage.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [recoverExisting]);
+  }, [authLoading, recoverExisting]);
 
   useEffect(() => {
     statusRef.current?.focus();

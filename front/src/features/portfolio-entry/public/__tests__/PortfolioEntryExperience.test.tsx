@@ -1,6 +1,6 @@
 import React from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router';
 import { PortfolioEntryExperience } from '../PortfolioEntryExperience';
 import { serializeConfirmedBriefMarkdown } from '../portfolioEntryBriefExport';
@@ -13,6 +13,7 @@ import {
 } from '../storage';
 
 const serviceMocks = vi.hoisted(() => ({
+  authState: { authLoading: false },
   createPortfolioEntrySession: vi.fn(),
   getPortfolioEntrySession: vi.fn(),
   getClaimedPortfolioEntrySession: vi.fn(),
@@ -40,6 +41,10 @@ vi.mock('react-router', async () => {
 });
 
 vi.mock('../portfolioEntryPublicService', () => serviceMocks);
+
+vi.mock('../../../../app/context/AppContext', () => ({
+  useApp: () => serviceMocks.authState,
+}));
 
 vi.mock('../analytics', () => ({
   trackPortfolioEntryEvent: vi.fn(),
@@ -178,8 +183,38 @@ function sessionWithHandoff(overrides: Partial<PortfolioEntrySessionDto> = {}): 
 describe('PortfolioEntryExperience', () => {
   beforeEach(() => {
     window.sessionStorage.clear();
+    serviceMocks.authState.authLoading = false;
     navigateSpy.mockClear();
     vi.clearAllMocks();
+  });
+
+  it('waits for auth hydration before recovering a claimed session', async () => {
+    const sessionId = '11111111-1111-4111-8111-111111111111';
+    saveClaimedPortfolioEntrySession({ sessionId });
+    serviceMocks.authState.authLoading = true;
+    serviceMocks.getClaimedPortfolioEntrySession.mockResolvedValue(sessionWithHandoff({
+      lifecycleStatus: 'CONFIRMED',
+      revision: 9,
+      ownership: { state: 'CLAIMED', ownerUserId: 'user-1' },
+      confirmation: { id: 'confirmation-1', version: 1, status: 'CONFIRMED', acceptedFields: ['understanding'], correctedFields: {}, rejectedFields: [], createdAt: new Date().toISOString() },
+    }));
+
+    const view = renderExperience();
+
+    expect(serviceMocks.getClaimedPortfolioEntrySession).not.toHaveBeenCalled();
+    act(() => {
+      serviceMocks.authState.authLoading = false;
+      view.rerender(
+        <MemoryRouter>
+          <PortfolioEntryExperience />
+        </MemoryRouter>,
+      );
+    });
+
+    expect(serviceMocks.getClaimedPortfolioEntrySession).toHaveBeenCalledTimes(1);
+    expect(await screen.findByTestId('portfolio-entry-confirmed-brief-actions')).toBeInTheDocument();
+    expect(serviceMocks.getClaimedPortfolioEntrySession).toHaveBeenCalledTimes(1);
+    expect(serviceMocks.getClaimedPortfolioEntrySession).toHaveBeenCalledWith(sessionId);
   });
 
   it('recovers the claimed Brief before a stale anonymous current-session credential', async () => {
