@@ -1,4 +1,5 @@
 import { ensureChallengeGovernanceTx } from '../adaptive-core/initiative-governance';
+import { frontScopeWhere, type PortfolioScope } from './portfolio-scope';
 import { PrismaClient } from '@prisma/client';
 import { AppError } from '../../shared/errors/AppError';
 import {
@@ -33,8 +34,9 @@ export class PortfolioService {
 
   // ─── Strategic Fronts ────────────────────────────────────────────────────────
 
-  async listStrategicFronts() {
+  async listStrategicFronts(scope?: PortfolioScope) {
     return this.prisma.strategicFront.findMany({
+      where: scope ? (frontScopeWhere(scope) as any) : undefined,
       include: {
         _count: { select: { challenges: true } },
       },

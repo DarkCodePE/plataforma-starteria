@@ -10,12 +10,14 @@
 
 import { defineConfig, devices } from '@playwright/test';
 
-const BASE_URL = process.env.E2E_BASE_URL || 'http://localhost';
+const BASE_URL = process.env.E2E_PROD_BASE_URL || (process.env.E2E_BASE_URL || 'http://localhost');
 
 export default defineConfig({
   testDir: './e2e',
   // Spec files live in e2e/, not the unit-test src/**.
   testMatch: /.*\.spec\.ts$/,
+  // e2e/prod corre contra un entorno real con el tenant dedicado: sólo con `npm run test:e2e:prod`.
+  testIgnore: process.env.E2E_PROD_BASE_URL ? undefined : ['**/prod/**'],
 
   // Each scenario goes through registration → login → upload → polling;
   // give each test up to 3 min so the live LLM call can complete when configured.

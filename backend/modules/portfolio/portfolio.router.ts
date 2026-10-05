@@ -7,6 +7,7 @@ import { PortfolioHomeReadService } from './portfolio-home.read-service';
 import { ChallengeSplitService } from './challenge-split.service';
 import { ChallengeCoverageReadService } from './challenge-coverage.read-service';
 import { PortfolioCapacityReadService } from './portfolio-capacity.read-service';
+import { resolvePortfolioScope } from './portfolio-scope';
 import type { AuthenticatedRequest } from '../../shared/types/auth.types';
 import { validate } from '../../shared/middleware/validate';
 import { authenticate, requirePermission } from '../auth/auth.middleware';
@@ -271,9 +272,10 @@ portfolioRouter.put(
 );
 
 // §4/§24 y Core §17: dónde está puesta la capacidad y señales de reasignación (sólo lectura).
-portfolioRouter.get('/capacity', async (_req, res, next) => {
+portfolioRouter.get('/capacity', async (req, res, next) => {
   try {
-    res.json({ success: true, data: await portfolioCapacity.get() });
+    const scope = await resolvePortfolioScope(prisma, (req as AuthenticatedRequest).user!);
+    res.json({ success: true, data: await portfolioCapacity.get(scope) });
   } catch (err) {
     next(err);
   }
