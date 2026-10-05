@@ -5,6 +5,7 @@ import * as XLSX from 'xlsx';
 import { afterAll, afterEach, describe, expect, it } from 'vitest';
 import { permissionsForRoles } from '../../../shared/authz/permissions';
 import { errorHandler } from '../../../shared/errors/error-handler';
+import { PortfolioBootstrapService } from '../portfolio-bootstrap.service';
 import { buildPortfolioBootstrapRouter } from '../portfolio-bootstrap.router';
 
 const describeIntegration = process.env.PORTFOLIO_BOOTSTRAP_DB_INTEGRATION === '1' ? describe : describe.skip;
@@ -12,6 +13,7 @@ const prisma = new PrismaClient();
 const base = '/api/v1/portfolio-bootstrap';
 const userId = 'user-portfolio-bootstrap-pr2';
 const otherUserId = 'user-portfolio-bootstrap-other';
+const organizationId = 'org-portfolio-bootstrap-integration';
 const touchedEntrySessionIds = new Set<string>();
 
 describeIntegration('Portfolio Bootstrap persistence', () => {
@@ -91,6 +93,144 @@ describeIntegration('Portfolio Bootstrap persistence', () => {
     expect(confirmed.body.data.anchor.provenanceStatus).toBe('user_confirmed');
     expect(confirmedAgain.body.data.anchor.version).toBe(confirmed.body.data.anchor.version);
     expect(await (prisma as any).portfolioAnchorHistory.count({ where: { anchorId: confirmed.body.data.anchor.id } })).toBe(2);
+  });
+
+  it('confirms once and reads back a sequential repeat without adding another history row', async () => {
+    const app = makeApp(userId);
+    const continuation = await seedContinuation(userId);
+    const created = await request(app)
+      .post(`${base}/sessions/from-continuation`)
+      .send({ portfolioEntryContinuationId: continuation.id })
+      .expect(200);
+    const sessionId = created.body.data.bootstrapSession.id;
+    const before = await (prisma as any).portfolioAnchor.findUnique({
+      where: { bootstrapSessionId: sessionId },
+      select: { id: true, status: true, version: true },
+    });
+
+    expect(before).toMatchObject({ status: 'anchor_sufficient', version: 1 });
+
+    const first = await request(app)
+      .post(`${base}/sessions/${sessionId}/anchor/confirm`)
+      .send({})
+      .expect(200);
+    const repeated = await request(app)
+      .post(`${base}/sessions/${sessionId}/anchor/confirm`)
+      .send({})
+      .expect(200);
+    const anchor = await (prisma as any).portfolioAnchor.findUnique({ where: { id: before.id } });
+    const histories = await (prisma as any).portfolioAnchorHistory.findMany({
+      where: { anchorId: before.id },
+      orderBy: { version: 'asc' },
+      select: { version: true },
+    });
+    const confirmations = await prisma.auditLog.count({
+      where: { resource: 'PortfolioBootstrap', resourceId: before.id, action: 'portfolio_anchor_confirmed' },
+    });
+
+    expect(first.body.data.anchor).toMatchObject({ status: 'anchor_confirmed', version: 2 });
+    expect(repeated.body.data.anchor).toMatchObject({ status: 'anchor_confirmed', version: 2 });
+    expect(anchor).toMatchObject({ status: 'anchor_confirmed', version: before.version + 1 });
+    expect(histories.map((history: { version: number }) => history.version)).toEqual([1]);
+    expect(confirmations).toBe(1);
+  });
+
+  it('returns authorized success for both callers confirming the same anchor concurrently', async () => {
+    const setupApp = makeApp(userId);
+    const continuation = await seedContinuation(userId);
+    const created = await request(setupApp)
+      .post(`${base}/sessions/from-continuation`)
+      .send({ portfolioEntryContinuationId: continuation.id })
+      .expect(200);
+    const sessionId = created.body.data.bootstrapSession.id;
+    const before = await (prisma as any).portfolioAnchor.findUnique({
+      where: { bootstrapSessionId: sessionId },
+      select: { id: true, status: true, version: true },
+    });
+    expect(before).toMatchObject({ status: 'anchor_sufficient', version: 1 });
+
+    const capturedErrors: Error[] = [];
+    const app = makeApp(userId, ['portfolio_lead'], {
+      service: makeSessionReadBarrierService(2),
+      capturedErrors,
+    });
+    const responses = await Promise.all([
+      request(app).post(`${base}/sessions/${sessionId}/anchor/confirm`).send({}),
+      request(app).post(`${base}/sessions/${sessionId}/anchor/confirm`).send({}),
+    ]);
+    const anchor = await (prisma as any).portfolioAnchor.findUnique({ where: { id: before.id } });
+    const histories = await (prisma as any).portfolioAnchorHistory.findMany({
+      where: { anchorId: before.id },
+      orderBy: { version: 'asc' },
+      select: { version: true },
+    });
+    const confirmations = await prisma.auditLog.count({
+      where: { resource: 'PortfolioBootstrap', resourceId: before.id, action: 'portfolio_anchor_confirmed' },
+    });
+    const observation = {
+      statuses: responses.map((response) => response.status),
+      returnedAnchors: responses.map((response) => response.body.data?.anchor && ({
+        status: response.body.data.anchor.status,
+        version: response.body.data.anchor.version,
+      })),
+      anchorVersionBefore: before.version,
+      anchorStatusAfter: anchor.status,
+      anchorVersionAfter: anchor.version,
+      historyVersions: histories.map((history: { version: number }) => history.version),
+      semanticConfirmations: confirmations,
+      prismaErrors: capturedErrors.map((error) => ({
+        name: error.name,
+        code: (error as Error & { code?: string }).code,
+        message: error.message,
+      })),
+    };
+
+    expect(observation).toEqual({
+      statuses: [200, 200],
+      returnedAnchors: [
+        { status: 'anchor_confirmed', version: 2 },
+        { status: 'anchor_confirmed', version: 2 },
+      ],
+      anchorVersionBefore: 1,
+      anchorStatusAfter: 'anchor_confirmed',
+      anchorVersionAfter: 2,
+      historyVersions: [1],
+      semanticConfirmations: 1,
+      prismaErrors: [],
+    });
+  });
+
+  it('rejects a concurrent caller who does not own the session without affecting the owner confirmation', async () => {
+    const ownerApp = makeApp(userId);
+    const unauthorizedApp = makeApp(otherUserId);
+    const continuation = await seedContinuation(userId);
+    const created = await request(ownerApp)
+      .post(`${base}/sessions/from-continuation`)
+      .send({ portfolioEntryContinuationId: continuation.id })
+      .expect(200);
+    const sessionId = created.body.data.bootstrapSession.id;
+    const anchorId = created.body.data.anchor.id;
+
+    const [ownerResponse, unauthorizedResponse] = await Promise.all([
+      request(ownerApp).post(`${base}/sessions/${sessionId}/anchor/confirm`).send({}),
+      request(unauthorizedApp).post(`${base}/sessions/${sessionId}/anchor/confirm`).send({}),
+    ]);
+    const anchor = await (prisma as any).portfolioAnchor.findUnique({ where: { id: anchorId } });
+    const histories = await (prisma as any).portfolioAnchorHistory.findMany({
+      where: { anchorId },
+      orderBy: { version: 'asc' },
+      select: { version: true },
+    });
+    const confirmations = await prisma.auditLog.count({
+      where: { resource: 'PortfolioBootstrap', resourceId: anchorId, action: 'portfolio_anchor_confirmed' },
+    });
+
+    expect(ownerResponse.status).toBe(200);
+    expect(unauthorizedResponse.status).toBe(403);
+    expect(unauthorizedResponse.body.error.code).toBe('PORTFOLIO_BOOTSTRAP_FORBIDDEN');
+    expect(anchor).toMatchObject({ status: 'anchor_confirmed', version: 2 });
+    expect(histories.map((history: { version: number }) => history.version)).toEqual([1]);
+    expect(confirmations).toBe(1);
   });
 
   it('pastes deterministic provisional work items idempotently and preserves raw source', async () => {
@@ -766,12 +906,75 @@ describeIntegration('Portfolio Bootstrap persistence', () => {
   });
 });
 
-function makeApp(authenticatedUserId: string, roles: any[] = ['portfolio_lead']) {
+function makeApp(
+  authenticatedUserId: string,
+  roles: any[] = ['portfolio_lead'],
+  options: { service?: PortfolioBootstrapService; capturedErrors?: Error[] } = {},
+) {
   const app = express();
   app.use(express.json());
-  app.use(base, buildPortfolioBootstrapRouter({ authenticate: fakeAuthenticate(authenticatedUserId, roles) }));
-  app.use(errorHandler);
+  app.use(base, buildPortfolioBootstrapRouter({
+    authenticate: fakeAuthenticate(authenticatedUserId, roles),
+    service: options.service,
+  }));
+  if (options.capturedErrors) {
+    app.use((err: Error, req: any, res: any, next: any) => {
+      options.capturedErrors?.push(err);
+      errorHandler(err, req, res, next);
+    });
+  } else {
+    app.use(errorHandler);
+  }
   return app;
+}
+
+function makeSessionReadBarrierService(expectedReads: number): PortfolioBootstrapService {
+  let arrived = 0;
+  let release!: () => void;
+  const barrier = new Promise<void>((resolve) => { release = resolve; });
+  const prismaWithBarrier = new Proxy(prisma, {
+    get(target, property) {
+      if (property !== '$transaction') {
+        const value = Reflect.get(target, property, target);
+        return typeof value === 'function' ? value.bind(target) : value;
+      }
+
+      const transaction = Reflect.get(target, property, target) as (...args: any[]) => Promise<unknown>;
+      return (callback: (tx: any) => Promise<unknown>, ...args: any[]) => transaction.call(
+        target,
+        (tx: any) => {
+          const sessionDelegate = tx.portfolioBootstrapSession;
+          const sessionDelegateWithBarrier = new Proxy(sessionDelegate, {
+            get(delegate, method) {
+              const value = Reflect.get(delegate, method, delegate);
+              if (method !== 'findUnique' || typeof value !== 'function') {
+                return typeof value === 'function' ? value.bind(delegate) : value;
+              }
+              return async (...queryArgs: any[]) => {
+                const session = await value.apply(delegate, queryArgs);
+                if (session?.anchor?.status === 'anchor_sufficient' && arrived < expectedReads) {
+                  arrived += 1;
+                  if (arrived === expectedReads) release();
+                  await barrier;
+                }
+                return session;
+              };
+            },
+          });
+          const txWithBarrier = new Proxy(tx, {
+            get(targetTx, txProperty) {
+              return txProperty === 'portfolioBootstrapSession'
+                ? sessionDelegateWithBarrier
+                : Reflect.get(targetTx, txProperty, targetTx);
+            },
+          });
+          return callback(txWithBarrier);
+        },
+        ...args,
+      );
+    },
+  });
+  return new PortfolioBootstrapService(prismaWithBarrier);
 }
 
 function fakeAuthenticate(authenticatedUserId: string, roles: any[] = ['portfolio_lead']): RequestHandler {
@@ -788,6 +991,15 @@ function fakeAuthenticate(authenticatedUserId: string, roles: any[] = ['portfoli
 }
 
 async function seedContinuation(ownerUserId: string) {
+  await prisma.organization.upsert({
+    where: { id: organizationId },
+    create: {
+      id: organizationId,
+      name: 'Portfolio Bootstrap integration fixture',
+      slug: 'portfolio-bootstrap-integration-fixture',
+    },
+    update: {},
+  });
   await prisma.user.upsert({
     where: { id: ownerUserId },
     create: {
@@ -841,7 +1053,7 @@ async function seedContinuation(ownerUserId: string) {
       handoffId: `handoff-${session.id}`,
       confirmationId: `confirmation-${session.id}`,
       continuedByUserId: ownerUserId,
-      portfolioScope: { kind: 'platform_portfolio_permission', userId: ownerUserId, organizationId: null },
+      portfolioScope: { kind: 'scoped_portfolio_grant', userId: ownerUserId, organizationId },
       sourceSnapshot: {
         session: { rawEntry: session.rawEntry },
         handoff: {
@@ -978,6 +1190,7 @@ async function cleanup() {
   await prisma.portfolioEntrySession.deleteMany({
     where: { id: { in: [...touchedEntrySessionIds] } },
   });
+  await prisma.organization.deleteMany({ where: { id: organizationId } });
 }
 
 async function touchedBootstrapSessionIds(): Promise<string[]> {

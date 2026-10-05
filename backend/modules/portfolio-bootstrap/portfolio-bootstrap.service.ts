@@ -441,9 +441,11 @@ export class PortfolioBootstrapService {
         throw AppError.conflict('El anchor aun no es confirmable.', 'PORTFOLIO_BOOTSTRAP_ANCHOR_NOT_CONFIRMABLE');
       }
 
-      await this.recordHistory(db, anchor, 'portfolio_anchor_confirmed', input.authenticatedUserId);
-      const updated = await db.portfolioAnchor.update({
-        where: { id: anchor.id },
+      // Claim this exact confirmable version before writing history. Concurrent
+      // transactions may both have read the same version, but only one can
+      // satisfy this compare-and-set after PostgreSQL serializes the row write.
+      const claimed = await db.portfolioAnchor.updateMany({
+        where: { id: anchor.id, version: anchor.version, status: 'anchor_sufficient' },
         data: {
           status: 'anchor_confirmed',
           provenanceStatus: 'user_confirmed',
@@ -452,12 +454,34 @@ export class PortfolioBootstrapService {
           version: { increment: 1 },
         },
       });
+
+      if (claimed.count === 0) {
+        // Another authorized confirmation may have committed while this
+        // request waited on the conditional update. Re-read through the
+        // transaction and re-check access before returning its result.
+        const current = await db.portfolioBootstrapSession.findUnique({
+          where: { id: session.id },
+          include: this.sessionInclude(),
+        });
+        if (!current) throw AppError.notFound('Portfolio Bootstrap session', 'PORTFOLIO_BOOTSTRAP_SESSION_NOT_FOUND');
+        await this.authorizeSessionCapability({
+          db,
+          session: current,
+          authenticatedUserId: input.authenticatedUserId,
+          permissions: input.permissions,
+          capability: 'portfolio:write',
+        });
+        if (current.anchor?.status === 'anchor_confirmed') return current;
+        throw AppError.conflict('El anchor cambio durante la confirmacion.', 'PORTFOLIO_BOOTSTRAP_ANCHOR_NOT_CONFIRMABLE');
+      }
+
+      await this.recordHistory(db, anchor, 'portfolio_anchor_confirmed', input.authenticatedUserId);
       const updatedSession = await db.portfolioBootstrapSession.update({
         where: { id: session.id },
         data: { status: 'awaiting_work_intake', bootstrapPhase: 'B2_WORK_INTAKE' },
         include: this.sessionInclude(),
       });
-      await this.writeAudit(db, input.authenticatedUserId, 'portfolio_anchor_confirmed', updated.id, { sessionId: session.id });
+      await this.writeAudit(db, input.authenticatedUserId, 'portfolio_anchor_confirmed', anchor.id, { sessionId: session.id });
       return updatedSession;
     });
     return this.toDto(result);
