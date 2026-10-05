@@ -25,11 +25,13 @@ Las reproducciones se hicieron con `HEAD` exactamente en la base indicada; el á
   mientras ya se mostraba Portfolio Bootstrap. La URL seguía en el contexto Portfolio; no terminó
   en `/auth`.
 
-Por tanto, PR #129 no eliminó indirectamente la pérdida intermitente del panel. En estas
-reproducciones no se observó un destino terminal `/auth`. El artefacto conservado del fallo KAN-101
-no incluye el registro de headers/respuestas de red; el GET sin Bearer con 401 no se declara como
-observación directa. El código sí confirmaba que la recuperación podía despachar ese GET mientras
-`initAuth()` todavía estaba hidratando el token en memoria.
+PR #129 añadió presentación de ruta sugerida en `PortfolioEntryExperience`, sin tocar auth ni
+recovery; por tanto, no eliminó indirectamente la pérdida intermitente del panel. En estas
+reproducciones no se observó un destino terminal `/auth`. En una repetición instrumentada del
+baseline se capturó directamente, para la misma sesión, un GET con `401` y sin `Authorization`,
+seguido por el retry con `Bearer` y `200`. El mismo harness vio la pérdida del panel en 5/10
+reproducciones previas. El orden de código confirmaba que la recuperación podía enviar ese GET
+mientras `initAuth()` todavía hidrataba el token en memoria.
 
 ## Diagnóstico y cambio
 
@@ -47,15 +49,22 @@ sesión reclamada se recupera cuando auth queda ready.
   antes del cambio porque llamó al GET con `authLoading=true`; pasó tras el cambio.
 - `PortfolioEntryExperience.test.tsx`: 32/32 PASS.
 - KAN-101 DELETE x10: 10/10 PASS después del cambio.
+- El E2E KAN-101 ahora registra status y presencia de `Authorization` en lecturas de sesión; el test
+  falla ante el `401` sin `Bearer` observado en baseline. El token se redacta en mensajes de error.
 - Portfolio-first continuation/reload x10: 10/10 PASS después del cambio.
 - `portfolio-entry-conversion.spec.ts`: cinco invocaciones completas, cada una en wrapper aislado;
   las cinco pasaron y `test-results/.last-run.json` terminó en `passed`, sin fallos ni 429.
+- Durante la iteración hubo una invocación exploratoria del spec completo con cuatro fallos,
+  incluyendo una pérdida del panel; no se cuenta dentro del bloque final AC6. Después, el KAN-101
+  instrumentado pasó x10 y cinco wrappers completos consecutivos pasaron.
 - `npm run typecheck:front`: PASS.
 - `npm run lint`: PASS.
 - `npm run test:front`: PASS.
 - `npm run build`: PASS; el build conserva sus advertencias existentes sobre imports dinámicos y
   tamaño de chunks.
 - `git diff --check`: PASS.
+- BrowserSkill (`bsk doctor`): NO CORRIDO; `bsk` no está instalado. El recorrido sí se ejecutó en
+  Chromium vía Playwright; no hubo sesión manual de Chrome/BrowserSkill.
 
 ## Cierre
 
