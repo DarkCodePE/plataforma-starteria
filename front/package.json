@@ -45,6 +45,7 @@
     "db:pilot:migrate": "tsx scripts/database/run-prisma-for-disposable-db.ts pilot migrate deploy",
     "db:pilot:status": "tsx scripts/database/run-prisma-for-disposable-db.ts pilot migrate status",
     "db:pilot:seed": "tsx prisma/seed.pilot-dry-run.ts",
+    "test:e2e:prod": "playwright test e2e/prod/ --workers=1",
     "test:e2e:job-driven": "npm run test:e2e -- e2e/job-driven/",
     "test:e2e:copilot": "npm run test:e2e -- e2e/portfolio-copilot-create-front.spec.ts",
     "test:e2e:portfolio": "npm run test:e2e -- e2e/portfolio-copilot-create-front.spec.ts e2e/portfolio-steps-integration.spec.ts",

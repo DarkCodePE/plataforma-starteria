@@ -3,6 +3,7 @@ import { AuthenticatedRequest } from '../../shared/types/auth.types';
 import { PortfolioService } from './portfolio.service';
 import { ApiResponse } from '../../shared/types/api.types';
 import { PortfolioHomeReadService } from './portfolio-home.read-service';
+import { defaultOrganizationId, resolvePortfolioScope } from './portfolio-scope';
 import {
   dryRunProjectionReadFailure,
   shouldFailStrategicFrontProjectionRead,
@@ -14,6 +15,11 @@ export class PortfolioController {
     private readonly homeReadService?: PortfolioHomeReadService,
   ) {}
 
+  // El alcance organizacional se resuelve con el mismo cliente del servicio.
+  private get prismaClient() {
+    return (this.service as any).prisma;
+  }
+
   getHome = async (
     req: AuthenticatedRequest,
     res: Response<ApiResponse>,
@@ -23,7 +29,7 @@ export class PortfolioController {
       if (!this.homeReadService || !req.user?.id) {
         throw new Error('Portfolio Home read service is not configured');
       }
-      const data = await this.homeReadService.getHome(req.user.id);
+      const data = await this.homeReadService.getHome(req.user.id, await resolvePortfolioScope(this.prismaClient, req.user));
       res.json({ success: true, data });
     } catch (err) {
       next(err);
@@ -33,7 +39,7 @@ export class PortfolioController {
   // ─── Strategic Fronts ────────────────────────────────────────────────────────
 
   listStrategicFronts = async (
-    _req: AuthenticatedRequest,
+    req: AuthenticatedRequest,
     res: Response<ApiResponse>,
     next: NextFunction,
   ) => {
@@ -41,7 +47,7 @@ export class PortfolioController {
       if (shouldFailStrategicFrontProjectionRead()) {
         throw dryRunProjectionReadFailure();
       }
-      const data = await this.service.listStrategicFronts();
+      const data = await this.service.listStrategicFronts(await resolvePortfolioScope(this.prismaClient, req.user!));
       res.json({ success: true, data });
     } catch (err) {
       next(err);
@@ -56,7 +62,13 @@ export class PortfolioController {
     try {
       // Sin owner explícito, quien crea el frente es su owner: así hereda la autoridad de decisión
       // de las iniciativas que nazcan de sus retos (initiative-governance.ts).
-      const data = await this.service.createStrategicFront({ ...req.body, ownerId: req.body.ownerId ?? req.user?.id });
+      const data = await this.service.createStrategicFront({
+        ...req.body,
+        ownerId: req.body.ownerId ?? req.user?.id,
+        // Sin organización explícita, el frente queda en la organización de quien lo crea
+        // (portfolio-scope.ts): deja de verse desde otras organizaciones.
+        organizationId: req.body.organizationId ?? (await defaultOrganizationId(this.prismaClient, req.user?.id)) ?? undefined,
+      });
       res.status(201).json({ success: true, data });
     } catch (err) {
       next(err);

@@ -6,6 +6,7 @@
  * snapshot, not canonical domain state; the returned object is a request-scoped
  * composition for the Home read path.
  */
+import { frontScopeWhere, type PortfolioScope } from './portfolio-scope';
 
 export type PortfolioHomePersonView = {
   id?: string | null;
@@ -215,12 +216,12 @@ const READ_INCLUDE = {
 export class PortfolioHomeReadService {
   constructor(private readonly prisma: PrismaLike) {}
 
-  async getHome(userId: string): Promise<PortfolioHomeReadModel> {
+  async getHome(userId: string, scope: PortfolioScope = { all: true, organizationIds: [] }): Promise<PortfolioHomeReadModel> {
     const [fronts, reading, handoffAssignments, learnings] = await Promise.all([
-      this.prisma.strategicFront.findMany({ include: READ_INCLUDE, orderBy: { updatedAt: 'desc' } }),
+      this.prisma.strategicFront.findMany({ where: frontScopeWhere(scope), include: READ_INCLUDE, orderBy: { updatedAt: 'desc' } }),
       this.loadLatestReading(userId),
       this.loadHandoffAssignments(),
-      this.loadLearnings(),
+      this.loadLearnings(scope),
     ]);
 
     const strategicUnits = (fronts ?? []).map((front) => this.mapStrategicUnit(front));
@@ -249,9 +250,11 @@ export class PortfolioHomeReadService {
     };
   }
 
-  private async loadLearnings(): Promise<PortfolioLearningView[]> {
+  private async loadLearnings(scope: PortfolioScope): Promise<PortfolioLearningView[]> {
     if (!this.prisma.portfolioLearning?.findMany) return [];
     const rows = await this.prisma.portfolioLearning.findMany({
+      // Fuera de admin, sólo aprendizajes de frentes en el alcance (los sin frente no tienen dueño visible).
+      where: scope.all ? undefined : { strategicFront: frontScopeWhere(scope) },
       orderBy: { decidedAt: 'desc' },
       take: 20,
       include: { project: { select: { name: true } }, challenge: { select: { title: true } } },

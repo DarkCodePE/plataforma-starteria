@@ -143,6 +143,7 @@ describe('portfolio.router — autorización de escrituras (ADR-028)', () => {
     const res = await request(makeApp()).get('/api/v1/portfolio/home');
 
     expect(res.status, JSON.stringify(res.body)).toBe(200);
-    expect(getHome).toHaveBeenCalledWith('u-par');
+    // Portfolio Home recibe el alcance organizacional (portfolio-scope.ts); sin portfolio:read, abierto como antes.
+    expect(getHome).toHaveBeenCalledWith('u-par', expect.objectContaining({ organizationIds: expect.any(Array) }));
   });
 });

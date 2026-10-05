@@ -1,0 +1,95 @@
+# E2E Job-Driven en producción con usuario dedicado
+
+Cómo correr el recorrido E2E contra producción (`https://starter-ia.com`) **sin usar cuentas
+reales** y sin que los datos de prueba se vean en otras organizaciones.
+
+> Producción es una puerta de una vía: lo que se escribe queda escrito hasta que se limpia. Cada
+> paso de escritura de este runbook pide confirmación explícita de una persona.
+
+## Precondiciones
+
+1. **Aislamiento por organización desplegado.** Las listas de portafolio (frentes, Portfolio Home,
+   capacidad, aprendizajes) filtran por la organización de quien las lee
+   (`backend/modules/portfolio/portfolio-scope.ts`). Sin esto, otros Portfolio Lead verían los
+   frentes de prueba. Lo cubre `front/e2e/job-driven/portfolio-org-isolation.spec.ts`.
+2. **Fix de `teamMembers` desplegado** (PR #135). Sin él, Portfolio Home se cae apenas una
+   iniciativa de Reto avanza un Step.
+3. **Acceso a la base de producción** para el setup y la limpieza (`DATABASE_URL`). En producción
+   el registro va a waitlist y no hay API para crear organizaciones.
+
+## 1. Crear el tenant de prueba (una vez)
+
+```bash
+cd front
+export DATABASE_URL='<producción>'
+export E2E_PROD_LEAD_PASSWORD='<≥12 caracteres, en el gestor de secretos>'
+export E2E_PROD_PARTICIPANT_PASSWORD='<≥12 caracteres, en el gestor de secretos>'
+
+npx tsx ../backend/scripts/e2e-prod-tenant.ts setup          # seco: muestra qué crearía
+npx tsx ../backend/scripts/e2e-prod-tenant.ts setup --apply  # crea
+```
+
+Crea, de forma idempotente:
+
+| Qué | Valor |
+|---|---|
+| Organización | `org-e2e-prod` · "Starteria E2E (prueba)" |
+| Portfolio Lead | `e2e-lead@starteria.test` (`portfolio_lead`, admin de la org) |
+| Participante | `e2e-participante@starteria.test` (`participante`, miembro de la org) |
+
+Los emails se cambian con `E2E_PROD_LEAD_EMAIL` / `E2E_PROD_PARTICIPANT_EMAIL`. Las contraseñas
+nunca van al repo.
+
+## 2. Correr el recorrido
+
+```bash
+cd front
+E2E_PROD_BASE_URL=https://starter-ia.com \
+E2E_PROD_LEAD_PASSWORD=... E2E_PROD_PARTICIPANT_PASSWORD=... \
+npm run test:e2e:prod
+```
+
+`front/e2e/prod/job-driven-prod.spec.ts` usa **sólo API y navegador** (nada de Prisma). Todo lo
+que crea lleva el prefijo `[E2E-PROD] <fecha>`:
+
+| Paso | § del doc | Escribe |
+|---|---|---|
+| Frente en la org de prueba (verifica `organizationId`) | §7 | Frente |
+| Copilot sugiere separar; se confirma un solo reto | §8–§11, §26 | Reto |
+| Participante crea la iniciativa; el lead queda con autoridad; Mission Review en navegador | §15, §18, §23 | Proyecto, governance |
+| Lectura de cobertura y de capacidad | §13, §4/§24 | — |
+| Reconstrucción y modos del Copilot | §14, §20 | — |
+
+**No corre en producción** el ciclo Step 0–4 ni la decisión organizacional: el ciclo exige evidencia
+validada (`/truth`) y la decisión deja `Decision` + `PortfolioLearning`, que no se borran por API.
+Siguen cubiertos por la suite local (`npm run test:e2e:job-driven`).
+
+Al terminar, el spec borra sus frentes (los retos caen en cascada) y archiva el proyecto.
+
+`npm run test:e2e` (local) no incluye `e2e/prod/`: sólo entra si `E2E_PROD_BASE_URL` está definida.
+
+## 3. Limpiar
+
+El `afterAll` limpia lo que puede por API. Para dejar el tenant en cero (proyectos archivados,
+governance, cualquier resto de una corrida cortada):
+
+```bash
+npx tsx ../backend/scripts/e2e-prod-tenant.ts cleanup          # seco: lista lo que borraría
+npx tsx ../backend/scripts/e2e-prod-tenant.ts cleanup --apply
+```
+
+Borra sólo frentes de `org-e2e-prod` o de los usuarios de prueba, y proyectos de esos usuarios.
+**Aborta** si encuentra un frente de esos usuarios en otra organización.
+
+## Qué ve el resto de la plataforma
+
+- Otros Portfolio Lead: nada (alcance por organización).
+- Admins de plataforma: ven todo, incluidos los frentes `[E2E-PROD]` mientras existan.
+- Participantes: el reto de prueba no se publica, así que no aparece en bandejas.
+
+## Antes de la primera corrida
+
+- [ ] PR de aislamiento por organización y PR #135 desplegados
+- [ ] Setup en seco revisado por una persona, luego `--apply`
+- [ ] Contraseñas guardadas en el gestor de secretos
+- [ ] Primera corrida con alguien mirando; limpieza en seco revisada antes de `--apply`
