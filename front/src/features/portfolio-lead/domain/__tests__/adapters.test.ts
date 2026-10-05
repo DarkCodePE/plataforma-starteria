@@ -10,6 +10,7 @@ import {
   adaptStrategicFront,
   adaptChallenge,
   adaptInitiative,
+  adaptTeamMembers,
   toBackendStrategicFront,
   toBackendChallenge,
   toBackendInitiativeMeta,
@@ -268,5 +269,29 @@ describe('E2E Job-Driven Ola 2: restricciones del Frente y envelope del Reto (Co
   it('adaptStrategicFront y toBackendStrategicFront transportan las restricciones', () => {
     expect(adaptStrategicFront({ id: 'f1', name: 'Frente', constraints: 'Sin más headcount' }).constraints).toBe('Sin más headcount');
     expect(toBackendStrategicFront({ constraints: '' })).toEqual({ constraints: '' });
+  });
+});
+
+describe('adaptTeamMembers (meta.teamMembers derivado, ADR-023/024)', () => {
+  it('acepta strings y objetos del roster y devuelve nombres', () => {
+    expect(adaptTeamMembers([
+      'Ana',
+      { userId: 'u2', name: 'Beto', role: 'EDITOR' },
+      { userId: 'u3', name: null, email: 'carla@x.t' },
+      { userId: 'u4', name: null },
+      { name: '  ' },
+      null,
+      42,
+    ])).toEqual(['Ana', 'Beto', 'carla@x.t', 'u4']);
+  });
+
+  it('adaptInitiative ya no deja objetos en teamMembers', () => {
+    const initiative = adaptInitiative({ projectId: 'p1', challengeId: 'c1', teamMembers: [{ userId: 'u1', name: 'Dana' }] } as any);
+    expect(initiative.teamMembers).toEqual(['Dana']);
+  });
+
+  it('no es array: lista vacía', () => {
+    expect(adaptTeamMembers(undefined)).toEqual([]);
+    expect(adaptTeamMembers({})).toEqual([]);
   });
 });

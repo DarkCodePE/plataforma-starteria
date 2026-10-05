@@ -242,6 +242,25 @@ export function toBackendInitiativeMeta(challengeId: string, input: Raw): Raw {
   return out;
 }
 
+// meta.teamMembers es un cache derivado del roster (ADR-023/024): syncInitiativeProgress lo escribe
+// como objetos {userId, name, role, status, inherited}, mientras que los datos anteriores y el seed
+// lo guardan como strings. El dominio del front usa nombres (string[]); normalizar acá evita que
+// selectores como getChallengePeopleCount revienten con "person.trim is not a function".
+export function adaptTeamMembers(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((member) => {
+      if (typeof member === 'string') return member;
+      if (member && typeof member === 'object') {
+        const m = member as Record<string, unknown>;
+        const label = m.name ?? m.email ?? m.userId;
+        return typeof label === 'string' ? label : '';
+      }
+      return '';
+    })
+    .filter((label) => label.trim().length > 0);
+}
+
 export function adaptInitiative(raw: Raw): Initiative {
   const project = raw.project ?? {};
   return {
@@ -272,7 +291,7 @@ export function adaptInitiative(raw: Raw): Initiative {
     requiresExternalCapability: raw.requiresExternalCapability ?? false,
     partialSignal: raw.partialSignal ?? false,
     resolvedCorePart: raw.resolvedCorePart ?? false,
-    teamMembers: Array.isArray(raw.teamMembers) ? raw.teamMembers : [],
+    teamMembers: adaptTeamMembers(raw.teamMembers),
     executiveSummary: raw.executiveSummary ?? '',
     experimentSummary: raw.experimentSummary ?? '',
     deliverables: Array.isArray(raw.deliverables) ? raw.deliverables : [],
