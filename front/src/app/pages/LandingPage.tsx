@@ -1,8 +1,10 @@
-import { ArrowRight, GitBranch, Layers3, LogIn, ShieldCheck, Target } from 'lucide-react';
-import { useNavigate } from 'react-router';
+import { ArrowDown, ArrowRight, LogIn, ShieldCheck } from 'lucide-react';
+import { Link } from 'react-router';
 import { Button } from '../components/ui/button';
 import { Badge } from '../components/ui/badge';
 import { useApp } from '../context/AppContext';
+import { StarteriaProductPreview } from '../components/landing/StarteriaProductPreview';
+
 const VALUE_FLOW = ['Define la meta', 'Alinea el trabajo', 'Hazlas realidad', 'Decide'];
 
 const PROBLEMS = [
@@ -20,29 +22,6 @@ const PROBLEMS = [
   },
 ];
 
-const IMPACT_CUES = [
-  {
-    label: 'Atencion',
-    title: 'Que requiere foco ahora',
-    body: 'Separa urgencia, incertidumbre y decision pendiente sin convertirlo en una alerta de peligro.',
-  },
-  {
-    label: 'Evidencia',
-    title: 'Que falta para sostener una decision',
-    body: 'Distingue actividad de prueba util para continuar, ajustar, pausar o escalar.',
-  },
-  {
-    label: 'Alineacion',
-    title: 'Como se conecta el trabajo',
-    body: 'Relaciona prioridades, retos e iniciativas para que el portafolio sea mas legible.',
-  },
-  {
-    label: 'Decision',
-    title: 'Que movimiento se habilita',
-    body: 'Ayuda a preparar conversaciones donde las personas deciden con mas claridad.',
-  },
-];
-
 const TRUST_PRINCIPLES = [
   'Puedes empezar con contexto incompleto.',
   'Nada se convierte en trabajo formal sin revision.',
@@ -51,107 +30,95 @@ const TRUST_PRINCIPLES = [
 ];
 
 export function LandingPage() {
-  const navigate = useNavigate();
   const { isAuthenticated } = useApp();
 
   return (
-    <div className="min-h-screen overflow-hidden bg-[linear-gradient(180deg,#f8fafc_0%,#ffffff_45%,#f8fafc_100%)] text-slate-950">
-      <header className="sticky top-0 z-40 border-b border-white/70 bg-white/82 backdrop-blur">
-        <div className="mx-auto flex max-w-7xl items-center justify-between gap-4 px-4 py-4 sm:px-6 lg:px-8">
-          <button
-            type="button"
-            onClick={() => navigate('/')}
-            className="text-xl font-semibold tracking-tight text-slate-950 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring/30"
+    <div className="min-h-screen bg-background-default text-text-primary">
+      <a
+        href="#contenido"
+        className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-50 focus:rounded-ds-sm focus:bg-surface-default focus:px-4 focus:py-3 focus:text-text-primary focus:shadow-elevation-overlay"
+      >
+        Saltar al contenido
+      </a>
+
+      <header className="sticky top-0 z-40 border-b border-border-default bg-surface-default/95 backdrop-blur">
+        <div className="mx-auto flex max-w-7xl items-center justify-between gap-4 px-4 py-3 sm:px-6 lg:px-8">
+          <Link
+            to="/"
+            className="rounded-sm text-xl font-semibold tracking-tight text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring/30"
           >
             Starteria
-          </button>
-          <nav className="hidden items-center gap-7 md:flex" aria-label="Navegacion principal">
-            <a href="#problema" className="text-sm font-medium text-slate-600 hover:text-slate-950">
-              Problema
+          </Link>
+
+          <nav className="hidden items-center gap-7 md:flex" aria-label="Navegación principal">
+            <a href="#como-funciona" className="text-sm font-medium text-text-secondary hover:text-text-primary">
+              Cómo funciona
             </a>
-            <a href="#como-funciona" className="text-sm font-medium text-slate-600 hover:text-slate-950">
-              Como funciona
+            <a href="#vista-producto" className="text-sm font-medium text-text-secondary hover:text-text-primary">
+              Producto
             </a>
-            <a href="#confianza" className="text-sm font-medium text-slate-600 hover:text-slate-950">
+            <a href="#confianza" className="text-sm font-medium text-text-secondary hover:text-text-primary">
               Confianza
             </a>
           </nav>
-          <Button
-            type="button"
-            variant="secondary"
-            size="sm"
-            onClick={() => navigate(isAuthenticated ? '/dashboard' : '/auth')}
-          >
-            <LogIn size={15} />
-            {isAuthenticated ? 'Ir al panel' : 'Iniciar sesion'}
+
+          <Button asChild variant="secondary" size="sm">
+            <Link to={isAuthenticated ? '/dashboard' : '/auth'}>
+              <LogIn aria-hidden="true" size={15} />
+              {isAuthenticated ? 'Ir al panel' : 'Iniciar sesión'}
+            </Link>
           </Button>
         </div>
       </header>
 
-      <main>
-        <section className="mx-auto max-w-7xl px-4 pb-10 pt-10 sm:px-6 md:pb-14 md:pt-16 lg:px-8 lg:pb-16 lg:pt-20">
+      <main id="contenido">
+        <section className="mx-auto max-w-7xl scroll-mt-24 px-4 pb-5 pt-8 sm:px-6 sm:pt-10 lg:px-8 lg:pb-7 lg:pt-10">
           <div className="max-w-4xl">
-            <Badge variant="secondary" className="border-indigo-100 bg-white/80 text-slate-700 shadow-sm">
-              Plataforma de decisiones para portafolios
-            </Badge>
-            <h1 className="mt-5 max-w-4xl text-4xl font-semibold leading-[1.02] tracking-tight text-slate-950 md:text-6xl">
+            <h1 className="max-w-4xl text-4xl font-semibold leading-tight tracking-tight text-text-primary sm:text-5xl">
               Haz que la estrategia se haga realidad.
             </h1>
-            <p className="mt-6 max-w-2xl text-base leading-7 text-slate-600 md:text-lg">
+            <p className="mt-5 max-w-3xl text-base leading-7 text-text-secondary sm:text-lg">
               Alinea objetivos, conecta equipos y haz avanzar las iniciativas que realmente importan.
             </p>
-            <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-600 md:text-base">
+            <p className="mt-3 max-w-3xl text-sm leading-6 text-text-secondary sm:text-base">
               Starteria mantiene estrategia, ejecución y evidencia conectadas para que sepas qué mover, qué necesita atención y qué decisión preparar.
             </p>
-            <Button type="button" className="mt-6" onClick={() => navigate('/auth')}>
-              Ya tengo claro qué quiero mover<ArrowRight size={16} />
+            <Button asChild className="mt-5">
+              <Link to="/auth">
+                Ya tengo claro qué quiero mover
+                <ArrowRight aria-hidden="true" size={16} />
+              </Link>
             </Button>
           </div>
-
-          <PlatformStructure />
         </section>
 
-        <section aria-labelledby="portfolio-entry-heading" className="border-y border-slate-200/70 bg-white/80">
-          <div className="mx-auto grid max-w-7xl gap-8 px-4 py-10 sm:px-6 md:py-14 lg:grid-cols-[minmax(0,0.8fr)_minmax(0,1fr)] lg:items-start lg:px-8">
-            <div className="max-w-xl">
-              <p className="text-xs font-semibold uppercase text-indigo-700">Una opción si aún buscas claridad</p>
-              <h2 id="portfolio-entry-heading" className="mt-3 text-2xl font-semibold tracking-tight text-slate-950 md:text-3xl">
-                Aclara qué quieres conseguir antes de decidir qué hacer.
-              </h2>
-              <p className="mt-3 text-base leading-7 text-slate-600">
-                Prepara una lectura inicial de lo que quieres lograr, por qué importa, qué ocurre y qué decisión necesitas preparar. El punto de partida es una hipótesis; podrás ver qué falta aclarar.
-              </p>
-              <Button type="button" variant="secondary" className="mt-5" onClick={() => navigate('/public/start')}>
-                Quiero alinear mi objetivo primero<ArrowRight size={16} />
-              </Button>
-            </div>
-            <div className="rounded-[22px] border border-slate-200 bg-slate-50 p-5 md:p-6">
-              <p className="text-sm font-semibold text-slate-900">Una lectura estratégica provisional</p>
-              <p className="mt-2 text-sm leading-6 text-slate-600">
-                Ordena qué quieres lograr, para qué, qué está pasando, qué parece estar en juego, qué decisión preparar, por dónde podrías empezar y qué necesitas aclarar.
-              </p>
-              <p className="mt-3 text-xs leading-5 text-slate-500">No genera un plan definitivo, un portfolio ni iniciativas automáticamente.</p>
-            </div>
-          </div>
-        </section>
+        <PlatformStructure />
 
-        <section id="problema" className="border-y border-slate-200/70 bg-white/78">
-          <div className="mx-auto max-w-7xl px-4 py-16 sm:px-6 lg:px-8">
-            <div className="grid gap-10 lg:grid-cols-[0.68fr_1fr] lg:items-start">
+        <StarteriaProductPreview />
+
+        <section
+          id="problema"
+          aria-labelledby="problema-title"
+          className="scroll-mt-24 border-y border-border-default bg-surface-default"
+        >
+          <div className="mx-auto max-w-7xl px-4 py-12 sm:px-6 sm:py-14 lg:px-8 lg:py-16">
+            <div className="grid gap-8 lg:grid-cols-[minmax(0,0.68fr)_minmax(0,1fr)] lg:gap-12">
               <div>
-                <p className="text-xs font-semibold uppercase text-indigo-700">Que resuelve</p>
-                <h2 className="mt-3 text-3xl font-semibold tracking-tight text-slate-950 md:text-4xl">
-                  El reto no es escribir mas. Es entender que merece atencion.
+                <p className="text-xs font-semibold uppercase tracking-wide text-brand-primary">
+                  Qué resuelve
+                </p>
+                <h2 id="problema-title" className="mt-3 text-3xl font-semibold leading-tight tracking-tight text-text-primary sm:text-4xl">
+                  El reto no es escribir más. Es entender qué merece atención.
                 </h2>
-                <p className="mt-4 text-base leading-7 text-slate-600">
-                  El problema no suele ser falta de actividad. Suele ser falta de estructura para entender que mover, que evidencia mirar y que decision tomar.
+                <p className="mt-4 text-base leading-7 text-text-secondary">
+                  El problema no suele ser falta de actividad. Suele ser falta de estructura para entender qué mover, qué evidencia mirar y qué decisión tomar.
                 </p>
               </div>
-              <div className="divide-y divide-slate-200 rounded-[26px] border border-slate-200 bg-white shadow-sm shadow-slate-900/[0.03]">
+              <div className="divide-y divide-border-default border-y border-border-default">
                 {PROBLEMS.map((item) => (
-                  <article key={item.title} className="grid gap-3 p-5 md:grid-cols-[220px_1fr] md:p-6">
-                    <h3 className="text-base font-semibold text-slate-950">{item.title}</h3>
-                    <p className="text-sm leading-6 text-slate-600">{item.body}</p>
+                  <article key={item.title} className="grid gap-2 py-4 sm:grid-cols-[220px_1fr] sm:gap-5 sm:py-5">
+                    <h3 className="text-base font-semibold leading-6 text-text-primary">{item.title}</h3>
+                    <p className="text-sm leading-6 text-text-secondary">{item.body}</p>
                   </article>
                 ))}
               </div>
@@ -159,134 +126,168 @@ export function LandingPage() {
           </div>
         </section>
 
-        <section id="como-funciona" className="mx-auto max-w-7xl px-4 py-16 sm:px-6 lg:px-8">
-          <div className="grid gap-10 lg:grid-cols-[0.74fr_1fr] lg:items-start">
+        <section
+          id="confianza"
+          aria-labelledby="confianza-title"
+          className="scroll-mt-24 bg-background-subtle"
+        >
+          <div className="mx-auto grid max-w-7xl gap-8 px-4 py-12 sm:px-6 sm:py-14 lg:grid-cols-[minmax(0,0.76fr)_minmax(0,1fr)] lg:gap-12 lg:px-8 lg:py-16">
             <div>
-              <p className="text-xs font-semibold uppercase text-indigo-700">Como funciona</p>
-              <h2 className="mt-3 text-3xl font-semibold tracking-tight text-slate-950 md:text-4xl">
-                De la meta a una decisión mejor preparada.
-              </h2>
-              <p className="mt-4 text-base leading-7 text-slate-600">
-                Un flujo conceptual para conectar intención, trabajo y aprendizaje continuo.
+              <p className="text-xs font-semibold uppercase tracking-wide text-brand-primary">
+                Por qué confiar
               </p>
-            </div>
-            <div aria-label="Flujo conceptual de valor" className="grid gap-3 sm:grid-cols-4">
-              {VALUE_FLOW.map((step, index) => (
-                <div key={step} className="flex items-center gap-3">
-                  <p className="min-h-14 flex-1 rounded-[18px] border border-slate-200 bg-white p-4 text-sm font-semibold text-slate-900">{step}</p>
-                  {index < VALUE_FLOW.length - 1 ? <ArrowRight aria-hidden="true" size={16} className="hidden shrink-0 text-slate-400 sm:block" /> : null}
-                </div>
-              ))}
-            </div>
-          </div>
-        </section>
-
-        <section className="border-y border-slate-200/70 bg-slate-950 text-white">
-          <div className="mx-auto grid max-w-7xl gap-10 px-4 py-16 sm:px-6 lg:grid-cols-[0.76fr_1fr] lg:px-8">
-            <div>
-              <p className="text-xs font-semibold uppercase text-cyan-200">Que ayuda a mover</p>
-              <h2 className="mt-3 text-3xl font-semibold tracking-tight md:text-4xl">
-                Senales de claridad para mirar el portafolio con mas criterio.
-              </h2>
-              <p className="mt-4 text-base leading-7 text-slate-300">
-                Starteria hace visibles areas de atencion sin convertir ejemplos en datos reales ni reemplazar la decision humana.
-              </p>
-            </div>
-            <div className="grid gap-3 sm:grid-cols-2">
-              {IMPACT_CUES.map((item) => (
-                <div key={item.label} className="rounded-[22px] border border-white/10 bg-white/7 p-5">
-                  <div className="flex items-center justify-between gap-3">
-                    <span className="text-xs font-semibold uppercase text-cyan-200">{item.label}</span>
-                    <span className="h-2 w-2 rounded-full bg-cyan-300" />
-                  </div>
-                  <p className="mt-5 text-base font-semibold leading-6 text-white">{item.title}</p>
-                  <p className="mt-2 text-sm leading-6 text-slate-300">{item.body}</p>
-                </div>
-              ))}
-            </div>
-          </div>
-        </section>
-
-        <section id="confianza" className="mx-auto max-w-7xl px-4 py-16 sm:px-6 lg:px-8">
-          <div className="grid gap-10 lg:grid-cols-[0.76fr_1fr] lg:items-start">
-            <div>
-              <p className="text-xs font-semibold uppercase text-indigo-700">Por que confiar</p>
-              <h2 className="mt-3 text-3xl font-semibold tracking-tight text-slate-950 md:text-4xl">
+              <h2 id="confianza-title" className="mt-3 text-3xl font-semibold leading-tight tracking-tight text-text-primary sm:text-4xl">
                 Starteria estructura tu contexto sin sustituir tu criterio.
               </h2>
-              <p className="mt-4 text-base leading-7 text-slate-600">
-                La plataforma esta disenada para ayudarte a pensar mejor antes de formalizar trabajo, no para decidir por ti.
+              <p className="mt-4 text-base leading-7 text-text-secondary">
+                La plataforma está diseñada para ayudarte a pensar mejor antes de formalizar trabajo, no para decidir por ti.
               </p>
             </div>
-            <div className="grid gap-4 sm:grid-cols-2">
-              {TRUST_PRINCIPLES.map((item, index) => {
-                const Icon = index % 2 === 0 ? ShieldCheck : Target;
-                return (
-                  <article key={item} className="rounded-[22px] border border-slate-200 bg-white p-5 shadow-sm shadow-slate-900/[0.03]">
-                    <Icon size={19} className="text-indigo-600" />
-                    <p className="mt-4 text-sm font-semibold leading-6 text-slate-950">{item}</p>
-                  </article>
-                );
-              })}
-            </div>
+
+            <ul className="divide-y divide-border-default border-y border-border-default">
+              {TRUST_PRINCIPLES.map((principle) => (
+                <li key={principle} className="flex items-start gap-3 py-4 text-sm leading-6 text-text-primary sm:py-5">
+                  <ShieldCheck aria-hidden="true" className="mt-1 shrink-0 text-brand-primary" size={18} />
+                  <span>{principle}</span>
+                </li>
+              ))}
+            </ul>
           </div>
         </section>
 
-        <section className="px-4 pb-16 sm:px-6 lg:px-8">
-          <div className="mx-auto grid max-w-7xl gap-8 rounded-[32px] border border-slate-200 bg-white p-6 shadow-sm shadow-slate-900/[0.04] md:p-8 lg:grid-cols-[1fr_auto] lg:items-center">
-            <div>
-              <div className="flex flex-wrap gap-2">
-                <Badge variant="secondary" className="gap-1.5">
-                  <Layers3 size={13} />
-                  Plataforma estructurada
-                </Badge>
-                <Badge variant="secondary" className="gap-1.5">
-                  <GitBranch size={13} />
-                  De intencion a decision
-                </Badge>
-              </div>
-              <h2 className="mt-4 text-3xl font-semibold tracking-tight text-slate-950">
-                ¿Ya sabes qué quieres mover?
-              </h2>
-              <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-600">
-                Entra a Starteria y conecta ese objetivo con el trabajo de tu equipo.
-              </p>
-            </div>
-            <Button type="button" onClick={() => navigate('/auth')}>
-              Ir a Starteria<ArrowRight size={16} />
-            </Button>
-          </div>
-        </section>
+        {/* El slot comercial sigue omitido hasta que existan destinos autorizados. */}
+        <OptionalPortfolioEntry />
       </main>
+      <LandingClosing isAuthenticated={isAuthenticated} />
     </div>
   );
 }
 
 function PlatformStructure() {
   return (
-    <div aria-label="Modelo conceptual de Starteria" className="mt-8 rounded-[24px] border border-slate-200 bg-white p-4 shadow-sm shadow-slate-900/[0.03] sm:p-6">
-      <p className="text-xs font-semibold uppercase text-indigo-700">Modelo conceptual · ilustrativo</p>
-      <p className="mt-1 text-xs leading-5 text-slate-500">Una forma de ver cómo se conectan los elementos del trabajo, sin analizar al visitante ni mostrar datos reales.</p>
-      <div className="mt-5 grid items-center gap-4 md:grid-cols-[1fr_auto_1fr]">
-        <ul className="grid list-none gap-2 p-0 sm:grid-cols-2">
-          {['Objetivos', 'Necesidades', 'Iniciativas', 'Equipos'].map((label) => (
-            <li key={label} className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-sm font-medium text-slate-800">{label}</li>
-          ))}
-        </ul>
-        <div className="flex flex-col items-center justify-center gap-3 text-slate-400">
-          <ArrowRight aria-hidden="true" size={18} className="rotate-90 md:rotate-0" />
-          <span className="rounded-2xl bg-slate-950 px-5 py-4 text-center text-sm font-semibold text-white">
-            Starteria
-            <span className="mt-1 block text-xs font-normal text-slate-300">Contexto. Trabajo. Decisiones.</span>
-          </span>
-          <ArrowRight aria-hidden="true" size={18} className="rotate-90 md:rotate-0" />
+    <section
+      id="como-funciona"
+      aria-labelledby="platform-structure-title"
+      aria-label="Modelo conceptual de Starteria"
+      className="scroll-mt-24 border-y border-border-default bg-surface-default"
+    >
+      <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 sm:py-7 lg:px-8">
+        <h2
+          id="platform-structure-title"
+          className="max-w-3xl text-2xl font-semibold leading-tight tracking-tight text-text-primary sm:text-3xl"
+        >
+          De la meta a una decisión mejor preparada.
+        </h2>
+        <p className="mt-3 max-w-3xl text-sm leading-6 text-text-secondary sm:text-base">
+          Un flujo conceptual para conectar intención, trabajo y aprendizaje continuo.
+        </p>
+
+        <div className="mt-5 grid items-center gap-3 md:grid-cols-[minmax(0,1fr)_auto_auto_auto_minmax(0,1fr)] md:gap-4">
+          <p className="text-sm font-medium leading-6 text-text-primary sm:text-base">
+            Objetivos / Necesidades / Iniciativas / Equipos
+          </p>
+          <ArrowRight aria-hidden="true" className="mx-auto rotate-90 text-text-muted md:rotate-0" size={18} />
+          <div className="rounded-ds-md bg-text-primary px-5 py-3 text-center text-sm font-semibold text-text-inverse">
+            <span>Starteria</span>
+            <span className="mt-1 block text-xs font-normal text-text-inverse/80">
+              Contexto. Trabajo. Decisiones.
+            </span>
+          </div>
+          <ArrowRight aria-hidden="true" className="mx-auto rotate-90 text-text-muted md:rotate-0" size={18} />
+          <p className="text-sm font-medium leading-6 text-text-primary sm:text-base">
+            Foco / Coordinación / Evidencia / Decisión
+          </p>
         </div>
-        <ul className="grid list-none gap-2 p-0 sm:grid-cols-2">
-          {['Foco', 'Coordinación', 'Evidencia', 'Decisión'].map((label) => (
-            <li key={label} className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-sm font-medium text-slate-800">{label}</li>
+
+        <div
+          id="flujo-valor"
+          role="group"
+          aria-label="Flujo conceptual de valor"
+          className="mt-5 grid gap-2 border-t border-border-default pt-4 lg:grid-cols-4"
+        >
+          {VALUE_FLOW.map((step, index) => (
+            <div
+              key={step}
+              className="grid gap-2 border-b border-border-default pb-2 last:border-b-0 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center lg:gap-3 lg:border-b-0 lg:pb-0"
+            >
+              <p className="flex-1 text-sm font-semibold leading-6 text-text-primary sm:text-base">
+                {step}
+              </p>
+              {index < VALUE_FLOW.length - 1 ? (
+                <>
+                  <ArrowDown
+                    aria-hidden="true"
+                    className="mx-auto text-brand-primary lg:hidden"
+                    size={16}
+                  />
+                  <ArrowRight
+                    aria-hidden="true"
+                    className="hidden shrink-0 text-brand-primary lg:block"
+                    size={16}
+                  />
+                </>
+              ) : null}
+            </div>
           ))}
-        </ul>
+        </div>
       </div>
-    </div>
+    </section>
+  );
+}
+
+function OptionalPortfolioEntry() {
+  return (
+    <section
+      aria-labelledby="portfolio-entry-heading"
+      className="border-y border-border-default bg-surface-default"
+    >
+      <div className="mx-auto grid max-w-7xl gap-6 px-4 py-10 sm:px-6 sm:py-12 lg:grid-cols-[minmax(0,0.8fr)_minmax(0,1fr)] lg:items-start lg:px-8">
+        <div className="max-w-xl">
+          <Badge variant="neutral">Orientación opcional</Badge>
+          <h2 id="portfolio-entry-heading" className="mt-3 text-2xl font-semibold leading-tight tracking-tight text-text-primary sm:text-3xl">
+            Aclara qué quieres conseguir antes de decidir qué hacer.
+          </h2>
+          <p className="mt-3 text-base leading-7 text-text-secondary">
+            Prepara una lectura inicial de lo que quieres lograr, por qué importa, qué ocurre y qué decisión necesitas preparar. El punto de partida es una hipótesis; podrás ver qué falta aclarar.
+          </p>
+          <Button asChild variant="secondary" className="mt-5">
+            <Link to="/public/start">
+              Quiero alinear mi objetivo primero
+              <ArrowRight aria-hidden="true" size={16} />
+            </Link>
+          </Button>
+        </div>
+
+        <div className="border-l-2 border-border-strong pl-4 sm:pl-5">
+          <p className="text-sm font-semibold text-text-primary">
+            Una lectura estratégica provisional
+          </p>
+          <p className="mt-2 text-sm leading-6 text-text-secondary">
+            Ordena qué quieres lograr, para qué, qué está pasando, qué parece estar en juego, qué decisión preparar, por dónde podrías empezar y qué necesitas aclarar.
+          </p>
+          <p className="mt-3 text-sm leading-6 text-text-secondary">
+            No genera un plan definitivo, un portfolio ni iniciativas automáticamente.
+          </p>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function LandingClosing({ isAuthenticated }: { isAuthenticated: boolean }) {
+  return (
+    <footer className="border-t border-border-default bg-background-default">
+      <div className="mx-auto flex max-w-7xl flex-col gap-3 px-4 py-6 sm:flex-row sm:items-center sm:justify-between sm:px-6 lg:px-8">
+        <Link to="/" className="w-fit text-sm font-semibold text-text-primary">
+          Starteria
+        </Link>
+        <Link
+          to={isAuthenticated ? '/dashboard' : '/auth'}
+          className="w-fit text-sm font-medium text-text-secondary underline-offset-4 hover:text-text-primary hover:underline"
+        >
+          {isAuthenticated ? 'Ir al panel' : 'Iniciar sesión'}
+        </Link>
+      </div>
+    </footer>
   );
 }
