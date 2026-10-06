@@ -48,3 +48,20 @@ describe('defaultOrganizationId', () => {
     expect(await defaultOrganizationId(prisma(), undefined)).toBeNull();
   });
 });
+
+describe('resolvePortfolioScope con schema incompleto (hotfix 500 en producción)', () => {
+  it('si la tabla de grants no existe, sigue con la organización primaria y las membresías', async () => {
+    const p = prisma({ primary: 'org-a', members: ['org-b'] });
+    p.organizationPortfolioAccessGrant.findMany = vi.fn().mockRejectedValue(new Error('relation "OrganizationPortfolioAccessGrant" does not exist'));
+    const scope = await resolvePortfolioScope(p, { id: 'u', role: 'portfolio_lead', permissions: new Set(['portfolio:read']) });
+    expect(scope.all).toBe(false);
+    expect(scope.organizationIds.sort()).toEqual(['org-a', 'org-b']);
+  });
+
+  it('si fallan todas las fuentes, el alcance queda vacío (nunca abierto) y no tira', async () => {
+    const boom = vi.fn().mockRejectedValue(new Error('down'));
+    const p = { user: { findUnique: boom }, organizationMember: { findMany: boom }, organizationPortfolioAccessGrant: { findMany: boom } };
+    await expect(resolvePortfolioScope(p, { id: 'u', role: 'portfolio_lead', permissions: new Set(['portfolio:read']) }))
+      .resolves.toEqual({ all: false, organizationIds: [] });
+  });
+});

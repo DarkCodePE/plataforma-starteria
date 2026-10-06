@@ -251,29 +251,35 @@ export class PortfolioHomeReadService {
   }
 
   private async loadLearnings(scope: PortfolioScope): Promise<PortfolioLearningView[]> {
-    if (!this.prisma.portfolioLearning?.findMany) return [];
-    const rows = await this.prisma.portfolioLearning.findMany({
-      // Fuera de admin, sólo aprendizajes de frentes en el alcance (los sin frente no tienen dueño visible).
-      where: scope.all ? undefined : { strategicFront: frontScopeWhere(scope) },
-      orderBy: { decidedAt: 'desc' },
-      take: 20,
-      include: { project: { select: { name: true } }, challenge: { select: { title: true } } },
-    });
-    return (rows ?? []).map((row: any) => ({
-      decisionId: row.decisionId,
-      projectId: row.projectId,
-      initiativeName: row.project?.name ?? null,
-      challengeId: row.challengeId ?? null,
-      challengeTitle: row.challenge?.title ?? null,
-      strategicFrontId: row.strategicFrontId ?? null,
-      outcome: String(row.outcome),
-      learning: row.learning ?? null,
-      nextAction: row.nextAction ?? null,
-      coverageBefore: row.coverageBefore ?? null,
-      coverageAfter: row.coverageAfter ?? null,
-      suggestedReformulation: row.suggestedReformulation ?? null,
-      decidedAt: toIso(row.decidedAt) ?? new Date(0).toISOString(),
-    }));
+    try {
+      if (!this.prisma.portfolioLearning?.findMany) return [];
+      // Los aprendizajes son un panel secundario: si la tabla no está (schema sin sincronizar),
+      // Portfolio Home tiene que seguir cargando.
+      const rows = await this.prisma.portfolioLearning.findMany({
+        // Fuera de admin, sólo aprendizajes de frentes en el alcance (los sin frente no tienen dueño visible).
+        where: scope.all ? undefined : { strategicFront: frontScopeWhere(scope) },
+        orderBy: { decidedAt: 'desc' },
+        take: 20,
+        include: { project: { select: { name: true } }, challenge: { select: { title: true } } },
+      });
+      return (rows ?? []).map((row: any) => ({
+        decisionId: row.decisionId,
+        projectId: row.projectId,
+        initiativeName: row.project?.name ?? null,
+        challengeId: row.challengeId ?? null,
+        challengeTitle: row.challenge?.title ?? null,
+        strategicFrontId: row.strategicFrontId ?? null,
+        outcome: String(row.outcome),
+        learning: row.learning ?? null,
+        nextAction: row.nextAction ?? null,
+        coverageBefore: row.coverageBefore ?? null,
+        coverageAfter: row.coverageAfter ?? null,
+        suggestedReformulation: row.suggestedReformulation ?? null,
+        decidedAt: toIso(row.decidedAt) ?? new Date(0).toISOString(),
+      }));
+    } catch {
+      return [];
+    }
   }
 
   private async loadHandoffAssignments() {

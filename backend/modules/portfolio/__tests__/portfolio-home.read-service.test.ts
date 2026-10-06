@@ -241,3 +241,14 @@ describe('PortfolioHomeReadService — aprendizajes (E2E Job-Driven §23)', () =
     expect(home.learnings).toEqual([]);
   });
 });
+
+describe('PortfolioHomeReadService — aprendizajes con schema incompleto', () => {
+  it('si la tabla PortfolioLearning no existe, Portfolio Home carga igual', async () => {
+    const prisma = {
+      strategicFront: { findMany: vi.fn().mockResolvedValue([]) },
+      portfolioLearning: { findMany: vi.fn().mockRejectedValue(new Error('relation "PortfolioLearning" does not exist')) },
+    };
+    const home = await new PortfolioHomeReadService(prisma as any).getHome('u1');
+    expect(home.learnings).toEqual([]);
+  });
+});
