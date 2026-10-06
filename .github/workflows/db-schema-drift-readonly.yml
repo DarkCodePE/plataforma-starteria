@@ -80,8 +80,69 @@ jobs:
           ) AS e(tabla, columna, origen)
           ORDER BY presente, e.tabla, e.columna;
 
-          \echo === MIGRACIONES REGISTRADAS POR PRISMA (si la tabla existe) ===
-          SELECT to_regclass('public._prisma_migrations') IS NOT NULL AS hay_tabla_de_migraciones;
+          \echo === MIGRACIONES DEL REPO SIN APLICAR EN PRODUCCION (segun _prisma_migrations) ===
+          SELECT r.migration_name
+          FROM (VALUES
+            ('20260414220131_add_portfolio_lead_models'),
+            ('20260519000000_pdf_autofill'),
+            ('20260519010000_steps_234_persistence'),
+            ('20260520003229_pdf_extraction_run_ai_run_id'),
+            ('20260523120000_pdf_extraction_run_ai_run_id_index'),
+            ('20260529000000_add_oauth_fields_to_user'),
+            ('20260529120000_add_pilot_lead'),
+            ('20260710090000_initial_review_flow'),
+            ('20260711120000_company_context'),
+            ('20260726170000_copilot_foundation_block_01'),
+            ('20260726183000_add_user_organization_scalar_for_copilot'),
+            ('20260727093000_copilot_block_03_unknown_assessment'),
+            ('20260727120000_copilot_production_hardening'),
+            ('20260728100000_add_missing_b2b_billing_tables_for_clean_migrations'),
+            ('20260729120000_adaptive_core_step0_cycle'),
+            ('20260805000000_add_portfolio_lead_role'),
+            ('20260810090000_r1_truth_foundation'),
+            ('20260810120000_r1_truth_integrity_review_fix'),
+            ('20260816120000_r3a_cycle_foundation'),
+            ('20260817120000_r3b1_critical_change_assessment'),
+            ('20260819120000_r3c2a_governance_foundation'),
+            ('20260820120000_r3c3a_decision_request_foundation'),
+            ('20260820120000_sync_dbpush_drift_roles_pilot_claim'),
+            ('20260820150000_r3c4a_organizational_decision_foundation'),
+            ('20260820170000_r3c5_decision_effects_continuation_route'),
+            ('20260822130000_challenge_activation_authoring'),
+            ('20260829120000_adr030_challenge_paused_state'),
+            ('20260911120000_add_portfolio_entry_sessions_precanonical'),
+            ('20260911150000_add_portfolio_entry_api_idempotency'),
+            ('20260912120000_add_portfolio_entry_conversion_boundary'),
+            ('20260912170000_add_portfolio_entry_portfolio_continuation'),
+            ('20260914103000_add_portfolio_bootstrap_session_anchor'),
+            ('20260914113000_add_portfolio_bootstrap_work_intake'),
+            ('20260914120000_add_portfolio_bootstrap_analysis_proposals'),
+            ('20260914123000_add_portfolio_bootstrap_material_review'),
+            ('20260914130000_add_portfolio_bootstrap_first_reading'),
+            ('20260914150000_add_portfolio_bootstrap_import_batches'),
+            ('20260924120000_add_strategic_framing_provisional_state'),
+            ('20260925100000_add_scoped_portfolio_access_grants'),
+            ('20260928120000_add_portfolio_handoff_assignment'),
+            ('20260928133000_add_portfolio_handoff_invitation_access'),
+            ('20260928150000_add_portfolio_handoff_delivery'),
+            ('20260928170000_add_portfolio_handoff_response'),
+            ('20260928190000_add_portfolio_handoff_start'),
+            ('20260928210000_add_portfolio_handoff_semantic_events'),
+            ('20261004120000_add_challenge_invitation_lifecycle'),
+            ('20261004180000_add_front_constraints_challenge_envelope'),
+            ('20261004200000_add_portfolio_learning')
+          ) AS r(migration_name)
+          WHERE NOT EXISTS (
+            SELECT 1 FROM _prisma_migrations pm
+            WHERE pm.migration_name = r.migration_name AND pm.finished_at IS NOT NULL AND pm.rolled_back_at IS NULL
+          )
+          ORDER BY 1;
+
+          \echo === ULTIMAS MIGRACIONES REGISTRADAS EN PRODUCCION ===
+          SELECT migration_name, finished_at, rolled_back_at
+          FROM _prisma_migrations
+          ORDER BY started_at DESC
+          LIMIT 8;
 
           ROLLBACK;
           SQL

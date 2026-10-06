@@ -1,0 +1,162 @@
+# Sincroniza el schema de producción con las migraciones del repo (`prisma migrate deploy`).
+#
+# Por qué existe: el CD restaurado no aplica schema (STARTERIA_CD_RESTORATION_REPORT.md §9). Producción
+# quedó sin migraciones de 2026-09-25 y 2026-10-04, y el portafolio responde 500 porque Prisma lee
+# columnas que la base no tiene (db-schema-drift-readonly.yml lo confirmó).
+#
+# Método: `migrate deploy`, no `db push`. Producción tiene `_prisma_migrations`, así que aplica sólo
+# las migraciones pendientes, en orden, y las deja registradas. No descarta datos ni reconcilia a
+# ciegas como `db push`. Ojo: Prisma no envuelve cada migración en una transacción; si una falla a
+# mitad queda marcada como fallida y hay que resolverla a mano. Por eso va el backup antes.
+#
+# Si una migración pendiente ya entró antes por `db push` (sus tablas/columnas existen), `deploy`
+# fallaría con "already exists". Para esas se pasa `mark_applied`: las registra como aplicadas
+# (`migrate resolve --applied`) sin ejecutar su SQL. Decidirlo requiere leer antes la salida de
+# db-schema-drift-readonly.yml.
+#
+# Protecciones:
+#   - workflow_dispatch, nunca en push; `environment: production` exige la aprobación de reviewers.
+#   - mismo grupo de concurrencia que el CD: nunca corre a la vez que un deploy.
+#   - `apply=false` (por defecto): sólo lista lo pendiente (`migrate status`) y no escribe.
+#   - `apply=true`: primero un pg_dump completo dentro del pod de la base (queda en el pod y se sube
+#     como artifact), verifica que no esté vacío, y recién después `migrate deploy`.
+#   - Al final vuelve a listar el estado para dejar la evidencia en el log.
+name: DB Schema Sync (prisma migrate deploy)
+on:
+  workflow_dispatch:
+    inputs:
+      apply:
+        description: 'false = sólo mostrar migraciones pendientes. true = backup + migrate deploy.'
+        required: true
+        type: boolean
+        default: false
+      mark_applied:
+        description: 'Opcional. Migraciones (separadas por espacio) que ya existen en la base y sólo hay que registrar. Sólo con apply=true.'
+        required: false
+        type: string
+        default: ''
+concurrency:
+  group: starteria-production
+  cancel-in-progress: false
+permissions:
+  contents: read
+env:
+  NAMESPACE: starteria
+jobs:
+  schema-sync:
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install kubectl
+        uses: azure/setup-kubectl@v4
+        with:
+          version: 'v1.30.0'
+
+      - name: Fetch kubeconfig from Rackspace Spot API
+        env:
+          RACKSPACE_REFRESH_TOKEN: ${{ secrets.RACKSPACE_REFRESH_TOKEN }}
+          RACKSPACE_ORG_NAME: ${{ secrets.RACKSPACE_ORG_NAME }}
+          RACKSPACE_CLOUDSPACE_NAME: ${{ secrets.RACKSPACE_CLOUDSPACE_NAME }}
+        run: |
+          set -euo pipefail
+          payload=$(jq -nc \
+            --arg org "$RACKSPACE_ORG_NAME" \
+            --arg cs  "$RACKSPACE_CLOUDSPACE_NAME" \
+            --arg rt  "$RACKSPACE_REFRESH_TOKEN" \
+            '{organization_name:$org, cloudspace_name:$cs, refresh_token:$rt}')
+          http_status=$(curl -sS -o /tmp/spot-response.json -w '%{http_code}' \
+            -X POST 'https://spot.rackspace.com/apis/auth.ngpc.rxt.io/v1/generate-kubeconfig' \
+            -H 'Content-Type: application/json' \
+            --data "$payload")
+          if [ "$http_status" != "200" ]; then
+            echo "::error::Rackspace API returned HTTP $http_status. Refresh token may be expired."
+            exit 1
+          fi
+          mkdir -p "$RUNNER_TEMP/kube"
+          jq -er '.data.kubeconfig' /tmp/spot-response.json > "$RUNNER_TEMP/kube/config"
+          chmod 600 "$RUNNER_TEMP/kube/config"
+          rm -f /tmp/spot-response.json
+          echo "KUBECONFIG=$RUNNER_TEMP/kube/config" >> "$GITHUB_ENV"
+
+      - name: Open tunnel to the production database
+        run: |
+          set -euo pipefail
+          # La clave sale del mismo secret que usa el statefulset; no depende de un secret de GitHub.
+          pw=$(kubectl -n "$NAMESPACE" get secret starteria-db-secrets -o jsonpath='{.data.POSTGRES_PASSWORD}' | base64 -d)
+          echo "::add-mask::$pw"
+          echo "DATABASE_URL=postgresql://starteria:$(jq -nr --arg v "$pw" '$v|@uri')@127.0.0.1:15432/starteria_db" >> "$GITHUB_ENV"
+          kubectl -n "$NAMESPACE" port-forward statefulset/starteria-db 15432:5432 > "$RUNNER_TEMP/pf.log" 2>&1 &
+          echo $! > "$RUNNER_TEMP/pf.pid"
+          for i in $(seq 30); do (echo > /dev/tcp/127.0.0.1/15432) 2>/dev/null && exit 0; sleep 1; done
+          echo "::error::port-forward did not come up"; cat "$RUNNER_TEMP/pf.log"; exit 1
+
+      - name: Install Prisma CLI (same version as the repo)
+        run: |
+          set -euo pipefail
+          version=$(node -p "const p=require('./front/package.json'); (p.devDependencies||{}).prisma || (p.dependencies||{}).prisma")
+          npm install --prefix "$RUNNER_TEMP/prisma" --no-audit --no-fund "prisma@${version}"
+          echo "PRISMA=$RUNNER_TEMP/prisma/node_modules/.bin/prisma" >> "$GITHUB_ENV"
+
+      - name: Pending migrations (read-only)
+        working-directory: front
+        run: |
+          # migrate status sale con 1 cuando hay pendientes: es información, no un error.
+          "$PRISMA" migrate status --schema prisma/schema.prisma || true
+
+      - name: Validate mark_applied
+        if: ${{ inputs.apply && inputs.mark_applied != '' }}
+        working-directory: front
+        env:
+          MARK_APPLIED: ${{ inputs.mark_applied }}
+        run: |
+          set -euo pipefail
+          for m in $MARK_APPLIED; do
+            [[ "$m" =~ ^[0-9]{14}_[a-z0-9_]+$ ]] || { echo "::error::nombre inválido: $m"; exit 1; }
+            [ -f "prisma/migrations/$m/migration.sql" ] || { echo "::error::no existe en el repo: $m"; exit 1; }
+          done
+
+      - name: Backup (pg_dump inside the database pod)
+        if: ${{ inputs.apply }}
+        run: |
+          set -euo pipefail
+          stamp=$(date -u +%Y%m%dT%H%M%SZ)
+          file="/var/lib/postgresql/data/backup-pre-schema-sync-${stamp}.dump"
+          kubectl exec -n "$NAMESPACE" statefulset/starteria-db -- \
+            pg_dump -U starteria -d starteria_db -Fc -f "$file"
+          size=$(kubectl exec -n "$NAMESPACE" statefulset/starteria-db -- stat -c %s "$file")
+          echo "backup ${file} (${size} bytes)"
+          if [ "$size" -lt 10000 ]; then echo "::error::Backup sospechosamente chico; no se aplica nada."; exit 1; fi
+          kubectl exec -n "$NAMESPACE" statefulset/starteria-db -- cat "$file" > "$RUNNER_TEMP/backup.dump"
+          echo "BACKUP_FILE=$file" >> "$GITHUB_ENV"
+
+      - name: Upload backup artifact
+        if: ${{ inputs.apply }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: backup-pre-schema-sync
+          path: ${{ runner.temp }}/backup.dump
+          retention-days: 14
+
+      - name: Apply pending migrations (prisma migrate deploy)
+        if: ${{ inputs.apply }}
+        working-directory: front
+        env:
+          MARK_APPLIED: ${{ inputs.mark_applied }}
+        run: |
+          set -euo pipefail
+          for m in $MARK_APPLIED; do
+            echo "--- registrando como aplicada (sin ejecutar SQL): $m"
+            "$PRISMA" migrate resolve --applied "$m" --schema prisma/schema.prisma
+          done
+          "$PRISMA" migrate deploy --schema prisma/schema.prisma
+          echo "--- estado después:"
+          "$PRISMA" migrate status --schema prisma/schema.prisma
+
+      - name: Cleanup
+        if: always()
+        run: |
+          set -euo pipefail
+          [ -f "$RUNNER_TEMP/pf.pid" ] && kill "$(cat "$RUNNER_TEMP/pf.pid")" 2>/dev/null || true
+          rm -f "$RUNNER_TEMP/kube/config" "$RUNNER_TEMP/backup.dump" || true
