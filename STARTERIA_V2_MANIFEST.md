@@ -438,6 +438,15 @@ Evidence, not authority:
 PORTFOLIO_ENTRY_TEST_FINDINGS_REGISTER_v0.2
 ```
 
+CONFLICT
+Contract: docs/STARTERIA_AUTHORITY.md section 4 / STARTERIA_V2_MANIFEST.md section 5
+Requirement: The v0.2/v0.2.1 Portfolio Entry stack remains candidate until explicit promotion.
+Current document/code: The section 5 hierarchy diagram places Clarification/Handoff v0.2.1 beneath the active Logic Contract, while the reconciliation status below it calls the stack candidate.
+Observed mismatch: The diagram can be read as an authority chain even though the status says no promotion occurred.
+Risk: Implementers may treat candidate orchestration and handoff rules as approved product behavior.
+Recommended treatment: KEEP the stack candidate and treat the diagram as dependency/tracing structure only; reconcile the diagram in a separate authority update.
+Requires ADR: no, unless product semantics change.
+
 ## Supported findings to preserve
 
 - FND-001: `portfolio_governance ≠ initiative_governance`.
@@ -458,6 +467,22 @@ HYP-002 Recommended Approach + Alternatives
 HYP-003 GapResolutionMap
 HYP-004 Program / accelerator support experience
 ```
+
+## KAN-114A — Critical Reasoning Experience Contract
+
+```text
+logic_status: ACTIVE_V2_BASELINE (scoped frozen experience/reasoning contract)
+implementation_status: NOT_IMPLEMENTED
+visual_status: V2_TARGET_DEFINED
+evidence_status: NO_EVIDENCE (contract approval is not runtime evidence)
+authority: explicit user instruction 2026-10-06; subordinate to active Portfolio Entry Logic v0.1, Core v0.2 and approved ADRs
+scope: provisional critical reading and its user-facing reasoning boundaries
+exclusions: runtime, prompts, Skills, schemas, backend, frontend, Portfolio Setup, Core, Steps
+treatment: KEEP scoped contract; candidate stack remains unpromoted; Critical Reasoning authority mapping reconciled for planning; runtime implementation still requires a valid implementation HU
+traceability: KAN-114A is a local label; no Jira issue with that key was found
+```
+
+The frozen contract is `docs/experience/portfolio-entry/PORTFOLIO_ENTRY_CRITICAL_REASONING_EXPERIENCE_CONTRACT_v0.1.md`. It establishes no runtime or implementation evidence.
 
 ---
 

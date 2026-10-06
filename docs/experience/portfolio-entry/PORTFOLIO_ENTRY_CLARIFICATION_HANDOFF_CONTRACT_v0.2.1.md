@@ -2,7 +2,7 @@
 
 **Documento:** `PORTFOLIO_ENTRY_CLARIFICATION_HANDOFF_CONTRACT_v0.2.1.md`
 **Versión:** v0.2.1
-**Estado:** PROPUESTO PARA TESTING
+**Estado:** CANDIDATE / PROPOSED FOR TESTING
 **Fecha:** 2026-09-10
 **Tipo:** Experience / Orchestration Contract
 **Vertical slice:** Portfolio Entry
@@ -12,18 +12,18 @@
 
 ## 0. Autoridad
 
-Este documento es un **subcontrato de experiencia de Portfolio Entry**. Está subordinado únicamente a:
+Este documento continúa siendo un **subcontrato candidato de experiencia de Portfolio Entry**, propuesto para testing. No gobierna por sí mismo el runtime activo. Su referencia desde Logic, Agent o Skills no equivale a promoción; únicamente las cláusulas adoptadas explícitamente por una autoridad superior pueden utilizarse como norma activa.
 
-1. `docs/core/STARTERIA_CORE_LOGIC_CONTRACT.md`
-2. ADRs aprobados
-3. `doc/experience/portfolio-entry/PORTFOLIO_ENTRY_LOGIC_CONTRACT_v0.1.md`
+La autoridad factual de Core es:
 
-Para las responsabilidades de **sesión, aclaración, exploración guiada y handoff**, este contrato gobierna la orquestación que deben respetar el Agent Contract y las Skill Contracts.
+`doc/CONTRATO_LOGICA_CORE_STARTERIA_MVP_v0.2_ES(1).md` — Core v0.2, estado: `Base fundacional revisada / Por validar`.
 
-La jerarquía aplicable a esta vertical slice queda:
+`docs/core/STARTERIA_CORE_LOGIC_CONTRACT.md` v0.3 existe como candidato de gobernanza y no reemplaza ni promueve el Core v0.2. Este documento candidato no gobierna normativamente la sesión, aclaración, exploración guiada ni handoff activos.
+
+La jerarquía objetivo propuesta por este candidato para validación —no vigente mientras conserve estado candidato— es:
 
 ```text
-Core Contract
+Core v0.2
 ↓
 ADRs
 ↓
@@ -84,7 +84,7 @@ Corrige únicamente que:
 
 - Agent Contract y Skill Contracts no son autoridad superior de este documento;
 - el Findings Register es evidencia, no autoridad;
-- este contrato se ubica entre el Portfolio Entry Logic Contract y los contratos de Agent/Skills para las responsabilidades de sesión y handoff.
+- se propone ubicar este contrato entre el Portfolio Entry Logic Contract y los contratos de Agent/Skills para testing de las responsabilidades de sesión y handoff; esta propuesta no le concede autoridad activa.
 
 ---
 

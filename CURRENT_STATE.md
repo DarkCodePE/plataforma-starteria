@@ -217,6 +217,31 @@ transport path without changing question selection logic, lifecycle, D1/D2,
 KAN-74 continuation, Core or Steps. The Portfolio Entry v0.2 Agent/Skill/Harness
 reconciliation stack remains candidate.
 
+On 2026-10-06, the user froze
+`docs/experience/portfolio-entry/PORTFOLIO_ENTRY_CRITICAL_REASONING_EXPERIENCE_CONTRACT_v0.1.md`
+for implementation planning as a narrow experience/reasoning supplement to
+the active Portfolio Entry Logic Contract.
+
+The subsequent authority reconciliation aligned Portfolio Entry Logic section 0
+with the factual Core v0.2 authority and removed the normative dependency of
+Logic section 22 on the candidate Clarification/Handoff v0.2.1 contract for
+Critical Reasoning outputs.
+
+`PORTFOLIO_ENTRY_CLARIFICATION_HANDOFF_CONTRACT_v0.2.1.md` remains
+`CANDIDATE / PROPOSED FOR TESTING` and is not promoted by this reconciliation.
+
+The Critical Reasoning contract authorizes no runtime change by itself.
+Technical implementation still requires a valid implementation HU and explicit
+slice authorization.
+
+The ADR-003 status discrepancy remains OPEN / DEFERRED and must be reconciled
+before Portfolio Setup Continuity. It does not block the Critical Situation
+Synthesis phase because that phase excludes continuation, authentication,
+conversion and Portfolio Setup.
+
+KAN-114A remains a local planning/traceability label rather than a Jira issue
+found in the connected Jira site.
+
 ## ADRs
 
 - ADRs de harness/documentacion: `docs/adr/`.

@@ -13,8 +13,10 @@
 
 Este contrato está subordinado a:
 
-1. `STARTERIA_CORE_LOGIC_CONTRACT.md`
-2. ADRs aprobados
+1. `doc/CONTRATO_LOGICA_CORE_STARTERIA_MVP_v0.2_ES(1).md` — Core v0.2, estado factual: `Base fundacional revisada / Por validar`.
+2. ADRs aprobados aplicables.
+
+`docs/core/STARTERIA_CORE_LOGIC_CONTRACT.md` v0.3 existe como candidato de gobernanza y no reemplaza ni promueve el Core v0.2 vigente.
 
 Y gobierna sobre:
 
@@ -583,11 +585,21 @@ y Pantalla 2 puede recibir:
 
 La transición no crea objetos canónicos.
 
-El contrato vigente de Clarification + Handoff continúa gobernando la lectura de situación,
-`recommended_approach`, `unresolved_context`, `gap_resolution_map`, `starteria_path` y
-`recommended_cta`. El Handoff representa únicamente la transición desde esta orientación hacia una
-continuación posible; no representa el producto completo ni reemplaza la Landing o el workspace de
-Starteria.
+Para Critical Reasoning, `docs/experience/portfolio-entry/PORTFOLIO_ENTRY_CRITICAL_REASONING_EXPERIENCE_CONTRACT_v0.1.md` gobierna conceptualmente estos outputs/conceptos de experiencia:
+
+- `CriticalEntryReading`;
+- `SituationModel`;
+- `material_tension`;
+- `decision_to_enable`;
+- `usable_now`;
+- `decision_changing_unknowns`;
+- `RecommendedFirstMovement`.
+
+Estos son outputs/conceptos de experiencia. Esta definición no crea un schema runtime, persistencia ni entidad canónica, y no autoriza implementación.
+
+`PORTFOLIO_ENTRY_CLARIFICATION_HANDOFF_CONTRACT_v0.2.1.md` permanece `CANDIDATE / PROPOSED FOR TESTING` y no gobierna normativamente estos outputs. Solo cláusulas adoptadas explícitamente con posterioridad por una autoridad superior podrán utilizarse como norma activa. No se asume equivalencia entre `RecommendedFirstMovement` y `recommended_approach`.
+
+El Handoff representa únicamente la transición desde esta orientación hacia una continuación posible; no representa el producto completo ni reemplaza la Landing o el workspace de Starteria.
 
 ## 22.1 Rutas públicas permitidas
 
