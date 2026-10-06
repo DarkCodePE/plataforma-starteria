@@ -1,130 +1,139 @@
-import { ArrowDown, ArrowRight } from 'lucide-react';
-import { Card } from '../ui/card';
+import { ArrowDown, ArrowRight, Check, Settings2, Target, Users } from 'lucide-react';
+import type { ReactNode } from 'react';
 
-const PREVIEW_STAGES: {
-  title: string;
-  label: string;
-  description: string;
-  details: string[];
-  authorityNote?: string;
-}[] = [
-  {
-    title: 'Meta',
-    label: 'Meta hipotética',
-    description: 'Mejorar la activación inicial del canal digital.',
-    details: ['Una hipótesis ficticia para orientar la conversación.'],
-  },
-  {
-    title: 'Alineación',
-    label: 'Foco compartido',
-    description: 'Experiencia digital · equipo ficticio',
-    details: ['Rediseño onboarding', 'Automatización soporte'],
-  },
-  {
-    title: 'Ejecución',
-    label: 'Trabajo ilustrativo',
-    description: 'Iniciativas, señales y dependencias relacionadas.',
-    details: [
-      'Tarea ficticia: revisar el primer acceso',
-      'Bloqueo ficticio: dependencia de soporte por aclarar',
-      'Documento ficticio: hipótesis de activación',
-      'Evidencia ficticia: señales del primer acceso por revisar',
-    ],
-  },
-  {
-    title: 'Decisión',
-    label: 'Revisión humana',
-    description: '¿Qué alternativa merece una nueva revisión?',
-    details: ['Invertir', 'Iterar', 'Pivotar', 'Cerrar'],
-    authorityNote: 'La decisión sigue siendo de las personas.',
-  },
+const TEAM_INITIALS = ['AR', 'LM', 'JC'];
+
+const EXECUTION_SIGNALS = [
+  { label: '12 tareas en curso', dot: 'bg-[#16A34A]' },
+  { label: '3 bloqueos', dot: 'bg-[#DC2626]' },
+  { label: 'Documentos compartidos', dot: 'bg-brand-primary' },
+];
+
+const DECISION_OPTIONS = [
+  { label: 'Invertir', tone: 'bg-[#ECFDF5] text-[#047857]' },
+  { label: 'Iterar', tone: 'bg-brand-primary-subtle text-[#3730A3]' },
+  { label: 'Pivotar', tone: 'bg-[#FFF7ED] text-[#9A3412]' },
+  { label: 'Cerrar', tone: 'bg-[#F1F5F9] text-[#334155]' },
 ];
 
 export function StarteriaProductPreview() {
   return (
-    <section
+    <figure
       id="vista-producto"
-      aria-labelledby="starteria-product-preview-title"
-      className="scroll-mt-24 border-y border-border-default bg-background-subtle py-10 sm:py-12 lg:py-16"
+      aria-describedby="starteria-preview-provenance"
+      className="landing-card mt-12 scroll-mt-24 rounded-2xl p-4 sm:p-6 lg:mt-14"
     >
-      <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-        <figure aria-describedby="starteria-preview-disclaimer starteria-preview-provenance">
-          <Card className="overflow-hidden gap-0 shadow-elevation-none">
-            <header className="flex flex-col gap-4 border-b border-border-default bg-surface-default px-5 py-5 sm:flex-row sm:items-center sm:justify-between sm:px-7 sm:py-6">
-              <div className="min-w-0">
-                <p className="text-sm font-semibold text-brand-primary">Starteria · ejemplo de lectura</p>
-                <h2
-                  id="starteria-product-preview-title"
-                  className="mt-2 max-w-2xl text-xl font-semibold leading-7 text-text-primary sm:text-2xl"
-                >
-                  Meta → Alineación → Ejecución → Decisión
-                </h2>
-              </div>
-              <div id="starteria-preview-disclaimer" className="max-w-sm sm:text-right">
-                <p className="text-sm font-semibold text-text-primary">
-                  Ejemplo ilustrativo · no es un análisis real
-                </p>
-                <p className="mt-1 text-sm leading-6 text-text-secondary">
-                  Contenido, nombres, relaciones y estados ficticios.
-                </p>
-              </div>
-            </header>
-
-            <ol
-              aria-label="Lectura ilustrativa del trabajo"
-              className="grid gap-0 divide-y divide-border-default xl:grid-cols-4 xl:divide-x xl:divide-y-0"
+      <section aria-labelledby="starteria-product-preview-title">
+        <header className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div className="min-w-0">
+            <ul className="flex flex-wrap gap-2 text-xs font-medium">
+              <li className="rounded-full bg-brand-primary-subtle px-3 py-1 text-[#3730A3]">
+                Ejemplo de cómo se vería en Starteria
+              </li>
+              <li className="rounded-full border border-[#E4E7F5] px-3 py-1 text-[#5D6585]">Caso ilustrativo</li>
+            </ul>
+            <h3
+              id="starteria-product-preview-title"
+              className="landing-display mt-4 text-xl font-semibold leading-7 text-[#0D1333] sm:text-2xl"
             >
-              {PREVIEW_STAGES.map((stage, index) => (
-                <li key={stage.title} className="relative min-w-0 px-5 py-5 sm:px-7 sm:py-6 xl:px-5 xl:py-6">
-                  <div className="flex items-start gap-3">
-                    <span
-                      aria-hidden="true"
-                      className="mt-2 h-2 w-2 shrink-0 rounded-full bg-brand-primary"
-                    />
-                    <div className="min-w-0">
-                      <h3 className="text-lg font-semibold text-text-primary">{stage.title}</h3>
-                      <p className="mt-2 text-xs font-semibold uppercase tracking-wide text-text-secondary">
-                        {stage.label}
-                      </p>
-                      <p className="mt-2 text-sm leading-6 text-text-primary">{stage.description}</p>
-                      {stage.authorityNote ? (
-                        <p className="mt-2 text-sm leading-6 text-text-secondary">{stage.authorityNote}</p>
-                      ) : null}
-                      <ul className="mt-3 space-y-2">
-                        {stage.details.map((detail) => (
-                          <li key={detail} className="text-sm leading-6 text-text-secondary">
-                            {index === PREVIEW_STAGES.length - 1 ? (
-                              <span className="inline-flex rounded-full border border-border-default px-3 py-1">
-                                {detail}
-                              </span>
-                            ) : (
-                              detail
-                            )}
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  </div>
+              Reducir 30% el tiempo operativo
+            </h3>
+          </div>
+          <p className="text-sm text-[#5D6585] sm:pt-1.5 sm:text-right">
+            De un objetivo a una decisión, paso a paso.
+          </p>
+        </header>
 
-                  {index < PREVIEW_STAGES.length - 1 ? (
-                    <div aria-hidden="true" className="mt-4 flex justify-center xl:absolute xl:right-[-10px] xl:top-1/2 xl:z-10 xl:mt-0 xl:-translate-y-1/2">
-                      <ArrowDown className="text-brand-primary xl:hidden" size={18} />
-                      <ArrowRight className="hidden bg-surface-default text-brand-primary xl:block" size={18} />
-                    </div>
-                  ) : null}
+        <ol
+          aria-label="Lectura ilustrativa del trabajo"
+          className="mt-5 grid gap-7 lg:grid-cols-[repeat(4,minmax(0,1fr))] lg:gap-8"
+        >
+          <Stage title="Meta" icon={<Target size={16} />} iconTone="text-brand-primary bg-brand-primary-subtle">
+            <p>Copilot ayuda a aclarar la meta y los criterios de éxito.</p>
+            <p className="mt-3 rounded-lg bg-[#F6F7FD] px-3 py-2.5 text-[13px] leading-5 text-[#3B4466]">
+              “Reducir 30% el tiempo operativo en 6 meses”
+            </p>
+          </Stage>
+
+          <Stage title="Alineación" icon={<Users size={16} />} iconTone="text-[#7C3AED] bg-[#F5F3FF]">
+            <p>5 iniciativas conectadas, equipos y dependencias.</p>
+            <div className="mt-4 flex items-center" aria-label="Personas del equipo ilustrativo">
+              {TEAM_INITIALS.map((initials, index) => (
+                <span
+                  key={initials}
+                  className={`-ml-2 flex h-9 w-9 items-center justify-center rounded-full border-2 border-white text-xs font-semibold text-white first:ml-0 ${
+                    ['bg-[#4F46E5]', 'bg-[#0D9488]', 'bg-[#7C3AED]'][index]
+                  }`}
+                >
+                  {initials}
+                </span>
+              ))}
+              <span className="-ml-2 flex h-9 w-9 items-center justify-center rounded-full border-2 border-white bg-brand-primary-subtle text-xs font-semibold text-[#3730A3]">
+                +2
+              </span>
+            </div>
+          </Stage>
+
+          <Stage title="Ejecución" icon={<Settings2 size={16} />} iconTone="text-brand-primary bg-brand-primary-subtle">
+            <p>Trabajo, colaboración, evidencia y bloqueos.</p>
+            <ul className="mt-3 space-y-1.5 rounded-lg bg-[#F6F7FD] px-3 py-2.5 text-[13px] text-[#3B4466]">
+              {EXECUTION_SIGNALS.map((signal) => (
+                <li key={signal.label} className="flex items-center gap-2">
+                  <span aria-hidden="true" className={`h-2 w-2 shrink-0 rounded-full ${signal.dot}`} />
+                  {signal.label}
                 </li>
               ))}
-            </ol>
-          </Card>
-          <figcaption
-            id="starteria-preview-provenance"
-            className="mt-3 text-sm leading-6 text-text-secondary"
-          >
-            La preview muestra cómo organizar la lectura. No sustituye la revisión ni la decisión de
-            las personas.
-          </figcaption>
-        </figure>
-      </div>
-    </section>
+            </ul>
+          </Stage>
+
+          <Stage title="Decisión" icon={<Check size={16} strokeWidth={2.5} />} iconTone="text-white bg-[#0D9488]" last>
+            <p>Brief de decisión listo.</p>
+            <ul className="mt-3 grid grid-cols-2 gap-2 text-[13px] font-medium">
+              {DECISION_OPTIONS.map((option) => (
+                <li key={option.label} className={`rounded-full px-3 py-1.5 text-center ${option.tone}`}>
+                  {option.label}
+                </li>
+              ))}
+            </ul>
+          </Stage>
+        </ol>
+      </section>
+
+      <figcaption id="starteria-preview-provenance" className="mt-5 border-t border-[#E4E7F5] pt-4 text-sm text-[#5D6585]">
+        Caso ilustrativo con datos ficticios. La decisión sigue siendo de las personas.
+      </figcaption>
+    </figure>
+  );
+}
+
+function Stage({
+  title,
+  icon,
+  iconTone,
+  last = false,
+  children,
+}: {
+  title: string;
+  icon: ReactNode;
+  iconTone: string;
+  last?: boolean;
+  children: ReactNode;
+}) {
+  return (
+    <li className="relative min-w-0 rounded-xl border border-[#E4E7F5] bg-white p-4 text-sm leading-6 text-[#5D6585]">
+      <h4 className="flex items-center gap-2.5 text-[15px] font-semibold text-[#0D1333]">
+        <span aria-hidden="true" className={`flex h-8 w-8 items-center justify-center rounded-lg ${iconTone}`}>
+          {icon}
+        </span>
+        {title}
+      </h4>
+      <div className="mt-3">{children}</div>
+      {last ? null : (
+        <span aria-hidden="true" className="absolute left-1/2 top-full z-10 mt-1.5 flex -translate-x-1/2 lg:mt-0 text-brand-primary lg:left-full lg:top-1/2 lg:translate-x-[10px] lg:-translate-y-1/2">
+          <ArrowDown size={16} className="lg:hidden" />
+          <ArrowRight size={16} className="hidden lg:block" />
+        </span>
+      )}
+    </li>
   );
 }
