@@ -77,9 +77,10 @@ Estado declarado actual:
 - Version: `v0.2`
 - Estado: `Base fundacional revisada / Por validar`
 
-The external `docs/core/STARTERIA_CORE_LOGIC_CONTRACT.md` v0.3 artifact is not
-materialized or promoted in this checkout. It remains a reconciliation
-candidate and requires an ADR, original evidence and re-test before promotion.
+`docs/core/STARTERIA_CORE_LOGIC_CONTRACT.md` v0.3 is materialized in this
+checkout as a governance candidate. It is not promoted and does not replace the
+factual current Core v0.2 at the path above. Promotion requires explicit
+reconciliation, supporting evidence and re-test.
 
 La presencia de este contrato en el repositorio no lo convierte en aprobado. Cualquier cambio que dependa de tratarlo como aprobado requiere ratificacion explicita.
 
@@ -93,6 +94,11 @@ Estado declarado:
 
 - Version: `v0.1`
 - Estado: `APROBADO COMO BASE DE EXPERIENCIA PARA AUDITORIA E IMPLEMENTACION`
+
+El `PORTFOLIO_ENTRY_CRITICAL_REASONING_EXPERIENCE_CONTRACT_v0.1.md` está
+`ACCEPTED / FROZEN FOR IMPLEMENTATION PLANNING` dentro de su alcance y
+subordinado al Core v0.2 y a los ADRs aceptados aplicables. No autoriza por sí
+mismo cambios de runtime ni promueve subcontratos candidatos.
 
 No crear otro `PORTFOLIO_ENTRY_LOGIC_CONTRACT_v0.1.md` si duplica este contrato. Usar una sola autoridad.
 
@@ -219,6 +225,11 @@ Evidence:
 
 This stack is present for reconciliation and validation.
 
+`PORTFOLIO_ENTRY_CLARIFICATION_HANDOFF_CONTRACT_v0.2.1.md` permanece
+`CANDIDATE / PROPOSED FOR TESTING`. Las referencias desde Logic, Agent o Skills
+no equivalen a promoción; solo las cláusulas adoptadas explícitamente por una
+autoridad superior pueden utilizarse como norma activa.
+
 Its presence does NOT automatically supersede:
 
 - `PORTFOLIO_ENTRY_LOGIC_CONTRACT_v0.1.md`;
@@ -234,6 +245,23 @@ Promotion to active authority requires repository validation and an explicit aut
 Product ADR-007, `doc/product-adr/ADR-007-portfolio-entry-reason-to-ask-public-explanation.md`, is accepted authority for the narrow semantic and security boundary of `reason_to_ask`. Its subordinate contract is `docs/experience/portfolio-entry/PORTFOLIO_ENTRY_REASON_TO_ASK_EXPOSURE_CONTRACT_v0.1.md`.
 
 This decision does not promote the candidate v0.2 Clarification/Handoff, Agent, Skill, or Harness documents listed above. Those remain candidate references and may only inherit this narrow rule by explicit citation to ADR-007; no other candidate semantics are promoted.
+
+#### Frozen Critical Reasoning experience scope — KAN-114A
+
+`docs/experience/portfolio-entry/PORTFOLIO_ENTRY_CRITICAL_REASONING_EXPERIENCE_CONTRACT_v0.1.md` is frozen for implementation planning as a narrow supplement to the active Portfolio Entry Logic Contract v0.1. It is subordinate to Core v0.2 and approved ADRs. The explicit user instruction to review and freeze this contract was received on 2026-10-06.
+
+This freeze covers the provisional critical reading and its user-facing reasoning boundaries only. It does not authorize runtime changes or promote Clarification/Handoff v0.2.1, Agent, Skills, Harness, or any implementation artifact. The contract records an open cross-document conflict about those candidate outputs; implementation must resolve that mapping under a separate authorized task.
+
+`KAN-114A` is only a local traceability label: no Jira issue with that key was found. Technical implementation therefore remains out of scope until a valid Jira HU and a separate technical authorization exist.
+
+#### ADR-003 — discrepancia abierta y diferida
+
+ADR-003 figura como `ACCEPTED` en su documento y en el índice de ADRs de
+producto, pero como `PROPOSED` en `CURRENT_STATE.md`. Esta discrepancia queda
+`OPEN / DEFERRED`; esta anotación no resuelve ni altera el estado de ADR-003.
+No bloquea KAN-114B, cuyo alcance excluye continuation, autenticación,
+conversión y Portfolio Setup. Debe reconciliarse antes de la fase futura
+Portfolio Setup Continuity / KAN-114F.
 
 Nota de estado: implementado no equivale a aprobado ni a probado end-to-end. El Experience Contract v0.1 sigue siendo el contrato activo aprobado para Pantalla 1. Los documentos Agent/Skill conservan su estado propio hasta ratificacion explicita.
 
