@@ -28,12 +28,12 @@ describe('KAN-113 public landing commercial alignment', () => {
     expect(screen.getByText('De la estrategia al impacto real')).toBeInTheDocument();
     expect(
       screen.getByText(
-        'Alinea objetivos, conecta equipos y haz avanzar las iniciativas que realmente importan.',
+        'Conecta lo que tu empresa quiere mover con el trabajo, las personas y la evidencia necesarias para lograrlo.',
       ),
     ).toBeInTheDocument();
     expect(
       screen.getByText(
-        'Starteria mantiene estrategia, ejecución y evidencia conectadas para que sepas qué mover, qué necesita atención y qué decisión preparar.',
+        'Starteria reduce silos, mantiene contexto y convierte avance en decisiones más claras.',
       ),
     ).toBeInTheDocument();
   });
@@ -77,7 +77,7 @@ describe('KAN-113 public landing commercial alignment', () => {
     const benefits = screen.getByRole('region', { name: 'Beneficios rápidos' });
     for (const benefit of [
       'Más claridad en menos tiempo',
-      'Equipos alineados',
+      'Equipos alineados de verdad',
       'Decisiones con evidencia',
     ]) {
       expect(within(benefits).getByText(benefit)).toBeInTheDocument();
@@ -85,39 +85,34 @@ describe('KAN-113 public landing commercial alignment', () => {
     expect(benefits.textContent).not.toMatch(/\d|%/);
   });
 
-  it('presents a fictional static preview with a visible disclaimer and no controls', () => {
+  it('presents the illustrative case from the comp as a static, labelled example', () => {
     renderLanding();
 
-    const preview = screen.getByRole('region', {
-      name: 'Meta → Alineación → Ejecución → Decisión',
-    });
+    const preview = screen.getByRole('region', { name: 'Reducir 30% el tiempo operativo' });
     for (const label of ['Meta', 'Alineación', 'Ejecución', 'Decisión']) {
-      expect(within(preview).getByRole('heading', { name: label, level: 3 })).toBeInTheDocument();
+      expect(within(preview).getByRole('heading', { name: label, level: 4 })).toBeInTheDocument();
     }
-    expect(within(preview).getByText('Meta hipotética')).toBeInTheDocument();
-    expect(
-      within(preview).getByText('Ejemplo ilustrativo · no es un análisis real'),
-    ).toBeInTheDocument();
-    expect(
-      within(preview).getByText('Contenido, nombres, relaciones y estados ficticios.'),
-    ).toBeInTheDocument();
+    expect(within(preview).getByText('Caso ilustrativo')).toBeInTheDocument();
+    expect(within(preview).getByText('Ejemplo de cómo se vería en Starteria')).toBeInTheDocument();
     for (const example of [
-      'Mejorar la activación inicial del canal digital.',
-      'Rediseño onboarding',
-      'Automatización soporte',
-      'Bloqueo ficticio: dependencia de soporte por aclarar',
-      'Documento ficticio: hipótesis de activación',
+      '“Reducir 30% el tiempo operativo en 6 meses”',
+      '5 iniciativas conectadas, equipos y dependencias.',
+      '12 tareas en curso',
+      '3 bloqueos',
+      'Documentos compartidos',
+      'Brief de decisión listo.',
       'Invertir',
       'Iterar',
       'Pivotar',
       'Cerrar',
-      'La decisión sigue siendo de las personas.',
     ]) {
       expect(within(preview).getByText(example)).toBeInTheDocument();
     }
     expect(preview.querySelectorAll('button, a, input, textarea, select, [tabindex]')).toHaveLength(0);
     expect(preview.querySelector('[aria-live]')).toBeNull();
-    expect(preview.textContent).not.toMatch(/\d|%|Step ?[0-4]|kanban|copilot|chatbot/i);
+    expect(
+      screen.getByText('Caso ilustrativo con datos ficticios. La decisión sigue siendo de las personas.'),
+    ).toBeInTheDocument();
   });
 
   it('keeps demo primary, routes the optional actions, and preserves trust semantics', () => {
@@ -161,7 +156,7 @@ describe('KAN-113 public landing commercial alignment', () => {
       'Puedes empezar con contexto incompleto.',
       'Nada se convierte en trabajo formal sin revisión.',
       'La IA estructura y propone; las decisiones siguen siendo humanas.',
-      'Tu entrada pública no crea iniciativas ni lanza trabajo automáticamente.',
+      'Tu entrada pública no crea iniciativas automáticamente.',
     ]) {
       expect(within(trust).getByText(principle)).toBeInTheDocument();
     }
@@ -173,9 +168,10 @@ describe('KAN-113 public landing commercial alignment', () => {
 
     const headings = [
       screen.getByRole('heading', { level: 1, name: 'Haz que la estrategia se haga realidad.' }),
-      screen.getByRole('heading', { name: 'De una meta a una decisión compartida.' }),
-      screen.getByRole('heading', { name: 'Meta → Alineación → Ejecución → Decisión' }),
-      screen.getByRole('heading', { name: 'La brecha entre estrategia y ejecución' }),
+      screen.getByRole('heading', { name: 'Cómo te ayuda Starteria' }),
+      screen.getByRole('heading', { name: 'Reducir 30% el tiempo operativo' }),
+      screen.getByRole('heading', { name: 'Entre la estrategia y la ejecución se pierde demasiado.' }),
+      screen.getByRole('heading', { name: 'Empiezas con lo que sabes y avanzas cuando decides.' }),
       screen.getByRole('heading', { name: 'Starteria estructura tu contexto sin sustituir tu criterio.' }),
       screen.getByRole('heading', { name: 'Empieza con lo que sabes. Starteria te ayuda a ordenar lo que falta.' }),
     ];
@@ -192,7 +188,7 @@ describe('KAN-113 public landing commercial alignment', () => {
     expect(screen.getByRole('navigation', { name: 'Navegación principal' })).toBeInTheDocument();
     expect(
       screen.getByText(
-        'La preview muestra cómo organizar la lectura. No sustituye la revisión ni la decisión de las personas.',
+        'Caso ilustrativo con datos ficticios. La decisión sigue siendo de las personas.',
       ),
     ).toBeInTheDocument();
   });

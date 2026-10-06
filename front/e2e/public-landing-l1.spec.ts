@@ -1,13 +1,14 @@
 import { expect, test } from '@playwright/test';
 
 const HERO_HEADLINE = 'Haz que la estrategia se haga realidad.';
-const PRIMARY_SUPPORT = 'Alinea objetivos, conecta equipos y haz avanzar las iniciativas que realmente importan.';
+const PRIMARY_SUPPORT =
+  'Conecta lo que tu empresa quiere mover con el trabajo, las personas y la evidencia necesarias para lograrlo.';
 const SECONDARY_SUPPORT =
-  'Starteria mantiene estrategia, ejecución y evidencia conectadas para que sepas qué mover, qué necesita atención y qué decisión preparar.';
+  'Starteria reduce silos, mantiene contexto y convierte avance en decisiones más claras.';
 const DEMO_CTA = 'Reservar demo';
 const HERO_ENTRY_CTA = 'Quiero alinear mi objetivo primero';
 const CLOSING_CTA = 'Analizar mi situación';
-const PREVIEW_TITLE = 'Meta → Alineación → Ejecución → Decisión';
+const PREVIEW_TITLE = 'Reducir 30% el tiempo operativo';
 const CLOSING_TITLE = 'Empieza con lo que sabes. Starteria te ayuda a ordenar lo que falta.';
 
 test.describe('KAN-113 public landing commercial alignment', () => {
@@ -34,7 +35,7 @@ test.describe('KAN-113 public landing commercial alignment', () => {
     const benefits = page.getByRole('region', { name: 'Beneficios rápidos' });
     for (const benefit of [
       'Más claridad en menos tiempo',
-      'Equipos alineados',
+      'Equipos alineados de verdad',
       'Decisiones con evidencia',
     ]) {
       await expect(benefits.getByText(benefit)).toBeVisible();
@@ -48,16 +49,17 @@ test.describe('KAN-113 public landing commercial alignment', () => {
 
     const preview = page.getByRole('region', { name: PREVIEW_TITLE });
     for (const stage of ['Meta', 'Alineación', 'Ejecución', 'Decisión']) {
-      await expect(preview.getByRole('heading', { name: stage, level: 3 })).toBeVisible();
+      await expect(preview.getByRole('heading', { name: stage, level: 4 })).toBeVisible();
     }
-    await expect(preview.getByText('Meta hipotética')).toBeVisible();
-    await expect(preview.getByText('Ejemplo ilustrativo · no es un análisis real')).toBeVisible();
-    await expect(preview.getByText('Contenido, nombres, relaciones y estados ficticios.')).toBeVisible();
-    await expect(preview.getByText('Bloqueo ficticio: dependencia de soporte por aclarar')).toBeVisible();
+    await expect(preview.getByText('Caso ilustrativo', { exact: true })).toBeVisible();
+    await expect(preview.getByText('3 bloqueos')).toBeVisible();
+    await expect(
+      page.getByText('Caso ilustrativo con datos ficticios. La decisión sigue siendo de las personas.'),
+    ).toBeVisible();
     await expect(preview.getByText('Invertir')).toBeVisible();
     await expect(preview.locator('button, a, input, textarea, select, [tabindex]')).toHaveCount(0);
 
-    const gap = page.getByRole('region', { name: 'La brecha entre estrategia y ejecución' });
+    const gap = page.getByRole('region', { name: 'Entre la estrategia y la ejecución se pierde demasiado.' });
     await expect(gap.getByRole('heading', { name: 'Hoy: fragmentado' })).toBeVisible();
     await expect(gap.getByRole('heading', { name: 'Con Starteria: conectado' })).toBeVisible();
     await expect(gap.getByText('La brecha', { exact: true })).toBeVisible();
@@ -80,7 +82,7 @@ test.describe('KAN-113 public landing commercial alignment', () => {
     await expect(trust.getByText('Puedes empezar con contexto incompleto.')).toBeVisible();
     await expect(trust.getByText('Nada se convierte en trabajo formal sin revisión.')).toBeVisible();
     await expect(trust.getByText('La IA estructura y propone; las decisiones siguen siendo humanas.')).toBeVisible();
-    await expect(trust.getByText('Tu entrada pública no crea iniciativas ni lanza trabajo automáticamente.')).toBeVisible();
+    await expect(trust.getByText('Tu entrada pública no crea iniciativas automáticamente.')).toBeVisible();
 
     const header = page.locator('header.sticky');
     const headerDemo = header.getByRole('link', { name: DEMO_CTA, exact: true });
@@ -123,7 +125,7 @@ test.describe('KAN-113 public landing commercial alignment', () => {
       await expect(page.getByRole('heading', { level: 1, name: HERO_HEADLINE })).toBeVisible();
       await expect(model.getByText('Objetivos')).toBeVisible();
       await expect(model.getByText('Decisión')).toBeVisible();
-      await expect(preview.getByText('Ejemplo ilustrativo · no es un análisis real')).toBeVisible();
+      await expect(preview.getByText('Caso ilustrativo', { exact: true })).toBeVisible();
 
       const heroHeadingBox = await hero.getByRole('heading', { level: 1 }).boundingBox();
       if (viewport.width < 1280) {
