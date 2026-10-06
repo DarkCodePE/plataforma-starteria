@@ -3,10 +3,10 @@
 **Documento:** `SKILL_v0.1.md`<br>
 **Skill ID:** `entry-05-critical-situation-synthesis`<br>
 **Versión:** v0.1<br>
-**Estado:** DRAFT FOR REVIEW — CONTRACT + TEST DESIGN ONLY<br>
+**Estado:** FROZEN FOR KAN-114 IMPLEMENTATION<br>
 **HU:** KAN-114 — Portfolio Entry — Critical Situation Synthesis<br>
 **Tipo:** Skill Contract<br>
-**Fase:** Diseño conceptual; sin runtime<br>
+**Fase:** Contract frozen; runtime implementation authorized only by Jira KAN-114 within the isolated scope defined by this Skill<br>
 **Autoridad funcional:** subordinada a Core v0.2, ADRs aceptados aplicables, Portfolio Entry Logic v0.1 y Critical Reasoning Experience Contract v0.1.
 
 Este documento define el comportamiento conceptual que deberá demostrar una implementación futura. No aprueba ni implementa runtime, prompts, schemas, UI, backend, Portfolio Setup, Steps ni cambios de Core. Su estado no promueve otros documentos.
