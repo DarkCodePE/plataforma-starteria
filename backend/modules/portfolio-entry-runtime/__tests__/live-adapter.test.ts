@@ -80,6 +80,40 @@ describe('Portfolio Entry live adapter', () => {
     expect(result.execution_metadata.model).toBe('gpt-5.6-luna');
   });
 
+  it('supports the isolated critical synthesis purpose without changing existing purposes', async () => {
+    const fetchImpl = vi.fn().mockResolvedValue({
+      ok: true,
+      text: async () => JSON.stringify({
+        model: 'gpt-5.6-luna-response',
+        output: [{ type: 'message', content: [{ type: 'output_text', text: '{"ok":true}' }] }],
+      }),
+    });
+    const adapter = new FetchStructuredModelAdapter({
+      provider: 'openai_responses',
+      model: 'gpt-5.6-luna',
+      apiKey: 'test-key',
+      baseUrl: 'https://provider.test/v1',
+      timeoutMs: 1000,
+    }, fetchImpl);
+
+    const result = await adapter.generate({
+      systemPrompt: 'system',
+      userPayload: { snapshot_id: 'snapshot-1' },
+      outputSchema: z.object({ ok: z.literal(true) }),
+      providerJsonSchema: { type: 'object', properties: { ok: { type: 'boolean' } }, required: ['ok'], additionalProperties: false },
+      metadata: { provider: 'openai_responses', model: 'gpt-5.6-luna', seed_support: 'not_requested' },
+      call: { call_id: 'call-synthesis', purpose: 'critical_situation_synthesis' },
+    });
+
+    const request = JSON.parse(String((fetchImpl.mock.calls[0]?.[1] as RequestInit).body)) as {
+      text: { format: { name: string; schema: unknown } };
+    };
+    expect(result.error_type).toBeUndefined();
+    expect(result.execution_metadata.purpose).toBe('critical_situation_synthesis');
+    expect(request.text.format.name).toBe('critical_situation_synthesis');
+    expect(request.text.format.schema).toEqual({ type: 'object', properties: { ok: { type: 'boolean' } }, required: ['ok'], additionalProperties: false });
+  });
+
   it.each([401, 403, 404, 429, 500])('keeps provider status %i useful and redacts error messages', async (status) => {
     const secretMarker = 'private-token-must-not-appear';
     const fetchImpl = vi.fn().mockResolvedValue({

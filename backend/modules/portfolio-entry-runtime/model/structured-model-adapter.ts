@@ -1,5 +1,5 @@
 ﻿import type { ZodType } from 'zod';
-import type { LiveCandidateMetadata, ModelExecutionResult } from './model-execution-types';
+import type { LiveCandidateMetadata, ModelExecutionPurpose, ModelExecutionResult } from './model-execution-types';
 
 export type StructuredModelGenerateInput<T> = {
   systemPrompt: string;
@@ -9,7 +9,7 @@ export type StructuredModelGenerateInput<T> = {
   metadata: LiveCandidateMetadata;
   call: {
     call_id: string;
-    purpose: 'analysis_turn' | 'handoff_generation' | 'technical_smoke';
+    purpose: ModelExecutionPurpose;
     case_id?: string;
     repeat_index?: number;
     turn_index?: number;
