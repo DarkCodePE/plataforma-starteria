@@ -95,15 +95,29 @@ jobs:
       - name: Install Prisma CLI (same version as the repo)
         run: |
           set -euo pipefail
-          version=$(node -p "const p=require('./front/package.json'); (p.devDependencies||{}).prisma || (p.dependencies||{}).prisma")
-          npm install --prefix "$RUNNER_TEMP/prisma" --no-audit --no-fund "prisma@${version}"
-          echo "PRISMA=$RUNNER_TEMP/prisma/node_modules/.bin/prisma" >> "$GITHUB_ENV"
+          # Prisma corre desde un directorio aparte con su propio node_modules: front/prisma.config.ts
+          # importa dotenv/config y no queremos instalar todo el árbol de front en el runner.
+          work="$RUNNER_TEMP/prisma"
+          mkdir -p "$work"
+          prisma_v=$(node -p "const p=require('./front/package.json'); (p.devDependencies||{}).prisma || (p.dependencies||{}).prisma")
+          dotenv_v=$(node -p "const p=require('./front/package.json'); (p.dependencies||{}).dotenv || (p.devDependencies||{}).dotenv")
+          npm install --prefix "$work" --no-audit --no-fund "prisma@${prisma_v}" "dotenv@${dotenv_v}"
+          cp -r front/prisma "$work/prisma"
+          cp front/prisma.config.ts "$work/prisma.config.ts"
+          echo "PRISMA_DIR=$work" >> "$GITHUB_ENV"
+          echo "PRISMA=$work/node_modules/.bin/prisma" >> "$GITHUB_ENV"
 
       - name: Pending migrations (read-only)
-        working-directory: front
         run: |
-          # migrate status sale con 1 cuando hay pendientes: es información, no un error.
-          "$PRISMA" migrate status --schema prisma/schema.prisma || true
+          set -uo pipefail
+          cd "$PRISMA_DIR"
+          # migrate status sale con 1 cuando hay pendientes. Eso es información; cualquier otra
+          # salida (config, conexión) es un error y tiene que cortar el job.
+          out=$("$PRISMA" migrate status --schema prisma/schema.prisma 2>&1); code=$?
+          echo "$out"
+          if [ $code -ne 0 ] && ! grep -q 'have not yet been applied' <<<"$out"; then
+            echo "::error::prisma migrate status falló por algo distinto a migraciones pendientes"; exit 1
+          fi
 
       - name: Validate mark_applied
         if: ${{ inputs.apply && inputs.mark_applied != '' }}
@@ -141,7 +155,7 @@ jobs:
 
       - name: Apply pending migrations (prisma migrate deploy)
         if: ${{ inputs.apply }}
-        working-directory: front
+        working-directory: ${{ runner.temp }}/prisma
         env:
           MARK_APPLIED: ${{ inputs.mark_applied }}
         run: |
