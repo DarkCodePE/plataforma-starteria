@@ -335,14 +335,17 @@ jobs:
           scripts/ci/prod-db-migrate.sh verify
           code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 20 https://starter-ia.com/api/health)
           [ "$code" = 200 ] || { echo "::error::/api/health respondió $code después del rollout"; exit 1; }
-      # /api/health no toca la base; este smoke sí (portafolio con sesión). Si el secret no está
-      # cargado se avisa y se sigue: el tenant E2E se crea con e2e-prod-tenant.yml.
+      # /api/health no toca la base; este smoke sí (portafolio con sesión). Se activa con la
+      # variable E2E_PROD_TENANT_READY=true, que se pone después de crear el tenant con
+      # e2e-prod-tenant.yml: el secret solo no alcanza (el 2026-10-07 estaba cargado antes que el
+      # usuario y el CD del #148 falló con 401).
       - name: Authenticated API smoke (E2E tenant)
         env:
           E2E_PROD_LEAD_PASSWORD: ${{ secrets.E2E_PROD_LEAD_PASSWORD }}
+          TENANT_READY: ${{ vars.E2E_PROD_TENANT_READY }}
         run: |
-          if [ -z "${E2E_PROD_LEAD_PASSWORD:-}" ]; then
-            echo "::warning::sin E2E_PROD_LEAD_PASSWORD: se omite el smoke con sesión"; exit 0
+          if [ "${TENANT_READY:-}" != "true" ] || [ -z "${E2E_PROD_LEAD_PASSWORD:-}" ]; then
+            echo "::warning::tenant E2E no habilitado (vars.E2E_PROD_TENANT_READY): se omite el smoke con sesión"; exit 0
           fi
           scripts/ci/prod-api-smoke.sh
       - name: Restore previous images on rollout failure
