@@ -180,7 +180,7 @@ describe('isolated critical situation synthesis adapter', () => {
       retry_count: 0,
     });
     expect(result.resolved_prompt_metadata).toMatchObject({
-      prompt_version: '0.3',
+      prompt_version: '0.4',
       prompt_hash: expect.stringMatching(/^[a-f0-9]{64}$/),
       skill_contract_version: '0.1',
       schema_version: '0.1',

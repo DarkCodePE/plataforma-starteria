@@ -9,11 +9,11 @@ import {
 } from '../prompts/kan-114/prompt-manifest';
 
 describe('KAN-114 isolated prompt manifest', () => {
-  it('loads prompt v0.3 while retaining the frozen contract and fixture schema versions', () => {
+  it('loads prompt v0.4 while retaining the frozen contract and fixture schema versions', () => {
     const resolved = loadResolvedCriticalSituationSynthesisPromptManifest();
 
     expect(resolved).toMatchObject({
-      prompt_version: '0.3',
+      prompt_version: '0.4',
       skill_id: 'entry-05-critical-situation-synthesis',
       skill_contract_version: '0.1',
       fixture_spec_version: '0.1',
@@ -51,7 +51,7 @@ describe('KAN-114 isolated prompt manifest', () => {
     const resolved = loadResolvedCriticalSituationSynthesisPromptManifest();
 
     expect(() => resolveCriticalSituationSynthesisPromptManifest({
-      prompt_version: '0.2',
+      prompt_version: '0.3',
       skill_id: resolved.skill_id,
       skill_contract_version: resolved.skill_contract_version,
       fixture_spec_version: resolved.fixture_spec_version,
@@ -70,13 +70,15 @@ describe('KAN-114 isolated prompt manifest', () => {
     expect(Object.keys(resolved.files)).toEqual(['critical_situation_synthesis']);
   });
 
-  it('keeps the v0.1 and v0.2 prompt assets present and unchanged', () => {
+  it('keeps the v0.1, v0.2, and v0.3 prompt assets present and unchanged', () => {
     const promptDirectory = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'prompts', 'kan-114');
     const frozenAssets = [
       ['v0.1/manifest.json', '09441becdf8f257255a7ca5e4e58c240188a417da14b403549a7475821bb3c61'],
       ['v0.1/critical-situation-synthesis.md', '9216ca923381e6e2be783c2156465fe75e48b31688ab422db8a3ff6148fd5768'],
       ['v0.2/manifest.json', '3e2b78fa276107023b1238347b4f1a78b21b5f3ac805ca28a14f8b347f66da40'],
       ['v0.2/critical-situation-synthesis.md', 'd66bb3d391284bb7a4838a831f1a3ac995b5d996ee0765f4f50836cadb57b64f'],
+      ['v0.3/manifest.json', '02cfff273a718c7bf2f1b34807f8b68a181aaa390ad5f43ef8f60aaf9c285fd0'],
+      ['v0.3/critical-situation-synthesis.md', 'db5b82fafd6d443283a8918683cda42cdfa2095baf7a1c01a45e5140c4d497c4'],
     ] as const;
 
     for (const [relativePath, expectedHash] of frozenAssets) {
@@ -85,6 +87,52 @@ describe('KAN-114 isolated prompt manifest', () => {
     }
     expect(JSON.parse(fs.readFileSync(path.join(promptDirectory, 'v0.1', 'manifest.json'), 'utf8'))).toMatchObject({ prompt_version: '0.1' });
     expect(JSON.parse(fs.readFileSync(path.join(promptDirectory, 'v0.2', 'manifest.json'), 'utf8'))).toMatchObject({ prompt_version: '0.2' });
+    expect(JSON.parse(fs.readFileSync(path.join(promptDirectory, 'v0.3', 'manifest.json'), 'utf8'))).toMatchObject({ prompt_version: '0.3' });
+  });
+
+  it('requires a supported relationship for insight and material tension', () => {
+    const { prompt_text: prompt } = loadResolvedCriticalSituationSynthesisPromptManifest();
+
+    expect(prompt).toMatch(/Missing information, ambiguity, lack of evidence, lack of goals, or absence of documented criteria do not by themselves constitute a supported insight or material tension/is);
+    expect(prompt).toMatch(/A supported situation insight requires a supported relationship between conditions that changes how the situation or decision should be understood/is);
+    expect(prompt).toMatch(/A supported material tension requires at least two supported conditions whose coexistence creates a meaningful constraint, conflict, tradeoff, or sequencing problem for a decision/is);
+    expect(prompt).toMatch(/Use `material_tensions = \[\]` unless an independently supported material relationship exists/is);
+  });
+
+  it('keeps decision framing separate from answer and authority certainty', () => {
+    const { prompt_text: prompt } = loadResolvedCriticalSituationSynthesisPromptManifest();
+
+    expect(prompt).toMatch(/A decision can be identifiable even when its answer is unknown, evidence is pending, authority is not yet confirmed/is);
+    expect(prompt).toMatch(/`status = "framed"` means Starteria can name the choice or commitment to prepare; it does not mean Starteria knows the correct answer/is);
+    expect(prompt).toMatch(/materially distinct next paths can be named conditionally/is);
+    expect(prompt).toMatch(/Unknown authority alone does not make a decision unidentifiable/is);
+    expect(prompt).toMatch(/Pending evidence alone does not make a decision unidentifiable/is);
+  });
+
+  it('reuses meaningful existing checkpoints before proposing new work', () => {
+    const { prompt_text: prompt } = loadResolvedCriticalSituationSynthesisPromptManifest();
+
+    expect(prompt).toMatch(/When work is already underway and a meaningful checkpoint exists, use that checkpoint before proposing new work/is);
+    expect(prompt).toMatch(/do not require the checkpoint result to be known before framing the decision/is);
+    expect(prompt).toMatch(/Do not design a new experiment unless the existing checkpoint cannot inform the decision sought/is);
+  });
+
+  it('makes lens selection minimal and guards against topic-only triggers', () => {
+    const { prompt_text: prompt } = loadResolvedCriticalSituationSynthesisPromptManifest();
+
+    expect(prompt).toMatch(/Use the smallest sufficient set of reasoning lenses/is);
+    expect(prompt).toMatch(/Select a lens only when it materially changes at least one of the situation reading, insight, tension, decision frame, decision-changing unknowns, or first movement/is);
+    expect(prompt).toMatch(/Priority \/ allocation:\*\* select only for a real allocation or focus tradeoff/is);
+    expect(prompt).toMatch(/Multiple initiatives alone do not trigger it/is);
+    expect(prompt).toMatch(/Governance:\*\* select only when authority, decision rights, progression rules, approval, or ownership materially changes/is);
+    expect(prompt).toMatch(/Unknown authority alone does not trigger it/is);
+    expect(prompt).toMatch(/Risk:\*\* select only when an identified uncertainty or condition materially changes exposure, decision conditions, or downside/is);
+    expect(prompt).toMatch(/Uncertainty alone does not trigger it/is);
+    expect(prompt).toMatch(/Alignment:\*\* select only for a supported mismatch/is);
+    expect(prompt).toMatch(/Diagnosis:\*\* select only when understanding the mechanism, cause, or location/is);
+    expect(prompt).toMatch(/Dependencies:\*\* select only when another actor, system, or condition gates/is);
+    expect(prompt).toMatch(/System design:\*\* select only when the operating mechanism or structure itself is under review/is);
+    expect(prompt).toMatch(/Record only selected families in `reasoning_metadata\.selected_lenses`; use an empty array when no lens materially changes the synthesis/is);
   });
 
   it('documents exact provenance paths, authorized reference IDs, and usable-now linkage without fixture content', () => {
