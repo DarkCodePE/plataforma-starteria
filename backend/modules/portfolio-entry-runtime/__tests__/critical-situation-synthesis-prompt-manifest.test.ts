@@ -9,11 +9,11 @@ import {
 } from '../prompts/kan-114/prompt-manifest';
 
 describe('KAN-114 isolated prompt manifest', () => {
-  it('loads prompt v0.2 while retaining the frozen contract and fixture schema versions', () => {
+  it('loads prompt v0.3 while retaining the frozen contract and fixture schema versions', () => {
     const resolved = loadResolvedCriticalSituationSynthesisPromptManifest();
 
     expect(resolved).toMatchObject({
-      prompt_version: '0.2',
+      prompt_version: '0.3',
       skill_id: 'entry-05-critical-situation-synthesis',
       skill_contract_version: '0.1',
       fixture_spec_version: '0.1',
@@ -51,7 +51,7 @@ describe('KAN-114 isolated prompt manifest', () => {
     const resolved = loadResolvedCriticalSituationSynthesisPromptManifest();
 
     expect(() => resolveCriticalSituationSynthesisPromptManifest({
-      prompt_version: '0.1',
+      prompt_version: '0.2',
       skill_id: resolved.skill_id,
       skill_contract_version: resolved.skill_contract_version,
       fixture_spec_version: resolved.fixture_spec_version,
@@ -70,14 +70,21 @@ describe('KAN-114 isolated prompt manifest', () => {
     expect(Object.keys(resolved.files)).toEqual(['critical_situation_synthesis']);
   });
 
-  it('keeps the v0.1 prompt assets present alongside v0.2', () => {
+  it('keeps the v0.1 and v0.2 prompt assets present and unchanged', () => {
     const promptDirectory = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'prompts', 'kan-114');
-    const oldManifest = JSON.parse(fs.readFileSync(path.join(promptDirectory, 'v0.1', 'manifest.json'), 'utf8')) as { prompt_version: string };
+    const frozenAssets = [
+      ['v0.1/manifest.json', '09441becdf8f257255a7ca5e4e58c240188a417da14b403549a7475821bb3c61'],
+      ['v0.1/critical-situation-synthesis.md', '9216ca923381e6e2be783c2156465fe75e48b31688ab422db8a3ff6148fd5768'],
+      ['v0.2/manifest.json', '3e2b78fa276107023b1238347b4f1a78b21b5f3ac805ca28a14f8b347f66da40'],
+      ['v0.2/critical-situation-synthesis.md', 'd66bb3d391284bb7a4838a831f1a3ac995b5d996ee0765f4f50836cadb57b64f'],
+    ] as const;
 
-    expect(oldManifest.prompt_version).toBe('0.1');
-    expect(fs.existsSync(path.join(promptDirectory, 'v0.1', 'critical-situation-synthesis.md'))).toBe(true);
-    expect(fs.existsSync(path.join(promptDirectory, 'v0.2', 'manifest.json'))).toBe(true);
-    expect(fs.existsSync(path.join(promptDirectory, 'v0.2', 'critical-situation-synthesis.md'))).toBe(true);
+    for (const [relativePath, expectedHash] of frozenAssets) {
+      const content = fs.readFileSync(path.join(promptDirectory, relativePath), 'utf8');
+      expect(createHash('sha256').update(content).digest('hex'), relativePath).toBe(expectedHash);
+    }
+    expect(JSON.parse(fs.readFileSync(path.join(promptDirectory, 'v0.1', 'manifest.json'), 'utf8'))).toMatchObject({ prompt_version: '0.1' });
+    expect(JSON.parse(fs.readFileSync(path.join(promptDirectory, 'v0.2', 'manifest.json'), 'utf8'))).toMatchObject({ prompt_version: '0.2' });
   });
 
   it('documents exact provenance paths, authorized reference IDs, and usable-now linkage without fixture content', () => {
@@ -99,16 +106,55 @@ describe('KAN-114 isolated prompt manifest', () => {
       'decision_frame.unresolved_basis[i]',
       'decision_changing_unknowns[i].uncertainty',
       'candidate_first_movement.existing_assets_used[i]',
+      'candidate_first_movement.why_now',
+      'candidate_first_movement.what_it_may_clarify',
+      'candidate_first_movement.decision_supported',
+      'candidate_first_movement.boundary',
     ]) {
       expect(prompt).toContain(path);
     }
+    expect(prompt).toContain('For every output claim at these paths, include at least one provenance record with that exact `claim_ref`:');
     expect(prompt).toMatch(/claim_ref.{0,100}exact JSON output path/is);
     expect(prompt).toMatch(/claim_ref.{0,200}must exactly match/is);
     expect(prompt).toMatch(/authorized_snapshot\.source_refs/is);
+    expect(prompt).toContain('When a claim has support references, at least one provenance record for its exact claim path must include each of those references in `source_refs`.');
+    expect(prompt).toContain('`provenance.source_refs` may contain only reference identifiers supplied in `authorized_snapshot.source_refs`; do not fabricate or infer source references.');
+    expect(prompt).toContain('The values in `support`, `source_refs`, and `current_evidence` are reference identifiers, not paraphrased evidence text.');
+    expect(prompt).toMatch(/Do not invent facts, evidence, causality, authority, outcomes, constraints, or source references/is);
     expect(prompt).toMatch(/reference identifiers, not (?:paraphrased )?evidence text/is);
     expect(prompt).toMatch(/usable_now\[i\]\.provenance_refs/is);
     expect(prompt).toMatch(/epistemic_role.{0,100}provenance/is);
     expect(prompt).toMatch(/uncertainty_statement\s*=\s*null/is);
     expect(prompt).toMatch(/decision_changing_unknowns/is);
+  });
+
+  it.each(['user_message', 'user_correction'])('requires USER_DECLARED provenance for a direct FACT from %s', (kind) => {
+    const { prompt_text: prompt } = loadResolvedCriticalSituationSynthesisPromptManifest();
+
+    expect(prompt).toMatch(new RegExp(`kind = ${kind}.{0,180}origin = USER_DECLARED`, 'is'));
+    expect(prompt).toMatch(/FACT.{0,180}directly supported by authorized evidence/is);
+    expect(prompt).toMatch(/exact authorized source ref/is);
+    expect(prompt).toMatch(/review_disposition.{0,140}UNREVIEWED/is);
+    expect(prompt).toMatch(/Do not use.{0,220}AI_INFERRED.{0,100}AI_SUGGESTED.{0,100}EXTRACTED_FROM_USER_TEXT/is);
+  });
+
+  it('limits extracted provenance and separates interpretation and proposal origins', () => {
+    const { prompt_text: prompt } = loadResolvedCriticalSituationSynthesisPromptManifest();
+
+    expect(prompt).toContain('Use `origin = EXTRACTED_FROM_USER_TEXT` only when the authorized snapshot itself contains a provisional extracted value whose provenance says `EXTRACTED_FROM_USER_TEXT`.');
+    expect(prompt).toMatch(/paraphrased, summarized, selected, or reformulated/is);
+    expect(prompt).toMatch(/epistemic_role\s*=\s*INTERPRETATION.{0,160}origin\s*=\s*AI_INFERRED/is);
+    expect(prompt).toMatch(/relationship.{0,180}consequence.{0,180}synthesis.{0,180}diagnostic reading/is);
+    expect(prompt).toMatch(/epistemic_role\s*=\s*PROPOSAL.{0,120}origin\s*=\s*AI_SUGGESTED/is);
+    expect(prompt).toMatch(/Preserve the authorized source refs used to ground the proposal/is);
+  });
+
+  it('assigns material tension provenance only to the root source-of-truth path', () => {
+    const { prompt_text: prompt } = loadResolvedCriticalSituationSynthesisPromptManifest();
+
+    expect(prompt).toContain('The root collection `material_tensions[i]` is the provenance-bearing source of truth.');
+    expect(prompt).toMatch(/situation_model\.material_tensions.{0,160}deeply identical.{0,80}projection/is);
+    expect(prompt).toContain('Generate provenance for `material_tensions[i].statement`.');
+    expect(prompt).toContain('Do NOT generate a separate provenance record for `situation_model.material_tensions[i].statement`.');
   });
 });
