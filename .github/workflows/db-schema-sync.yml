@@ -113,7 +113,9 @@ jobs:
           cd "$PRISMA_DIR"
           # migrate status sale con 1 cuando hay pendientes. Eso es información; cualquier otra
           # salida (config, conexión) es un error y tiene que cortar el job.
-          out=$("$PRISMA" migrate status --schema prisma/schema.prisma 2>&1); code=$?
+          # Actions corre con `bash -e`: sin el `|| code=$?` el exit 1 corta el paso antes de imprimir.
+          code=0
+          out=$("$PRISMA" migrate status --schema prisma/schema.prisma 2>&1) || code=$?
           echo "$out"
           if [ $code -ne 0 ] && ! grep -q 'have not yet been applied' <<<"$out"; then
             echo "::error::prisma migrate status falló por algo distinto a migraciones pendientes"; exit 1
