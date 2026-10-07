@@ -80,7 +80,7 @@ Al terminar, el spec borra sus frentes (los retos caen en cascada) y archiva el 
 `e2e-lead@starteria.test` y GET a `/portfolio/strategic-fronts`, `/portfolio/home`,
 `/portfolio/capacity` y `/projects`, todos 200. No escribe. Existe porque `/api/health` no toca
 la base y dio 200 mientras el portafolio respondía 500 (2026-09-25 → 2026-10-07). Si el secret no
-está cargado, el paso avisa y se omite. A mano: `gh workflow run e2e-prod-tenant.yml -f command=smoke -f apply=false`.
+está habilitado, el paso avisa y se omite: después del `setup --apply` hay que poner la variable del environment `production` `E2E_PROD_TENANT_READY=true` (`gh variable set E2E_PROD_TENANT_READY --env production --body true`). A mano: `gh workflow run e2e-prod-tenant.yml -f command=smoke -f apply=false`.
 
 ## 3. Limpiar
 

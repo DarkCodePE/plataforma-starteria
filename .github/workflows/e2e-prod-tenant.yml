@@ -55,7 +55,11 @@ jobs:
       - name: Install dependencies
         if: ${{ inputs.command != 'smoke' }}
         working-directory: front
-        run: npm ci && npx prisma generate
+        # backend/scripts resuelve @prisma/client subiendo desde backend/: sin node_modules en la
+        # raíz no lo encuentra (en la imagen, backend/ y node_modules viven juntos en /app).
+        run: |
+          npm ci && npx prisma generate
+          ln -sfn "$GITHUB_WORKSPACE/front/node_modules" "$GITHUB_WORKSPACE/node_modules"
 
       - name: Install kubectl
         if: ${{ inputs.command != 'smoke' }}
