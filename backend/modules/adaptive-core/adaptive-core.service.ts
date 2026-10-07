@@ -2229,7 +2229,12 @@ const sufficiency = this.evaluateCheckpoint(
     if (!project) throw AppError.notFound('Proyecto', 'PROJECT_NOT_FOUND');
     if (role !== 'admin' && role !== 'mentor') {
       const isMember = (project as any).teamMembers.some((m: any) => m.userId === userId);
-      if (!isMember) throw AppError.forbidden('No tienes acceso a este proyecto.', 'PROJECT_ACCESS_DENIED');
+      // El Portfolio Lead asignado decide sin ser miembro del equipo (§23, ADR-025); la autoridad
+      // para decidir la sigue resolviendo resolveDecisionAuthority.
+      const isAssignedPortfolioLead = !isMember && Boolean(
+        (await (this.prisma as any).initiativeGovernance.findUnique({ where: { projectId } }))?.portfolioLeadUserId === userId,
+      );
+      if (!isMember && !isAssignedPortfolioLead) throw AppError.forbidden('No tienes acceso a este proyecto.', 'PROJECT_ACCESS_DENIED');
     }
     return project as any;
   }
