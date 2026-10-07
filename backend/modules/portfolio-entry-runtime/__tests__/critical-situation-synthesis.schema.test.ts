@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
+  criticalSituationDecisionFrameSchema,
+  criticalSituationInsightSchema,
+  criticalSituationMaterialTensionSchema,
   criticalSituationSynthesisSchema,
   type CriticalSituationSynthesis,
 } from '../domain/critical-situation-synthesis.schema';
@@ -15,6 +18,34 @@ function objectSchemas(schema: unknown): Array<Record<string, unknown>> {
   return [
     ...(record.type === 'object' ? [record] : []),
     ...Object.values(record).flatMap(objectSchemas),
+  ];
+}
+
+function propertyRequirementViolations(schema: unknown, path = '$'): string[] {
+  if (!schema || typeof schema !== 'object') return [];
+  if (Array.isArray(schema)) {
+    return schema.flatMap((child, index) => propertyRequirementViolations(child, path + '[' + index + ']'));
+  }
+  const record = schema as Record<string, unknown>;
+  const violations: string[] = [];
+  if (Object.prototype.hasOwnProperty.call(record, 'properties')) {
+    const properties = record.properties;
+    const propertyKeys = properties && typeof properties === 'object' && !Array.isArray(properties)
+      ? Object.keys(properties as Record<string, unknown>)
+      : [];
+    const required = record.required;
+    const requiredKeys = Array.isArray(required) && required.every((key) => typeof key === 'string')
+      ? required as string[]
+      : [];
+    const matches = Array.isArray(required)
+      && requiredKeys.length === propertyKeys.length
+      && new Set(requiredKeys).size === propertyKeys.length
+      && propertyKeys.every((key) => requiredKeys.includes(key));
+    if (!matches) violations.push(path + ': properties=' + JSON.stringify(propertyKeys) + ' required=' + JSON.stringify(required));
+  }
+  return [
+    ...violations,
+    ...Object.entries(record).flatMap(([key, child]) => propertyRequirementViolations(child, path + '.' + key)),
   ];
 }
 
@@ -194,6 +225,12 @@ describe('critical situation synthesis schema', () => {
     expect(criticalSituationSynthesisSchema.safeParse(value).success).toBe(false);
   });
 
+  it('rejects duplicate impact dimensions in the runtime Zod schema', () => {
+    const value = completeSynthesis();
+    value.decision_changing_unknowns[0].impact_dimensions = ['decision_frame', 'decision_frame'];
+    expect(criticalSituationSynthesisSchema.safeParse(value).success).toBe(false);
+  });
+
   it('requires usable-now grounding references', () => {
     const value = completeSynthesis();
     value.usable_now[0].source_refs = [];
@@ -231,6 +268,128 @@ describe('critical situation synthesis schema', () => {
       ...value,
       situation_model: { ...value.situation_model, challenge: {} },
     }).success).toBe(false);
+  });
+
+  it('keeps the dedicated provider schema within supported composition and preserves all semantic branches', () => {
+    const providerSchema = criticalSituationSynthesisProviderSchema as Record<string, unknown>;
+    const containsKeyword = (node: unknown, keyword: string): boolean => {
+      if (!node || typeof node !== 'object') return false;
+      if (Array.isArray(node)) return node.some((child) => containsKeyword(child, keyword));
+      const record = node as Record<string, unknown>;
+      return Object.prototype.hasOwnProperty.call(record, keyword)
+        || Object.values(record).some((child) => containsKeyword(child, keyword));
+    };
+    const at = (node: unknown, path: string[]): unknown => path.reduce<unknown>((current, key) => {
+      if (!current || typeof current !== 'object' || Array.isArray(current)) return undefined;
+      return (current as Record<string, unknown>)[key];
+    }, node);
+    const branchesAt = (path: string[]): Array<Record<string, unknown>> => {
+      const branches = at(providerSchema, path.concat('anyOf'));
+      return Array.isArray(branches) ? branches as Array<Record<string, unknown>> : [];
+    };
+    const branchEnum = (branch: Record<string, unknown>, property: string): unknown => at(branch, ['properties', property, 'enum']);
+    const branchStatus = (branch: Record<string, unknown>): unknown => {
+      const values = branchEnum(branch, 'status');
+      return Array.isArray(values) ? values[0] : undefined;
+    };
+    const tensionBranches = branchesAt(['properties', 'material_tensions', 'items']);
+    const situationModelTensionBranches = branchesAt(['properties', 'situation_model', 'properties', 'material_tensions', 'items']);
+    const movementBranches = branchesAt(['properties', 'candidate_first_movement']);
+    const insightBranches = branchesAt(['properties', 'situation_insight']);
+    const decisionBranches = branchesAt(['properties', 'decision_frame']);
+    const impactDimensionsSchema = at(providerSchema, ['properties', 'decision_changing_unknowns', 'items', 'properties', 'impact_dimensions']);
+
+    expect(providerSchema.type).toBe('object');
+    expect(providerSchema.anyOf).toBeUndefined();
+    expect(propertyRequirementViolations(providerSchema)).toEqual([]);
+    expect(at(impactDimensionsSchema, ['type'])).toBe('array');
+    expect(at(impactDimensionsSchema, ['minItems'])).toBe(1);
+    expect(at(impactDimensionsSchema, ['items', 'enum'])).toEqual([
+      'situation_reading',
+      'decision_frame',
+      'material_tension',
+      'first_movement',
+      'critical_dependency',
+      'material_risk',
+      'ability_to_act_now',
+      'starteria_continuation_shape',
+    ]);
+    expect(containsKeyword(providerSchema, 'oneOf')).toBe(false);
+    expect(containsKeyword(providerSchema, 'const')).toBe(false);
+    expect([
+      ...tensionBranches.map((branch) => branchEnum(branch, 'status')),
+      ...situationModelTensionBranches.map((branch) => branchEnum(branch, 'status')),
+      branchEnum(insightBranches[0], 'epistemic_role'),
+      branchEnum(insightBranches[0], 'status'),
+      branchEnum(insightBranches[1], 'novelty_type'),
+      branchEnum(insightBranches[1], 'epistemic_role'),
+      branchEnum(insightBranches[1], 'status'),
+      ...decisionBranches.map((branch) => branchEnum(branch, 'status')),
+      branchEnum(movementBranches[0], 'epistemic_role'),
+    ]).toEqual([
+      ['supported'], ['unresolved'],
+      ['supported'], ['unresolved'],
+      ['INTERPRETATION'], ['supported'],
+      ['no_supported_insight'], ['INTERPRETATION'], ['no_supported_insight'],
+      ['framed'], ['not_yet_identifiable'],
+      ['PROPOSAL'],
+    ]);
+    expect(containsKeyword(providerSchema, 'uniqueItems')).toBe(false);
+    expect(tensionBranches.map(branchStatus)).toEqual(['supported', 'unresolved']);
+    expect(at(tensionBranches[0], ['properties', 'support', 'minItems'])).toBe(1);
+    expect(at(tensionBranches[1], ['properties', 'support', 'minItems'])).toBeUndefined();
+    expect(insightBranches.map(branchStatus)).toEqual(['supported', 'no_supported_insight']);
+    expect(at(insightBranches[0], ['properties', 'support', 'minItems'])).toBe(1);
+    expect(at(insightBranches[1], ['properties', 'statement', 'type'])).toBe('null');
+    expect(at(insightBranches[1], ['properties', 'support', 'maxItems'])).toBe(0);
+    expect(decisionBranches.map(branchStatus)).toEqual(['framed', 'not_yet_identifiable']);
+    expect(at(decisionBranches[0], ['properties', 'decision_to_prepare', 'type'])).toBe('string');
+    expect(at(decisionBranches[1], ['properties', 'decision_to_prepare', 'type'])).toBe('null');
+  });
+
+  it('keeps Zod authoritative for supported and unresolved tension, insight, and decision states', () => {
+    const supportedTension = {
+      statement: 'La fecha de decisión llega antes que la evidencia.',
+      status: 'supported',
+      support: [ref],
+      why_it_matters: 'La preparación depende de la evidencia disponible.',
+      affected_decision: 'Qué llevar a la decisión.',
+    };
+    const unresolvedTension = { ...supportedTension, status: 'unresolved', support: [] };
+    const supportedInsight = {
+      statement: 'La evidencia puede llegar después del momento de decisión.',
+      support: [ref],
+      novelty_type: 'relationship_made_explicit',
+      epistemic_role: 'INTERPRETATION',
+      status: 'supported',
+    };
+    const unsupportedInsight = {
+      statement: null,
+      support: [],
+      novelty_type: 'no_supported_insight',
+      epistemic_role: 'INTERPRETATION',
+      status: 'no_supported_insight',
+    };
+    const framedDecision = {
+      status: 'framed',
+      decision_to_prepare: 'Qué evidencia llevar al checkpoint.',
+      decision_authority: 'La persona responsable del checkpoint.',
+      materially_distinct_paths: [],
+      distinguishing_conditions: [],
+      timing_or_constraints: [],
+      unresolved_basis: [],
+    };
+    const unidentifiedDecision = { ...framedDecision, status: 'not_yet_identifiable', decision_to_prepare: null };
+
+    expect(criticalSituationMaterialTensionSchema.safeParse(supportedTension).success).toBe(true);
+    expect(criticalSituationMaterialTensionSchema.safeParse(unresolvedTension).success).toBe(true);
+    expect(criticalSituationMaterialTensionSchema.safeParse({ ...supportedTension, support: [] }).success).toBe(false);
+    expect(criticalSituationInsightSchema.safeParse(supportedInsight).success).toBe(true);
+    expect(criticalSituationInsightSchema.safeParse(unsupportedInsight).success).toBe(true);
+    expect(criticalSituationInsightSchema.safeParse({ ...unsupportedInsight, statement: 'invented' }).success).toBe(false);
+    expect(criticalSituationDecisionFrameSchema.safeParse(framedDecision).success).toBe(true);
+    expect(criticalSituationDecisionFrameSchema.safeParse(unidentifiedDecision).success).toBe(true);
+    expect(criticalSituationDecisionFrameSchema.safeParse({ ...unidentifiedDecision, decision_to_prepare: 'invented' }).success).toBe(false);
   });
 
   it('exposes a strict dedicated provider schema without changing analysis_turn', () => {

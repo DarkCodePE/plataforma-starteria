@@ -28,17 +28,17 @@ const claim = object({
 });
 
 const materialTension = {
-  oneOf: [
+  anyOf: [
     object({
       statement: string,
-      status: { const: 'supported' },
+      status: { type: 'string', enum: ['supported'] },
       support: array(sourceRef, 1),
       why_it_matters: string,
       affected_decision: string,
     }),
     object({
       statement: string,
-      status: { const: 'unresolved' },
+      status: { type: 'string', enum: ['unresolved'] },
       support: array(sourceRef),
       why_it_matters: string,
       affected_decision: string,
@@ -63,6 +63,7 @@ const situationModel = object({
   'desired_change',
   'current_situation',
   'existing_work_or_assets',
+  'decision_to_enable',
   'known_evidence',
   'constraints',
   'actors_and_authority',
@@ -82,22 +83,22 @@ const supportedInsight = object({
     'decision_structure_clarified',
     'sequence_dependency_exposed',
   ]),
-  epistemic_role: { const: 'INTERPRETATION' },
-  status: { const: 'supported' },
+  epistemic_role: { type: 'string', enum: ['INTERPRETATION'] },
+  status: { type: 'string', enum: ['supported'] },
 });
 
 const unsupportedInsight = object({
   statement: { type: 'null' },
   support: { ...array(sourceRef), maxItems: 0 },
-  novelty_type: { const: 'no_supported_insight' },
-  epistemic_role: { const: 'INTERPRETATION' },
-  status: { const: 'no_supported_insight' },
+  novelty_type: { type: 'string', enum: ['no_supported_insight'] },
+  epistemic_role: { type: 'string', enum: ['INTERPRETATION'] },
+  status: { type: 'string', enum: ['no_supported_insight'] },
 });
 
 const decisionFrame = {
-  oneOf: [
+  anyOf: [
     object({
-      status: { const: 'framed' },
+      status: { type: 'string', enum: ['framed'] },
       decision_to_prepare: string,
       decision_authority: string,
       materially_distinct_paths: array(string),
@@ -106,7 +107,7 @@ const decisionFrame = {
       unresolved_basis: array(string),
     }),
     object({
-      status: { const: 'not_yet_identifiable' },
+      status: { type: 'string', enum: ['not_yet_identifiable'] },
       decision_to_prepare: { type: 'null' },
       decision_authority: string,
       materially_distinct_paths: array(string),
@@ -141,7 +142,7 @@ const decisionChangingUnknown = object({
   current_evidence: nullable(array(sourceRef)),
   resolution_mode: string,
   related_decision: string,
-  impact_dimensions: { ...array(enumString(impactDimensions), 1), uniqueItems: true },
+  impact_dimensions: array(enumString(impactDimensions), 1),
 });
 
 const firstMovement = object({
@@ -151,7 +152,7 @@ const firstMovement = object({
   what_it_may_clarify: string,
   decision_supported: string,
   boundary: string,
-  epistemic_role: { const: 'PROPOSAL' },
+  epistemic_role: { type: 'string', enum: ['PROPOSAL'] },
 });
 
 const provenance = object({
@@ -185,7 +186,7 @@ export const criticalSituationSynthesisProviderSchema = {
         'system design',
       ])),
     }),
-    situation_insight: { oneOf: [supportedInsight, unsupportedInsight] },
+    situation_insight: { anyOf: [supportedInsight, unsupportedInsight] },
     material_tensions: array(materialTension),
     decision_frame: decisionFrame,
     usable_now: array(usableNow),
@@ -203,6 +204,7 @@ export const criticalSituationSynthesisProviderSchema = {
     'usable_now',
     'decision_changing_unknowns',
     'candidate_first_movement',
+    'uncertainty_statement',
     'provenance',
   ]),
 } as const;
