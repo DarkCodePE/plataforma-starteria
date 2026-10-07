@@ -400,6 +400,8 @@ export async function checkRuntimeAntiOverfit(): Promise<{ status: 'clear'; viol
     'backend/modules/portfolio-entry-runtime/prompts/kan-114/prompt-manifest.ts',
     'backend/modules/portfolio-entry-runtime/prompts/kan-114/v0.1/manifest.json',
     'backend/modules/portfolio-entry-runtime/prompts/kan-114/v0.1/critical-situation-synthesis.md',
+    'backend/modules/portfolio-entry-runtime/prompts/kan-114/v0.2/manifest.json',
+    'backend/modules/portfolio-entry-runtime/prompts/kan-114/v0.2/critical-situation-synthesis.md',
   ];
   const prohibited = /\bLaura\b|\bchurn\b|\baccelerator\b|\bregulatory\b|\bCS-0[1-8]\b|expected[_ -]outputs?|expected[_ -]lenses|review[_ -]pairs|comparison[_ -]pairs|paired[_ -]contrast/gi;
   const violations: string[] = [];

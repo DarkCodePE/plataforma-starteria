@@ -44,6 +44,7 @@ export class CriticalSituationSynthesisAdapter {
       userPayload: snapshot,
       outputSchema: criticalSituationSynthesisSchema,
       providerJsonSchema: criticalSituationSynthesisProviderSchema,
+      preserveProviderNulls: true,
       metadata: input.model_metadata,
       call: {
         call_id: input.call_id,

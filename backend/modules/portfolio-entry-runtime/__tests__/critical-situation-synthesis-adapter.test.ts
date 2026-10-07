@@ -83,6 +83,16 @@ function insufficientSynthesis(sourceRef: string): CriticalSituationSynthesis {
   };
 }
 
+function removeProviderNullOptionals(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(removeProviderNullOptionals);
+  if (!value || typeof value !== 'object') return value;
+  const normalized: Record<string, unknown> = {};
+  for (const [key, child] of Object.entries(value as Record<string, unknown>)) {
+    if (child !== null) normalized[key] = removeProviderNullOptionals(child);
+  }
+  return normalized;
+}
+
 class FakeStructuredModelAdapter implements StructuredModelAdapter {
   readonly calls: StructuredModelGenerateInput<unknown>[] = [];
 
@@ -90,7 +100,10 @@ class FakeStructuredModelAdapter implements StructuredModelAdapter {
 
   async generate<T>(input: StructuredModelGenerateInput<T>): Promise<ModelExecutionResult<T>> {
     this.calls.push(input as StructuredModelGenerateInput<unknown>);
-    const parsed = input.outputSchema.safeParse(this.candidate);
+    const validationInput = input.preserveProviderNulls
+      ? this.candidate
+      : removeProviderNullOptionals(this.candidate);
+    const parsed = input.outputSchema.safeParse(validationInput);
     return {
       provider_raw: { fake: true },
       parsed_output: this.candidate,
@@ -141,11 +154,19 @@ describe('isolated critical situation synthesis adapter', () => {
     expect(model.calls[0].call).toEqual({ call_id: 'call-synthesis-1', purpose: 'critical_situation_synthesis' });
     expect(model.calls[0].outputSchema).toBe(criticalSituationSynthesisSchema);
     expect(model.calls[0].providerJsonSchema).toBe(criticalSituationSynthesisProviderSchema);
+    expect(model.calls[0].preserveProviderNulls).toBe(true);
     expect(model.calls[0].userPayload).toEqual(snapshot);
     expect(model.calls[0].userPayload).not.toHaveProperty('question_plan');
     expect(model.calls[0].userPayload).not.toHaveProperty('session_state');
     expect(model.calls[0].userPayload).not.toHaveProperty('handoff');
     expect(result.synthesis).toEqual(insufficientSynthesis(snapshot.source_refs[0]));
+    expect(result.model_execution.error_type).toBeUndefined();
+    expect(result.model_execution.validated_output).toEqual(insufficientSynthesis(snapshot.source_refs[0]));
+    expect(result.synthesis?.situation_model.desired_change).toBeNull();
+    expect(result.synthesis?.situation_insight.statement).toBeNull();
+    expect(result.synthesis?.decision_frame.decision_to_prepare).toBeNull();
+    expect(result.synthesis?.candidate_first_movement).toBeNull();
+    expect(result.synthesis?.uncertainty_statement).toBeNull();
     expect(result.model_execution.execution_metadata).toMatchObject({
       call_id: 'call-synthesis-1',
       purpose: 'critical_situation_synthesis',
@@ -159,7 +180,7 @@ describe('isolated critical situation synthesis adapter', () => {
       retry_count: 0,
     });
     expect(result.resolved_prompt_metadata).toMatchObject({
-      prompt_version: '0.1',
+      prompt_version: '0.2',
       prompt_hash: expect.stringMatching(/^[a-f0-9]{64}$/),
       skill_contract_version: '0.1',
       schema_version: '0.1',

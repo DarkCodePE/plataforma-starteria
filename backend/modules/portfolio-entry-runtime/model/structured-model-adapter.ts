@@ -6,6 +6,7 @@ export type StructuredModelGenerateInput<T> = {
   userPayload: unknown;
   outputSchema: ZodType<T>;
   providerJsonSchema?: unknown;
+  preserveProviderNulls?: boolean;
   metadata: LiveCandidateMetadata;
   call: {
     call_id: string;

@@ -27,7 +27,10 @@ export class FetchStructuredModelAdapter implements StructuredModelAdapter {
           return this.result(input, providerRaw, null, null, ['error' in parsed ? parsed.error : 'Invalid provider output'], duration, attempt - 1, retryReason, 'SCHEMA_ERROR');
         }
 
-        const validated = input.outputSchema.safeParse(removeProviderNullOptionals(parsed.output));
+        const validationInput = input.preserveProviderNulls
+          ? parsed.output
+          : removeProviderNullOptionals(parsed.output);
+        const validated = input.outputSchema.safeParse(validationInput);
         if (!validated.success) {
           return this.result(input, providerRaw, parsed.output, null, validated.error.issues.map((issue) => `${issue.path.join('.')}: ${issue.message}`), duration, attempt - 1, retryReason, 'SCHEMA_ERROR');
         }

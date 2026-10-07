@@ -80,7 +80,7 @@ describe('KAN-114 isolated eight-fixture evaluation runner', () => {
         fixture_version: '0.1',
         skill_contract_version: '0.1',
         schema_version: '0.1',
-        prompt_version: '0.1',
+        prompt_version: '0.2',
         provider: 'mock',
         requested_model: 'mock-contract-plumbing',
       });

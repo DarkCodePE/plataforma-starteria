@@ -114,6 +114,44 @@ describe('Portfolio Entry live adapter', () => {
     expect(request.text.format.schema).toEqual({ type: 'object', properties: { ok: { type: 'boolean' } }, required: ['ok'], additionalProperties: false });
   });
 
+  it('keeps null normalization by default and preserves null when requested', async () => {
+    const makeFetch = (output: unknown) => vi.fn().mockResolvedValue({
+      ok: true,
+      text: async () => JSON.stringify({
+        output: [{ type: 'message', content: [{ type: 'output_text', text: JSON.stringify(output) }] }],
+      }),
+    });
+    const defaultFetch = makeFetch({ value: null });
+    const adapter = new FetchStructuredModelAdapter({
+      provider: 'openai_responses', model: 'gpt-5.6-luna', apiKey: 'test-key',
+      baseUrl: 'https://provider.test/v1', timeoutMs: 1000,
+    }, defaultFetch);
+    const metadata = { provider: 'openai_responses' as const, model: 'gpt-5.6-luna', seed_support: 'not_requested' as const };
+
+    const defaultResult = await adapter.generate({
+      systemPrompt: 'system', userPayload: {}, outputSchema: z.object({ value: z.string().optional() }),
+      metadata, call: { call_id: 'call-default-null', purpose: 'analysis_turn' },
+    });
+    expect(defaultResult.parsed_output).toEqual({ value: null });
+    expect(defaultResult.validated_output).toEqual({});
+    expect(defaultResult.error_type).toBeUndefined();
+
+    const preserveNullFetch = makeFetch({ value: null });
+    const preserveNullAdapter = new FetchStructuredModelAdapter({
+      provider: 'openai_responses', model: 'gpt-5.6-luna', apiKey: 'test-key',
+      baseUrl: 'https://provider.test/v1', timeoutMs: 1000,
+    }, preserveNullFetch);
+    const preservedResult = await preserveNullAdapter.generate({
+      systemPrompt: 'system', userPayload: {}, outputSchema: z.object({ value: z.string().nullable() }),
+      preserveProviderNulls: true, metadata,
+      call: { call_id: 'call-preserved-null', purpose: 'critical_situation_synthesis' },
+    });
+
+    expect(preservedResult.parsed_output).toEqual({ value: null });
+    expect(preservedResult.validated_output).toEqual({ value: null });
+    expect(preservedResult.error_type).toBeUndefined();
+  });
+
   it.each([401, 403, 404, 429, 500])('keeps provider status %i useful and redacts error messages', async (status) => {
     const secretMarker = 'private-token-must-not-appear';
     const fetchImpl = vi.fn().mockResolvedValue({

@@ -4,10 +4,10 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { z } from 'zod';
 
-const promptDirectory = path.join(path.dirname(fileURLToPath(import.meta.url)), 'v0.1');
+const promptDirectory = path.join(path.dirname(fileURLToPath(import.meta.url)), 'v0.2');
 
 const criticalSituationSynthesisPromptManifestSchema = z.object({
-  prompt_version: z.literal('0.1'),
+  prompt_version: z.literal('0.2'),
   skill_id: z.literal('entry-05-critical-situation-synthesis'),
   skill_contract_version: z.literal('0.1'),
   fixture_spec_version: z.literal('0.1'),
