@@ -8,6 +8,9 @@ import {
   resolveCriticalSituationSynthesisPromptManifest,
 } from '../prompts/kan-114/prompt-manifest';
 
+const hashFrozenAssetContent = (content: string) =>
+  createHash('sha256').update(content.replace(/\r\n/g, '\n')).digest('hex');
+
 describe('KAN-114 isolated prompt manifest', () => {
   it('loads prompt v0.4 while retaining the frozen contract and fixture schema versions', () => {
     const resolved = loadResolvedCriticalSituationSynthesisPromptManifest();
@@ -70,11 +73,21 @@ describe('KAN-114 isolated prompt manifest', () => {
     expect(Object.keys(resolved.files)).toEqual(['critical_situation_synthesis']);
   });
 
+  it('verifies frozen content identically for LF and CRLF while rejecting text mutations', () => {
+    const lfContent = 'first line\nsecond line\n';
+    const crlfContent = lfContent.replace(/\n/g, '\r\n');
+    const expectedHash = hashFrozenAssetContent(lfContent);
+
+    expect(hashFrozenAssetContent(lfContent)).toBe(expectedHash);
+    expect(hashFrozenAssetContent(crlfContent)).toBe(expectedHash);
+    expect(hashFrozenAssetContent('first line\nchanged line\n')).not.toBe(expectedHash);
+  });
+
   it('keeps the v0.1, v0.2, and v0.3 prompt assets present and unchanged', () => {
     const promptDirectory = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'prompts', 'kan-114');
     const frozenAssets = [
-      ['v0.1/manifest.json', '09441becdf8f257255a7ca5e4e58c240188a417da14b403549a7475821bb3c61'],
-      ['v0.1/critical-situation-synthesis.md', '9216ca923381e6e2be783c2156465fe75e48b31688ab422db8a3ff6148fd5768'],
+      ['v0.1/manifest.json', 'fc8ab7692e388102011b2e272213592d7d492d19bf85ce1f599c2ea1950c4d23'],
+      ['v0.1/critical-situation-synthesis.md', '8cd9fcaa6258b02757a46ab22b149d989b531677c28e438dd96cae3dba0da33a'],
       ['v0.2/manifest.json', '3e2b78fa276107023b1238347b4f1a78b21b5f3ac805ca28a14f8b347f66da40'],
       ['v0.2/critical-situation-synthesis.md', 'd66bb3d391284bb7a4838a831f1a3ac995b5d996ee0765f4f50836cadb57b64f'],
       ['v0.3/manifest.json', '02cfff273a718c7bf2f1b34807f8b68a181aaa390ad5f43ef8f60aaf9c285fd0'],
@@ -83,7 +96,7 @@ describe('KAN-114 isolated prompt manifest', () => {
 
     for (const [relativePath, expectedHash] of frozenAssets) {
       const content = fs.readFileSync(path.join(promptDirectory, relativePath), 'utf8');
-      expect(createHash('sha256').update(content).digest('hex'), relativePath).toBe(expectedHash);
+      expect(hashFrozenAssetContent(content), relativePath).toBe(expectedHash);
     }
     expect(JSON.parse(fs.readFileSync(path.join(promptDirectory, 'v0.1', 'manifest.json'), 'utf8'))).toMatchObject({ prompt_version: '0.1' });
     expect(JSON.parse(fs.readFileSync(path.join(promptDirectory, 'v0.2', 'manifest.json'), 'utf8'))).toMatchObject({ prompt_version: '0.2' });
