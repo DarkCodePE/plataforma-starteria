@@ -1,0 +1,10 @@
+{
+  "prompt_version": "0.2",
+  "skill_id": "entry-05-critical-situation-synthesis",
+  "skill_contract_version": "0.1",
+  "fixture_spec_version": "0.1",
+  "schema_version": "0.1",
+  "files": {
+    "critical_situation_synthesis": "critical-situation-synthesis.md"
+  }
+}

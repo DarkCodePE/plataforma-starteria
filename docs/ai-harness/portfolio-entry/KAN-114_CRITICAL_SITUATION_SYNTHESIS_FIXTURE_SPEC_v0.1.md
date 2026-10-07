@@ -2,10 +2,12 @@
 
 **Documento:** `KAN-114_CRITICAL_SITUATION_SYNTHESIS_FIXTURE_SPEC_v0.1.md`<br>
 **Versión:** v0.1<br>
-**Estado:** DRAFT FOR REVIEW — FIXTURE DESIGN ONLY<br>
+**Estado:** FROZEN FOR KAN-114 EVALUATION<br>
 **HU:** KAN-114 — Portfolio Entry — Critical Situation Synthesis<br>
 **Tipo:** Fixture / evaluation specification<br>
 **Alcance:** diseño semántico; no modifica ni implementa Harness runtime
+
+Esta especificación queda congelada como baseline de evaluación de KAN-114. No constituye evidencia de que el runtime ya pase los fixtures y no promueve Harness v0.2 ni otros documentos candidatos.
 
 Este documento diseña los casos y criterios que una evaluación futura deberá usar para `entry-05-critical-situation-synthesis`. No modifica runner, adapters, schemas, prompts productivos, Agent, Question Planner ni ningún test runtime.
 

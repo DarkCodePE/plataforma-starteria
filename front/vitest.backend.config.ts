@@ -107,6 +107,7 @@ export default defineConfig({
       '../backend/**/*.{test,spec}.{ts,tsx}',
       '../tests/**/*.{test,spec}.ts',
       '../test/portfolio-entry-v02-isolated-validation/**/*.test.ts',
+      '../test/portfolio-entry-critical-situation-synthesis/**/*.test.ts',
     ],
     exclude: [
       '**/node_modules/**',

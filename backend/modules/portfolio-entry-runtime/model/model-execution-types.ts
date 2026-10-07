@@ -4,7 +4,7 @@
   | 'CONTRACT_FAILURE'
   | 'HYPOTHESIS_RESULT';
 
-export type ModelExecutionPurpose = 'analysis_turn' | 'handoff_generation' | 'technical_smoke';
+export type ModelExecutionPurpose = 'analysis_turn' | 'handoff_generation' | 'technical_smoke' | 'critical_situation_synthesis';
 
 export type SeedSupport = 'provided' | 'unavailable' | 'not_requested';
 
