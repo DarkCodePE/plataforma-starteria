@@ -1,0 +1,111 @@
+# Crea o limpia el tenant dedicado de E2E en producción (backend/scripts/e2e-prod-tenant.ts).
+# Runbook: docs/e2e-job-driven/prod-dedicated-user.md
+#
+#   setup    organización org-e2e-prod + e2e-lead@starteria.test (portfolio_lead) +
+#            e2e-participante@starteria.test (participante). Idempotente; con apply=true
+#            también reescribe las contraseñas con las de los secrets.
+#   cleanup  borra sólo lo creado por esos usuarios o en esa organización.
+#   smoke    login del lead y GET a los endpoints de portafolio (no escribe).
+#
+# Contraseñas: secrets del environment production E2E_PROD_LEAD_PASSWORD y
+# E2E_PROD_PARTICIPANT_PASSWORD. Nunca en el repo.
+name: E2E prod tenant
+on:
+  workflow_dispatch:
+    inputs:
+      command:
+        description: 'setup | cleanup | smoke'
+        required: true
+        type: choice
+        options: [setup, cleanup, smoke]
+        default: setup
+      apply:
+        description: 'false = seco (muestra qué haría). true = escribe. No aplica a smoke.'
+        required: true
+        type: boolean
+        default: false
+concurrency:
+  group: starteria-production
+  cancel-in-progress: false
+permissions:
+  contents: read
+env:
+  NAMESPACE: starteria
+jobs:
+  tenant:
+    runs-on: ubuntu-latest
+    environment: production
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Smoke
+        if: ${{ inputs.command == 'smoke' }}
+        env:
+          E2E_PROD_LEAD_PASSWORD: ${{ secrets.E2E_PROD_LEAD_PASSWORD }}
+        run: scripts/ci/prod-api-smoke.sh
+
+      - uses: actions/setup-node@v4
+        if: ${{ inputs.command != 'smoke' }}
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: front/package-lock.json
+
+      - name: Install dependencies
+        if: ${{ inputs.command != 'smoke' }}
+        working-directory: front
+        run: npm ci && npx prisma generate
+
+      - name: Install kubectl
+        if: ${{ inputs.command != 'smoke' }}
+        uses: azure/setup-kubectl@v4
+        with:
+          version: 'v1.30.0'
+
+      - name: Fetch kubeconfig from Rackspace Spot API
+        if: ${{ inputs.command != 'smoke' }}
+        env:
+          RACKSPACE_REFRESH_TOKEN: ${{ secrets.RACKSPACE_REFRESH_TOKEN }}
+          RACKSPACE_ORG_NAME: ${{ secrets.RACKSPACE_ORG_NAME }}
+          RACKSPACE_CLOUDSPACE_NAME: ${{ secrets.RACKSPACE_CLOUDSPACE_NAME }}
+        run: |
+          set -euo pipefail
+          payload=$(jq -nc --arg org "$RACKSPACE_ORG_NAME" --arg cs "$RACKSPACE_CLOUDSPACE_NAME" --arg rt "$RACKSPACE_REFRESH_TOKEN" \
+            '{organization_name:$org, cloudspace_name:$cs, refresh_token:$rt}')
+          http_status=$(curl -sS -o "$RUNNER_TEMP/spot.json" -w '%{http_code}' -X POST \
+            'https://spot.rackspace.com/apis/auth.ngpc.rxt.io/v1/generate-kubeconfig' -H 'Content-Type: application/json' --data "$payload")
+          [ "$http_status" = 200 ] || { echo "::error::Rackspace API returned HTTP $http_status"; exit 1; }
+          mkdir -p "$RUNNER_TEMP/kube"
+          jq -er '.data.kubeconfig' "$RUNNER_TEMP/spot.json" > "$RUNNER_TEMP/kube/config"
+          chmod 600 "$RUNNER_TEMP/kube/config"; rm -f "$RUNNER_TEMP/spot.json"
+          echo "KUBECONFIG=$RUNNER_TEMP/kube/config" >> "$GITHUB_ENV"
+
+      - name: Run tenant script
+        if: ${{ inputs.command != 'smoke' }}
+        working-directory: front
+        env:
+          COMMAND: ${{ inputs.command }}
+          APPLY: ${{ inputs.apply }}
+          E2E_PROD_LEAD_PASSWORD: ${{ secrets.E2E_PROD_LEAD_PASSWORD }}
+          E2E_PROD_PARTICIPANT_PASSWORD: ${{ secrets.E2E_PROD_PARTICIPANT_PASSWORD }}
+        run: |
+          set -euo pipefail
+          pw=$(kubectl -n "$NAMESPACE" get secret starteria-db-secrets -o jsonpath='{.data.POSTGRES_PASSWORD}' | base64 -d)
+          echo "::add-mask::$pw"
+          kubectl -n "$NAMESPACE" port-forward statefulset/starteria-db 15432:5432 > "$RUNNER_TEMP/pf.log" 2>&1 &
+          pf=$!; trap 'kill $pf 2>/dev/null || true' EXIT
+          for _ in $(seq 30); do (echo > /dev/tcp/127.0.0.1/15432) 2>/dev/null && break; sleep 1; done
+          export DATABASE_URL="postgresql://starteria:$(jq -nr --arg v "$pw" '$v|@uri')@127.0.0.1:15432/starteria_db"
+          flag=""; [ "$APPLY" = true ] && flag="--apply"
+          npx tsx ../backend/scripts/e2e-prod-tenant.ts "$COMMAND" $flag
+
+      - name: Smoke after setup
+        if: ${{ inputs.command == 'setup' && inputs.apply }}
+        env:
+          E2E_PROD_LEAD_PASSWORD: ${{ secrets.E2E_PROD_LEAD_PASSWORD }}
+        run: scripts/ci/prod-api-smoke.sh
+
+      - name: Remove kubeconfig
+        if: always()
+        run: rm -f "$RUNNER_TEMP/kube/config"

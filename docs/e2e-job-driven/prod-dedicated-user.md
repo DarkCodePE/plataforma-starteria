@@ -19,14 +19,20 @@ reales** y sin que los datos de prueba se vean en otras organizaciones.
 
 ## 1. Crear el tenant de prueba (una vez)
 
+Por workflow, sin acceso local a la base. Las contraseñas son secrets del environment
+`production` (`E2E_PROD_LEAD_PASSWORD`, `E2E_PROD_PARTICIPANT_PASSWORD`, ≥12 caracteres):
+
+```bash
+gh workflow run e2e-prod-tenant.yml -f command=setup -f apply=false   # seco: muestra qué crearía
+gh workflow run e2e-prod-tenant.yml -f command=setup -f apply=true    # crea y corre el smoke
+```
+
+Cada corrida pide la aprobación del environment `production`. A mano, con `DATABASE_URL` de
+producción, sigue funcionando el script directo:
+
 ```bash
 cd front
-export DATABASE_URL='<producción>'
-export E2E_PROD_LEAD_PASSWORD='<≥12 caracteres, en el gestor de secretos>'
-export E2E_PROD_PARTICIPANT_PASSWORD='<≥12 caracteres, en el gestor de secretos>'
-
-npx tsx ../backend/scripts/e2e-prod-tenant.ts setup          # seco: muestra qué crearía
-npx tsx ../backend/scripts/e2e-prod-tenant.ts setup --apply  # crea
+npx tsx ../backend/scripts/e2e-prod-tenant.ts setup [--apply]
 ```
 
 Crea, de forma idempotente:
@@ -68,14 +74,22 @@ Al terminar, el spec borra sus frentes (los retos caen en cascada) y archiva el 
 
 `npm run test:e2e` (local) no incluye `e2e/prod/`: sólo entra si `E2E_PROD_BASE_URL` está definida.
 
+## Smoke con sesión después de cada deploy
+
+`cd.yml` corre `scripts/ci/prod-api-smoke.sh` después del rollout: login de
+`e2e-lead@starteria.test` y GET a `/portfolio/strategic-fronts`, `/portfolio/home`,
+`/portfolio/capacity` y `/projects`, todos 200. No escribe. Existe porque `/api/health` no toca
+la base y dio 200 mientras el portafolio respondía 500 (2026-09-25 → 2026-10-07). Si el secret no
+está cargado, el paso avisa y se omite. A mano: `gh workflow run e2e-prod-tenant.yml -f command=smoke -f apply=false`.
+
 ## 3. Limpiar
 
 El `afterAll` limpia lo que puede por API. Para dejar el tenant en cero (proyectos archivados,
 governance, cualquier resto de una corrida cortada):
 
 ```bash
-npx tsx ../backend/scripts/e2e-prod-tenant.ts cleanup          # seco: lista lo que borraría
-npx tsx ../backend/scripts/e2e-prod-tenant.ts cleanup --apply
+gh workflow run e2e-prod-tenant.yml -f command=cleanup -f apply=false   # seco: lista lo que borraría
+gh workflow run e2e-prod-tenant.yml -f command=cleanup -f apply=true
 ```
 
 Borra sólo frentes de `org-e2e-prod` o de los usuarios de prueba, y proyectos de esos usuarios.
@@ -89,7 +103,8 @@ Borra sólo frentes de `org-e2e-prod` o de los usuarios de prueba, y proyectos d
 
 ## Antes de la primera corrida
 
-- [ ] PR de aislamiento por organización y PR #135 desplegados
+- [x] PR de aislamiento por organización (#136) y PR #135 desplegados
+- [x] Schema de producción al día (2026-10-07, run 37572213341)
 - [ ] Setup en seco revisado por una persona, luego `--apply`
 - [ ] Contraseñas guardadas en el gestor de secretos
 - [ ] Primera corrida con alguien mirando; limpieza en seco revisada antes de `--apply`
