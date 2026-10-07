@@ -284,6 +284,14 @@ jobs:
             --from-literal=LANGSMITH_API_KEY="${LANGSMITH_API_KEY:-}" \
             --from-literal=AI_SERVICE_INTERNAL_TOKEN="$AI_SERVICE_TOKEN" --from-literal=BACKEND_WEBHOOK_TOKEN="$AI_SERVICE_TOKEN" \
             --dry-run=client -o yaml | kubectl apply -f -
+      # Schema antes que imágenes: las migraciones que aplica el CD son sólo aditivas, así que el
+      # código que sigue corriendo durante el rollout no se rompe, y el código nuevo no arranca
+      # contra columnas que no existen (2026-09-25 → 2026-10-07: portafolio en 500 por esto).
+      # Una migración no aditiva corta el deploy acá y va por db-schema-sync.yml con revisión.
+      # Si el rollout falla y se restauran las imágenes, el schema queda aplicado: es aditivo.
+      - name: Apply pending database migrations
+        id: migrate
+        run: scripts/ci/prod-db-migrate.sh apply
       - name: Apply manifests and set release images
         id: rollout
         env:
@@ -321,6 +329,12 @@ jobs:
           for svc in backend frontend ai-service; do
             kubectl -n "$NAMESPACE" rollout status "deployment/starteria-$svc" --timeout="$ROLLOUT_TIMEOUT"
           done
+      - name: Verify database schema and API after rollout
+        run: |
+          set -euo pipefail
+          scripts/ci/prod-db-migrate.sh verify
+          code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 20 https://starter-ia.com/api/health)
+          [ "$code" = 200 ] || { echo "::error::/api/health respondió $code después del rollout"; exit 1; }
       - name: Restore previous images on rollout failure
         if: ${{ failure() && steps.rollout.outcome == 'failure' }}
         run: |
@@ -346,8 +360,10 @@ jobs:
           TAG: ${{ needs.resolve.outputs.tag }}
           CHANNEL: ${{ needs.resolve.outputs.channel }}
           STATUS: ${{ steps.rollout.outcome }}
+          MIGRATIONS: ${{ steps.migrate.outputs.pending || 'n/a' }}
+          BACKUP: ${{ steps.migrate.outputs.backup || 'none' }}
         run: |
-          printf '## Starteria CD\n\n- Channel: `%s`\n- Source commit: `%s`\n- Image tag: `%s`\n- Docker Hub: `%s/starteria-{backend,frontend,ai-service}:%s`\n- Namespace: `%s`\n- Rollout: `%s`\n' "$CHANNEL" "$SOURCE_SHA" "$TAG" "$DOCKERHUB_NAMESPACE" "$TAG" "$NAMESPACE" "$STATUS" >> "$GITHUB_STEP_SUMMARY"
+          printf '## Starteria CD\n\n- Channel: `%s`\n- Source commit: `%s`\n- Image tag: `%s`\n- Docker Hub: `%s/starteria-{backend,frontend,ai-service}:%s`\n- Namespace: `%s`\n- Migrations applied: `%s` (backup: `%s`)\n- Rollout: `%s`\n' "$CHANNEL" "$SOURCE_SHA" "$TAG" "$DOCKERHUB_NAMESPACE" "$TAG" "$NAMESPACE" "$MIGRATIONS" "$BACKUP" "$STATUS" >> "$GITHUB_STEP_SUMMARY"
       - name: Remove kubeconfig
         if: always()
         run: rm -f "$RUNNER_TEMP/kube/config" "$RUNNER_TEMP/spot-response.json"

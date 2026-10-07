@@ -76,6 +76,56 @@ jobs:
           if-no-files-found: warn
 
   # ---------------------------------------------------------------------------
+  # Job: schema.prisma y las migraciones dicen lo mismo
+  # ---------------------------------------------------------------------------
+  # Un cambio en schema.prisma sin su migración pasa los tests (la base de tests se arma desde el
+  # schema) y rompe producción, que sólo recibe `migrate deploy`. Pasó con ChallengeInvitation.
+  prisma-migrations-in-sync:
+    name: Prisma schema has migrations
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      shadow:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: shadow
+          POSTGRES_PASSWORD: shadow
+          POSTGRES_DB: shadow
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U shadow" --health-interval 2s --health-timeout 5s --health-retries 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 20.x
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Diff migrations against schema.prisma
+        run: |
+          set -euo pipefail
+          work="$RUNNER_TEMP/prisma"
+          mkdir -p "$work"
+          prisma_v=$(node -p "const p=require('./front/package.json'); (p.devDependencies||{}).prisma || (p.dependencies||{}).prisma")
+          dotenv_v=$(node -p "const p=require('./front/package.json'); (p.dependencies||{}).dotenv || (p.devDependencies||{}).dotenv")
+          npm install --prefix "$work" --no-audit --no-fund --loglevel=error "prisma@${prisma_v}" "dotenv@${dotenv_v}" > /dev/null
+          cp -r front/prisma "$work/prisma"
+          cp front/prisma.config.ts "$work/prisma.config.ts"
+          cd "$work"
+          code=0
+          ./node_modules/.bin/prisma migrate diff \
+            --from-migrations prisma/migrations \
+            --to-schema-datamodel prisma/schema.prisma \
+            --shadow-database-url postgresql://shadow:shadow@127.0.0.1:5432/shadow \
+            --exit-code || code=$?
+          if [ "$code" -eq 2 ]; then
+            echo "::error::schema.prisma tiene cambios sin migración. Generala con 'npx prisma migrate dev --name <cambio>' (o 'prisma migrate diff --from-migrations ... --script') y commiteala."
+          fi
+          exit "$code"
+
+  # ---------------------------------------------------------------------------
   # Job 2: Python tests (ai-service, pytest unit suite)
   # ---------------------------------------------------------------------------
   python-tests:
