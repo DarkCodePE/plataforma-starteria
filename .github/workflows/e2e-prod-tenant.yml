@@ -45,7 +45,7 @@ jobs:
           E2E_PROD_LEAD_PASSWORD: ${{ secrets.E2E_PROD_LEAD_PASSWORD }}
         run: scripts/ci/prod-api-smoke.sh
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         if: ${{ inputs.command != 'smoke' }}
         with:
           node-version: '20'
