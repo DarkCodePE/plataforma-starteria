@@ -32,3 +32,12 @@ describe('Acceso del Portfolio Lead asignado a la iniciativa', () => {
       .rejects.toMatchObject({ code: 'PROJECT_ACCESS_DENIED' });
   });
 });
+
+describe('El Portfolio Lead asignado no hace el trabajo del equipo', () => {
+  it('no confirma checkpoints de la iniciativa', async () => {
+    const { service, projectId } = seed({ mode: 'portfolio_governed', portfolioLeadUserId: 'lead-1' });
+    await expect(service.confirmCheckpoint(projectId, 'lead-1', 'portfolio_lead', {
+      checkpointKey: 'CP-0.1', idempotencyKey: 'k-lead', response: {},
+    } as any)).rejects.toMatchObject({ code: 'PROJECT_TEAM_ACCESS_REQUIRED' });
+  });
+});

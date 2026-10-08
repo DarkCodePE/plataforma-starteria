@@ -30,7 +30,7 @@ export class ProjectController {
   getById = async (req: AuthenticatedRequest, res: Response<ApiResponse>, next: NextFunction) => {
     try {
       const user = req.user!;
-      const project = await this.service.getProject(req.params.id, user.id, user.role);
+      const project = await this.service.getProjectForRead(req.params.id, user.id, user.role);
       res.json({ success: true, data: project });
     } catch (err) {
       next(err);
