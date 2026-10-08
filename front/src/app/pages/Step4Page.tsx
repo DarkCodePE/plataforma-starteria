@@ -740,7 +740,9 @@ export function Step4Page() {
     data: step4FormData,
     saveFn: autosaveFn,
     delay: 2000,
-    enabled: !!projectId,
+    // Sólo quien puede escribir guarda: el Portfolio Lead asignado lee la iniciativa sin ser del
+    // equipo y el backend le rechaza el PUT (step.access.ts).
+    enabled: !!projectId && (!!contextProject || user?.role === 'admin' || user?.role === 'mentor'),
   });
 
   if (!project && (projectsLoading || projectFetching)) {
