@@ -117,41 +117,53 @@ export function InitiativeOverviewPage() {
   const adaptiveCore = adaptiveCoreStatus === 'loaded' ? serverAdaptiveCore : null;
   const activeConfiguration = adaptiveCore ? getActiveStepConfiguration(adaptiveCore) : null;
   const progressSignal = adaptiveCore?.progressSignal;
+  // El avance sale del core del servidor; sin core se muestra como recién creada.
+  const currentStep = progressSignal?.step ?? 0;
+  const readyForDecision = progressSignal?.health === 'ready_for_decision';
+  const started = currentStep > 0 || readyForDecision;
+  const statusLabel = readyForDecision ? 'Lista para decisión' : started ? `En curso · Step ${currentStep}` : 'Draft';
+  const stepState = (n: number) => (n < currentStep || readyForDecision ? 'done' : n === currentStep ? 'active' : 'locked');
 
   return (
     <div className="mx-auto max-w-3xl p-6 md:p-8">
       <header className="border-b border-slate-200 pb-6">
-        <h1 className="text-2xl font-semibold text-slate-900">Tu iniciativa está lista para empezar</h1>
+        <h1 className="text-2xl font-semibold text-slate-900">
+          {readyForDecision ? 'Tu iniciativa está lista para decisión' : started ? 'Tu iniciativa está en curso' : 'Tu iniciativa está lista para empezar'}
+        </h1>
         <p className="mt-2 flex items-center gap-2 text-slate-700">
           <span className="font-medium">{project.name}</span>
           <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold uppercase tracking-wide text-amber-800">
-            Estado: Draft
+            Estado: {statusLabel}
           </span>
         </p>
-        <p className="mt-3 max-w-prose text-sm text-slate-500">
-          Starteria ya revisó tu propuesta y preparó una ruta inicial. El siguiente paso es completar el
-          Step 0 para aterrizar contexto, alcance, actores y condiciones reales.
-        </p>
+        {!started && (
+          <p className="mt-3 max-w-prose text-sm text-slate-500">
+            Starteria ya revisó tu propuesta y preparó una ruta inicial. El siguiente paso es completar el
+            Step 0 para aterrizar contexto, alcance, actores y condiciones reales.
+          </p>
+        )}
       </header>
 
       <section aria-label="Ruta Step 0–4" className="mt-6">
         <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">Ruta Step 0–4</h2>
         <ol className="mt-3 grid gap-2">
           {ROUTE_STEPS.map((s) => {
-            const active = s.n === 0;
+            const state = stepState(s.n);
             return (
               <li
                 key={s.n}
                 data-testid={`overview-step-${s.n}`}
-                data-state={active ? 'active' : 'locked'}
+                data-state={state}
                 className={`flex items-center justify-between rounded-lg border px-4 py-3 text-sm ${
-                  active ? 'border-emerald-300 bg-emerald-50 text-emerald-900' : 'border-slate-200 bg-slate-50 text-slate-500'
+                  state === 'active' ? 'border-emerald-300 bg-emerald-50 text-emerald-900'
+                    : state === 'done' ? 'border-slate-200 bg-white text-slate-700'
+                      : 'border-slate-200 bg-slate-50 text-slate-500'
                 }`}
               >
                 <span>
                   <span className="font-semibold">Step {s.n}</span> — {s.name}
                 </span>
-                <span className="text-xs font-medium">{active ? 'Activo' : 'Bloqueado'}</span>
+                <span className="text-xs font-medium">{state === 'done' ? 'Completo' : state === 'active' ? 'Activo' : 'Bloqueado'}</span>
               </li>
             );
           })}
@@ -278,6 +290,15 @@ export function InitiativeOverviewPage() {
       </section>
 
       <div className="mt-8 flex flex-wrap gap-3">
+        {started ? (
+          <button
+            type="button"
+            onClick={() => navigate(`/projects/${projectId}/step/${currentStep}`)}
+            className="rounded-lg bg-emerald-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-emerald-700"
+          >
+            {readyForDecision ? `Ver Step ${currentStep}` : `Continuar en Step ${currentStep}`}
+          </button>
+        ) : (
         <button
           type="button"
           onClick={() => {
@@ -292,6 +313,7 @@ export function InitiativeOverviewPage() {
         >
           Revisar mi misión y empezar
         </button>
+        )}
       </div>
     </div>
   );
