@@ -6,9 +6,22 @@ import type { PortfolioEntryHandoffV2 } from '../../portfolio-entry-runtime/doma
 import type { SessionContext, SessionTurnTrace } from '../../portfolio-entry-runtime/domain/session.types';
 import { PortfolioEntrySessionError } from '../application/portfolio-entry-session-errors';
 import { hashPublicAccessToken, PortfolioEntrySessionService } from '../application/portfolio-entry-session.service';
+import { PrismaPortfolioEntrySessionMapper } from '../infrastructure/prisma-portfolio-entry-session.mapper';
 import { PrismaPortfolioEntrySessionRepository } from '../infrastructure/prisma-portfolio-entry-session.repository';
 
 const describeIntegration = process.env.PORTFOLIO_ENTRY_DB_INTEGRATION === '1' ? describe : describe.skip;
+if (process.env.PORTFOLIO_ENTRY_DB_INTEGRATION === '1') {
+  const databaseURL = process.env.DATABASE_URL;
+  let database: URL | undefined;
+  try {
+    database = databaseURL ? new URL(databaseURL) : undefined;
+  } catch {
+    database = undefined;
+  }
+  if (!database || database.pathname !== '/starteria_e2e' || !['localhost', '127.0.0.1'].includes(database.hostname)) {
+    throw new Error('Portfolio Entry Prisma integration tests require the disposable starteria_e2e database on localhost.');
+  }
+}
 const prisma = new PrismaClient();
 
 const versioning = {
@@ -96,6 +109,35 @@ describeIntegration('PrismaPortfolioEntrySessionRepository', () => {
     expect(stored?.semanticState.answeredGaps).toEqual([]);
     expect(JSON.stringify(turns)).not.toContain('response_rule_ids_used');
     expect(JSON.stringify(turns)).not.toContain('fallback_used');
+  });
+
+  it('round-trips answer and correction intent and defaults an omitted intent for a legacy row', async () => {
+    const { service, repository } = makeService();
+    const { session } = await createAnalyzingSession(service);
+
+    await service.appendTurn({
+      ...makeTurnInput(session.id, 1, 'questions_required'),
+      inputIntent: 'answer',
+    });
+    await service.appendTurn({
+      ...makeTurnInput(session.id, 2, 'no_questions_required'),
+      inputIntent: 'correction',
+    });
+
+    const legacyTurn = makePortfolioEntryTurn(session.id, 3, session.revision + 2);
+    const legacyData = new PrismaPortfolioEntrySessionMapper().turnCreateData(legacyTurn);
+    delete legacyData.inputIntent;
+    await prisma.portfolioEntryTurn.create({ data: legacyData });
+
+    const storedRows = await prisma.portfolioEntryTurn.findMany({
+      where: { sessionId: session.id },
+      orderBy: { turnIndex: 'asc' },
+      select: { inputIntent: true },
+    });
+    const turns = await repository.listTurns(session.id);
+
+    expect(storedRows.map((turn) => turn.inputIntent)).toEqual(['answer', 'correction', 'answer']);
+    expect(turns.map((turn) => turn.inputIntent)).toEqual(['answer', 'correction', 'answer']);
   });
 
   it('rejects duplicate turn indexes and rolls back semantic state updates', async () => {

@@ -32,6 +32,12 @@ const localStorageDir = path.join(
 );
 const baseURL = process.env.E2E_BASE_URL || `http://${frontendHost}:${frontendPort}`;
 const backendHealthURL = process.env.E2E_BACKEND_HEALTH_URL || `http://${backendHost}:${backendPort}/api/health`;
+const fullStackPortfolioEntryFlag = '--portfolio-entry-full-stack-test';
+const fullStackPortfolioEntry = process.argv.slice(2).includes(fullStackPortfolioEntryFlag);
+const playwrightArgs = process.argv.slice(2).filter((argument) => argument !== fullStackPortfolioEntryFlag);
+if (fullStackPortfolioEntry && !playwrightArgs.some((argument) => argument.includes('portfolio-entry-live-understanding.integration.spec.ts'))) {
+  throw new Error(`${fullStackPortfolioEntryFlag} requires the full-stack Live Understanding Playwright spec.`);
+}
 const databaseURL =
   process.env.E2E_DATABASE_URL || `postgresql://postgres:postgres@localhost:${e2ePostgresPort}/starteria_e2e`;
 const adminDatabaseURL =
@@ -204,6 +210,13 @@ async function main() {
     AUTH_DISABLE_WAITLIST: process.env.AUTH_DISABLE_WAITLIST || 'true',
     AUTH_RATE_LIMIT_DISABLED: process.env.AUTH_RATE_LIMIT_DISABLED || 'true',
     PORTFOLIO_ENTRY_RUNTIME_MODE: process.env.PORTFOLIO_ENTRY_RUNTIME_MODE || 'deterministic',
+    ...(fullStackPortfolioEntry ? {
+      PORTFOLIO_ENTRY_API_KEY: '',
+      PORTFOLIO_ENTRY_HARNESS_API_KEY: '',
+      PORTFOLIO_ENTRY_FALLBACK_API_KEY: '',
+      JEV_API_KEY: '',
+      TYPESAFE_API_KEY: '',
+    } : {}),
     PORT: String(backendPort),
     NODE_PATH: process.env.NODE_PATH || path.join(frontRoot, 'node_modules'),
     CORS_ORIGIN: process.env.CORS_ORIGIN || baseURL,
@@ -212,6 +225,7 @@ async function main() {
     VITE_FEATURE_PDF_AUTOFILL: process.env.VITE_FEATURE_PDF_AUTOFILL || 'true',
     VITE_ENABLE_INITIAL_REVIEW: process.env.VITE_ENABLE_INITIAL_REVIEW || 'true',
     E2E_BASE_URL: baseURL,
+    E2E_BACKEND_URL: `http://${backendHost}:${backendPort}`,
     E2E_API_URL: process.env.E2E_API_URL || '',
     LOCAL_STORAGE_DIR: localStorageDir,
     INITIAL_REVIEW_AI: process.env.INITIAL_REVIEW_AI || '',
@@ -242,8 +256,11 @@ async function main() {
   console.log('[E2E] Provision database');
   runChecked(npmCmd, ['run', 'db:e2e:provision'], frontRoot, env);
 
-  console.log(`[E2E] Start backend on ${backendHealthURL}`);
-  start(process.execPath, [path.join(frontRoot, 'node_modules', 'tsx', 'dist', 'cli.mjs'), '../backend/server.ts'], frontRoot, env);
+  const backendEntry = fullStackPortfolioEntry
+    ? path.join(frontRoot, 'scripts', 'e2e', 'portfolio-entry-live-understanding-backend.ts')
+    : path.join(frontRoot, '..', 'backend', 'server.ts');
+  console.log(`[E2E] Start ${fullStackPortfolioEntry ? 'test-composed Portfolio Entry backend' : 'backend'} on ${backendHealthURL}`);
+  start(process.execPath, [path.join(frontRoot, 'node_modules', 'tsx', 'dist', 'cli.mjs'), backendEntry], frontRoot, env);
   await waitForURL(backendHealthURL, 'backend');
 
   console.log(`[E2E] Start frontend on ${baseURL}`);
@@ -251,7 +268,7 @@ async function main() {
   await waitForURL(baseURL, 'frontend');
 
   console.log('[E2E] Run Playwright');
-  runChecked(process.execPath, [path.join(frontRoot, 'node_modules', 'playwright', 'cli.js'), 'test', ...process.argv.slice(2)], frontRoot, env);
+  runChecked(process.execPath, [path.join(frontRoot, 'node_modules', 'playwright', 'cli.js'), 'test', ...playwrightArgs], frontRoot, env);
 }
 
 main()
