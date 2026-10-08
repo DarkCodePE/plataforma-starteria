@@ -42,6 +42,11 @@ test('Portfolio Lead: frente con restricciones en la organización de prueba (§
     strategicObjective: 'Reducir el costo de atención sin deteriorar calidad',
     description: 'Las iniciativas atacan dos momentos distintos: onboarding y uso recurrente, con owners y KPIs diferentes.',
     constraints: 'Prueba automatizada: no usar como dato real',
+    mainKpi: 'Costo por solicitud',
+    baseline: '14.20',
+    target: '10.00',
+    horizon: '2 trimestres',
+    sponsor: 'Gerencia de operaciones',
   });
   ctx.frontId = front.id;
   expect(front.organizationId).toBe('org-e2e-prod');
@@ -67,6 +72,11 @@ test('Portfolio Lead: el reto lleva qué se sabe, qué está abierto, restriccio
     constraints: 'Sin tocar el contrato con el proveedor actual',
     dependencies: 'Integración con el CRM',
     expectedDecision: 'Escalar o no el autoservicio a todas las sucursales',
+    challengeOwner: 'Owner del reto en operaciones',
+    activationInputs: {
+      urgency: 'alta', timeAvailable: 'acotado', estimatedEffort: 'medio', challengeClarity: 'media',
+      informationSensitivity: 'baja', internalCapacity: 'media', technicalNeed: 'media', sponsorStatus: 'confirmado', dependency: 'ti',
+    },
   });
   const challenges = await getOk(api, lead.token, `/api/v1/portfolio/strategic-fronts/${ctx.frontId}/challenges`);
   expect(challenges.find((c: { id: string }) => c.id === ctx.challengeId)).toMatchObject({ constraints: 'Sin tocar el contrato con el proveedor actual' });
@@ -88,6 +98,11 @@ test('Participante: Mission Review hereda el reto y recién desde ahí abre Step
   for (const inherited of ['Bajar el costo por solicitud de 14.20 a 10.00', 'Sin tocar el contrato con el proveedor actual', 'Integración con el CRM', 'Escalar o no el autoservicio a todas las sucursales']) {
     await expect(page.getByText(inherited).first()).toBeVisible();
   }
+  // Con el Frente y el Reto completos no queda nada "Sin definir" (§17: capacidad, quién ayuda).
+  for (const filled of ['Tiempo disponible: acotado', 'Owner del reto en operaciones']) {
+    await expect(page.getByText(filled).first()).toBeVisible();
+  }
+  await expect(page.getByText('Sin definir', { exact: true })).toHaveCount(0);
   await page.getByRole('button', { name: /Asumir y empezar Step 0/ }).click();
   await expect(page).toHaveURL(/\/projects\/[^/]+\/step\/0/, { timeout: 20_000 });
 });
