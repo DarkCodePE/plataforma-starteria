@@ -1,18 +1,30 @@
 import express from 'express';
-import { errorHandler } from '../../../backend/shared/errors/error-handler';
-import { requestId } from '../../../backend/shared/middleware/request-id';
-import { prisma } from '../../../backend/shared/db/prisma';
+import { createRequire } from 'node:module';
 import {
-  DeterministicPortfolioEntryAgentAdapter,
   type PortfolioEntryLiveUnderstandingSynthesizer,
 } from '../../../backend/modules/portfolio-entry/application/portfolio-entry-experimental-session.service';
-import { buildPortfolioEntryRouter } from '../../../backend/modules/portfolio-entry/portfolio-entry.router';
 import type { CriticalSituationSynthesis } from '../../../backend/modules/portfolio-entry-runtime/domain/critical-situation-synthesis.schema';
-import { CriticalSituationSynthesisAdapter } from '../../../backend/modules/portfolio-entry-runtime/agent/critical-situation-synthesis-adapter';
-import type { StructuredModelAdapter, StructuredModelGenerateInput } from '../../../backend/modules/portfolio-entry-runtime/model/structured-model-adapter';
+import type {
+  StructuredModelAdapter,
+  StructuredModelGenerateInput,
+} from '../../../backend/modules/portfolio-entry-runtime/model/structured-model-adapter';
 import type { ModelExecutionResult } from '../../../backend/modules/portfolio-entry-runtime/model/model-execution-types';
 import type { CriticalSituationSynthesisAuthorizedSnapshot } from '../../../backend/modules/portfolio-entry-runtime/synthesis/critical-situation-synthesis-input';
 import type { PortfolioEntryAgentAdapterV2 } from '../../../backend/modules/portfolio-entry-runtime/agent/portfolio-entry-agent-adapter';
+
+const backendRequire = createRequire(import.meta.url);
+const { errorHandler } = backendRequire('../../../backend/shared/errors/error-handler') as typeof import('../../../backend/shared/errors/error-handler');
+const { requestId } = backendRequire('../../../backend/shared/middleware/request-id') as typeof import('../../../backend/shared/middleware/request-id');
+const { prisma } = backendRequire('../../../backend/shared/db/prisma') as typeof import('../../../backend/shared/db/prisma');
+const { DeterministicPortfolioEntryAgentAdapter } = backendRequire(
+  '../../../backend/modules/portfolio-entry/application/portfolio-entry-experimental-session.service',
+) as typeof import('../../../backend/modules/portfolio-entry/application/portfolio-entry-experimental-session.service');
+const { buildPortfolioEntryRouter } = backendRequire(
+  '../../../backend/modules/portfolio-entry/portfolio-entry.router',
+) as typeof import('../../../backend/modules/portfolio-entry/portfolio-entry.router');
+const { CriticalSituationSynthesisAdapter } = backendRequire(
+  '../../../backend/modules/portfolio-entry-runtime/agent/critical-situation-synthesis-adapter',
+) as typeof import('../../../backend/modules/portfolio-entry-runtime/agent/critical-situation-synthesis-adapter');
 
 /**
  * Test-only composition root for the real Portfolio Entry router and Prisma
@@ -98,7 +110,39 @@ const synthesisAdapter = new CriticalSituationSynthesisAdapter(synthesisModel);
 const agentAdapter: PortfolioEntryAgentAdapterV2 = {
   async analyzeTurn(input) {
     counters.analysisCalls += 1;
-    return deterministicAgent.analyzeTurn(input);
+    const output = await deterministicAgent.analyzeTurn(input);
+    const previousTurn = await prisma.portfolioEntryTurn.findFirst({
+      where: { sessionId: input.sessionId },
+      orderBy: { turnIndex: 'desc' },
+      select: { transition: true },
+    });
+    const previousTransition = previousTurn?.transition;
+    const correctionFromCheckpoint = input.sessionContext.interaction_mode === 'quick_clarification'
+      && previousTransition !== null
+      && typeof previousTransition === 'object'
+      && !Array.isArray(previousTransition)
+      && 'to_status' in previousTransition
+      && previousTransition.to_status === 'exploration_offered';
+
+    if (!correctionFromCheckpoint) return output;
+
+    return {
+      ...output,
+      question_plan: {
+        ...output.question_plan,
+        questions: [{
+          id: 'prioritization_criterion',
+          question: '¿Qué criterio debe definir cuál iniciativa priorizar?',
+          question_type: 'critical_gap',
+          reason_to_ask: 'La corrección abrió una nueva aclaración sobre la prioridad.',
+          resolves: ['prioritization_criterion'],
+          priority: 1,
+          expected_answer_type: 'decision',
+        }],
+        question_count: 1,
+        status: 'questions_required',
+      },
+    };
   },
 };
 
@@ -140,7 +184,7 @@ app.get('/api/health', (_req, res) => res.json({ status: 'ok' }));
 app.get('/__test/portfolio-entry-stats', (req, res, next) => {
   void (async () => {
     const sessionId = typeof req.query.sessionId === 'string' ? req.query.sessionId : undefined;
-    const [turns, handoffCount] = sessionId
+    const [turns, handoffCount, session] = sessionId
       ? await Promise.all([
           prisma.portfolioEntryTurn.findMany({
             where: { sessionId },
@@ -148,12 +192,26 @@ app.get('/__test/portfolio-entry-stats', (req, res, next) => {
             select: { inputIntent: true },
           }),
           prisma.portfolioEntryHandoff.count({ where: { sessionId } }),
+          prisma.portfolioEntrySession.findUnique({
+            where: { id: sessionId },
+            select: { lifecycleStatus: true, revision: true, semanticState: true },
+          }),
         ])
-      : [[], 0];
+      : [[], 0, null];
+    const semanticState = session?.semanticState;
+    const clarificationStatus = semanticState
+      && typeof semanticState === 'object'
+      && !Array.isArray(semanticState)
+      && 'runtimeClarificationStatus' in semanticState
+      ? semanticState.runtimeClarificationStatus
+      : undefined;
     res.json({
       ...counters,
       turnIntents: turns.map((turn) => turn.inputIntent),
       handoffCount,
+      sessionRevision: session?.revision,
+      sessionLifecycleStatus: session?.lifecycleStatus,
+      clarificationStatus,
     });
   })().catch(next);
 });
