@@ -66,7 +66,8 @@ function InfoCard({ label, value, helper }: InfoCardProps) {
 export function getInitiativeProgress(initiative: InitiativeItem): { completed: number; percent: number } {
   if (initiative.status === 'cerrada') return { completed: 5, percent: 100 };
   const current = Number(initiative.currentStep.match(/\d/)?.[0] ?? 0);
-  const readyForDecision = initiative.progressSignal?.health === 'ready_for_decision';
+  const readyForDecision = initiative.progressSignal?.health === 'ready_for_decision'
+    || initiative.status === 'lista_para_decision' || initiative.status === 'ready_for_decision';
   const completed = readyForDecision ? 5 : current;
   return { completed, percent: completed * 20 };
 }
@@ -1321,7 +1322,7 @@ export function PortfolioLeadInitiativesPage() {
                   })}
                   onOpenDecision={row.canDecision ? () => navigate(`/portfolio/decisiones?initiativeId=${encodeURIComponent(initiative.id)}&challengeId=${encodeURIComponent(challenge?.id ?? initiative.challengeId)}&frontId=${encodeURIComponent(front?.id ?? initiative.strategicFrontId)}`) : null}
                   onOpenReport={row.canReport ? () => navigate(`/portfolio/reportes?initiativeId=${encodeURIComponent(initiative.id)}&challengeId=${encodeURIComponent(challenge?.id ?? initiative.challengeId)}&frontId=${encodeURIComponent(front?.id ?? initiative.strategicFrontId)}`) : null}
-                  onOpenCore={initiative.projectId ? () => navigate(`/projects/${encodeURIComponent(initiative.projectId!)}`) : null}
+                  onOpenCore={initiative.projectId ? () => navigate(`/initiatives/${encodeURIComponent(initiative.projectId!)}/overview`) : null}
                   onOpenInitiative={initiative.projectId
                     ? () => navigate(`/projects/${encodeURIComponent(initiative.projectId!)}/step/${initiative.currentStep.match(/\d/)?.[0] ?? '0'}`)
                     : null}

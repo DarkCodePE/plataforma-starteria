@@ -16,6 +16,11 @@ describe('Avance de la iniciativa en el listado del Portfolio Lead', () => {
     expect(getInitiativeProgress(item('Step 4', { progressSignal: { health: 'ready_for_decision' } }))).toEqual({ completed: 5, percent: 100 });
   });
 
+  it('lista para decisión por estado de portafolio es 100% aunque no venga progressSignal', () => {
+    expect(getInitiativeProgress(item('Step 4', { status: 'lista_para_decision' }))).toEqual({ completed: 5, percent: 100 });
+    expect(getInitiativeProgress(item('Step 4', { status: 'ready_for_decision' }))).toEqual({ completed: 5, percent: 100 });
+  });
+
   it('cerrada es 100%', () => {
     expect(getInitiativeProgress(item('Step 3', { status: 'cerrada' }))).toEqual({ completed: 5, percent: 100 });
   });
