@@ -150,6 +150,35 @@ describe('InitiativeOverviewPage (IR-F2)', () => {
     expect(navigate).not.toHaveBeenCalledWith('/projects/p1/step/0');
   });
 
+  // El overview reflejaba siempre "Draft · Step 0 activo" aunque la iniciativa hubiera avanzado:
+  // lo encontró la auditoría del Portfolio Lead en producción (2026-10-08).
+  it('refleja el avance del core: Steps previos completos y el actual activo', async () => {
+    getAdaptiveCore.mockResolvedValue({ ...SERVER_CORE, progressSignal: { ...SERVER_CORE.progressSignal, step: 2 } });
+    render(<InitiativeOverviewPage />);
+
+    expect(await screen.findByText(/Estado: En curso · Step 2/i)).toBeInTheDocument();
+    expect(screen.queryByText(/Estado: Draft/i)).not.toBeInTheDocument();
+    for (const n of [0, 1]) expect(screen.getByTestId(`overview-step-${n}`)).toHaveAttribute('data-state', 'done');
+    expect(screen.getByTestId('overview-step-2')).toHaveAttribute('data-state', 'active');
+    for (const n of [3, 4]) expect(screen.getByTestId(`overview-step-${n}`)).toHaveAttribute('data-state', 'locked');
+    fireEvent.click(screen.getByRole('button', { name: /Continuar en Step 2/i }));
+    expect(navigate).toHaveBeenCalledWith('/projects/p1/step/2');
+  });
+
+  it('con Step 4 presentado muestra Steps 0–4 completos y lista para decisión', async () => {
+    getAdaptiveCore.mockResolvedValue({
+      ...SERVER_CORE,
+      progressSignal: { ...SERVER_CORE.progressSignal, step: 4, health: 'ready_for_decision' },
+    });
+    render(<InitiativeOverviewPage />);
+
+    expect(await screen.findByText(/Estado: Lista para decisión/i)).toBeInTheDocument();
+    for (const n of [0, 1, 2, 3, 4]) expect(screen.getByTestId(`overview-step-${n}`)).toHaveAttribute('data-state', 'done');
+    expect(screen.queryByRole('button', { name: /Revisar mi misi[oó]n y empezar/i })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /Ver Step 4/i }));
+    expect(navigate).toHaveBeenCalledWith('/projects/p1/step/4');
+  });
+
   it('muestra un error si no se puede cargar la iniciativa', async () => {
     getById.mockRejectedValueOnce(new Error('boom'));
     render(<InitiativeOverviewPage />);
