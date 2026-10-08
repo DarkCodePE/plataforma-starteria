@@ -15,6 +15,7 @@ import { Badge } from '../../../app/components/ui/badge';
 import { Button } from '../../../app/components/ui/button';
 import { Textarea } from '../../../app/components/ui/textarea';
 import { AISuggestionPanel } from '../../../app/components/design-system/patterns';
+import { LiveUnderstandingPanel } from './LiveUnderstandingPanel';
 import {
   chooseGuidedExploration,
   abandonPortfolioEntrySession,
@@ -439,12 +440,14 @@ function ConversationPanel({
   pending,
   onChange,
   onSubmit,
+  liveUnderstandingSurface,
 }: {
   session: PortfolioEntrySessionDto;
   value: string;
   pending: boolean;
   onChange: (value: string) => void;
   onSubmit: () => void;
+  liveUnderstandingSurface: React.ReactNode;
 }) {
   const questions = latestQuestions(session);
   const activeQuestion = questions[0];
@@ -469,7 +472,7 @@ function ConversationPanel({
           <div>
             {synthesis ? (
               <div className="border-l-2 border-brand-primary/40 pl-4" data-testid="portfolio-entry-understanding">
-                <p className="text-xs font-semibold uppercase tracking-wide text-brand-primary">Esto estoy entendiendo</p>
+                <p className="text-xs font-semibold uppercase tracking-wide text-text-muted">Contexto de la conversación</p>
                 <p className="mt-2 max-w-2xl text-sm leading-6 text-text-primary">{synthesis}</p>
               </div>
             ) : null}
@@ -537,6 +540,8 @@ function ConversationPanel({
             </Button>
           </div> : null}
 
+          {liveUnderstandingSurface}
+
           <ConversationTrace session={session} />
         </div>
       </div>
@@ -548,14 +553,29 @@ function GuidedExplorationOffer({
   pending,
   session,
   onChoose,
+  liveUnderstandingSurface,
+  correctionSubmitting,
 }: {
   pending: boolean;
   session: PortfolioEntrySessionDto;
   onChoose: (choice: 'accept' | 'provisional_route') => void;
+  liveUnderstandingSurface: React.ReactNode;
+  correctionSubmitting: boolean;
 }) {
   return (
     <div className="mx-auto max-w-3xl">
-      <AISuggestionPanel
+      <div className="mb-4">{liveUnderstandingSurface}</div>
+      {correctionSubmitting ? (
+        <section
+          role="status"
+          aria-live="polite"
+          className="rounded-ds-lg border border-border-default bg-surface-default p-4 text-sm leading-6 text-text-secondary"
+          data-testid="portfolio-entry-checkpoint-correction-pending"
+        >
+          Estamos incorporando tu corrección y retomando la aclaración.
+        </section>
+      ) : (
+        <AISuggestionPanel
         title={session.clarification.checkpoint === 'guided'
           ? 'Con lo que acabamos de profundizar, ya puedo convertir esta lectura en una propuesta de abordaje.'
           : 'Ya tengo suficiente claridad para proponerte un primer abordaje'}
@@ -569,8 +589,9 @@ function GuidedExplorationOffer({
             { id: 'provisional', label: 'Ver mi propuesta de abordaje', tone: 'primary', disabled: pending },
             { id: 'deepen', label: 'Seguir aterrizando mi necesidad', tone: 'secondary', disabled: pending },
           ]}
-        onAction={(actionId) => onChoose(actionId === 'deepen' ? 'accept' : 'provisional_route')}
-      />
+          onAction={(actionId) => onChoose(actionId === 'deepen' ? 'accept' : 'provisional_route')}
+        />
+      )}
       <div className="mt-4">
         <ConversationTrace session={session} />
       </div>
@@ -1310,6 +1331,10 @@ export function PortfolioEntryExperience({
   const [sessionDto, setSessionDto] = useState<PortfolioEntrySessionDto | null>(null);
   const [currentInput, setCurrentInput] = useState('');
   const [pendingRequest, setPendingRequest] = useState<PendingRequest>(null);
+  const [liveUnderstandingUpdating, setLiveUnderstandingUpdating] = useState(false);
+  const [liveUnderstandingCorrectionOpen, setLiveUnderstandingCorrectionOpen] = useState(false);
+  const [liveUnderstandingCorrectionDraft, setLiveUnderstandingCorrectionDraft] = useState('');
+  const [liveUnderstandingCorrectionSubmitting, setLiveUnderstandingCorrectionSubmitting] = useState(false);
   const [error, setError] = useState<UiError | null>(null);
   const [correctionDraft, setCorrectionDraft] = useState<Record<string, string>>({});
   const [correctionNotes, setCorrectionNotes] = useState('');
@@ -1334,6 +1359,10 @@ export function PortfolioEntryExperience({
     setSessionRef(null);
     setSessionDto(null);
     setCurrentInput('');
+    setLiveUnderstandingUpdating(false);
+    setLiveUnderstandingCorrectionOpen(false);
+    setLiveUnderstandingCorrectionDraft('');
+    setLiveUnderstandingCorrectionSubmitting(false);
     setError(null);
     setCorrectionDraft({});
     setCorrectionNotes('');
@@ -1506,6 +1535,7 @@ export function PortfolioEntryExperience({
       trackPortfolioEntryEvent('portfolio_entry_session_created', { sessionId: created.session.id });
 
       setPendingRequest('submitting');
+      setLiveUnderstandingUpdating(true);
       const next = await submitPortfolioEntryMessage(ref.sessionId, ref.credential, {
         expectedRevision: created.session.revision,
         idempotencyKey: createIdempotencyKey('portfolio-entry:first-message'),
@@ -1518,6 +1548,7 @@ export function PortfolioEntryExperience({
     } catch (err) {
       await handleRequestError(err);
     } finally {
+      setLiveUnderstandingUpdating(false);
       setPendingRequest(null);
     }
   };
@@ -1527,7 +1558,10 @@ export function PortfolioEntryExperience({
     const message = currentInput.trim();
     if (!message) return;
     setError(null);
+    setLiveUnderstandingCorrectionOpen(false);
+    setLiveUnderstandingCorrectionDraft('');
     setPendingRequest('submitting');
+    setLiveUnderstandingUpdating(true);
     try {
       const next = await submitPortfolioEntryMessage(sessionRef.sessionId, sessionRef.credential, {
         expectedRevision: sessionDto.revision,
@@ -1540,7 +1574,49 @@ export function PortfolioEntryExperience({
       trackPortfolioEntryEvent('clarification_answered', { sessionId: next.id });
     } catch (err) {
       await handleRequestError(err);
+      setSessionDto((current) => current ? { ...current, liveUnderstanding: undefined } : current);
     } finally {
+      setLiveUnderstandingUpdating(false);
+      setPendingRequest(null);
+    }
+  };
+
+  const beginLiveUnderstandingCorrection = () => {
+    if (!sessionDto?.liveUnderstanding || pending) return;
+    setLiveUnderstandingCorrectionDraft('');
+    setLiveUnderstandingCorrectionOpen(true);
+  };
+
+  const cancelLiveUnderstandingCorrection = () => {
+    if (liveUnderstandingCorrectionSubmitting) return;
+    setLiveUnderstandingCorrectionOpen(false);
+    setLiveUnderstandingCorrectionDraft('');
+  };
+
+  const submitLiveUnderstandingCorrection = async () => {
+    if (!sessionDto || !sessionRef || !sessionDto.liveUnderstanding || pending) return;
+    const message = liveUnderstandingCorrectionDraft.trim();
+    if (!message) return;
+    setError(null);
+    setPendingRequest('submitting');
+    setLiveUnderstandingUpdating(true);
+    setLiveUnderstandingCorrectionSubmitting(true);
+    try {
+      const next = await submitPortfolioEntryMessage(sessionRef.sessionId, sessionRef.credential, {
+        expectedRevision: sessionDto.revision,
+        idempotencyKey: createIdempotencyKey('portfolio-entry:live-understanding-correction'),
+        message,
+        intent: 'correction',
+      });
+      setSessionDto(next);
+      setCurrentInput('');
+      setLiveUnderstandingCorrectionOpen(false);
+      setLiveUnderstandingCorrectionDraft('');
+    } catch (err) {
+      await handleRequestError(err);
+    } finally {
+      setLiveUnderstandingUpdating(false);
+      setLiveUnderstandingCorrectionSubmitting(false);
       setPendingRequest(null);
     }
   };
@@ -1549,6 +1625,7 @@ export function PortfolioEntryExperience({
     if (!sessionDto || !sessionRef || pending || sessionDto.nextAction !== 'retry_analysis' || !sessionDto.pendingInput) return;
     setError(null);
     setPendingRequest('submitting');
+    setLiveUnderstandingUpdating(true);
     try {
       const next = await submitPortfolioEntryMessage(sessionRef.sessionId, sessionRef.credential, {
         expectedRevision: sessionDto.revision,
@@ -1558,7 +1635,9 @@ export function PortfolioEntryExperience({
       setSessionDto(next);
     } catch (err) {
       await handleRequestError(err);
+      setSessionDto((current) => current ? { ...current, liveUnderstanding: undefined } : current);
     } finally {
+      setLiveUnderstandingUpdating(false);
       setPendingRequest(null);
     }
   };
@@ -1770,8 +1849,30 @@ export function PortfolioEntryExperience({
       return <section role="status" className="mx-auto max-w-3xl rounded-ds-lg border border-border-default bg-surface-default p-5"><h2 className="font-semibold text-text-primary">Lectura eliminada</h2><p className="mt-2 text-sm text-text-secondary">Este Brief quedó invalidado y ya no puede trabajarse con Starteria. Puedes empezar una nueva lectura cuando quieras.</p><Button type="button" className="mt-4" onClick={restart}>Empezar de nuevo</Button></section>;
     }
 
+    const liveUnderstandingSurface = (
+      <LiveUnderstandingPanel
+        viewModel={sessionDto.liveUnderstanding}
+        updating={liveUnderstandingUpdating}
+        correctionOpen={liveUnderstandingCorrectionOpen}
+        correctionDraft={liveUnderstandingCorrectionDraft}
+        disabled={pending}
+        onBeginCorrection={beginLiveUnderstandingCorrection}
+        onCorrectionDraftChange={setLiveUnderstandingCorrectionDraft}
+        onCancelCorrection={cancelLiveUnderstandingCorrection}
+        onSubmitCorrection={submitLiveUnderstandingCorrection}
+      />
+    );
+
     if (sessionDto.nextAction === 'offer_guided_exploration') {
-      return <GuidedExplorationOffer session={sessionDto} pending={pending} onChoose={chooseGuided} />;
+      return (
+        <GuidedExplorationOffer
+          session={sessionDto}
+          pending={pending || liveUnderstandingCorrectionOpen}
+          onChoose={chooseGuided}
+          liveUnderstandingSurface={liveUnderstandingSurface}
+          correctionSubmitting={liveUnderstandingCorrectionSubmitting}
+        />
+      );
     }
 
     if (sessionDto.nextAction === 'retry_analysis' && sessionDto.pendingInput) {
@@ -1811,6 +1912,7 @@ export function PortfolioEntryExperience({
         pending={pending}
         onChange={setCurrentInput}
         onSubmit={submitAnswer}
+        liveUnderstandingSurface={liveUnderstandingSurface}
       />
     );
   };

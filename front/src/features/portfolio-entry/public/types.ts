@@ -34,6 +34,22 @@ export type PortfolioEntryQuestion = {
   asked_at_budget_remaining: number;
 };
 
+export type PortfolioEntryLiveUnderstanding = {
+  state: 'supported_reading' | 'no_supported_insight' | 'insufficient_basis' | 'synthesis_unavailable';
+  reading?: string;
+  tensions?: Array<{
+    statement: string;
+    whyItMatters: string;
+  }>;
+  decision?: {
+    decisionToPrepare: string;
+  };
+  decisionChangingUnknowns: Array<{
+    uncertainty: string;
+    whyItMatters: string;
+  }>;
+};
+
 export type PortfolioEntrySessionDto = {
   id: string;
   lifecycleStatus: PortfolioEntryLifecycleStatus;
@@ -76,6 +92,7 @@ export type PortfolioEntrySessionDto = {
       source: 'latestAnalysis.extracted_context';
     };
   };
+  liveUnderstanding?: PortfolioEntryLiveUnderstanding;
   nextAction: PortfolioEntryNextAction;
   handoff?: PortfolioEntryHandoffDto;
   confirmation?: PortfolioEntryConfirmationDto;
