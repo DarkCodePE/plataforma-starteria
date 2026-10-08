@@ -242,6 +242,71 @@ conversion and Portfolio Setup.
 KAN-114A remains a local planning/traceability label rather than a Jira issue
 found in the connected Jira site.
 
+## Portfolio Entry — KAN-114 / KAN-115 / KAN-116 post-merge 114C state
+
+KAN-114 Critical Situation Synthesis is merged into `main` by PR #151
+(`c4dc035`) and semantically accepted as `PASS_WITH_NON_BLOCKING_GAPS` in
+`docs/ai-harness/portfolio-entry/KAN-114_CRITICAL_SITUATION_SYNTHESIS_SEMANTIC_ACCEPTANCE_v0.1.md`.
+The accepted reasoning semantic gate is the dependency for 114C; this does not
+promote candidate Portfolio Entry contracts or certify the whole product.
+
+KAN-115 Live Understanding is integrated by KAN-116 PR #156. The merge commit
+is `be3c494b3980a9fafa67fe613c4a077a863eeffa`; the final feature HEAD is
+`de2a59beabf49072429ad279d7a8bed3de3c8866`. Its CI run
+[`37847682123`](https://github.com/DarkCodePE/plataforma-starteria/actions/runs/37847682123)
+passed all required jobs: Node tests with coverage, PostgreSQL integration,
+Python unit tests, Prisma migration alignment, lint/build, Portfolio Entry
+E2E, and CI summary.
+
+- The PostgreSQL `PortfolioEntryTurn.inputIntent` integration step completed
+  successfully against the CI disposable database after applying migrations.
+  It round-tripped `answer` and `correction`, and verified that a legacy turn
+  without the field reads as `answer`. The step was executed, not skipped.
+- The full-stack Playwright Live Understanding spec completed successfully in
+  the Portfolio Entry E2E job. It exercised browser → backend → Prisma →
+  deterministic synthesis adapter → browser, including correction and the
+  normal clarification lifecycle. The step was executed, not skipped; this is
+  deterministic test evidence, not a LIVE/OpenRouter run.
+- Deterministic backend/frontend regression suites passed in the Node coverage
+  job, including the Live Understanding session integration, presentation
+  allowlist, and public UI tests.
+
+The bounded 114C capability is:
+
+```text
+user message
+→ existing analysis
+→ persisted turn
+→ KAN-114 Critical Situation Synthesis
+→ deterministic presentation allowlist
+→ Live Understanding
+→ explicit user correction
+→ normal clarification lifecycle
+→ fresh synthesis / Live Understanding
+```
+
+Live Understanding is provisional, correctable, non-taxonomic and safe for the
+public UI. Its deterministic allowlist excludes raw KAN-114 reasoning metadata.
+The correction turn is persisted with `inputIntent=correction`; the additive
+Prisma migration defaults existing turns to `answer` and remains
+`KEEP_COMPAT`. Live Understanding itself remains response-ephemeral: it is not
+persisted in the session or as Core truth and may be absent after a full reload.
+
+114C does not implement 114D final handoff/conclusion, a recommendation from
+`candidate_first_movement`, Starteria Path, Portfolio Setup continuity, Steps,
+Core canonicalization, or durable/Core persistence of Live Understanding. It
+does not change KAN-114's prompt, output schema or accepted reasoning
+semantics. KAN-116 only adds chronological `turn_index` ordering at the
+synthesis input assembly boundary for persisted user messages and corrections.
+The only 114D reference in the implementation tree is a negative UI regression
+assertion keeping Live Understanding out of the handoff review; 114D itself is
+not implemented. The next authorized slice is 114D.
+
+This closure does not alter the unresolved ADR-003 status recorded above.
+ADR-003 remains `PROPOSED` in `CURRENT_STATE.md` and its discrepancy remains
+`OPEN / DEFERRED`; it is still to be reconciled before Portfolio Setup
+Continuity.
+
 ## ADRs
 
 - ADRs de harness/documentacion: `docs/adr/`.

@@ -486,6 +486,35 @@ The frozen contract is `docs/experience/portfolio-entry/PORTFOLIO_ENTRY_CRITICAL
 
 ---
 
+## KAN-115 / KAN-116 — Portfolio Entry Live Understanding (114C)
+
+```text
+slice_id: PORTFOLIO_ENTRY_LIVE_UNDERSTANDING_114C
+HU: KAN-115 — Portfolio Entry — Live Understanding; KAN-116 — 114C integration
+dependency: KAN-114 Critical Situation Synthesis (PR #151 merged; reasoning semantic gate ACCEPTED, PASS_WITH_NON_BLOCKING_GAPS)
+logic_status: ACTIVE_V2_BASELINE (bounded 114C surface, subordinate to Core v0.2 and the approved Portfolio Entry Logic Contract v0.1)
+implementation_status: IMPLEMENTED_VERIFIED (KAN-116 merged in PR #156)
+visual_status: V2_PILOT
+evidence_status: VERIFIED (PR #156 CI, PostgreSQL integration and full-stack deterministic browser E2E)
+semantic_owner: Portfolio Entry V2; KAN-114 supplies the existing Critical Situation Synthesis
+merge_commit: be3c494b3980a9fafa67fe613c4a077a863eeffa
+feature_head: de2a59beabf49072429ad279d7a8bed3de3c8866
+ci: run 37847682123 — all required jobs SUCCESS
+db_evidence: PostgreSQL session repository integration step SUCCESS; additive inputIntent migration applied; answer/correction round-trip and legacy default answer verified
+browser_evidence: E2E light job SUCCESS; the full-stack Live Understanding Playwright spec completed SUCCESS using the deterministic synthesis test adapter
+regression_evidence: Node backend/frontend tests with coverage SUCCESS; focused Live Understanding backend, presentation-boundary and frontend regressions are included
+capability: user message -> existing analysis -> persisted turn -> KAN-114 Critical Situation Synthesis -> deterministic presentation allowlist -> response-ephemeral Live Understanding -> explicit correction -> normal clarification lifecycle -> fresh synthesis / Live Understanding
+presentation_boundary: provisional, correctable and non-taxonomic; public-safe allowlist excludes raw KAN-114 reasoning metadata
+persistence: PortfolioEntryTurn.inputIntent is an additive migration with DEFAULT 'answer' and KEEP_COMPAT; Live Understanding itself is response-ephemeral, is not stored as session/Core truth, and may be absent after full reload
+integration_note: KAN-116 adds turn_index ordering to the synthesis input assembly for persisted user messages/corrections; it does not change KAN-114 prompt, output schema or accepted reasoning semantics
+exclusions: 114D final handoff/conclusion; candidate_first_movement as recommendation; Starteria Path; Portfolio Setup continuity; Steps; Core canonicalization; persistence of Live Understanding as Core truth; KAN-114 reasoning-semantic changes
+migration_status: PARTIAL (this closes the bounded 114C capability, not the broader Portfolio Entry migration)
+legacy_treatment: KEEP_COMPAT; no retirement action is authorized or required by 114C
+next_authorized_slice: 114D final handoff/conclusion — NOT_IMPLEMENTED
+```
+
+PR #156 CI evidence: `https://github.com/DarkCodePE/plataforma-starteria/actions/runs/37847682123`. The PostgreSQL integration and full-stack E2E steps completed successfully and were not skipped. This is scoped slice evidence, not global production certification.
+
 # 6. V2 E2E slice map
 
 | Slice | Logic status | Implementation status | Visual status | Evidence status | Treatment |
@@ -496,7 +525,7 @@ The frozen contract is `docs/experience/portfolio-entry/PORTFOLIO_ENTRY_CRITICAL
 | Public Landing - L1 Product Framing & Hero (KAN-64) | ACTIVE_V2_BASELINE (ADR-006) | IMPLEMENTED_VERIFIED; KAN-64 RESUELTO | V2_PILOT | LOCAL_REGRESSION_PASS (KAN-102 revalidation) | KEEP; Early Access/Demo runtime excluded |
 | Public Landing L2 + Portfolio Entry Convergence (KAN-102) | ACTIVE_V2_BASELINE (ADR-006) | IMPLEMENTED_VERIFIED (local) | V2_PILOT | VERIFIED (frontend + focused Chromium) | KEEP; commercial destinations pending authority |
 | Landing V4 | ACTIVE_V2_BASELINE visual spec | VERIFY_IN_REPO | V2_TARGET_DEFINED | SUPPORTED | RECONCILE |
-| Portfolio Entry logic | ACTIVE_V2_BASELINE | PARTIAL_IMPLEMENTATION | V2_PILOT / VERIFY | SUPPORTED | PROMOTE STACK |
+| Portfolio Entry logic | ACTIVE_V2_BASELINE | PARTIAL_IMPLEMENTATION; KAN-114 + 114C integrated | V2_PILOT / VERIFY | VERIFIED for KAN-115/116 114C | KEEP bounded 114C; broader stack reconciliation remains |
 | Clarification | CANDIDATE + hypotheses | EXPERIMENTAL / VERIFY | V2_PILOT | TESTING | TEST |
 | Handoff / Value Handoff Cognition | CANDIDATE + hypotheses | EXPERIMENTAL / VERIFY | V2_PILOT | TESTING | TEST |
 | Registration / continuation | CANDIDATE | IMPLEMENTED_UNVERIFIED | MIXED | TESTING | VERIFY grant and full E2E |
