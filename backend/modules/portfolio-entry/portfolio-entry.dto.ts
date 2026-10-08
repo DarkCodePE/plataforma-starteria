@@ -4,6 +4,7 @@ import type {
   PortfolioEntrySession,
   PortfolioEntryTurn,
 } from '../portfolio-entry-sessions/domain/portfolio-entry-session.types';
+import type { LiveUnderstandingViewModel } from './presentation/live-understanding-view-model';
 
 export type PortfolioEntrySessionClientDto = {
   id: string;
@@ -52,6 +53,7 @@ export type PortfolioEntrySessionClientDto = {
   confirmation?: PortfolioEntryConfirmationClientDto;
   pendingInput?: PortfolioEntrySession['semanticState']['pendingInput'];
   handoffMode?: 'live' | 'deterministic' | 'degraded';
+  liveUnderstanding?: LiveUnderstandingViewModel;
   provisionalContinuation?: PortfolioEntryAuthenticatedProvisionalContinuationDto;
 };
 
@@ -149,6 +151,7 @@ export function toPortfolioEntryConfirmedBriefDto(session: PortfolioEntrySession
 export function toPortfolioEntrySessionClientDto(
   session: PortfolioEntrySession,
   turns: PortfolioEntryTurn[],
+  liveUnderstanding?: LiveUnderstandingViewModel | null,
 ): PortfolioEntrySessionClientDto {
   const activeTurnId = turns.at(-1)?.id;
   return {
@@ -203,6 +206,7 @@ export function toPortfolioEntrySessionClientDto(
     handoffMode: session.latestHandoff
       ? session.semanticState.pendingInput?.status === 'FAILED_RETRYABLE' ? 'degraded' : 'deterministic'
       : undefined,
+    ...(liveUnderstanding ? { liveUnderstanding } : {}),
   };
 }
 

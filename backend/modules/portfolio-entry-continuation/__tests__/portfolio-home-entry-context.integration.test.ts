@@ -103,7 +103,10 @@ describeIntegration('Portfolio Home entry context DB integration', () => {
 function makeApp(): express.Express {
   const app = express();
   app.use(express.json());
-  app.use(base, buildPortfolioEntryRouter({}, { authenticate: testAuthenticate }));
+  app.use(base, buildPortfolioEntryRouter({}, {
+    authenticate: testAuthenticate,
+    liveUnderstandingSynthesizer: { synthesize: async () => null },
+  }));
   app.use(errorHandler);
   return app;
 }

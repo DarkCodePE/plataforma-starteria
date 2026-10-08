@@ -11,12 +11,16 @@ export type LiveUnderstandingDecisionChangingUnknown = {
 };
 
 export type LiveUnderstandingViewModel = {
-  state: 'supported_reading' | 'no_supported_insight' | 'insufficient_basis';
+  state: 'supported_reading' | 'no_supported_insight' | 'insufficient_basis' | 'synthesis_unavailable';
   reading?: string;
   tensions?: LiveUnderstandingTension[];
   decision?: { decisionToPrepare: string };
   decisionChangingUnknowns: LiveUnderstandingDecisionChangingUnknown[];
 };
+
+export function liveUnderstandingUnavailableViewModel(): LiveUnderstandingViewModel {
+  return { state: 'synthesis_unavailable', decisionChangingUnknowns: [] };
+}
 
 /**
  * Projects accepted KAN-114 output into a user-facing allowlist.

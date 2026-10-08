@@ -11,7 +11,9 @@ import {
   DeterministicPortfolioEntryAgentAdapter,
   PortfolioEntryExperimentalSessionService,
   UnconfiguredPortfolioEntryAgentAdapter,
+  type PortfolioEntryLiveUnderstandingSynthesizer,
 } from './application/portfolio-entry-experimental-session.service';
+import { CriticalSituationSynthesisAdapter } from '../portfolio-entry-runtime/agent/critical-situation-synthesis-adapter';
 import {
   DeterministicPortfolioEntryHandoffMaterializer,
   type PortfolioEntryAgentAdapterV2,
@@ -51,6 +53,7 @@ export interface PortfolioEntryRouterDeps {
   sessionRepository?: PortfolioEntrySessionRepository;
   idempotencyRepository?: PortfolioEntryIdempotencyRepository;
   agentAdapter?: PortfolioEntryAgentAdapterV2;
+  liveUnderstandingSynthesizer?: PortfolioEntryLiveUnderstandingSynthesizer;
   handoffMaterializer?: PortfolioEntryHandoffMaterializer;
   authenticate?: RequestHandler;
   optionalAuthenticate?: RequestHandler;
@@ -73,6 +76,7 @@ export function buildPortfolioEntryRouter(
   const agentAdapter = deps.agentAdapter ?? configuredAgentAdapter();
   const handoffMaterializer = deps.handoffMaterializer
     ?? (deps.agentAdapter ? new DeterministicPortfolioEntryHandoffMaterializer() : configuredHandoffMaterializer());
+  const liveUnderstandingSynthesizer = deps.liveUnderstandingSynthesizer ?? configuredLiveUnderstandingSynthesizer();
   const appService = new PortfolioEntryExperimentalSessionService(
     sessionService,
     sessionRepository,
@@ -83,6 +87,7 @@ export function buildPortfolioEntryRouter(
       idempotencyTtlMs: deps.idempotencyTtlMs ?? config.portfolioEntryIdempotencyTtlSeconds * 1000,
       versioning,
     },
+    liveUnderstandingSynthesizer,
   );
   const controller = new PortfolioEntryController(appService);
   const conversionController = new PortfolioEntryConversionController(
@@ -182,6 +187,33 @@ function configuredHandoffMaterializer(): PortfolioEntryHandoffMaterializer {
   // live model may enrich wording in a future opt-in path, but it is never a
   // prerequisite for rendering or saving the handoff.
   return new DeterministicPortfolioEntryHandoffMaterializer();
+}
+
+function configuredLiveUnderstandingSynthesizer(): PortfolioEntryLiveUnderstandingSynthesizer {
+  try {
+    const provider = loadPortfolioEntryProviderConfig();
+    const adapter = new CriticalSituationSynthesisAdapter(createResilientModel(provider));
+    return {
+      synthesize: async (input) => {
+        const result = await adapter.generate({
+          authorized_snapshot: input.authorizedSnapshot,
+          call_id: `${input.sessionId}-live-understanding-turn-${input.turnIndex}`,
+          model_metadata: {
+            provider: provider.provider,
+            requested_model: provider.model,
+            model: provider.model,
+            temperature: provider.temperature ?? 0,
+            seed_support: provider.seed === undefined ? 'not_requested' : 'provided',
+            ...(provider.seed !== undefined ? { seed: provider.seed } : {}),
+          },
+        });
+        return result.synthesis;
+      },
+    };
+  } catch (err) {
+    logger.error({ err }, 'Portfolio Entry Live Understanding synthesis is not configured.');
+    return { synthesize: async () => null };
+  }
 }
 
 function createResilientModel(primaryConfig: ReturnType<typeof loadPortfolioEntryProviderConfig>) {

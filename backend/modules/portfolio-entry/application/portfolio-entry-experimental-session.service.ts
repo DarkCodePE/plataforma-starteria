@@ -14,6 +14,11 @@ import {
   PortfolioEntrySessionController,
 } from '../../portfolio-entry-runtime';
 import { LiveModelExecutionError } from '../../portfolio-entry-runtime/model/live-model-error';
+import type { CriticalSituationSynthesis } from '../../portfolio-entry-runtime/domain/critical-situation-synthesis.schema';
+import {
+  normalizeCriticalSituationSynthesisInput,
+  type CriticalSituationSynthesisAuthorizedSnapshot,
+} from '../../portfolio-entry-runtime/synthesis/critical-situation-synthesis-input';
 import { hashPublicAccessToken, PortfolioEntrySessionService } from '../../portfolio-entry-sessions/application/portfolio-entry-session.service';
 import type { PortfolioEntrySessionRepository } from '../../portfolio-entry-sessions/application/portfolio-entry-session.repository';
 import { PortfolioEntrySessionError } from '../../portfolio-entry-sessions/application/portfolio-entry-session-errors';
@@ -26,6 +31,11 @@ import {
   type PortfolioEntryConfirmedBriefDto,
   type PortfolioEntrySessionClientDto,
 } from '../portfolio-entry.dto';
+import {
+  liveUnderstandingUnavailableViewModel,
+  toLiveUnderstandingViewModel,
+  type LiveUnderstandingViewModel,
+} from '../presentation/live-understanding-view-model';
 import { PortfolioEntryApiError } from '../portfolio-entry.errors';
 import type { ConfirmationBody, ConfirmedBriefIdentity, CreateSessionBody, GuidedExplorationBody, SubmitMessageBody } from '../portfolio-entry.schemas';
 import type {
@@ -66,6 +76,17 @@ export type PortfolioEntryExperimentalSessionConfig = {
   versioning: PortfolioEntrySession['versioning'];
 };
 
+export type PortfolioEntryLiveUnderstandingSynthesisRequest = {
+  sessionId: string;
+  sessionRevision: number;
+  turnIndex: number;
+  authorizedSnapshot: CriticalSituationSynthesisAuthorizedSnapshot;
+};
+
+export interface PortfolioEntryLiveUnderstandingSynthesizer {
+  synthesize(input: PortfolioEntryLiveUnderstandingSynthesisRequest): Promise<CriticalSituationSynthesis | null>;
+}
+
 export class PortfolioEntryExperimentalSessionService {
   constructor(
     private readonly sessionService: PortfolioEntrySessionService,
@@ -74,6 +95,7 @@ export class PortfolioEntryExperimentalSessionService {
     private readonly agentAdapter: PortfolioEntryAgentAdapterV2,
     private readonly handoffMaterializer: PortfolioEntryHandoffMaterializer,
     private readonly config: PortfolioEntryExperimentalSessionConfig,
+    private readonly liveUnderstandingSynthesizer: PortfolioEntryLiveUnderstandingSynthesizer,
     private readonly now: () => Date = () => new Date(),
   ) {}
 
@@ -201,7 +223,7 @@ export class PortfolioEntryExperimentalSessionService {
         pendingInputId: pendingSession.semanticState.pendingInput?.id,
         turnIndex: runtimeTurnForPersistence.turn_index,
       });
-      await this.sessionService.appendTurn({
+      const appendedTurn = await this.sessionService.appendTurn({
         sessionId,
         runtimeTurn: runtimeTurnForPersistence,
         runtimeContextAfter: result.final_context,
@@ -210,7 +232,44 @@ export class PortfolioEntryExperimentalSessionService {
         expectedRevision: pendingSession.revision,
         now: this.now(),
       });
-      return this.toDto(await this.requireSession(sessionId));
+      const analyzedRevision = pendingSession.revision + 1;
+      let liveUnderstanding: LiveUnderstandingViewModel = liveUnderstandingUnavailableViewModel();
+      try {
+        const authorizedSnapshot = normalizeCriticalSituationSynthesisInput({
+          snapshot: {
+            snapshot_id: `portfolio-entry-turn-${appendedTurn.turnIndex}`,
+            captured_at: this.now().toISOString(),
+          },
+          user_messages: [...turnsBefore, appendedTurn].map((turn) => ({ id: turn.id, text: turn.userInput })),
+          user_corrections: [],
+          explicitly_provided_context: [],
+          provisional_extracted_context: appendedTurn.analysisSnapshot.extracted_context,
+          provisional_extracted_context_provenance: appendedTurn.analysisSnapshot.provenance,
+          source_refs: [],
+        });
+        const synthesis = await this.liveUnderstandingSynthesizer.synthesize({
+          sessionId,
+          sessionRevision: analyzedRevision,
+          turnIndex: appendedTurn.turnIndex,
+          authorizedSnapshot,
+        });
+        liveUnderstanding = synthesis
+          ? toLiveUnderstandingViewModel(synthesis)
+          : liveUnderstandingUnavailableViewModel();
+      } catch {
+        // Critical Situation Synthesis is secondary; its failure cannot undo an analyzed turn.
+        liveUnderstanding = liveUnderstandingUnavailableViewModel();
+      }
+
+      const responseTurns = await this.sessionRepository.listTurns(sessionId);
+      const responseSession = await this.requireSession(sessionId);
+      const resultIsCurrent = responseSession.revision === analyzedRevision
+        && responseTurns.at(-1)?.id === appendedTurn.id;
+      return toPortfolioEntrySessionClientDto(
+        responseSession,
+        responseTurns,
+        resultIsCurrent ? liveUnderstanding : liveUnderstandingUnavailableViewModel(),
+      );
     }, (record) => this.recoverSubmit(sessionId, record, body.expectedRevision, body.message));
   }
 
