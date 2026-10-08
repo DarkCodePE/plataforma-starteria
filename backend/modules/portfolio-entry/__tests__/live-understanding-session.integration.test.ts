@@ -1,6 +1,7 @@
-import express from 'express';
+import express, { type RequestHandler } from 'express';
 import request from 'supertest';
 import { describe, expect, it } from 'vitest';
+import { AppError } from '../../../shared/errors/AppError';
 import { errorHandler } from '../../../shared/errors/error-handler';
 import { requestId } from '../../../shared/middleware/request-id';
 import type {
@@ -213,6 +214,303 @@ describe('Portfolio Entry Live Understanding session integration', () => {
 
 type SynthesisInput = PortfolioEntryLiveUnderstandingSynthesisRequest;
 
+describe('Portfolio Entry Live Understanding correction loop', () => {
+  it('reopens exploration_offered, appends the correction, then analyzes and synthesizes exactly once', async () => {
+    const adapter = new CorrectionTestAgentAdapter([false, true]);
+    let repositoryForSynthesis: InMemoryPortfolioEntrySessionRepository | undefined;
+    let sessionIdForSynthesis = '';
+    let persistedTurnsAtCorrectionSynthesis = 0;
+    const synthesizer = new FakeSynthesizer(async (input) => {
+      if (input.turnIndex === 2) {
+        persistedTurnsAtCorrectionSynthesis = (await repositoryForSynthesis!.listTurns(sessionIdForSynthesis)).length;
+      }
+      return supportedSynthesis();
+    });
+    const { app, repository } = makeApp(synthesizer, adapter);
+    repositoryForSynthesis = repository;
+    const created = await createCorrectionSession(app);
+    sessionIdForSynthesis = created.sessionId;
+    const first = await request(app)
+      .post(`${base}/sessions/${created.sessionId}/messages`)
+      .set('X-Starteria-Entry-Token', created.token)
+      .set('Idempotency-Key', 'correction-checkpoint-initial')
+      .send({ expectedRevision: 0, message: 'La cartera necesita ordenar trabajo antes del comite.' })
+      .expect(200);
+    expect(first.body.data.clarification.checkpoint).toBe('quick');
+
+    const correctionText = 'La prioridad no es ordenar toda la cartera; quise decir que debemos proteger capacidad para el trabajo regulatorio.';
+    const corrected = await request(app)
+      .post(`${base}/sessions/${created.sessionId}/messages`)
+      .set('X-Starteria-Entry-Token', created.token)
+      .set('Idempotency-Key', 'correction-checkpoint-reopen')
+      .send({ expectedRevision: first.body.data.revision, intent: 'correction', message: correctionText })
+      .expect(200);
+
+    const turns = await repository.listTurns(created.sessionId);
+    expect(turns.map((turn) => turn.userInput)).toEqual([
+      'La cartera necesita ordenar trabajo antes del comite.',
+      correctionText,
+    ]);
+    expect(turns[1].inputIntent).toBe('correction');
+    expect(adapter.calls).toHaveLength(2);
+    expect(adapter.calls[1].rawInput).toBe(correctionText);
+    expect(adapter.calls[1].sessionContext.clarification_status).toBe('in_progress');
+    expect(adapter.calls[1].priorAnalysis?.extracted_context.summary)
+      .toBe('La cartera necesita ordenar trabajo antes del comite.');
+    expect(corrected.body.data.lifecycleStatus).toBe('CLARIFYING');
+    expect(corrected.body.data.nextAction).toBe('answer_clarification');
+    expect(corrected.body.data.conversation).toHaveLength(2);
+    expect(JSON.stringify(corrected.body.data)).not.toContain('inputIntent');
+    expect(synthesizer.calls).toHaveLength(2);
+    expect(persistedTurnsAtCorrectionSynthesis).toBe(2);
+    expect(synthesizer.calls[1].sessionRevision).toBe(corrected.body.data.revision);
+    expect(synthesizer.calls[1].authorizedSnapshot.items.map((item) => item.kind)).toEqual([
+      'user_message',
+      'user_correction',
+      'provisional_extracted_context',
+      'provisional_extracted_context',
+    ]);
+    expect(synthesizer.calls[1].authorizedSnapshot.items[1]).toMatchObject({
+      kind: 'user_correction',
+      content: correctionText,
+      corrects_ref: null,
+    });
+
+    const clarificationQuestion = corrected.body.data.conversation[1].emittedQuestions[0];
+    const followUp = await request(app)
+      .post(`${base}/sessions/${created.sessionId}/messages`)
+      .set('X-Starteria-Entry-Token', created.token)
+      .set('Idempotency-Key', 'correction-checkpoint-follow-up')
+      .send({
+        expectedRevision: corrected.body.data.revision,
+        message: 'La gerencia debe priorizar capacidad regulatoria antes de ampliar otros trabajos.',
+        matchedQuestionIds: [clarificationQuestion.id],
+      })
+      .expect(200);
+    expect(followUp.body.data.conversation).toHaveLength(3);
+    expect(synthesizer.calls).toHaveLength(3);
+    expect(synthesizer.calls[2].authorizedSnapshot.items.slice(0, 3).map((item) => item.kind)).toEqual([
+      'user_message',
+      'user_correction',
+      'user_message',
+    ]);
+    expect(synthesizer.calls[2].authorizedSnapshot.items.slice(0, 3).map((item) => item.content)).toEqual([
+      'La cartera necesita ordenar trabajo antes del comite.',
+      correctionText,
+      'La gerencia debe priorizar capacidad regulatoria antes de ampliar otros trabajos.',
+    ]);
+  });
+
+  it('rejects a normal answer at the checkpoint without creating pending input', async () => {
+    const adapter = new CorrectionTestAgentAdapter([false]);
+    const synthesizer = new FakeSynthesizer(() => supportedSynthesis());
+    const { app, repository } = makeApp(synthesizer, adapter);
+    const created = await createCorrectionSession(app);
+    const first = await postInitialCorrectionTurn(app, created);
+
+    await request(app)
+      .post(`${base}/sessions/${created.sessionId}/messages`)
+      .set('X-Starteria-Entry-Token', created.token)
+      .set('Idempotency-Key', 'normal-answer-at-checkpoint')
+      .send({ expectedRevision: first.body.data.revision, message: 'Texto sin una accion de checkpoint.' })
+      .expect(409);
+
+    const stored = await repository.findSessionById(created.sessionId);
+    expect(stored?.semanticState.pendingInput?.status).toBe('ANALYZED');
+    expect((await repository.listTurns(created.sessionId))).toHaveLength(1);
+    expect(adapter.calls).toHaveLength(1);
+    expect(synthesizer.calls).toHaveLength(1);
+  });
+
+  it('keeps an unmatched correction from answering or clearing the active question', async () => {
+    const adapter = new CorrectionTestAgentAdapter([true, true]);
+    const synthesizer = new FakeSynthesizer(() => supportedSynthesis());
+    const { app, repository } = makeApp(synthesizer, adapter);
+    const created = await createCorrectionSession(app);
+    const first = await request(app)
+      .post(`${base}/sessions/${created.sessionId}/messages`)
+      .set('X-Starteria-Entry-Token', created.token)
+      .set('Idempotency-Key', 'correction-active-initial')
+      .send({ expectedRevision: 0, message: 'Tenemos iniciativas y hace falta aclarar la decision.' })
+      .expect(200);
+    const correction = await request(app)
+      .post(`${base}/sessions/${created.sessionId}/messages`)
+      .set('X-Starteria-Entry-Token', created.token)
+      .set('Idempotency-Key', 'correction-active-unmatched')
+      .send({ expectedRevision: first.body.data.revision, intent: 'correction', message: 'La decision descrita no refleja lo que quise decir.' })
+      .expect(200);
+
+    const turns = await repository.listTurns(created.sessionId);
+    expect(turns[0].emittedQuestions).toHaveLength(1);
+    expect(turns[1].matchedQuestionIds).toEqual([]);
+    expect(turns[1].respondedResolves).toEqual([]);
+    expect(correction.body.data.clarification.answeredGaps).toEqual([]);
+    expect(adapter.calls).toHaveLength(2);
+    expect(synthesizer.calls).toHaveLength(2);
+  });
+
+  it('accepts and persists a correction when synthesis fails', async () => {
+    const adapter = new CorrectionTestAgentAdapter([false, true]);
+    const synthesizer = new FakeSynthesizer(async () => {
+      if (synthesizer.calls.length === 2) throw new Error('test synthesis unavailable');
+      return supportedSynthesis();
+    });
+    const { app, repository } = makeApp(synthesizer, adapter);
+    const created = await createCorrectionSession(app);
+    const first = await postInitialCorrectionTurn(app, created);
+    const corrected = await request(app)
+      .post(`${base}/sessions/${created.sessionId}/messages`)
+      .set('X-Starteria-Entry-Token', created.token)
+      .set('Idempotency-Key', 'correction-synthesis-failure')
+      .send({ expectedRevision: first.body.data.revision, intent: 'correction', message: 'Corrijo mi contexto para precisar el objetivo.' })
+      .expect(200);
+
+    const stored = await repository.findSessionById(created.sessionId);
+    expect(corrected.body.data.pendingInput.status).toBe('ANALYZED');
+    expect(corrected.body.data.liveUnderstanding).toEqual({ state: 'synthesis_unavailable', decisionChangingUnknowns: [] });
+    expect(stored?.executionStatus).toBe('SUCCEEDED');
+    expect((await repository.listTurns(created.sessionId))).toHaveLength(2);
+    expect(adapter.calls).toHaveLength(2);
+    expect(synthesizer.calls).toHaveLength(2);
+  });
+
+  it('replays an idempotent correction without duplicating history, analysis, or synthesis', async () => {
+    const adapter = new CorrectionTestAgentAdapter([false, true]);
+    const synthesizer = new FakeSynthesizer(() => supportedSynthesis());
+    const { app, repository } = makeApp(synthesizer, adapter);
+    const created = await createCorrectionSession(app);
+    const first = await postInitialCorrectionTurn(app, created);
+    const payload = { expectedRevision: first.body.data.revision, intent: 'correction', message: 'Corrijo lo anterior: debemos comparar capacidad y urgencia.' };
+    const firstDelivery = await request(app)
+      .post(`${base}/sessions/${created.sessionId}/messages`)
+      .set('X-Starteria-Entry-Token', created.token)
+      .set('Idempotency-Key', 'correction-idempotent-replay')
+      .send(payload)
+      .expect(200);
+    const replay = await request(app)
+      .post(`${base}/sessions/${created.sessionId}/messages`)
+      .set('X-Starteria-Entry-Token', created.token)
+      .set('Idempotency-Key', 'correction-idempotent-replay')
+      .send(payload)
+      .expect(200);
+
+    expect(replay.body.data).toEqual(firstDelivery.body.data);
+    expect((await repository.listTurns(created.sessionId))).toHaveLength(2);
+    expect(adapter.calls).toHaveLength(2);
+    expect(synthesizer.calls).toHaveLength(2);
+  });
+
+  it('rejects a second correction while analysis is pending', async () => {
+    let signalCorrectionStarted!: () => void;
+    let releaseCorrection!: () => void;
+    const correctionStarted = new Promise<void>((resolve) => { signalCorrectionStarted = resolve; });
+    const correctionRelease = new Promise<void>((resolve) => { releaseCorrection = resolve; });
+    const adapter = new CorrectionTestAgentAdapter([false, true], async (callNumber) => {
+      if (callNumber === 2) {
+        signalCorrectionStarted();
+        await correctionRelease;
+      }
+    });
+    const synthesizer = new FakeSynthesizer(() => supportedSynthesis());
+    const { app, repository } = makeApp(synthesizer, adapter);
+    const created = await createCorrectionSession(app);
+    const first = await postInitialCorrectionTurn(app, created);
+    const firstCorrectionPromise = request(app)
+      .post(`${base}/sessions/${created.sessionId}/messages`)
+      .set('X-Starteria-Entry-Token', created.token)
+      .set('Idempotency-Key', 'correction-pending-first')
+      .send({ expectedRevision: first.body.data.revision, intent: 'correction', message: 'La lectura debe considerar capacidad regulatoria.' })
+      .then((response) => response);
+
+    await correctionStarted;
+    const pending = await repository.findSessionById(created.sessionId);
+    await request(app)
+      .post(`${base}/sessions/${created.sessionId}/messages`)
+      .set('X-Starteria-Entry-Token', created.token)
+      .set('Idempotency-Key', 'correction-pending-second')
+      .send({ expectedRevision: pending!.revision, intent: 'correction', message: 'Otra correccion durante analisis pendiente.' })
+      .expect(409);
+    releaseCorrection();
+    expect((await firstCorrectionPromise).status).toBe(200);
+
+    expect((await repository.listTurns(created.sessionId))).toHaveLength(2);
+    expect(adapter.calls).toHaveLength(2);
+    expect(synthesizer.calls).toHaveLength(2);
+  });
+
+  it('rejects stale corrections after checkpoint advancement and does not reopen a final handoff', async () => {
+    const adapter = new CorrectionTestAgentAdapter([false, true]);
+    const synthesizer = new FakeSynthesizer(() => supportedSynthesis());
+    const { app } = makeApp(synthesizer, adapter);
+    const created = await createCorrectionSession(app);
+    const checkpoint = await postInitialCorrectionTurn(app, created);
+    const advanced = await request(app)
+      .post(`${base}/sessions/${created.sessionId}/guided-exploration`)
+      .set('X-Starteria-Entry-Token', created.token)
+      .set('Idempotency-Key', 'correction-advance-checkpoint')
+      .send({ expectedRevision: checkpoint.body.data.revision, choice: 'provisional_route' })
+      .expect(200);
+
+    await request(app)
+      .post(`${base}/sessions/${created.sessionId}/messages`)
+      .set('X-Starteria-Entry-Token', created.token)
+      .set('Idempotency-Key', 'correction-stale-checkpoint')
+      .send({ expectedRevision: checkpoint.body.data.revision, intent: 'correction', message: 'Correccion con revision anterior al avance.' })
+      .expect(409);
+
+    const handoff = await request(app)
+      .post(`${base}/sessions/${created.sessionId}/handoff`)
+      .set('X-Starteria-Entry-Token', created.token)
+      .set('Idempotency-Key', 'correction-materialize-handoff')
+      .send({ expectedRevision: advanced.body.data.revision })
+      .expect(200);
+    await request(app)
+      .post(`${base}/sessions/${created.sessionId}/messages`)
+      .set('X-Starteria-Entry-Token', created.token)
+      .set('Idempotency-Key', 'correction-after-handoff')
+      .send({ expectedRevision: handoff.body.data.revision, intent: 'correction', message: 'No reabrir un handoff materializado.' })
+      .expect(409);
+    expect(handoff.body.data.lifecycleStatus).toBe('HANDOFF_READY');
+
+    const claimed = await request(app)
+      .post(`${base}/sessions/${created.sessionId}/claim`)
+      .set('Authorization', 'Bearer user-1')
+      .set('X-Starteria-Entry-Token', created.token)
+      .set('Idempotency-Key', 'correction-claim-handoff')
+      .send({ expectedRevision: handoff.body.data.revision })
+      .expect(200);
+    const confirmed = await request(app)
+      .post(`${base}/sessions/${created.sessionId}/handoff/confirmation`)
+      .set('Authorization', 'Bearer user-1')
+      .set('Idempotency-Key', 'correction-confirm-handoff')
+      .send({ expectedRevision: claimed.body.data.revision, action: 'confirm', acceptedFields: ['understood_need'] })
+      .expect(200);
+    expect(confirmed.body.data.lifecycleStatus).toBe('CONFIRMED');
+    await request(app)
+      .post(`${base}/sessions/${created.sessionId}/messages`)
+      .set('Authorization', 'Bearer user-1')
+      .set('Idempotency-Key', 'correction-after-confirmed-handoff')
+      .send({ expectedRevision: confirmed.body.data.revision, intent: 'correction', message: 'No editar el Brief confirmado desde mensajes.' })
+      .expect(409);
+  });
+});
+
+type CorrectionSession = { sessionId: string; token: string };
+
+async function createCorrectionSession(app: express.Express): Promise<CorrectionSession> {
+  const created = await request(app).post(`${base}/sessions`).send({}).expect(201);
+  return { sessionId: created.body.data.session.id, token: created.body.data.publicAccessToken };
+}
+
+async function postInitialCorrectionTurn(app: express.Express, created: CorrectionSession) {
+  return request(app)
+    .post(`${base}/sessions/${created.sessionId}/messages`)
+    .set('X-Starteria-Entry-Token', created.token)
+    .set('Idempotency-Key', `correction-initial-${created.sessionId}`)
+    .send({ expectedRevision: 0, message: 'La cartera debe aclarar quÃ© trabajo proteger antes de la revision.' })
+    .expect(200);
+}
+
 class FakeSynthesizer implements PortfolioEntryLiveUnderstandingSynthesizer {
   readonly calls: SynthesisInput[] = [];
 
@@ -279,7 +577,65 @@ class IntegrationAgentAdapter implements PortfolioEntryAgentAdapterV2 {
   }
 }
 
-function makeApp(synthesizer: FakeSynthesizer, adapter = new IntegrationAgentAdapter()) {
+class CorrectionTestAgentAdapter implements PortfolioEntryAgentAdapterV2 {
+  readonly calls: PortfolioEntryAnalyzeTurnInputV2[] = [];
+
+  constructor(
+    private readonly askQuestionByCall: boolean[],
+    private readonly beforeRespond?: (callNumber: number) => Promise<void>,
+  ) {}
+
+  async analyzeTurn(input: PortfolioEntryAnalyzeTurnInputV2): Promise<PortfolioEntryAnalyzeTurnOutputV2> {
+    this.calls.push(input);
+    await this.beforeRespond?.(this.calls.length);
+    const asksQuestion = this.askQuestionByCall[this.calls.length - 1] ?? false;
+    const analysis: PortfolioEntryAnalyzeTurnOutputV2['analysis'] = {
+      entry_id: input.entryId,
+      analysis_version: 'correction-test',
+      primary_intent: 'portfolio_tracking',
+      secondary_intents: [],
+      initial_entry_state: 'portfolio_first',
+      current_frame: 'portfolio_first',
+      extracted_context: { summary: input.rawInput, decision_need: 'prioritize_before_review' },
+      ambiguities: asksQuestion ? ['decision_to_enable'] : [],
+      contradictions: [],
+      reverse_alignment: {
+        required: false,
+        subject_type: 'unknown',
+        connection_state: 'not_required',
+        missing_links: [],
+      },
+      provenance: [{ path: 'extracted_context.summary', origin: 'EXTRACTED_FROM_USER_TEXT', review_disposition: 'UNREVIEWED' }],
+      status: asksQuestion ? 'pending' : 'ready',
+    };
+    return {
+      analysis,
+      question_plan: asksQuestion ? {
+        questions: [{
+          id: `correction-question-${this.calls.length}`,
+          question: 'QuÃ© decisiÃ³n necesita aclararse?',
+          question_type: 'critical_gap',
+          reason_to_ask: 'La decisiÃ³n a preparar necesita mÃ¡s contexto.',
+          resolves: ['analysis.extracted_context.decision_need'],
+          priority: 1,
+          expected_answer_type: 'text',
+        }],
+        question_count: 1,
+        status: 'questions_required',
+      } : {
+        questions: [],
+        question_count: 0,
+        status: 'no_questions_required',
+        stop_reason: 'sufficient_context',
+      },
+    };
+  }
+}
+
+function makeApp(
+  synthesizer: FakeSynthesizer,
+  adapter: PortfolioEntryAgentAdapterV2 = new IntegrationAgentAdapter(),
+) {
   const app = express();
   const repository = new InMemoryPortfolioEntrySessionRepository();
   app.use(express.json());
@@ -293,12 +649,33 @@ function makeApp(synthesizer: FakeSynthesizer, adapter = new IntegrationAgentAda
     idempotencyRepository: new InMemoryPortfolioEntryIdempotencyRepository(),
     agentAdapter: adapter,
     liveUnderstandingSynthesizer: synthesizer,
+    authenticate: correctionTestAuthenticate,
+    optionalAuthenticate: correctionTestOptionalAuthenticate,
     sessionTtlMs: 60 * 60_000,
     idempotencyTtlMs: 60 * 60_000,
   }));
   app.use(errorHandler);
   return { app, repository };
 }
+
+const correctionTestAuthenticate: RequestHandler = (req, _res, next) => {
+  const authorization = req.header('Authorization');
+  if (!authorization?.startsWith('Bearer ')) {
+    next(AppError.unauthorized('Authentication required.'));
+    return;
+  }
+  const id = authorization.slice('Bearer '.length);
+  req.user = { id, email: `${id}@starteria.test`, role: 'participante', roles: ['participante'], permissions: new Set() };
+  next();
+};
+
+const correctionTestOptionalAuthenticate: RequestHandler = (req, res, next) => {
+  if (!req.header('Authorization')) {
+    next();
+    return;
+  }
+  correctionTestAuthenticate(req, res, next);
+};
 
 async function submitTurn(app: express.Express) {
   const created = await request(app).post(`${base}/sessions`).send({}).expect(201);

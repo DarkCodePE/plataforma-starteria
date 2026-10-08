@@ -22,7 +22,7 @@ import {
 import { hashPublicAccessToken, PortfolioEntrySessionService } from '../../portfolio-entry-sessions/application/portfolio-entry-session.service';
 import type { PortfolioEntrySessionRepository } from '../../portfolio-entry-sessions/application/portfolio-entry-session.repository';
 import { PortfolioEntrySessionError } from '../../portfolio-entry-sessions/application/portfolio-entry-session-errors';
-import type { PortfolioEntrySession, PortfolioEntryTurn } from '../../portfolio-entry-sessions/domain/portfolio-entry-session.types';
+import type { PortfolioEntrySession, PortfolioEntryTurn, PortfolioEntryTurnInputIntent } from '../../portfolio-entry-sessions/domain/portfolio-entry-session.types';
 import type { PortfolioEntryModelExecutionRecord } from '../../portfolio-entry-sessions/observability/portfolio-entry-execution-metadata';
 import {
   toPortfolioEntryAuthenticatedProvisionalContinuationDto,
@@ -66,6 +66,7 @@ type RecoveryHint = {
   kind: 'portfolio-entry-recovery';
   operation: Operation;
   expectedRevision: number;
+  inputIntent?: PortfolioEntryTurnInputIntent;
   pendingInputId?: string;
   turnIndex?: number;
   ownerUserId?: string;
@@ -148,12 +149,16 @@ export class PortfolioEntryExperimentalSessionService {
   async submitMessage(sessionId: string, body: SubmitMessageBody, context: RequestContext): Promise<PortfolioEntrySessionClientDto> {
     const initial = await this.authorize(sessionId, context);
     assertNotConverted(initial);
+    const inputIntent = body.intent ?? 'answer';
     return this.withIdempotency('submit_message', sessionId, body, context, async () => {
       const session = await this.authorize(sessionId, context);
       assertNotConverted(session);
       this.assertExpectedRevision(session, body.expectedRevision);
       const turnsBefore = await this.sessionRepository.listTurns(sessionId);
-      if (session.semanticState.pendingInput?.value === body.message && session.semanticState.pendingInput.status === 'ANALYZED') {
+      assertMessageInputAllowed(session, turnsBefore, inputIntent);
+      if (session.semanticState.pendingInput?.value === body.message
+        && session.semanticState.pendingInput.status === 'ANALYZED'
+        && (turnsBefore.at(-1)?.inputIntent ?? 'answer') === inputIntent) {
         return this.toDto(session);
       }
       // Accepting input is its own versioned mutation. Every subsequent
@@ -168,6 +173,7 @@ export class PortfolioEntryExperimentalSessionService {
         kind: 'portfolio-entry-recovery',
         operation: 'submit_message',
         expectedRevision: body.expectedRevision,
+        inputIntent,
         pendingInputId: pendingSession.semanticState.pendingInput?.id,
       });
       const activeQuestion = latestActiveQuestion(turnsBefore);
@@ -192,6 +198,7 @@ export class PortfolioEntryExperimentalSessionService {
           initialUserInput: body.message,
           initialContext: runtimeContext,
           priorAnalysis: pendingSession.latestAnalysis ?? undefined,
+          userInputIntent: inputIntent,
         });
       } catch (error) {
         await this.recordFailure(sessionId, error);
@@ -220,6 +227,7 @@ export class PortfolioEntryExperimentalSessionService {
         kind: 'portfolio-entry-recovery',
         operation: 'submit_message',
         expectedRevision: body.expectedRevision,
+        inputIntent,
         pendingInputId: pendingSession.semanticState.pendingInput?.id,
         turnIndex: runtimeTurnForPersistence.turn_index,
       });
@@ -227,6 +235,7 @@ export class PortfolioEntryExperimentalSessionService {
         sessionId,
         runtimeTurn: runtimeTurnForPersistence,
         runtimeContextAfter: result.final_context,
+        inputIntent,
         matchedQuestionIds: resolvedAnswer.matchedQuestionIds,
         respondedResolves: resolvedAnswer.respondedResolves,
         expectedRevision: pendingSession.revision,
@@ -240,8 +249,12 @@ export class PortfolioEntryExperimentalSessionService {
             snapshot_id: `portfolio-entry-turn-${appendedTurn.turnIndex}`,
             captured_at: this.now().toISOString(),
           },
-          user_messages: [...turnsBefore, appendedTurn].map((turn) => ({ id: turn.id, text: turn.userInput })),
-          user_corrections: [],
+          user_messages: [...turnsBefore, appendedTurn]
+            .filter((turn) => (turn.inputIntent ?? 'answer') !== 'correction')
+            .map((turn) => ({ id: turn.id, text: turn.userInput, turn_index: turn.turnIndex })),
+          user_corrections: [...turnsBefore, appendedTurn]
+            .filter((turn) => turn.inputIntent === 'correction')
+            .map((turn) => ({ id: turn.id, text: turn.userInput, corrects_ref: null, turn_index: turn.turnIndex })),
           explicitly_provided_context: [],
           provisional_extracted_context: appendedTurn.analysisSnapshot.extracted_context,
           provisional_extracted_context_provenance: appendedTurn.analysisSnapshot.provenance,
@@ -270,7 +283,7 @@ export class PortfolioEntryExperimentalSessionService {
         responseTurns,
         resultIsCurrent ? liveUnderstanding : liveUnderstandingUnavailableViewModel(),
       );
-    }, (record) => this.recoverSubmit(sessionId, record, body.expectedRevision, body.message));
+    }, (record) => this.recoverSubmit(sessionId, record, body.expectedRevision, body.message, inputIntent));
   }
 
   async chooseGuidedExploration(sessionId: string, body: GuidedExplorationBody, context: RequestContext): Promise<PortfolioEntrySessionClientDto> {
@@ -542,16 +555,25 @@ export class PortfolioEntryExperimentalSessionService {
     await this.idempotencyRepository.storeRecoveryHint({ id: context.idempotencyRecordId, recoverySnapshot: hint });
   }
 
-  private async recoverSubmit(sessionId: string, record: PortfolioEntryIdempotencyRecord, expectedRevision: number, message: string): Promise<PortfolioEntrySessionClientDto | null> {
+  private async recoverSubmit(
+    sessionId: string,
+    record: PortfolioEntryIdempotencyRecord,
+    expectedRevision: number,
+    message: string,
+    inputIntent: PortfolioEntryTurnInputIntent,
+  ): Promise<PortfolioEntrySessionClientDto | null> {
     const hint = recoveryHint(record, 'submit_message', expectedRevision);
     if (!hint?.pendingInputId) return null;
+    if (hint.inputIntent !== undefined && hint.inputIntent !== inputIntent) return null;
     const session = await this.requireSession(sessionId);
     const pending = session.semanticState.pendingInput;
     if (!pending || pending.id !== hint.pendingInputId || pending.value !== message) return null;
     const turns = await this.sessionRepository.listTurns(sessionId);
     if (pending.status === 'FAILED_RETRYABLE') return toPortfolioEntrySessionClientDto(session, turns);
     if (pending.status !== 'ANALYZED' || !hint.turnIndex) return null;
-    if (!turns.some((turn) => turn.turnIndex === hint.turnIndex && turn.userInput === pending.value)) return null;
+    if (!turns.some((turn) => turn.turnIndex === hint.turnIndex
+      && turn.userInput === pending.value
+      && (turn.inputIntent ?? 'answer') === inputIntent)) return null;
     return toPortfolioEntrySessionClientDto(session, turns);
   }
 
@@ -669,6 +691,30 @@ function contextFromSession(session: PortfolioEntrySession, turns?: PortfolioEnt
     lifecycleStatus: session.lifecycleStatus,
     runtimeClarificationStatus: session.semanticState.runtimeClarificationStatus ?? turns?.at(-1)?.transition.to_status,
   });
+}
+
+function assertMessageInputAllowed(
+  session: PortfolioEntrySession,
+  turns: PortfolioEntryTurn[],
+  inputIntent: PortfolioEntryTurnInputIntent,
+): void {
+  const clarificationStatus = session.semanticState.runtimeClarificationStatus ?? turns.at(-1)?.transition.to_status;
+  if (inputIntent === 'correction') {
+    const correctionAllowedLifecycles = new Set(['ENTRY_CAPTURED', 'ANALYZING', 'CLARIFYING', 'HANDOFF_ELIGIBLE']);
+    if (!correctionAllowedLifecycles.has(session.lifecycleStatus)
+      || session.latestHandoff
+      || session.confirmation) {
+      throw PortfolioEntrySessionError.invalidTransition('A user correction can only be submitted before handoff creation.');
+    }
+    if (session.semanticState.pendingInput?.status === 'ANALYSIS_PENDING') {
+      throw PortfolioEntrySessionError.conflict();
+    }
+    return;
+  }
+
+  if (clarificationStatus === 'exploration_offered') {
+    throw PortfolioEntrySessionError.invalidTransition('At an exploration checkpoint, submit an explicit correction or choose a checkpoint action.');
+  }
 }
 
 function stableJson(value: unknown): string {

@@ -31,6 +31,7 @@ import type {
   PortfolioEntryTurn,
   PortfolioEntryVersioning,
 } from '../domain/portfolio-entry-session.types';
+import { PORTFOLIO_ENTRY_TURN_INPUT_INTENTS } from '../domain/portfolio-entry-session.types';
 import type { PortfolioEntryModelExecutionRecord } from '../observability/portfolio-entry-execution-metadata';
 
 export const PORTFOLIO_ENTRY_ORIGINS = [
@@ -177,6 +178,7 @@ export type PrismaPortfolioEntryTurnRow = {
   sessionId: string;
   turnIndex: number;
   userInput: string;
+  inputIntent: string;
   emittedQuestions: Prisma.JsonValue;
   matchedQuestionIds: Prisma.JsonValue;
   respondedResolves: Prisma.JsonValue;
@@ -290,6 +292,7 @@ export class PrismaPortfolioEntrySessionMapper {
       sessionId: row.sessionId,
       turnIndex: row.turnIndex,
       userInput: row.userInput,
+      inputIntent: assertEnumValue(PORTFOLIO_ENTRY_TURN_INPUT_INTENTS, row.inputIntent, 'turn.inputIntent'),
       emittedQuestions: parseJson<QuestionRecord[]>(z.array(questionRecordSchema), row.emittedQuestions, 'turn.emittedQuestions'),
       matchedQuestionIds: parseJson<string[]>(z.array(z.string()), row.matchedQuestionIds, 'turn.matchedQuestionIds'),
       respondedResolves: parseJson<string[]>(z.array(z.string()), row.respondedResolves, 'turn.respondedResolves'),
@@ -425,6 +428,7 @@ export class PrismaPortfolioEntrySessionMapper {
       sessionId: turn.sessionId,
       turnIndex: turn.turnIndex,
       userInput: turn.userInput,
+      inputIntent: turn.inputIntent ?? 'answer',
       emittedQuestions: toInputJson(turn.emittedQuestions),
       matchedQuestionIds: toInputJson(turn.matchedQuestionIds),
       respondedResolves: toInputJson(turn.respondedResolves),

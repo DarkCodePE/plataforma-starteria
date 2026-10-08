@@ -23,6 +23,7 @@ export const expectedRevisionSchema = z.object({
 
 export const submitMessageBodySchema = expectedRevisionSchema.extend({
   message: z.string().trim().min(1).max(8000),
+  intent: z.enum(['answer', 'correction']).optional(),
   matchedQuestionIds: z.array(z.string().min(1)).max(1).optional(),
   respondedResolves: z.array(z.string().min(1)).max(20).optional(),
 }).strict();

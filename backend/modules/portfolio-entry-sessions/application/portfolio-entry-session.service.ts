@@ -20,6 +20,7 @@ import type {
   PortfolioEntrySession,
   PortfolioEntrySourceMetadata,
   PortfolioEntryTurn,
+  PortfolioEntryTurnInputIntent,
   PortfolioEntryVersioning,
 } from '../domain/portfolio-entry-session.types';
 import { semanticStateFromRuntimeContext, type PortfolioEntryPendingInput } from '../domain/portfolio-entry-session.types';
@@ -56,6 +57,7 @@ export type SaveTurnInput = {
   sessionId: string;
   runtimeTurn: SessionTurnTrace;
   runtimeContextAfter: SessionContext;
+  inputIntent?: PortfolioEntryTurnInputIntent;
   matchedQuestionIds?: string[];
   respondedResolves?: string[];
   expectedRevision?: number;
@@ -269,6 +271,7 @@ export class PortfolioEntrySessionService {
       sessionId: session.id,
       turnIndex: input.runtimeTurn.turn_index,
       userInput: input.runtimeTurn.user_input,
+      inputIntent: input.inputIntent ?? 'answer',
       emittedQuestions: input.runtimeTurn.questions_asked,
       matchedQuestionIds: input.matchedQuestionIds ?? [],
       respondedResolves: input.respondedResolves ?? [],
