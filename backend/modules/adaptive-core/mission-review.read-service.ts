@@ -111,9 +111,13 @@ export class MissionReviewReadService {
       },
     });
     if (!project) throw AppError.notFound('Proyecto', 'PROJECT_NOT_FOUND');
-    // Mismo criterio que AdaptiveCoreService.getAccessibleProject.
+    // Mismo criterio que AdaptiveCoreService.getAccessibleProject: equipo, o el Portfolio Lead
+    // asignado en InitiativeGovernance (lectura, §23).
     if (role !== 'admin' && role !== 'mentor' && !project.teamMembers.some((member) => member.userId === userId)) {
-      throw AppError.forbidden('No tienes acceso a este proyecto.', 'PROJECT_ACCESS_DENIED');
+      const governance = await (this.prisma as any).initiativeGovernance.findUnique({ where: { projectId } });
+      if (governance?.portfolioLeadUserId !== userId) {
+        throw AppError.forbidden('No tienes acceso a este proyecto.', 'PROJECT_ACCESS_DENIED');
+      }
     }
 
     const prefill = (project.step0Data ?? {}) as Record<string, unknown>;
