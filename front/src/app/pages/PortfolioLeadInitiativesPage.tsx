@@ -60,18 +60,16 @@ function InfoCard({ label, value, helper }: InfoCardProps) {
   );
 }
 
-function getProgressPercent(initiative: InitiativeItem) {
-  const stepProgress: Record<InitiativeItem['currentStep'], number> = {
-    'Step 0': 10,
-    'Step 1': 25,
-    'Step 2': 45,
-    'Step 3': 70,
-    'Step 4': 90,
-  };
-
-  if (initiative.status === 'cerrada') return 100;
-  if (initiative.status === 'bloqueada') return Math.max(stepProgress[initiative.currentStep] - 10, 15);
-  return stepProgress[initiative.currentStep];
+// Avance = Steps completados de 5. "Step 4" en curso es 4/5 (80%); recién cuando el Step 4
+// está confirmado (la iniciativa quedó presentada o lista para decisión) son 5/5. Antes una
+// iniciativa con Step 4 terminado mostraba "5/5 · 90%" (2026-10-08).
+export function getInitiativeProgress(initiative: InitiativeItem): { completed: number; percent: number } {
+  if (initiative.status === 'cerrada') return { completed: 5, percent: 100 };
+  const current = Number(initiative.currentStep.match(/\d/)?.[0] ?? 0);
+  const readyForDecision = initiative.progressSignal?.health === 'ready_for_decision'
+    || initiative.status === 'lista_para_decision' || initiative.status === 'ready_for_decision';
+  const completed = readyForDecision ? 5 : current;
+  return { completed, percent: completed * 20 };
 }
 
 function InitiativeActionDrawer({
@@ -906,8 +904,10 @@ export function PortfolioLeadInitiativesPage() {
         const front = strategicFronts.find(fr => fr.id === item.strategicFrontId) ?? null;
         const alerts = buildInitiativeAlerts(item, initiativeOverlaps);
         const attention = getInitiativeAttentionModel(item, challenge);
-        const progress = getProgressPercent(item);
-        const progressLabel = `${item.currentStep} · ${Math.round((progress / 100) * 5)}/5 pasos completados · ${progress}%`;
+        const { completed: completedSteps, percent: progress } = getInitiativeProgress(item);
+        const progressLabel = completedSteps === 5
+          ? `Steps 0–4 completos · ${progress}%`
+          : `En ${item.currentStep} · ${completedSteps}/5 Steps completos · ${progress}%`;
         const commentsCount = [item.aiCommentSummary, item.mentorCommentSummary, item.sponsorTouchpoint].filter(Boolean).length;
         const metricName = item.mainMetric || challenge?.successCriteria || 'Métrica no definida';
         const baseline = front?.baseline ?? 'Sin baseline visible';
@@ -1322,7 +1322,7 @@ export function PortfolioLeadInitiativesPage() {
                   })}
                   onOpenDecision={row.canDecision ? () => navigate(`/portfolio/decisiones?initiativeId=${encodeURIComponent(initiative.id)}&challengeId=${encodeURIComponent(challenge?.id ?? initiative.challengeId)}&frontId=${encodeURIComponent(front?.id ?? initiative.strategicFrontId)}`) : null}
                   onOpenReport={row.canReport ? () => navigate(`/portfolio/reportes?initiativeId=${encodeURIComponent(initiative.id)}&challengeId=${encodeURIComponent(challenge?.id ?? initiative.challengeId)}&frontId=${encodeURIComponent(front?.id ?? initiative.strategicFrontId)}`) : null}
-                  onOpenCore={challenge ? () => navigate(`/retos/${encodeURIComponent(challenge.id)}`) : null}
+                  onOpenCore={initiative.projectId ? () => navigate(`/initiatives/${encodeURIComponent(initiative.projectId!)}/overview`) : null}
                   onOpenInitiative={initiative.projectId
                     ? () => navigate(`/projects/${encodeURIComponent(initiative.projectId!)}/step/${initiative.currentStep.match(/\d/)?.[0] ?? '0'}`)
                     : null}
@@ -1634,7 +1634,8 @@ function InitiativeCard({
             Revisar decisión
           </button>
         ) : null}
-        {onOpenReport ? (
+        {/* Si la acción principal ya es "Generar reporte", no se repite el botón. */}
+        {onOpenReport && actionLabel !== 'Generar reporte' ? (
           <button onClick={onOpenReport} className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700" style={{ fontWeight: 600 }}>
             Generar reporte
           </button>

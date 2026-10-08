@@ -528,7 +528,9 @@ export function Step1Page() {
     data: step1FormData,
     saveFn: autosaveFn,
     delay: 2000,
-    enabled: !!projectId,
+    // Sólo quien puede escribir guarda: el Portfolio Lead asignado lee la iniciativa sin ser del
+    // equipo y el backend le rechaza el PUT (step.access.ts).
+    enabled: !!projectId && (!!contextProject || user?.role === 'admin' || user?.role === 'mentor'),
   });
 
   // Hydrate from backend on mount; mirror Step 2's persistence pattern.

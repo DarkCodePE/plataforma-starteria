@@ -431,6 +431,22 @@ export class ProjectService {
     return project as unknown as Project;
   }
 
+  /**
+   * Lectura de la iniciativa. Además de quien puede editarla (getProject), la ve el Portfolio
+   * Lead asignado en InitiativeGovernance: es quien la decide (§23, ADR-025) y "Abrir
+   * iniciativa" en /portfolio/iniciativas le daba PROJECT_ACCESS_DENIED. No usar en escrituras.
+   */
+  async getProjectForRead(projectId: string, userId: string, role: Role): Promise<Project> {
+    try {
+      return await this.getProject(projectId, userId, role);
+    } catch (err) {
+      if (!(err instanceof AppError) || err.code !== 'PROJECT_ACCESS_DENIED') throw err;
+      const governance = await (this.prisma as any).initiativeGovernance.findUnique({ where: { projectId } });
+      if (governance?.portfolioLeadUserId !== userId) throw err;
+      return this.prisma.project.findUnique({ where: { id: projectId }, include: this.projectInclude }) as unknown as Project;
+    }
+  }
+
   async updateProject(
     projectId: string,
     userId: string,
