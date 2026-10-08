@@ -38,6 +38,16 @@ jobs:
     name: Node tests (vitest + coverage)
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres" --health-interval 2s --health-timeout 5s --health-retries 15
     defaults:
       run:
         working-directory: ./front
@@ -55,6 +65,18 @@ jobs:
 
       - name: Install dependencies (npm ci)
         run: npm ci
+
+      - name: Provision disposable database and apply repository migrations
+        env:
+          E2E_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/starteria_e2e
+          E2E_DATABASE_ADMIN_URL: postgresql://postgres:postgres@127.0.0.1:5432/postgres
+        run: npm run db:e2e:provision && npm run db:e2e:migrate
+
+      - name: Run Portfolio Entry session repository PostgreSQL integration suite
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/starteria_e2e
+          PORTFOLIO_ENTRY_DB_INTEGRATION: '1'
+        run: npm exec -- vitest run --config vitest.backend.config.ts ../backend/modules/portfolio-entry-sessions/__tests__/prisma-portfolio-entry-session.repository.integration.test.ts
 
       - name: Run Portfolio Entry v0.2 isolated validation
         # Candidate-only deterministic validation. It does not promote v0.2,
@@ -264,7 +286,9 @@ jobs:
           echo "::error::no se pudo instalar Chromium de Playwright en 3 intentos"; exit 1
 
       - name: Run Portfolio Entry smoke
-        run: npm run test:e2e -- e2e/portfolio-entry-conversion.spec.ts
+        run: |
+          npm run test:e2e -- e2e/portfolio-entry-conversion.spec.ts
+          npm run test:e2e -- --portfolio-entry-full-stack-test e2e/portfolio-entry-live-understanding.integration.spec.ts
 
   # ---------------------------------------------------------------------------
   # Job 5: Aggregate summary — runs even on partial failure to give one place

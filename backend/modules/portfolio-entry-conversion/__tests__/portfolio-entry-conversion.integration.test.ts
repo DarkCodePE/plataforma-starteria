@@ -664,6 +664,7 @@ function makeApp() {
       authenticate: fakeAuthenticate,
       optionalAuthenticate: fakeOptionalAuthenticate,
       agentAdapter: {} as never,
+      liveUnderstandingSynthesizer: { synthesize: async () => null },
       idempotencyRepository: new InMemoryPortfolioEntryIdempotencyRepository(),
       sessionTtlMs: 60 * 60_000,
       idempotencyTtlMs: 60 * 60_000,

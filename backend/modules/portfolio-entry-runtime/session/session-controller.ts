@@ -46,9 +46,17 @@ export class PortfolioEntrySessionController {
         nextUserInput = optInTransition.to_status === 'guided_exploration'
           ? 'Acepto explorar un poco mas antes de ver una ruta provisional.'
           : null;
+      } else if (input.userInputIntent === 'correction') {
+        const correctionTransition = reopenClarificationForCorrection(context);
+        context = { ...context, clarification_status: 'in_progress', stop_reason: null };
+        modeTransitions.push(correctionTransition);
       } else {
         nextUserInput = null;
       }
+    } else if (context.clarification_status === 'ready_for_handoff' && input.userInputIntent === 'correction') {
+      const correctionTransition = reopenClarificationForCorrection(context);
+      context = { ...context, clarification_status: 'in_progress', stop_reason: null };
+      modeTransitions.push(correctionTransition);
     }
 
     while (nextUserInput !== null) {
@@ -322,6 +330,20 @@ function applyExplorationTransition(
     exploration_goal: transition.to_status === 'guided_exploration' ? 'continue_clarifying_structured_question_plan' : context.exploration_goal,
     stop_reason: terminalStatuses.has(transition.to_status) ? transition.reason : null,
   };
+}
+
+function reopenClarificationForCorrection(context: SessionContext): SessionTransition {
+  const availableBudget = getAvailableQuestionBudget(context);
+  return createTransition(
+    context.clarification_status,
+    'in_progress',
+    context.interaction_mode,
+    context.interaction_mode,
+    'user_correction_reopened_clarification',
+    'user_input',
+    availableBudget,
+    availableBudget,
+  );
 }
 
 function isReadySignal(_status: string | undefined, stopReason: string | undefined): boolean {

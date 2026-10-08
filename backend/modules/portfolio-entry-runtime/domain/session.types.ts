@@ -66,7 +66,7 @@ export type SessionTransition = {
   from_mode: InteractionMode;
   to_mode: InteractionMode;
   reason: string;
-  trigger: 'agent_output' | 'user_choice' | 'budget' | 'checkpoint' | 'safety_guard' | 'scripted_responder';
+  trigger: 'agent_output' | 'user_input' | 'user_choice' | 'budget' | 'checkpoint' | 'safety_guard' | 'scripted_responder';
   budget_before: number;
   budget_after: number;
   guard_triggered?: boolean;
@@ -141,6 +141,7 @@ export type PortfolioEntrySessionRunInput = {
   initialContext: SessionContext;
   priorAnalysis?: PortfolioEntryAnalysisV2;
   sessionId?: string;
+  userInputIntent?: 'answer' | 'correction';
   guidedExplorationChoice?: 'accept' | 'provisional_route' | 'reject';
   followUpResponder?: (questions: QuestionRecord[], context: SessionContext) => FollowUpResponseResult;
 };

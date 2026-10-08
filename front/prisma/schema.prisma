@@ -3229,6 +3229,7 @@ model PortfolioEntryTurn {
   sessionId            String
   turnIndex            Int
   userInput            String
+  inputIntent          String   @default("answer")
   emittedQuestions     Json
   matchedQuestionIds   Json
   respondedResolves    Json

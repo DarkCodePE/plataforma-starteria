@@ -9,7 +9,7 @@ import {
   normalizePortfolioEntryApiError,
   submitPortfolioEntryMessage,
 } from '../portfolioEntryPublicService';
-import type { PortfolioEntrySessionDto } from '../types';
+import type { PortfolioEntryLiveUnderstanding, PortfolioEntrySessionDto } from '../types';
 import { createIdempotencyKey } from '../idempotency';
 
 function makeSession(overrides: Partial<PortfolioEntrySessionDto> = {}): PortfolioEntrySessionDto {
@@ -110,6 +110,52 @@ describe('portfolioEntryPublicService', () => {
       idempotencyKey: key,
       message: 'Respuesta natural del usuario',
     });
+  });
+
+  it('sends explicit correction intent without inferring a matched question', async () => {
+    server.use(
+      http.post('*/public/portfolio-entry/sessions/:sessionId/messages', async ({ request }) => {
+        const body = await request.json() as Record<string, unknown>;
+        expect(request.headers.get('Idempotency-Key')).toBe('correction-key');
+        expect(body).toEqual({
+          expectedRevision: 7,
+          message: 'La lectura no refleja lo que quise decir sobre esta iniciativa.',
+          intent: 'correction',
+        });
+        expect(body).not.toHaveProperty('matchedQuestionIds');
+        return HttpResponse.json({ success: true, data: makeSession({ revision: 8, nextAction: 'answer_clarification' }) });
+      }),
+    );
+
+    await submitPortfolioEntryMessage('11111111-1111-4111-8111-111111111111', 'entry-token', {
+      expectedRevision: 7,
+      idempotencyKey: 'correction-key',
+      message: 'La lectura no refleja lo que quise decir sobre esta iniciativa.',
+      intent: 'correction',
+    });
+  });
+
+  it('returns the safe liveUnderstanding field from the successful message response', async () => {
+    const liveUnderstanding: PortfolioEntryLiveUnderstanding = {
+      state: 'supported_reading',
+      reading: 'La validación depende del acceso autorizado a los datos.',
+      decision: { decisionToPrepare: 'Si continuar con la validación en esta iniciativa.' },
+      decisionChangingUnknowns: [],
+    };
+    server.use(
+      http.post('*/public/portfolio-entry/sessions/:sessionId/messages', () => HttpResponse.json({
+        success: true,
+        data: makeSession({ revision: 3, nextAction: 'answer_clarification', liveUnderstanding }),
+      })),
+    );
+
+    const response = await submitPortfolioEntryMessage('11111111-1111-4111-8111-111111111111', 'entry-token', {
+      expectedRevision: 2,
+      idempotencyKey: 'safe-live-understanding-key',
+      message: 'El permiso cambia cuándo podemos probarlo.',
+    });
+
+    expect(response.liveUnderstanding).toEqual(liveUnderstanding);
   });
 
   it('uses the Guided Exploration endpoint for accept/provisional-route choice', async () => {

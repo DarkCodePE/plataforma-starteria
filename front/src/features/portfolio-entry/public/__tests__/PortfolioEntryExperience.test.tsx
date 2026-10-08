@@ -126,6 +126,20 @@ function makeSession(overrides: Partial<PortfolioEntrySessionDto> = {}): Portfol
   };
 }
 
+function withLiveUnderstanding(session: PortfolioEntrySessionDto, liveUnderstanding: unknown): PortfolioEntrySessionDto {
+  return { ...session, liveUnderstanding } as unknown as PortfolioEntrySessionDto;
+}
+
+function supportedLiveUnderstanding(reading: string) {
+  return {
+    state: 'supported_reading',
+    reading,
+    tensions: [],
+    decision: { decisionToPrepare: 'Qué conviene aclarar a continuación.' },
+    decisionChangingUnknowns: [],
+  };
+}
+
 function sessionWithQuestion(): PortfolioEntrySessionDto {
   return makeSession({
     lifecycleStatus: 'CLARIFYING',
@@ -373,6 +387,184 @@ describe('PortfolioEntryExperience', () => {
         }),
       );
     });
+  });
+
+  it('keeps the active clarification as the main next action when basis is insufficient', async () => {
+    savePortfolioEntryCurrentSession({ sessionId: '11111111-1111-4111-8111-111111111111', credential: 'entry-token' });
+    serviceMocks.getPortfolioEntrySession.mockResolvedValue(withLiveUnderstanding(sessionWithQuestion(), {
+      state: 'insufficient_basis',
+      decisionChangingUnknowns: [],
+    }));
+
+    renderExperience();
+
+    expect(await screen.findByTestId('portfolio-entry-active-question')).toBeInTheDocument();
+    expect(screen.getByRole('textbox', { name: /tu respuesta/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /enviar respuesta/i })).toBeInTheDocument();
+    expect(screen.getByTestId('portfolio-entry-live-understanding'))
+      .toHaveTextContent('Todavía falta contexto para ofrecer una lectura útil.');
+  });
+
+  it('does not invent an insight for “Queremos innovar más”', async () => {
+    savePortfolioEntryCurrentSession({ sessionId: '11111111-1111-4111-8111-111111111111', credential: 'entry-token' });
+    const ambiguous = sessionWithQuestion();
+    if (ambiguous.conversation[0]) ambiguous.conversation[0].userInput = 'Queremos innovar más.';
+    serviceMocks.getPortfolioEntrySession.mockResolvedValue(withLiveUnderstanding(ambiguous, {
+      state: 'no_supported_insight',
+      decisionChangingUnknowns: [],
+    }));
+
+    renderExperience();
+
+    const panel = await screen.findByTestId('portfolio-entry-live-understanding');
+    expect(panel).toHaveTextContent(/todavía no tiene suficiente base para compartir una lectura útil/i);
+    expect(panel).not.toHaveTextContent(/tensión|la decisión que parece|cartera|iniciativas/i);
+    expect(screen.getByTestId('portfolio-entry-active-question-text')).toBeInTheDocument();
+    expect(screen.getByRole('textbox', { name: /tu respuesta/i })).toBeInTheDocument();
+  });
+
+  it('hides the previous reading while a submitted answer is being synthesized', async () => {
+    savePortfolioEntryCurrentSession({ sessionId: '11111111-1111-4111-8111-111111111111', credential: 'entry-token' });
+    serviceMocks.getPortfolioEntrySession.mockResolvedValue(withLiveUnderstanding(
+      sessionWithQuestion(),
+      supportedLiveUnderstanding('Lectura anterior que ya no debe parecer vigente.'),
+    ));
+    let resolveMessage: ((session: PortfolioEntrySessionDto) => void) | undefined;
+    serviceMocks.submitPortfolioEntryMessage.mockImplementation(() => new Promise((resolve) => {
+      resolveMessage = resolve;
+    }));
+
+    renderExperience();
+
+    const answer = await screen.findByRole('textbox', { name: /tu respuesta/i });
+    expect(screen.getByTestId('portfolio-entry-live-understanding'))
+      .toHaveTextContent('Lectura anterior que ya no debe parecer vigente.');
+    fireEvent.change(answer, { target: { value: 'La decisión depende de la capacidad que tengamos disponible.' } });
+    fireEvent.click(screen.getByRole('button', { name: /enviar respuesta/i }));
+
+    expect(await screen.findByTestId('portfolio-entry-live-understanding'))
+      .toHaveTextContent('Estamos actualizando esta lectura con tu mensaje.');
+    expect(screen.getByTestId('portfolio-entry-active-question')).toBeInTheDocument();
+    expect(screen.queryByText('Lectura anterior que ya no debe parecer vigente.')).not.toBeInTheDocument();
+
+    await act(async () => {
+      resolveMessage?.(withLiveUnderstanding(sessionWithQuestion(), supportedLiveUnderstanding('La nueva lectura refleja la capacidad disponible.')));
+    });
+    expect(await screen.findByText('La nueva lectura refleja la capacidad disponible.')).toBeInTheDocument();
+  });
+
+  it('submits a Live Understanding correction as user-authored intent and replaces the old reading from the response', async () => {
+    savePortfolioEntryCurrentSession({ sessionId: '11111111-1111-4111-8111-111111111111', credential: 'entry-token' });
+    serviceMocks.getPortfolioEntrySession.mockResolvedValue(withLiveUnderstanding(
+      sessionWithQuestion(),
+      supportedLiveUnderstanding('Starteria entendió que hay que ordenar toda la cartera.'),
+    ));
+    const corrected = sessionWithQuestion();
+    corrected.revision = 2;
+    corrected.conversation = [
+      ...corrected.conversation,
+      {
+        id: 'turn-correction',
+        turnIndex: 1,
+        userInput: 'La lectura no refleja lo que quise decir: me refiero a esta iniciativa.',
+        emittedQuestions: [{
+          id: 'q-corrected', question: '¿Qué resultado necesita validar esta iniciativa?', resolves: ['outcome'],
+          turn_index: 1, interaction_mode: 'quick_clarification', asked_at_budget_remaining: 2,
+        }],
+        matchedQuestionIds: [], respondedResolves: [], createdAt: new Date().toISOString(),
+      },
+    ];
+    serviceMocks.submitPortfolioEntryMessage.mockResolvedValue(withLiveUnderstanding(
+      corrected,
+      supportedLiveUnderstanding('En esta iniciativa, la validación depende del acceso a datos reales.'),
+    ));
+
+    renderExperience();
+
+    fireEvent.click(await screen.findByRole('button', { name: /esto no refleja lo que quise decir/i }));
+    const correction = screen.getByRole('textbox', { name: /tu corrección/i });
+    fireEvent.change(correction, { target: { value: 'La lectura no refleja lo que quise decir: me refiero a esta iniciativa.' } });
+    fireEvent.click(screen.getByRole('button', { name: /enviar corrección/i }));
+
+    expect(await screen.findByText('En esta iniciativa, la validación depende del acceso a datos reales.')).toBeInTheDocument();
+    expect(screen.queryByText('Starteria entendió que hay que ordenar toda la cartera.')).not.toBeInTheDocument();
+    expect(screen.getByTestId('portfolio-entry-active-question-text'))
+      .toHaveTextContent('¿Qué resultado necesita validar esta iniciativa?');
+    expect(serviceMocks.submitPortfolioEntryMessage).toHaveBeenCalledWith(
+      '11111111-1111-4111-8111-111111111111',
+      'entry-token',
+      expect.objectContaining({
+        expectedRevision: 1,
+        intent: 'correction',
+        message: 'La lectura no refleja lo que quise decir: me refiero a esta iniciativa.',
+        idempotencyKey: expect.stringContaining('portfolio-entry:live-understanding-correction:'),
+      }),
+    );
+    expect(serviceMocks.submitPortfolioEntryMessage.mock.calls[0]?.[2]).not.toHaveProperty('matchedQuestionIds');
+  });
+
+  it('reopens clarification after a checkpoint correction and removes the stale checkpoint choices', async () => {
+    savePortfolioEntryCurrentSession({ sessionId: '11111111-1111-4111-8111-111111111111', credential: 'entry-token' });
+    const checkpoint = makeSession({
+      lifecycleStatus: 'CLARIFYING', revision: 4, nextAction: 'offer_guided_exploration',
+    });
+    serviceMocks.getPortfolioEntrySession.mockResolvedValue(withLiveUnderstanding(
+      checkpoint,
+      supportedLiveUnderstanding('La lectura actual del checkpoint.')),
+    );
+    const reopened = sessionWithQuestion();
+    reopened.revision = 5;
+    reopened.conversation = [{
+      id: 'turn-reopened', turnIndex: 1,
+      userInput: 'La lectura no refleja lo que quise decir.',
+      emittedQuestions: [{
+        id: 'q-reopened', question: '¿Qué aspecto de esta iniciativa quieres precisar?', resolves: ['situation'],
+        turn_index: 1, interaction_mode: 'quick_clarification', asked_at_budget_remaining: 2,
+      }],
+      matchedQuestionIds: [], respondedResolves: [], createdAt: new Date().toISOString(),
+    }];
+    let resolveCorrection: ((session: PortfolioEntrySessionDto) => void) | undefined;
+    serviceMocks.submitPortfolioEntryMessage.mockImplementation(() => new Promise((resolve) => {
+      resolveCorrection = resolve;
+    }));
+
+    renderExperience();
+
+    fireEvent.click(await screen.findByRole('button', { name: /esto no refleja lo que quise decir/i }));
+    fireEvent.change(screen.getByRole('textbox', { name: /tu corrección/i }), {
+      target: { value: 'La lectura no refleja lo que quise decir.' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /enviar corrección/i }));
+
+    expect(await screen.findByTestId('portfolio-entry-live-understanding'))
+      .toHaveTextContent('Estamos actualizando esta lectura con tu mensaje.');
+    expect(screen.queryByRole('button', { name: /ver mi propuesta de abordaje/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /seguir aterrizando mi necesidad/i })).not.toBeInTheDocument();
+
+    await act(async () => {
+      resolveCorrection?.(withLiveUnderstanding(reopened, supportedLiveUnderstanding('La lectura corregida para esta iniciativa.')));
+    });
+
+    expect(await screen.findByTestId('portfolio-entry-active-question-text'))
+      .toHaveTextContent('¿Qué aspecto de esta iniciativa quieres precisar?');
+    expect(screen.queryByText(/Ya tengo suficiente claridad para proponerte/i)).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /ver mi propuesta de abordaje/i })).not.toBeInTheDocument();
+    expect(screen.queryByText('La lectura actual del checkpoint.')).not.toBeInTheDocument();
+    expect(screen.getByText('La lectura corregida para esta iniciativa.')).toBeInTheDocument();
+  });
+
+  it('does not render the Live Understanding surface inside the 114D handoff review', async () => {
+    savePortfolioEntryCurrentSession({ sessionId: '11111111-1111-4111-8111-111111111111', credential: 'entry-token' });
+    serviceMocks.getPortfolioEntrySession.mockResolvedValue(withLiveUnderstanding(
+      sessionWithHandoff(),
+      supportedLiveUnderstanding('La lectura provisional que no debe invadir el handoff.'),
+    ));
+
+    renderExperience();
+
+    expect(await screen.findByTestId('handoff-expanded-analysis')).toBeInTheDocument();
+    expect(screen.queryByTestId('portfolio-entry-live-understanding')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /esto no refleja lo que quise decir/i })).not.toBeInTheDocument();
   });
 
   it('reveals the persisted conversation trace without exposing internal metadata', async () => {

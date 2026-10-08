@@ -5,12 +5,14 @@ const nonEmptyTextSchema = z.string().trim().min(1);
 const userMessageSchema = z.object({
   id: nonEmptyTextSchema,
   text: nonEmptyTextSchema,
+  turn_index: z.number().int().positive().optional(),
 }).strict();
 
 const userCorrectionSchema = z.object({
   id: nonEmptyTextSchema,
   text: nonEmptyTextSchema,
   corrects_ref: nonEmptyTextSchema.nullable().optional(),
+  turn_index: z.number().int().positive().optional(),
 }).strict();
 
 const explicitlyProvidedContextSchema = z.object({
@@ -85,35 +87,52 @@ export function normalizeCriticalSituationSynthesisInput(
   const parsed = criticalSituationSynthesisInputSchema.parse(input);
   const sourceRefs = new Set(parsed.source_refs);
   const items: CriticalSituationSynthesisSnapshotItem[] = [];
+  const orderedConversationItems: Array<{
+    turnIndex: number;
+    sourceOrder: number;
+    item: CriticalSituationSynthesisSnapshotItem;
+  }> = [];
 
-  for (const message of parsed.user_messages) {
+  for (const [index, message] of parsed.user_messages.entries()) {
     const ref = `session.user_message:${message.id}`;
     sourceRefs.add(ref);
-    items.push({
-      ref,
-      kind: 'user_message',
-      content: message.text,
-      provenance: {
-        origin: 'USER_DECLARED',
-        review_disposition: 'UNREVIEWED',
+    orderedConversationItems.push({
+      turnIndex: message.turn_index ?? index + 1,
+      sourceOrder: index,
+      item: {
+        ref,
+        kind: 'user_message',
+        content: message.text,
+        provenance: {
+          origin: 'USER_DECLARED',
+          review_disposition: 'UNREVIEWED',
+        },
       },
     });
   }
 
-  for (const correction of parsed.user_corrections) {
+  for (const [index, correction] of parsed.user_corrections.entries()) {
     const ref = `session.user_correction:${correction.id}`;
     sourceRefs.add(ref);
-    items.push({
-      ref,
-      kind: 'user_correction',
-      content: correction.text,
-      corrects_ref: correction.corrects_ref,
-      provenance: {
-        origin: 'USER_DECLARED',
-        review_disposition: 'UNREVIEWED',
+    orderedConversationItems.push({
+      turnIndex: correction.turn_index ?? parsed.user_messages.length + index + 1,
+      sourceOrder: parsed.user_messages.length + index,
+      item: {
+        ref,
+        kind: 'user_correction',
+        content: correction.text,
+        corrects_ref: correction.corrects_ref,
+        provenance: {
+          origin: 'USER_DECLARED',
+          review_disposition: 'UNREVIEWED',
+        },
       },
     });
   }
+
+  orderedConversationItems
+    .sort((left, right) => left.turnIndex - right.turnIndex || left.sourceOrder - right.sourceOrder)
+    .forEach(({ item }) => items.push(item));
 
   for (const context of parsed.explicitly_provided_context) {
     sourceRefs.add(context.ref);
