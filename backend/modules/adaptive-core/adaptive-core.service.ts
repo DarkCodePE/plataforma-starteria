@@ -691,6 +691,7 @@ const responses = instanceIds.length > 0
   }
 
   async confirmCheckpoint(projectId: string, userId: string, role: Role, input: CheckpointResponseInput): Promise<AdaptiveCoreState> {
+    this.assertTeamWorkAccess(await this.getAccessibleProject(projectId, userId, role), userId, role);
     await this.ensureInitialized(projectId, userId, role);
     const db = this.prisma as any;
     const cycle = await this.cycles.ensureActiveCycle(projectId);
@@ -1430,7 +1431,7 @@ const sufficiency = this.evaluateCheckpoint(
     criticalChangeId: string,
     input: ConfirmCriticalChangeTransitionInput,
   ): Promise<AdaptiveCoreState> {
-    await this.getAccessibleProject(projectId, userId, role);
+    this.assertTeamWorkAccess(await this.getAccessibleProject(projectId, userId, role), userId, role);
     const db = this.prisma as any;
     const criticalChange = await db.criticalChange.findUnique({ where: { id: criticalChangeId } });
     if (!criticalChange || criticalChange.projectId !== projectId) {
@@ -2229,14 +2230,21 @@ const sufficiency = this.evaluateCheckpoint(
     if (!project) throw AppError.notFound('Proyecto', 'PROJECT_NOT_FOUND');
     if (role !== 'admin' && role !== 'mentor') {
       const isMember = (project as any).teamMembers.some((m: any) => m.userId === userId);
-      // El Portfolio Lead asignado decide sin ser miembro del equipo (§23, ADR-025); la autoridad
-      // para decidir la sigue resolviendo resolveDecisionAuthority.
+      // El Portfolio Lead asignado lee y decide sin ser miembro del equipo (§23, ADR-025); la
+      // autoridad para decidir la resuelve resolveDecisionAuthority. El trabajo del equipo
+      // (checkpoints, cambios críticos) exige además assertTeamWorkAccess.
       const isAssignedPortfolioLead = !isMember && Boolean(
         (await (this.prisma as any).initiativeGovernance.findUnique({ where: { projectId } }))?.portfolioLeadUserId === userId,
       );
       if (!isMember && !isAssignedPortfolioLead) throw AppError.forbidden('No tienes acceso a este proyecto.', 'PROJECT_ACCESS_DENIED');
     }
     return project as any;
+  }
+
+  private assertTeamWorkAccess(project: any, userId: string, role: Role) {
+    if (role === 'admin' || role === 'mentor') return;
+    if ((project.teamMembers ?? []).some((m: any) => m.userId === userId)) return;
+    throw AppError.forbidden('Sólo el equipo de la iniciativa puede avanzar sus Steps.', 'PROJECT_TEAM_ACCESS_REQUIRED');
   }
 
   private parseCriticalChangeImpact(raw: unknown): ChangeImpactResult {
