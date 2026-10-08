@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { prisma } from '../../shared/db/prisma';
 import { StepController } from './step.controller';
 import { StepService } from './step.service';
+import { requireStepProjectAccess } from './step.access';
 import { validate } from '../../shared/middleware/validate';
 import { updateStepStatusSchema, updateModuleSchema, requestSessionSchema } from './step.schemas';
 
@@ -13,6 +14,7 @@ const controller = new StepController(service);
 export const stepRouter = Router();
 
 stepRouter.use(authenticate);
+stepRouter.use('/:projectId/steps', requireStepProjectAccess(prisma));
 
 stepRouter.get('/:projectId/steps', controller.getAll);
 stepRouter.get('/:projectId/steps/:number', controller.getByNumber);
