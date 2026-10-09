@@ -14,7 +14,10 @@ import {
   PortfolioEntrySessionController,
 } from '../../portfolio-entry-runtime';
 import { LiveModelExecutionError } from '../../portfolio-entry-runtime/model/live-model-error';
-import type { CriticalSituationSynthesis } from '../../portfolio-entry-runtime/domain/critical-situation-synthesis.schema';
+import {
+  criticalSituationSynthesisSchema,
+  type CriticalSituationSynthesis,
+} from '../../portfolio-entry-runtime/domain/critical-situation-synthesis.schema';
 import {
   normalizeCriticalSituationSynthesisInput,
   type CriticalSituationSynthesisAuthorizedSnapshot,
@@ -23,14 +26,20 @@ import { hashPublicAccessToken, PortfolioEntrySessionService } from '../../portf
 import type { PortfolioEntrySessionRepository } from '../../portfolio-entry-sessions/application/portfolio-entry-session.repository';
 import { PortfolioEntrySessionError } from '../../portfolio-entry-sessions/application/portfolio-entry-session-errors';
 import type { PortfolioEntrySession, PortfolioEntryTurn, PortfolioEntryTurnInputIntent } from '../../portfolio-entry-sessions/domain/portfolio-entry-session.types';
+import { isCriticalHandoffCurrent } from '../../portfolio-entry-sessions/domain/portfolio-entry-critical-handoff.types';
 import type { PortfolioEntryModelExecutionRecord } from '../../portfolio-entry-sessions/observability/portfolio-entry-execution-metadata';
 import {
   toPortfolioEntryAuthenticatedProvisionalContinuationDto,
+  toCriticalHandoffClientDto,
   toPortfolioEntrySessionClientDto,
   toPortfolioEntryConfirmedBriefDto,
   type PortfolioEntryConfirmedBriefDto,
   type PortfolioEntrySessionClientDto,
 } from '../portfolio-entry.dto';
+import {
+  toCriticalHandoffProjection,
+  type CriticalHandoffProjection,
+} from '../presentation/critical-handoff-projection';
 import {
   liveUnderstandingUnavailableViewModel,
   toLiveUnderstandingViewModel,
@@ -78,9 +87,12 @@ export type PortfolioEntryExperimentalSessionConfig = {
 };
 
 export type PortfolioEntryLiveUnderstandingSynthesisRequest = {
+  purpose: 'live_understanding' | 'critical_handoff';
   sessionId: string;
   sessionRevision: number;
+  contextRevision: number;
   turnIndex: number;
+  sourceTurnId: string;
   authorizedSnapshot: CriticalSituationSynthesisAuthorizedSnapshot;
 };
 
@@ -97,6 +109,7 @@ export class PortfolioEntryExperimentalSessionService {
     private readonly handoffMaterializer: PortfolioEntryHandoffMaterializer,
     private readonly config: PortfolioEntryExperimentalSessionConfig,
     private readonly liveUnderstandingSynthesizer: PortfolioEntryLiveUnderstandingSynthesizer,
+    private readonly criticalHandoffProjector: (source: unknown) => CriticalHandoffProjection = toCriticalHandoffProjection,
     private readonly now: () => Date = () => new Date(),
   ) {}
 
@@ -155,7 +168,9 @@ export class PortfolioEntryExperimentalSessionService {
       assertNotConverted(session);
       this.assertExpectedRevision(session, body.expectedRevision);
       const turnsBefore = await this.sessionRepository.listTurns(sessionId);
-      assertMessageInputAllowed(session, turnsBefore, inputIntent);
+      const criticalHandoffSnapshot = await this.sessionService.getLatestCriticalHandoff(sessionId);
+      const hasCriticalHandoff = criticalHandoffSnapshot !== null;
+      assertMessageInputAllowed(session, turnsBefore, inputIntent, hasCriticalHandoff);
       if (session.semanticState.pendingInput?.value === body.message
         && session.semanticState.pendingInput.status === 'ANALYZED'
         && (turnsBefore.at(-1)?.inputIntent ?? 'answer') === inputIntent) {
@@ -236,34 +251,30 @@ export class PortfolioEntryExperimentalSessionService {
         runtimeTurn: runtimeTurnForPersistence,
         runtimeContextAfter: result.final_context,
         inputIntent,
+        allowCriticalHandoffCorrectionReopen: inputIntent === 'correction' && hasCriticalHandoff,
         matchedQuestionIds: resolvedAnswer.matchedQuestionIds,
         respondedResolves: resolvedAnswer.respondedResolves,
         expectedRevision: pendingSession.revision,
+        expectedContextRevision: pendingSession.contextRevision,
         now: this.now(),
       });
       const analyzedRevision = pendingSession.revision + 1;
       let liveUnderstanding: LiveUnderstandingViewModel = liveUnderstandingUnavailableViewModel();
       try {
-        const authorizedSnapshot = normalizeCriticalSituationSynthesisInput({
-          snapshot: {
-            snapshot_id: `portfolio-entry-turn-${appendedTurn.turnIndex}`,
-            captured_at: this.now().toISOString(),
-          },
-          user_messages: [...turnsBefore, appendedTurn]
-            .filter((turn) => (turn.inputIntent ?? 'answer') !== 'correction')
-            .map((turn) => ({ id: turn.id, text: turn.userInput, turn_index: turn.turnIndex })),
-          user_corrections: [...turnsBefore, appendedTurn]
-            .filter((turn) => turn.inputIntent === 'correction')
-            .map((turn) => ({ id: turn.id, text: turn.userInput, corrects_ref: null, turn_index: turn.turnIndex })),
-          explicitly_provided_context: [],
-          provisional_extracted_context: appendedTurn.analysisSnapshot.extracted_context,
-          provisional_extracted_context_provenance: appendedTurn.analysisSnapshot.provenance,
-          source_refs: [],
-        });
+        const contextRevision = pendingSession.contextRevision + 1;
+        const authorizedSnapshot = buildAuthorizedSynthesisSnapshot(
+          sessionId,
+          contextRevision,
+          [...turnsBefore, appendedTurn],
+          appendedTurn,
+        );
         const synthesis = await this.liveUnderstandingSynthesizer.synthesize({
+          purpose: 'live_understanding',
           sessionId,
           sessionRevision: analyzedRevision,
+          contextRevision,
           turnIndex: appendedTurn.turnIndex,
+          sourceTurnId: appendedTurn.id,
           authorizedSnapshot,
         });
         liveUnderstanding = synthesis
@@ -336,6 +347,7 @@ export class PortfolioEntryExperimentalSessionService {
           sessionId,
           runtimeTurn: runtimeTurnForPersistence,
           runtimeContextAfter: result.final_context,
+          inputIntent: 'checkpoint_choice',
           expectedRevision: body.expectedRevision,
           now: this.now(),
         });
@@ -360,6 +372,11 @@ export class PortfolioEntryExperimentalSessionService {
       assertNotConverted(session);
       this.assertExpectedRevision(session, expectedRevision);
       if (!session.latestAnalysis) throw PortfolioEntrySessionError.invalidTransition('Portfolio Entry analysis is not ready for handoff.');
+      const shouldMaterializeCriticalHandoff = isCriticalHandoffCheckpoint(session);
+      const sourceContextRevision = session.contextRevision;
+      const sourceTurnId = shouldMaterializeCriticalHandoff
+        ? latestAnalyzedContextTurn(await this.sessionRepository.listTurns(sessionId))?.id
+        : undefined;
       let materialized;
       try {
         materialized = await this.handoffMaterializer.materialize({
@@ -375,12 +392,89 @@ export class PortfolioEntryExperimentalSessionService {
       if (materialized.modelExecution) await this.recordExecution(sessionId, materialized.modelExecution);
       await this.storeRecovery(context, { kind: 'portfolio-entry-recovery', operation: 'materialize_handoff', expectedRevision });
       await this.sessionService.saveHandoff({ sessionId, handoff: materialized.handoff, expectedRevision, now: this.now() });
+
+      // Critical Handoff is a side-car to the KEEP_COMPAT legacy handoff. The
+      // legacy artifact is committed first; a failed KAN-114 synthesis or a
+      // stale source must not turn the legacy endpoint into a provider-dependent
+      // failure or synthesize from a newer context than the one this request saw.
+      if (shouldMaterializeCriticalHandoff && sourceTurnId) {
+        try {
+          const currentSession = await this.authorize(sessionId, context);
+          const currentTurns = await this.sessionRepository.listTurns(sessionId);
+          const currentSourceTurn = latestAnalyzedContextTurn(currentTurns);
+          if (currentSession.contextRevision === sourceContextRevision
+            && currentSourceTurn?.id === sourceTurnId) {
+            await this.materializeCriticalHandoff(currentSession, currentSession.revision, currentTurns);
+          }
+        } catch {
+          // Legacy handoff availability is independent of the Critical Handoff
+          // projection. Its GET endpoint remains empty until a real artifact is
+          // successfully synthesized and persisted.
+        }
+      }
       return this.toDto(await this.requireSession(sessionId));
     }, (record) => this.recoverSessionRevision(sessionId, record, expectedRevision));
   }
 
   async readHandoff(input: { sessionId: string; publicAccessToken?: string; principal?: Principal }): Promise<PortfolioEntrySessionClientDto> {
     return this.readSession(input);
+  }
+
+  async readCriticalHandoff(input: { sessionId: string; publicAccessToken?: string; principal?: Principal }) {
+    const session = await this.authorize(input.sessionId, input);
+    const latest = await this.sessionService.getLatestCriticalHandoff(session.id);
+    if (!latest) return null;
+    return toCriticalHandoffClientDto(latest.artifact, latest.isCurrent);
+  }
+
+  private async materializeCriticalHandoff(
+    session: PortfolioEntrySession,
+    expectedRevision: number,
+    turns: PortfolioEntryTurn[],
+  ): Promise<void> {
+    if (session.semanticState.pendingInput?.status === 'ANALYSIS_PENDING') {
+      throw PortfolioEntrySessionError.conflict();
+    }
+    const sourceTurn = latestAnalyzedContextTurn(turns);
+    if (!sourceTurn) throw PortfolioEntrySessionError.invalidTransition('No analyzed user context is available for Critical Handoff.');
+
+    const existing = await this.sessionService.getLatestCriticalHandoff(session.id);
+    if (existing?.isCurrent
+      && existing.artifact.sourceContextRevision === session.contextRevision
+      && existing.artifact.sourceTurnId === sourceTurn.id) return;
+
+    let projection: CriticalHandoffProjection;
+    try {
+      const authorizedSnapshot = buildAuthorizedSynthesisSnapshot(
+        session.id,
+        session.contextRevision,
+        turns,
+        sourceTurn,
+      );
+      const synthesis = await this.liveUnderstandingSynthesizer.synthesize({
+        purpose: 'critical_handoff',
+        sessionId: session.id,
+        sessionRevision: expectedRevision,
+        contextRevision: session.contextRevision,
+        turnIndex: sourceTurn.turnIndex,
+        sourceTurnId: sourceTurn.id,
+        authorizedSnapshot,
+      });
+      if (!synthesis) throw new Error('KAN-114 returned no synthesis.');
+      const validated = criticalSituationSynthesisSchema.parse(synthesis);
+      projection = this.criticalHandoffProjector(validated);
+    } catch (error) {
+      await this.recordFailure(session.id, error);
+      throw PortfolioEntryApiError.criticalHandoffSynthesisUnavailable();
+    }
+
+    await this.sessionService.createCriticalHandoff({
+      sessionId: session.id,
+      expectedSessionRevision: expectedRevision,
+      sourceContextRevision: session.contextRevision,
+      sourceTurnId: sourceTurn.id,
+      payload: projection,
+    });
   }
 
   async abandonConfirmedSession(sessionId: string, expectedRevision: number, context: RequestContext) {
@@ -693,18 +787,57 @@ function contextFromSession(session: PortfolioEntrySession, turns?: PortfolioEnt
   });
 }
 
+function buildAuthorizedSynthesisSnapshot(
+  sessionId: string,
+  contextRevision: number,
+  turns: PortfolioEntryTurn[],
+  sourceTurn: PortfolioEntryTurn,
+): CriticalSituationSynthesisAuthorizedSnapshot {
+  const contextTurns = turns.filter((turn) => turn.inputIntent !== 'checkpoint_choice');
+  return normalizeCriticalSituationSynthesisInput({
+    snapshot: {
+      snapshot_id: `${sessionId}-context-revision-${contextRevision}`,
+      captured_at: sourceTurn.createdAt.toISOString(),
+    },
+    user_messages: contextTurns
+      .filter((turn) => (turn.inputIntent ?? 'answer') === 'answer')
+      .map((turn) => ({ id: turn.id, text: turn.userInput, turn_index: turn.turnIndex })),
+    user_corrections: contextTurns
+      .filter((turn) => turn.inputIntent === 'correction')
+      .map((turn) => ({ id: turn.id, text: turn.userInput, corrects_ref: null, turn_index: turn.turnIndex })),
+    explicitly_provided_context: [],
+    provisional_extracted_context: sourceTurn.analysisSnapshot.extracted_context,
+    provisional_extracted_context_provenance: sourceTurn.analysisSnapshot.provenance,
+    source_refs: [],
+  });
+}
+
+function latestAnalyzedContextTurn(turns: PortfolioEntryTurn[]): PortfolioEntryTurn | undefined {
+  return [...turns]
+    .filter((turn) => turn.inputIntent === 'answer' || turn.inputIntent === 'correction')
+    .sort((left, right) => left.turnIndex - right.turnIndex || left.createdAt.getTime() - right.createdAt.getTime())
+    .at(-1);
+}
+
+function isCriticalHandoffCheckpoint(session: PortfolioEntrySession): boolean {
+  return session.lifecycleStatus === 'HANDOFF_ELIGIBLE'
+    && session.semanticState.runtimeClarificationStatus === 'ready_for_handoff'
+    && session.semanticState.userExplorationChoice === 'provisional_route';
+}
+
 function assertMessageInputAllowed(
   session: PortfolioEntrySession,
   turns: PortfolioEntryTurn[],
   inputIntent: PortfolioEntryTurnInputIntent,
+  hasCriticalHandoff: boolean,
 ): void {
   const clarificationStatus = session.semanticState.runtimeClarificationStatus ?? turns.at(-1)?.transition.to_status;
   if (inputIntent === 'correction') {
-    const correctionAllowedLifecycles = new Set(['ENTRY_CAPTURED', 'ANALYZING', 'CLARIFYING', 'HANDOFF_ELIGIBLE']);
+    const correctionAllowedLifecycles = new Set(['ENTRY_CAPTURED', 'ANALYZING', 'CLARIFYING', 'HANDOFF_ELIGIBLE', 'HANDOFF_READY']);
     if (!correctionAllowedLifecycles.has(session.lifecycleStatus)
-      || session.latestHandoff
+      || (session.latestHandoff && !hasCriticalHandoff)
       || session.confirmation) {
-      throw PortfolioEntrySessionError.invalidTransition('A user correction can only be submitted before handoff creation.');
+      throw PortfolioEntrySessionError.invalidTransition('A user correction can only reopen an unconfirmed Portfolio Entry reading.');
     }
     if (session.semanticState.pendingInput?.status === 'ANALYSIS_PENDING') {
       throw PortfolioEntrySessionError.conflict();

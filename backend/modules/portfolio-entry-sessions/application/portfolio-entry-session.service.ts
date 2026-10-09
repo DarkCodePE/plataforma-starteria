@@ -64,9 +64,11 @@ export type SaveTurnInput = {
   runtimeTurn: SessionTurnTrace;
   runtimeContextAfter: SessionContext;
   inputIntent?: PortfolioEntryTurnInputIntent;
+  allowCriticalHandoffCorrectionReopen?: boolean;
   matchedQuestionIds?: string[];
   respondedResolves?: string[];
   expectedRevision?: number;
+  expectedContextRevision?: number;
   now?: Date;
 };
 
@@ -87,6 +89,7 @@ export type SaveHandoffInput = {
 
 export type CreateCriticalHandoffServiceInput = {
   sessionId: string;
+  expectedSessionRevision?: number;
   sourceContextRevision: number;
   sourceTurnId?: string;
   payload: CriticalHandoffProjection;
@@ -278,7 +281,7 @@ export class PortfolioEntrySessionService {
       updatedAt: now,
       lastActivityAt: now,
     };
-    assertTurnLifecycleApplication(session, updatedSession.lifecycleStatus);
+    assertTurnLifecycleApplication(session, updatedSession.lifecycleStatus, input.allowCriticalHandoffCorrectionReopen === true);
 
     const turn: PortfolioEntryTurn = {
       id: randomUUID(),
@@ -300,7 +303,7 @@ export class PortfolioEntrySessionService {
       updatedAt: now,
     };
 
-    return this.repository.appendTurn(turn, updatedSession, expectedRevision);
+    return this.repository.appendTurn(turn, updatedSession, expectedRevision, input.expectedContextRevision);
   }
 
   async persistPendingInput(input: {
@@ -572,8 +575,12 @@ function lifecycleFromConfirmationStatus(status: PortfolioEntryConfirmationStatu
 function assertTurnLifecycleApplication(
   session: PortfolioEntrySession,
   nextStatus: PortfolioEntrySessionLifecycleStatus,
+  allowCriticalHandoffCorrectionReopen = false,
 ): void {
   if (canTransitionPortfolioEntrySession(session.lifecycleStatus, nextStatus)) return;
+  if (allowCriticalHandoffCorrectionReopen
+    && session.lifecycleStatus === 'HANDOFF_READY'
+    && nextStatus === 'CLARIFYING') return;
   if (
     (session.lifecycleStatus === 'ENTRY_CAPTURED' || session.lifecycleStatus === 'CLARIFYING' || session.lifecycleStatus === 'REVISIONS_REQUESTED') &&
     canTransitionPortfolioEntrySession(session.lifecycleStatus, 'ANALYZING') &&

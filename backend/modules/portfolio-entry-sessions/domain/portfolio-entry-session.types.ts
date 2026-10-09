@@ -33,7 +33,7 @@ export type PortfolioEntryVersioning = {
   promptManifestId?: string;
 };
 
-export const PORTFOLIO_ENTRY_TURN_INPUT_INTENTS = ['answer', 'correction'] as const;
+export const PORTFOLIO_ENTRY_TURN_INPUT_INTENTS = ['answer', 'correction', 'checkpoint_choice'] as const;
 export type PortfolioEntryTurnInputIntent = (typeof PORTFOLIO_ENTRY_TURN_INPUT_INTENTS)[number];
 
 export type PortfolioEntryQuestionBudgetState = {

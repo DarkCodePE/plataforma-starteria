@@ -137,6 +137,20 @@ export class PortfolioEntryController {
     }
   };
 
+  readCriticalHandoff = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const { sessionId } = sessionParamsSchema.parse(req.params);
+      const data = await this.service.readCriticalHandoff({
+        sessionId,
+        publicAccessToken: getPublicToken(req),
+        principal: req.user ? { id: req.user.id } : undefined,
+      });
+      res.json({ success: true, data });
+    } catch (err) {
+      next(mapPortfolioEntryError(err));
+    }
+  };
+
   confirmOrCorrectHandoff = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
       const { sessionId } = sessionParamsSchema.parse(req.params);

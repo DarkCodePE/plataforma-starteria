@@ -5,6 +5,8 @@ import type {
   PortfolioEntryTurn,
 } from '../portfolio-entry-sessions/domain/portfolio-entry-session.types';
 import type { LiveUnderstandingViewModel } from './presentation/live-understanding-view-model';
+import type { CriticalHandoffProjection } from './presentation/critical-handoff-projection';
+import type { PortfolioEntryCriticalHandoffRecord } from '../portfolio-entry-sessions/domain/portfolio-entry-critical-handoff.types';
 
 export type PortfolioEntrySessionClientDto = {
   id: string;
@@ -96,6 +98,16 @@ export type PortfolioEntryHandoffClientDto = {
   reviewDisposition: 'UNREVIEWED';
   handoff: PortfolioEntryHandoffRecord['handoff'];
   createdAt: string;
+};
+
+export type PortfolioEntryCriticalHandoffClientDto = {
+  id: string;
+  version: number;
+  schemaVersion: string;
+  sourceContextRevision: number;
+  sourceTurnId?: string;
+  state: 'current' | 'stale';
+  projection: CriticalHandoffProjection;
 };
 
 export type PortfolioEntryConfirmationClientDto = {
@@ -293,6 +305,21 @@ export function toHandoffClientDto(handoff: PortfolioEntryHandoffRecord): Portfo
     reviewDisposition: 'UNREVIEWED',
     handoff: handoff.handoff,
     createdAt: handoff.createdAt.toISOString(),
+  };
+}
+
+export function toCriticalHandoffClientDto(
+  artifact: PortfolioEntryCriticalHandoffRecord,
+  isCurrent: boolean,
+): PortfolioEntryCriticalHandoffClientDto {
+  return {
+    id: artifact.id,
+    version: artifact.artifactVersion,
+    schemaVersion: artifact.schemaVersion,
+    sourceContextRevision: artifact.sourceContextRevision,
+    sourceTurnId: artifact.sourceTurnId,
+    state: isCurrent ? 'current' : 'stale',
+    projection: artifact.payload,
   };
 }
 

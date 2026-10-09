@@ -10,6 +10,10 @@ import type {
   PortfolioEntryAnalyzeTurnInputV2,
   PortfolioEntryAnalyzeTurnOutputV2,
 } from '../../portfolio-entry-runtime';
+import {
+  criticalSituationSynthesisSchema,
+  type CriticalSituationSynthesis,
+} from '../../portfolio-entry-runtime/domain/critical-situation-synthesis.schema';
 import { LiveModelExecutionError } from '../../portfolio-entry-runtime/model/live-model-error';
 import { hashPublicAccessToken } from '../../portfolio-entry-sessions/application/portfolio-entry-session.service';
 import type { PortfolioEntryModelExecutionRecord } from '../../portfolio-entry-sessions/observability/portfolio-entry-execution-metadata';
@@ -985,7 +989,7 @@ function makeApp(input: {
     sessionRepository: repository as never,
     idempotencyRepository: input.idempotencyRepository ?? new InMemoryPortfolioEntryIdempotencyRepository(),
     agentAdapter: input.useDefaultAdapter ? undefined : input.adapter ?? new FakeAgentAdapter(),
-    liveUnderstandingSynthesizer: { synthesize: async () => null },
+    liveUnderstandingSynthesizer: { synthesize: async () => routerTestSynthesis() },
     authenticate: fakeAuthenticate,
     optionalAuthenticate: fakeOptionalAuthenticate,
     sessionTtlMs: 60 * 60_000,
@@ -993,6 +997,58 @@ function makeApp(input: {
   }));
   app.use(errorHandler);
   return { app, repository };
+}
+
+function routerTestSynthesis(): CriticalSituationSynthesis {
+  return criticalSituationSynthesisSchema.parse({
+    basis_status: 'sufficient',
+    situation_model: {
+      desired_change: null,
+      current_situation: [],
+      existing_work_or_assets: [],
+      decision_to_enable: null,
+      known_evidence: [],
+      constraints: [],
+      actors_and_authority: [],
+      dependencies: [],
+      uncertainties: [],
+      time_pressure: [],
+      existing_alternatives: [],
+      material_tensions: [],
+    },
+    reasoning_metadata: { selected_lenses: ['priority / allocation'] },
+    situation_insight: {
+      statement: 'La evidencia disponible llega después del checkpoint.',
+      support: ['session.user_message:router-test'],
+      novelty_type: 'sequence_dependency_exposed',
+      epistemic_role: 'INTERPRETATION',
+      status: 'supported',
+    },
+    material_tensions: [],
+    decision_frame: {
+      status: 'not_yet_identifiable',
+      decision_to_prepare: null,
+      decision_authority: 'responsable del checkpoint',
+      materially_distinct_paths: [],
+      distinguishing_conditions: [],
+      timing_or_constraints: [],
+      unresolved_basis: [],
+    },
+    usable_now: [],
+    decision_changing_unknowns: [],
+    candidate_first_movement: null,
+    uncertainty_statement: null,
+    provenance: [{
+      id: 'router-private-provenance',
+      claim_ref: 'situation_insight.statement',
+      origin: 'AI_INFERRED',
+      review_disposition: 'UNREVIEWED',
+      source_refs: ['session.user_message:router-test'],
+      source_path: null,
+      source_text: null,
+      recorded_at: null,
+    }],
+  });
 }
 
 class CompleteFailsOnceRepository extends InMemoryPortfolioEntryIdempotencyRepository implements PortfolioEntryIdempotencyRepository {

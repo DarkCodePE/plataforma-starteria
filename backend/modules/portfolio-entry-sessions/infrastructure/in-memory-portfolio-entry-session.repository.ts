@@ -73,18 +73,30 @@ export class InMemoryPortfolioEntrySessionRepository implements PortfolioEntrySe
     turn: PortfolioEntryTurn,
     session: PortfolioEntrySession,
     expectedRevision: number,
+    expectedContextRevision?: number,
   ): Promise<PortfolioEntryTurn> {
     const existing = this.turns.get(turn.sessionId);
     const existingSession = this.sessions.get(turn.sessionId);
     if (!existing || !existingSession) throw PortfolioEntrySessionError.notFound();
     assertExpectedRevision(existingSession, expectedRevision);
+    if (expectedContextRevision !== undefined && (
+      existingSession.contextRevision !== expectedContextRevision
+      || !Number.isSafeInteger(expectedContextRevision)
+      || expectedContextRevision < 0
+      || expectedContextRevision >= 2_147_483_647
+    )) throw PortfolioEntrySessionError.conflict();
     const expectedIndex = existing.length + 1;
     if (turn.turnIndex !== expectedIndex) {
       throw PortfolioEntrySessionError.conflict();
     }
     const stored = cloneTurn(turn);
     existing.push(stored);
-    this.sessions.set(session.id, cloneSession({ ...session, contextRevision: existingSession.contextRevision }));
+    this.sessions.set(session.id, cloneSession({
+      ...session,
+      contextRevision: expectedContextRevision === undefined
+        ? existingSession.contextRevision
+        : expectedContextRevision + 1,
+    }));
     return cloneTurn(stored);
   }
 
@@ -125,9 +137,13 @@ export class InMemoryPortfolioEntrySessionRepository implements PortfolioEntrySe
     const session = this.sessions.get(input.sessionId);
     const existing = this.criticalHandoffs.get(input.sessionId);
     if (!session || !existing) throw PortfolioEntrySessionError.notFound();
-    if (session.contextRevision !== input.sourceContextRevision) throw PortfolioEntrySessionError.conflict();
+    if (session.contextRevision !== input.sourceContextRevision
+      || (input.expectedSessionRevision !== undefined && session.revision !== input.expectedSessionRevision)) {
+      throw PortfolioEntrySessionError.conflict();
+    }
 
     const latestTurn = [...(this.turns.get(input.sessionId) ?? [])]
+      .filter((turn) => turn.inputIntent === 'answer' || turn.inputIntent === 'correction')
       .sort((left, right) => right.turnIndex - left.turnIndex || right.createdAt.getTime() - left.createdAt.getTime())[0];
     if (input.sourceTurnId && (!latestTurn || latestTurn.id !== input.sourceTurnId)) {
       throw PortfolioEntrySessionError.conflict();

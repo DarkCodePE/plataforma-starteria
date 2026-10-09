@@ -81,11 +81,15 @@ export class PrismaPortfolioEntrySessionRepository implements PortfolioEntrySess
     turn: PortfolioEntryTurn,
     session: PortfolioEntrySession,
     expectedRevision: number,
+    expectedContextRevision?: number,
   ): Promise<PortfolioEntryTurn> {
     assertSameSession(turn.sessionId, session.id);
     assertNextRevision(session, expectedRevision);
     try {
       return await this.prisma.$transaction(async (tx) => {
+        if (expectedContextRevision !== undefined) {
+          await advanceContextRevisionInTransaction(tx, session.id, expectedContextRevision, session.updatedAt);
+        }
         const updated = await tx.portfolioEntrySession.updateMany({
           where: { id: session.id, revision: expectedRevision },
           data: this.mapper.sessionMutableData(session),
@@ -152,13 +156,16 @@ export class PrismaPortfolioEntrySessionRepository implements PortfolioEntrySess
       const row = await this.prisma.$transaction(async (tx) => {
         const session = await tx.portfolioEntrySession.findUnique({
           where: { id: input.sessionId },
-          select: { contextRevision: true },
+          select: { contextRevision: true, revision: true },
         });
         if (!session) throw PortfolioEntrySessionError.notFound();
-        if (session.contextRevision !== input.sourceContextRevision) throw PortfolioEntrySessionError.conflict();
+        if (session.contextRevision !== input.sourceContextRevision
+          || (input.expectedSessionRevision !== undefined && session.revision !== input.expectedSessionRevision)) {
+          throw PortfolioEntrySessionError.conflict();
+        }
 
         const latestTurn = await tx.portfolioEntryTurn.findFirst({
-          where: { sessionId: input.sessionId },
+          where: { sessionId: input.sessionId, inputIntent: { in: ['answer', 'correction'] } },
           orderBy: [{ turnIndex: 'desc' }, { createdAt: 'desc' }],
           select: { id: true },
         });
@@ -232,15 +239,7 @@ export class PrismaPortfolioEntrySessionRepository implements PortfolioEntrySess
     assertContextRevision(expectedContextRevision);
     try {
       return await this.prisma.$transaction(async (tx) => {
-        const updated = await tx.portfolioEntrySession.updateMany({
-          where: { id: sessionId, contextRevision: expectedContextRevision },
-          data: { contextRevision: { increment: 1 }, updatedAt: now },
-        });
-        if (updated.count !== 1) {
-          const existing = await tx.portfolioEntrySession.findUnique({ where: { id: sessionId }, select: { id: true } });
-          if (!existing) throw PortfolioEntrySessionError.notFound();
-          throw PortfolioEntrySessionError.conflict();
-        }
+        await advanceContextRevisionInTransaction(tx, sessionId, expectedContextRevision, now);
         const updatedSession = await tx.portfolioEntrySession.findUnique({
           where: { id: sessionId },
           select: { contextRevision: true },
@@ -444,6 +443,23 @@ function assertNextRevision(session: PortfolioEntrySession, expectedRevision: nu
   if (session.revision !== expectedRevision + 1) {
     throw PortfolioEntrySessionError.conflict();
   }
+}
+
+async function advanceContextRevisionInTransaction(
+  tx: PrismaTx,
+  sessionId: string,
+  expectedContextRevision: number,
+  now: Date,
+): Promise<void> {
+  assertContextRevision(expectedContextRevision);
+  const updated = await tx.portfolioEntrySession.updateMany({
+    where: { id: sessionId, contextRevision: expectedContextRevision },
+    data: { contextRevision: { increment: 1 }, updatedAt: now },
+  });
+  if (updated.count === 1) return;
+  const existing = await tx.portfolioEntrySession.findUnique({ where: { id: sessionId }, select: { id: true } });
+  if (!existing) throw PortfolioEntrySessionError.notFound();
+  throw PortfolioEntrySessionError.conflict();
 }
 
 function assertContextRevision(contextRevision: number): void {

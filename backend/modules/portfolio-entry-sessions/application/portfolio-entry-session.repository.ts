@@ -31,7 +31,12 @@ export interface PortfolioEntrySessionRepository {
   findSessionForPublicAccess(sessionId: string, publicAccessTokenHash: string): Promise<PortfolioEntrySession | null>;
   findSessionForOwner(sessionId: string, ownerUserId: string): Promise<PortfolioEntrySession | null>;
   saveSessionState(input: SavePortfolioEntrySessionStateInput): Promise<PortfolioEntrySession>;
-  appendTurn(turn: PortfolioEntryTurn, session: PortfolioEntrySession, expectedRevision: number): Promise<PortfolioEntryTurn>;
+  appendTurn(
+    turn: PortfolioEntryTurn,
+    session: PortfolioEntrySession,
+    expectedRevision: number,
+    expectedContextRevision?: number,
+  ): Promise<PortfolioEntryTurn>;
   appendModelExecution(execution: PortfolioEntryModelExecutionRecord): Promise<PortfolioEntryModelExecutionRecord>;
   saveHandoff(handoff: PortfolioEntryHandoffRecord, session: PortfolioEntrySession, expectedRevision: number): Promise<PortfolioEntryHandoffRecord>;
   createCriticalHandoff(input: CreatePortfolioEntryCriticalHandoffInput): Promise<PortfolioEntryCriticalHandoffRecord>;

@@ -13,6 +13,8 @@ import {
   criticalSituationSynthesisSchema,
   type CriticalSituationSynthesis,
 } from '../../portfolio-entry-runtime/domain/critical-situation-synthesis.schema';
+import type { CriticalHandoffProjection } from '../presentation/critical-handoff-projection';
+import { toCriticalHandoffProjection } from '../presentation/critical-handoff-projection';
 import { InMemoryPortfolioEntrySessionRepository } from '../../portfolio-entry-sessions/infrastructure/in-memory-portfolio-entry-session.repository';
 import type { PortfolioEntryLiveUnderstandingSynthesisRequest, PortfolioEntryLiveUnderstandingSynthesizer } from '../application/portfolio-entry-experimental-session.service';
 import { InMemoryPortfolioEntryIdempotencyRepository } from '../infrastructure/in-memory-portfolio-entry-idempotency.repository';
@@ -23,13 +25,15 @@ const base = '/api/v1/public/portfolio-entry';
 describe('Portfolio Entry Live Understanding session integration', () => {
   it('invokes synthesis exactly once after a successful user turn', async () => {
     const synthesizer = new FakeSynthesizer(() => supportedSynthesis());
-    const { app } = makeApp(synthesizer);
+    const { app, repository } = makeApp(synthesizer);
 
     const turn = await submitTurn(app);
 
     expect(turn.status).toBe(200);
+    await expect(repository.readContextRevision(turn.body.data.id)).resolves.toBe(1);
     expect(synthesizer.calls).toHaveLength(1);
     expect(synthesizer.calls[0].sessionRevision).toBe(turn.body.data.revision);
+    expect(synthesizer.calls[0].contextRevision).toBe(1);
     expect(synthesizer.calls[0].authorizedSnapshot.items.some((item) => item.kind === 'user_message')).toBe(true);
     expect(synthesizer.calls[0].authorizedSnapshot.provisional_extracted_context?.values)
       .toMatchObject({ decision_need: 'prioritize_before_review' });
@@ -90,6 +94,7 @@ describe('Portfolio Entry Live Understanding session integration', () => {
     expect(turn.body.data.pendingInput.status).toBe('ANALYZED');
     expect(turn.body.data.liveUnderstanding).toEqual({ state: 'synthesis_unavailable', decisionChangingUnknowns: [] });
     expect(persisted?.semanticState.pendingInput?.status).toBe('ANALYZED');
+    await expect(repository.readContextRevision(turn.body.data.id)).resolves.toBe(1);
     expect(JSON.stringify(turn.body)).not.toContain('test-only failure detail');
   });
 
@@ -105,10 +110,31 @@ describe('Portfolio Entry Live Understanding session integration', () => {
     expect(turn.body.data.liveUnderstanding).toEqual({ state: 'synthesis_unavailable', decisionChangingUnknowns: [] });
   });
 
+  it('does not advance contextRevision or persist a turn when message analysis is rejected', async () => {
+    const synthesizer = new FakeSynthesizer(() => supportedSynthesis());
+    const adapter: PortfolioEntryAgentAdapterV2 = {
+      analyzeTurn: async () => { throw new Error('deterministic rejected analysis'); },
+    };
+    const { app, repository } = makeApp(synthesizer, adapter);
+    const created = await createCorrectionSession(app);
+    const failed = await request(app)
+      .post(`${base}/sessions/${created.sessionId}/messages`)
+      .set('X-Starteria-Entry-Token', created.token)
+      .set('Idempotency-Key', 'context-revision-rejected-analysis')
+      .send({ expectedRevision: 0, message: 'This input is not accepted by analysis.' })
+      .expect(200);
+
+    expect(failed.body.data.pendingInput.status).toBe('FAILED_RETRYABLE');
+    await expect(repository.readContextRevision(created.sessionId)).resolves.toBe(0);
+    await expect(repository.listTurns(created.sessionId)).resolves.toHaveLength(0);
+    expect(synthesizer.calls).toHaveLength(0);
+  });
+
   it('does not rerun synthesis for checkpoint selection or page load', async () => {
     const synthesizer = new FakeSynthesizer(() => supportedSynthesis());
-    const { app } = makeApp(synthesizer);
+    const { app, repository } = makeApp(synthesizer);
     const turn = await submitTurn(app);
+    const before = await repository.readContextRevision(turn.body.data.id);
 
     await request(app)
       .post(`${base}/sessions/${turn.body.data.id}/guided-exploration`)
@@ -122,7 +148,430 @@ describe('Portfolio Entry Live Understanding session integration', () => {
       .expect(200);
 
     expect(synthesizer.calls).toHaveLength(1);
+    await expect(repository.listTurns(turn.body.data.id)).resolves.toHaveLength(1);
+    await expect(repository.readContextRevision(turn.body.data.id)).resolves.toBe(before);
     expect(read.body.data).not.toHaveProperty('liveUnderstanding');
+  });
+
+  it.each(['answer', 'correction'] as const)('replays an accepted %s without advancing contextRevision or synthesizing twice', async (intent) => {
+    const adapter = intent === 'answer'
+      ? new CorrectionTestAgentAdapter([true, false])
+      : new CorrectionTestAgentAdapter([false, true]);
+    const synthesizer = new FakeSynthesizer(() => supportedSynthesis());
+    const { app, repository } = makeApp(synthesizer, adapter);
+    const created = await createCorrectionSession(app);
+    const first = await postInitialCorrectionTurn(app, created);
+    const payload = {
+      expectedRevision: first.body.data.revision,
+      ...(intent === 'correction' ? { intent } : {}),
+      message: `Idempotent ${intent} with explicit user context.`,
+    };
+    const firstDelivery = await request(app)
+      .post(`${base}/sessions/${created.sessionId}/messages`)
+      .set('X-Starteria-Entry-Token', created.token)
+      .set('Idempotency-Key', `context-revision-idempotent-${intent}`)
+      .send(payload)
+      .expect(200);
+    const replay = await request(app)
+      .post(`${base}/sessions/${created.sessionId}/messages`)
+      .set('X-Starteria-Entry-Token', created.token)
+      .set('Idempotency-Key', `context-revision-idempotent-${intent}`)
+      .send(payload)
+      .expect(200);
+
+    expect(replay.body.data).toEqual(firstDelivery.body.data);
+    expect((await repository.listTurns(created.sessionId))).toHaveLength(2);
+    await expect(repository.readContextRevision(created.sessionId)).resolves.toBe(2);
+    expect(synthesizer.calls).toHaveLength(2);
+  });
+
+  it('does not advance contextRevision for rejected or stale messages, authentication, or claim', async () => {
+    const synthesizer = new FakeSynthesizer(() => supportedSynthesis());
+    const { app, repository } = makeApp(synthesizer);
+    const turn = await submitTurn(app);
+    const sessionId = turn.body.data.id as string;
+
+    await request(app)
+      .post(`${base}/sessions/${sessionId}/messages`)
+      .set('X-Starteria-Entry-Token', turn.token)
+      .set('Idempotency-Key', 'context-revision-stale-message')
+      .send({ expectedRevision: 0, message: 'Rejected stale context.' })
+      .expect(409);
+    const claimed = await request(app)
+      .post(`${base}/sessions/${sessionId}/claim`)
+      .set('Authorization', 'Bearer user-1')
+      .set('X-Starteria-Entry-Token', turn.token)
+      .set('Idempotency-Key', 'context-revision-claim')
+      .send({ expectedRevision: turn.body.data.revision })
+      .expect(200);
+
+    await expect(repository.readContextRevision(sessionId)).resolves.toBe(1);
+    expect(claimed.body.data.revision).toBe(turn.body.data.revision + 1);
+    expect(synthesizer.calls).toHaveLength(1);
+  });
+
+  it('materializes Critical Handoff only at provisional_route and keeps its read DTO separate from legacy handoff', async () => {
+    const synthesizer = new FakeSynthesizer(() => supportedSynthesis());
+    const projectionCalls: Array<{ synthesis: CriticalSituationSynthesis; projection: CriticalHandoffProjection }> = [];
+    const projector = (synthesis: CriticalSituationSynthesis) => {
+      const projection = toCriticalHandoffProjection(synthesis);
+      projectionCalls.push({ synthesis, projection });
+      return projection;
+    };
+    const { app, repository } = makeApp(synthesizer, new IntegrationAgentAdapter(), projector);
+    const turn = await submitTurn(app);
+    const sessionId = turn.body.data.id as string;
+    expect((await repository.getLatestCriticalHandoff(sessionId)).artifact).toBeNull();
+
+    const checkpoint = await request(app)
+      .post(`${base}/sessions/${sessionId}/guided-exploration`)
+      .set('X-Starteria-Entry-Token', turn.token)
+      .set('Idempotency-Key', 'critical-handoff-close-exploration')
+      .send({ expectedRevision: turn.body.data.revision, choice: 'provisional_route' })
+      .expect(200);
+    const legacyMaterialization = await request(app)
+      .post(`${base}/sessions/${sessionId}/handoff`)
+      .set('X-Starteria-Entry-Token', turn.token)
+      .set('Idempotency-Key', 'critical-handoff-legacy-coexistence')
+      .send({ expectedRevision: checkpoint.body.data.revision })
+      .expect(200);
+
+    const criticalRead = await request(app)
+      .get(`${base}/sessions/${sessionId}/critical-handoff`)
+      .set('X-Starteria-Entry-Token', turn.token)
+      .expect(200);
+    const turns = await repository.listTurns(sessionId);
+    expect(synthesizer.calls).toHaveLength(2);
+    expect(synthesizer.calls[1]).toMatchObject({
+      purpose: 'critical_handoff',
+      contextRevision: 1,
+      sourceTurnId: turns[0].id,
+    });
+    expect(synthesizer.calls[1].authorizedSnapshot).toEqual(synthesizer.calls[0].authorizedSnapshot);
+    expect(projectionCalls).toHaveLength(1);
+    expect(criticalRead.body.data).toMatchObject({
+      id: expect.any(String),
+      version: 1,
+      schemaVersion: 'critical-handoff-projection-v0.1',
+      sourceContextRevision: synthesizer.calls[1].contextRevision,
+      sourceTurnId: turns[0].id,
+      state: 'current',
+      projection: projectionCalls[0].projection,
+    });
+    expect(criticalRead.body.data.projection).not.toHaveProperty('starteria_path');
+    expect(JSON.stringify(criticalRead.body.data)).not.toMatch(/recommended_approach|recommended_cta|provenance|situation_model|reasoning_metadata|provider|model/i);
+    expect(legacyMaterialization.body.data.handoff.handoff).toHaveProperty('starteria_path');
+    expect(legacyMaterialization.body.data.handoff.handoff).toHaveProperty('recommended_approach');
+
+    const legacyRead = await request(app)
+      .get(`${base}/sessions/${sessionId}/handoff`)
+      .set('X-Starteria-Entry-Token', turn.token)
+      .expect(200);
+    expect(legacyRead.body.data.handoff).toEqual(legacyMaterialization.body.data.handoff);
+    expect(legacyRead.body.data).not.toHaveProperty('criticalHandoff');
+    expect(legacyMaterialization.body.data).not.toHaveProperty('criticalHandoff');
+    expect(legacyMaterialization.body.data).not.toHaveProperty('continuation');
+    expect(legacyMaterialization.body.data).not.toHaveProperty('convertedAt');
+    expect((await repository.findSessionById(sessionId))?.lifecycleStatus).toBe('HANDOFF_READY');
+    await expect(repository.readContextRevision(sessionId)).resolves.toBe(1);
+  });
+
+  it('keeps legacy handoff available when KAN-114 synthesis fails and creates no Critical artifact', async () => {
+    let signalSynthesisStarted!: () => void;
+    let releaseSynthesis!: () => void;
+    const synthesisStarted = new Promise<void>((resolve) => { signalSynthesisStarted = resolve; });
+    const synthesisGate = new Promise<void>((resolve) => { releaseSynthesis = resolve; });
+    const synthesizer = new FakeSynthesizer(async (input) => {
+      if (input.purpose === 'critical_handoff') {
+        signalSynthesisStarted();
+        await synthesisGate;
+        throw new Error('private provider detail');
+      }
+      return supportedSynthesis();
+    });
+    const { app, repository } = makeApp(synthesizer);
+    const turn = await submitTurn(app);
+    const sessionId = turn.body.data.id as string;
+    const checkpoint = await request(app)
+      .post(`${base}/sessions/${sessionId}/guided-exploration`)
+      .set('X-Starteria-Entry-Token', turn.token)
+      .set('Idempotency-Key', 'critical-handoff-failure-checkpoint')
+      .send({ expectedRevision: turn.body.data.revision, choice: 'provisional_route' })
+      .expect(200);
+
+    const materializationPromise = request(app)
+      .post(`${base}/sessions/${sessionId}/handoff`)
+      .set('X-Starteria-Entry-Token', turn.token)
+      .set('Idempotency-Key', 'critical-handoff-synthesis-failure')
+      .send({ expectedRevision: checkpoint.body.data.revision })
+      .then((response) => response);
+
+    await synthesisStarted;
+    expect((await repository.findSessionById(sessionId))?.latestHandoff).not.toBeNull();
+    expect((await repository.getLatestCriticalHandoff(sessionId)).artifact).toBeNull();
+    releaseSynthesis();
+    const legacy = await materializationPromise;
+    expect(legacy.status).toBe(200);
+
+    const stored = await repository.findSessionById(sessionId);
+    expect(legacy.body.data.handoff.handoff).toHaveProperty('starteria_path');
+    expect((await repository.getLatestCriticalHandoff(sessionId)).artifact).toBeNull();
+    expect(stored?.latestHandoff).not.toBeNull();
+    expect(stored?.lifecycleStatus).toBe('HANDOFF_READY');
+    const criticalRead = await request(app)
+      .get(`${base}/sessions/${sessionId}/critical-handoff`)
+      .set('X-Starteria-Entry-Token', turn.token)
+      .expect(200);
+    expect(criticalRead.body.data).toBeNull();
+    expect(JSON.stringify(legacy.body)).not.toContain('private provider detail');
+  });
+
+  it('keeps legacy handoff available when Critical Handoff synthesis is malformed', async () => {
+    const synthesizer = new FakeSynthesizer(async (input) => {
+      if (input.purpose === 'critical_handoff') return { basis_status: 'malformed' } as unknown as CriticalSituationSynthesis;
+      return supportedSynthesis();
+    });
+    const { app, repository } = makeApp(synthesizer);
+    const turn = await submitTurn(app);
+    const sessionId = turn.body.data.id as string;
+    const checkpoint = await request(app)
+      .post(`${base}/sessions/${sessionId}/guided-exploration`)
+      .set('X-Starteria-Entry-Token', turn.token)
+      .set('Idempotency-Key', 'critical-handoff-malformed-checkpoint')
+      .send({ expectedRevision: turn.body.data.revision, choice: 'provisional_route' })
+      .expect(200);
+
+    const legacy = await request(app)
+      .post(`${base}/sessions/${sessionId}/handoff`)
+      .set('X-Starteria-Entry-Token', turn.token)
+      .set('Idempotency-Key', 'critical-handoff-malformed-materialization')
+      .send({ expectedRevision: checkpoint.body.data.revision })
+      .expect(200);
+
+    expect(legacy.body.data.handoff.handoff).toHaveProperty('starteria_path');
+    expect((await repository.findSessionById(sessionId))?.latestHandoff).not.toBeNull();
+    expect((await repository.getLatestCriticalHandoff(sessionId)).artifact).toBeNull();
+    const criticalRead = await request(app)
+      .get(`${base}/sessions/${sessionId}/critical-handoff`)
+      .set('X-Starteria-Entry-Token', turn.token)
+      .expect(200);
+    expect(criticalRead.body.data).toBeNull();
+  });
+
+  it('rejects artifact persistence when contextRevision changes during KAN-114 synthesis', async () => {
+    let signalMaterializationStarted!: () => void;
+    let releaseMaterialization!: (value: CriticalSituationSynthesis | null) => void;
+    const materializationStarted = new Promise<void>((resolve) => { signalMaterializationStarted = resolve; });
+    const materializationResult = new Promise<CriticalSituationSynthesis | null>((resolve) => { releaseMaterialization = resolve; });
+    const synthesizer = new FakeSynthesizer(async (input) => {
+      if (input.purpose === 'critical_handoff') {
+        signalMaterializationStarted();
+        return materializationResult;
+      }
+      return supportedSynthesis();
+    });
+    const adapter = new CorrectionTestAgentAdapter([false, false]);
+    const { app, repository } = makeApp(synthesizer, adapter);
+    const created = await createCorrectionSession(app);
+    const first = await postInitialCorrectionTurn(app, created);
+    const checkpoint = await request(app)
+      .post(`${base}/sessions/${created.sessionId}/guided-exploration`)
+      .set('X-Starteria-Entry-Token', created.token)
+      .set('Idempotency-Key', 'critical-handoff-race-checkpoint')
+      .send({ expectedRevision: first.body.data.revision, choice: 'provisional_route' })
+      .expect(200);
+    const materializationPromise = request(app)
+      .post(`${base}/sessions/${created.sessionId}/handoff`)
+      .set('X-Starteria-Entry-Token', created.token)
+      .set('Idempotency-Key', 'critical-handoff-race-materialization')
+      .send({ expectedRevision: checkpoint.body.data.revision })
+      .then((response) => response);
+
+    await materializationStarted;
+    await repository.advanceContextRevision(created.sessionId, 1, new Date());
+    releaseMaterialization(supportedSynthesis());
+    const materialization = await materializationPromise;
+
+    expect(materialization.status).toBe(200);
+    await expect(repository.readContextRevision(created.sessionId)).resolves.toBe(2);
+    expect((await repository.getLatestCriticalHandoff(created.sessionId)).artifact).toBeNull();
+    expect((await repository.findSessionById(created.sessionId))?.latestHandoff).not.toBeNull();
+  });
+
+  it('stales but retains the prior artifact after a correction, and does not regenerate until close exploration is selected again', async () => {
+    const adapter = new CorrectionTestAgentAdapter([false, false]);
+    const synthesizer = new FakeSynthesizer(() => supportedSynthesis());
+    const { app, repository } = makeApp(synthesizer, adapter);
+    const created = await createCorrectionSession(app);
+    const first = await postInitialCorrectionTurn(app, created);
+    const checkpoint = await request(app)
+      .post(`${base}/sessions/${created.sessionId}/guided-exploration`)
+      .set('X-Starteria-Entry-Token', created.token)
+      .set('Idempotency-Key', 'critical-handoff-correction-checkpoint')
+      .send({ expectedRevision: first.body.data.revision, choice: 'provisional_route' })
+      .expect(200);
+    const handoff = await request(app)
+      .post(`${base}/sessions/${created.sessionId}/handoff`)
+      .set('X-Starteria-Entry-Token', created.token)
+      .set('Idempotency-Key', 'critical-handoff-correction-materialize')
+      .send({ expectedRevision: checkpoint.body.data.revision })
+      .expect(200);
+    const original = await request(app)
+      .get(`${base}/sessions/${created.sessionId}/critical-handoff`)
+      .set('X-Starteria-Entry-Token', created.token)
+      .expect(200);
+
+    const corrected = await request(app)
+      .post(`${base}/sessions/${created.sessionId}/messages`)
+      .set('X-Starteria-Entry-Token', created.token)
+      .set('Idempotency-Key', 'critical-handoff-correction-message')
+      .send({ expectedRevision: handoff.body.data.revision, intent: 'correction', message: 'The prior provisional reading missed capacity limits.' })
+      .expect(200);
+
+    const staleRead = await request(app)
+      .get(`${base}/sessions/${created.sessionId}/critical-handoff`)
+      .set('X-Starteria-Entry-Token', created.token)
+      .expect(200);
+    expect(corrected.body.data.lifecycleStatus).toBe('CLARIFYING');
+    expect(corrected.body.data.nextAction).toBe('offer_guided_exploration');
+    expect(corrected.body.data.liveUnderstanding.state).toBe('supported_reading');
+    expect(staleRead.body.data).toMatchObject({ id: original.body.data.id, state: 'stale', sourceContextRevision: 1 });
+    expect(staleRead.body.data.projection).toEqual(original.body.data.projection);
+    expect((await repository.getLatestCriticalHandoff(created.sessionId)).artifact?.id).toBe(original.body.data.id);
+    await expect(repository.readContextRevision(created.sessionId)).resolves.toBe(2);
+    expect(synthesizer.calls.filter((call) => call.purpose === 'critical_handoff')).toHaveLength(1);
+  });
+
+  it('stales on correction and answer, then binds regeneration to the latest analyzed turn', async () => {
+    const adapter = new CorrectionTestAgentAdapter([false, true, false]);
+    const synthesizer = new FakeSynthesizer(() => supportedSynthesis());
+    const { app, repository } = makeApp(synthesizer, adapter);
+    const created = await createCorrectionSession(app);
+    const initial = await postInitialCorrectionTurn(app, created);
+    const checkpoint = await request(app)
+      .post(`${base}/sessions/${created.sessionId}/guided-exploration`)
+      .set('X-Starteria-Entry-Token', created.token)
+      .set('Idempotency-Key', 'critical-handoff-answer-invalidation-checkpoint')
+      .send({ expectedRevision: initial.body.data.revision, choice: 'provisional_route' })
+      .expect(200);
+    const firstMaterialization = await request(app)
+      .post(`${base}/sessions/${created.sessionId}/handoff`)
+      .set('X-Starteria-Entry-Token', created.token)
+      .set('Idempotency-Key', 'critical-handoff-answer-invalidation-first')
+      .send({ expectedRevision: checkpoint.body.data.revision })
+      .expect(200);
+    const firstArtifact = (await repository.getLatestCriticalHandoff(created.sessionId)).artifact;
+
+    const corrected = await request(app)
+      .post(`${base}/sessions/${created.sessionId}/messages`)
+      .set('X-Starteria-Entry-Token', created.token)
+      .set('Idempotency-Key', 'critical-handoff-answer-invalidation-correction')
+      .send({ expectedRevision: firstMaterialization.body.data.revision, intent: 'correction', message: 'The conclusion must account for regulatory capacity.' })
+      .expect(200);
+    expect(corrected.body.data.lifecycleStatus).toBe('CLARIFYING');
+    expect((await request(app)
+      .get(`${base}/sessions/${created.sessionId}/critical-handoff`)
+      .set('X-Starteria-Entry-Token', created.token)
+      .expect(200)).body.data.state).toBe('stale');
+    expect(synthesizer.calls.filter((call) => call.purpose === 'critical_handoff')).toHaveLength(1);
+
+    const correctionTurn = (await repository.listTurns(created.sessionId)).at(-1)!;
+    const activeQuestion = correctionTurn.emittedQuestions[0];
+    const answered = await request(app)
+      .post(`${base}/sessions/${created.sessionId}/messages`)
+      .set('X-Starteria-Entry-Token', created.token)
+      .set('Idempotency-Key', 'critical-handoff-answer-invalidation-answer')
+      .send({
+        expectedRevision: corrected.body.data.revision,
+        message: 'La gerencia revisará la capacidad antes de priorizar.',
+        matchedQuestionIds: [activeQuestion.id],
+        respondedResolves: activeQuestion.resolves,
+      })
+      .expect(200);
+    const answerTurn = (await repository.listTurns(created.sessionId)).at(-1)!;
+    expect(answerTurn.inputIntent).toBe('answer');
+    await expect(repository.readContextRevision(created.sessionId)).resolves.toBe(3);
+    const staleAfterAnswer = await request(app)
+      .get(`${base}/sessions/${created.sessionId}/critical-handoff`)
+      .set('X-Starteria-Entry-Token', created.token)
+      .expect(200);
+    expect(staleAfterAnswer.body.data).toMatchObject({ id: firstArtifact?.id, state: 'stale', sourceContextRevision: 1 });
+
+    const answerCheckpoint = await request(app)
+      .post(`${base}/sessions/${created.sessionId}/guided-exploration`)
+      .set('X-Starteria-Entry-Token', created.token)
+      .set('Idempotency-Key', 'critical-handoff-answer-invalidation-close')
+      .send({ expectedRevision: answered.body.data.revision, choice: 'provisional_route' })
+      .expect(200);
+    const regenerated = await request(app)
+      .post(`${base}/sessions/${created.sessionId}/handoff`)
+      .set('X-Starteria-Entry-Token', created.token)
+      .set('Idempotency-Key', 'critical-handoff-answer-invalidation-second')
+      .send({ expectedRevision: answerCheckpoint.body.data.revision })
+      .expect(200);
+
+    const latest = (await repository.getLatestCriticalHandoff(created.sessionId)).artifact;
+    expect(latest).toMatchObject({ artifactVersion: 2, sourceContextRevision: 3, sourceTurnId: answerTurn.id });
+    expect(latest?.id).not.toBe(firstArtifact?.id);
+    expect(synthesizer.calls.filter((call) => call.purpose === 'critical_handoff')).toHaveLength(2);
+    expect(synthesizer.calls.at(-1)).toMatchObject({
+      purpose: 'critical_handoff',
+      contextRevision: 3,
+      sourceTurnId: answerTurn.id,
+    });
+    expect(regenerated.body.data.lifecycleStatus).toBe('HANDOFF_READY');
+  });
+
+  it('keeps legacy field edits isolated from the immutable Critical Handoff payload', async () => {
+    const synthesizer = new FakeSynthesizer(() => supportedSynthesis());
+    const { app, repository } = makeApp(synthesizer);
+    const turn = await submitTurn(app);
+    const sessionId = turn.body.data.id as string;
+    const checkpoint = await request(app)
+      .post(`${base}/sessions/${sessionId}/guided-exploration`)
+      .set('X-Starteria-Entry-Token', turn.token)
+      .set('Idempotency-Key', 'critical-handoff-legacy-edit-checkpoint')
+      .send({ expectedRevision: turn.body.data.revision, choice: 'provisional_route' })
+      .expect(200);
+    const legacy = await request(app)
+      .post(`${base}/sessions/${sessionId}/handoff`)
+      .set('X-Starteria-Entry-Token', turn.token)
+      .set('Idempotency-Key', 'critical-handoff-legacy-edit-materialize')
+      .send({ expectedRevision: checkpoint.body.data.revision })
+      .expect(200);
+    const criticalBefore = (await repository.getLatestCriticalHandoff(sessionId)).artifact;
+    const claimed = await request(app)
+      .post(`${base}/sessions/${sessionId}/claim`)
+      .set('Authorization', 'Bearer user-1')
+      .set('X-Starteria-Entry-Token', turn.token)
+      .set('Idempotency-Key', 'critical-handoff-legacy-edit-claim')
+      .send({ expectedRevision: legacy.body.data.revision })
+      .expect(200);
+    const legacyCorrection = await request(app)
+      .post(`${base}/sessions/${sessionId}/handoff/confirmation`)
+      .set('Authorization', 'Bearer user-1')
+      .set('Idempotency-Key', 'critical-handoff-legacy-field-edit')
+      .send({
+        expectedRevision: claimed.body.data.revision,
+        action: 'correct',
+        correctedFields: { understood_need: 'Legacy-only corrected text.' },
+      })
+      .expect(200);
+    await request(app)
+      .post(`${base}/sessions/${sessionId}/handoff/confirmation`)
+      .set('Authorization', 'Bearer user-1')
+      .set('Idempotency-Key', 'critical-handoff-legacy-confirmation')
+      .send({
+        expectedRevision: legacyCorrection.body.data.revision,
+        action: 'confirm',
+        acceptedFields: ['understood_need'],
+      })
+      .expect(200);
+
+    const criticalAfter = (await repository.getLatestCriticalHandoff(sessionId)).artifact;
+    expect(criticalAfter?.id).toBe(criticalBefore?.id);
+    expect(criticalAfter?.payload).toEqual(criticalBefore?.payload);
+    expect(criticalAfter?.confirmationState).toBe('provisional');
   });
 
   it('never serializes KAN-114 internal fields or metadata in the client DTO', async () => {
@@ -370,6 +819,7 @@ describe('Portfolio Entry Live Understanding correction loop', () => {
     expect(corrected.body.data.liveUnderstanding).toEqual({ state: 'synthesis_unavailable', decisionChangingUnknowns: [] });
     expect(stored?.executionStatus).toBe('SUCCEEDED');
     expect((await repository.listTurns(created.sessionId))).toHaveLength(2);
+    await expect(repository.readContextRevision(created.sessionId)).resolves.toBe(2);
     expect(adapter.calls).toHaveLength(2);
     expect(synthesizer.calls).toHaveLength(2);
   });
@@ -434,11 +884,12 @@ describe('Portfolio Entry Live Understanding correction loop', () => {
     expect((await firstCorrectionPromise).status).toBe(200);
 
     expect((await repository.listTurns(created.sessionId))).toHaveLength(2);
+    await expect(repository.readContextRevision(created.sessionId)).resolves.toBe(2);
     expect(adapter.calls).toHaveLength(2);
     expect(synthesizer.calls).toHaveLength(2);
   });
 
-  it('rejects stale corrections after checkpoint advancement and does not reopen a final handoff', async () => {
+  it('rejects stale corrections after checkpoint advancement and blocks corrections after final confirmation', async () => {
     const adapter = new CorrectionTestAgentAdapter([false, true]);
     const synthesizer = new FakeSynthesizer(() => supportedSynthesis());
     const { app } = makeApp(synthesizer, adapter);
@@ -464,12 +915,6 @@ describe('Portfolio Entry Live Understanding correction loop', () => {
       .set('Idempotency-Key', 'correction-materialize-handoff')
       .send({ expectedRevision: advanced.body.data.revision })
       .expect(200);
-    await request(app)
-      .post(`${base}/sessions/${created.sessionId}/messages`)
-      .set('X-Starteria-Entry-Token', created.token)
-      .set('Idempotency-Key', 'correction-after-handoff')
-      .send({ expectedRevision: handoff.body.data.revision, intent: 'correction', message: 'No reabrir un handoff materializado.' })
-      .expect(409);
     expect(handoff.body.data.lifecycleStatus).toBe('HANDOFF_READY');
 
     const claimed = await request(app)
@@ -635,6 +1080,7 @@ class CorrectionTestAgentAdapter implements PortfolioEntryAgentAdapterV2 {
 function makeApp(
   synthesizer: FakeSynthesizer,
   adapter: PortfolioEntryAgentAdapterV2 = new IntegrationAgentAdapter(),
+  criticalHandoffProjector?: (source: unknown) => CriticalHandoffProjection,
 ) {
   const app = express();
   const repository = new InMemoryPortfolioEntrySessionRepository();
@@ -649,6 +1095,7 @@ function makeApp(
     idempotencyRepository: new InMemoryPortfolioEntryIdempotencyRepository(),
     agentAdapter: adapter,
     liveUnderstandingSynthesizer: synthesizer,
+    criticalHandoffProjector,
     authenticate: correctionTestAuthenticate,
     optionalAuthenticate: correctionTestOptionalAuthenticate,
     sessionTtlMs: 60 * 60_000,

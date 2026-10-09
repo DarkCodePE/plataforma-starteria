@@ -53,6 +53,7 @@ export type PortfolioEntryCriticalHandoffRecord = {
 
 export type CreatePortfolioEntryCriticalHandoffInput = {
   sessionId: string;
+  expectedSessionRevision?: number;
   sourceContextRevision: number;
   sourceTurnId?: string;
   payload: CriticalHandoffPayload;
