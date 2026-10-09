@@ -5,6 +5,12 @@ import type {
   PortfolioEntryTurn,
 } from '../domain/portfolio-entry-session.types';
 import type { PortfolioEntryModelExecutionRecord } from '../observability/portfolio-entry-execution-metadata';
+import type {
+  ConfirmPortfolioEntryCriticalHandoffInput,
+  CreatePortfolioEntryCriticalHandoffInput,
+  PortfolioEntryCriticalHandoffLatestSnapshot,
+  PortfolioEntryCriticalHandoffRecord,
+} from '../domain/portfolio-entry-critical-handoff.types';
 
 export type CreatePortfolioEntrySessionInput = PortfolioEntrySession;
 
@@ -26,9 +32,19 @@ export interface PortfolioEntrySessionRepository {
   findSessionForPublicAccess(sessionId: string, publicAccessTokenHash: string): Promise<PortfolioEntrySession | null>;
   findSessionForOwner(sessionId: string, ownerUserId: string): Promise<PortfolioEntrySession | null>;
   saveSessionState(input: SavePortfolioEntrySessionStateInput): Promise<PortfolioEntrySession>;
-  appendTurn(turn: PortfolioEntryTurn, session: PortfolioEntrySession, expectedRevision: number): Promise<PortfolioEntryTurn>;
+  appendTurn(
+    turn: PortfolioEntryTurn,
+    session: PortfolioEntrySession,
+    expectedRevision: number,
+    expectedContextRevision?: number,
+  ): Promise<PortfolioEntryTurn>;
   appendModelExecution(execution: PortfolioEntryModelExecutionRecord): Promise<PortfolioEntryModelExecutionRecord>;
   saveHandoff(handoff: PortfolioEntryHandoffRecord, session: PortfolioEntrySession, expectedRevision: number): Promise<PortfolioEntryHandoffRecord>;
+  createCriticalHandoff(input: CreatePortfolioEntryCriticalHandoffInput): Promise<PortfolioEntryCriticalHandoffRecord>;
+  confirmCriticalHandoff(input: ConfirmPortfolioEntryCriticalHandoffInput): Promise<PortfolioEntryCriticalHandoffLatestSnapshot>;
+  getLatestCriticalHandoff(sessionId: string): Promise<PortfolioEntryCriticalHandoffLatestSnapshot>;
+  readContextRevision(sessionId: string): Promise<number>;
+  advanceContextRevision(sessionId: string, expectedContextRevision: number, now: Date): Promise<number>;
   saveConfirmation(confirmation: PortfolioEntryConfirmation, session: PortfolioEntrySession, expectedRevision: number): Promise<PortfolioEntryConfirmation>;
   claimOwnership(input: ClaimPortfolioEntrySessionOwnershipInput): Promise<PortfolioEntrySession>;
   touchActivity(sessionId: string, now: Date, expectedRevision: number): Promise<PortfolioEntrySession>;

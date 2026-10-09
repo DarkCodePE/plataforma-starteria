@@ -510,10 +510,38 @@ integration_note: KAN-116 adds turn_index ordering to the synthesis input assemb
 exclusions: 114D final handoff/conclusion; candidate_first_movement as recommendation; Starteria Path; Portfolio Setup continuity; Steps; Core canonicalization; persistence of Live Understanding as Core truth; KAN-114 reasoning-semantic changes
 migration_status: PARTIAL (this closes the bounded 114C capability, not the broader Portfolio Entry migration)
 legacy_treatment: KEEP_COMPAT; no retirement action is authorized or required by 114C
-next_authorized_slice: 114D final handoff/conclusion — NOT_IMPLEMENTED
+next_authorized_slice: 114D final handoff/conclusion — KAN-119 implementation verified on PR #161; merge pending
 ```
 
 PR #156 CI evidence: `https://github.com/DarkCodePE/plataforma-starteria/actions/runs/37847682123`. The PostgreSQL integration and full-stack E2E steps completed successfully and were not skipped. This is scoped slice evidence, not global production certification.
+
+## KAN-117 / KAN-119 — Critical Handoff (114D), PR #161
+
+```text
+slice_id: PORTFOLIO_ENTRY_CRITICAL_HANDOFF_114D
+HU: KAN-117 semantic acceptance; KAN-119 implementation and regression/closure
+logic_status: ACTIVE_V2_BASELINE
+implementation_status: IMPLEMENTED_VERIFIED
+visual_status: V2_PILOT
+evidence_status: VERIFIED
+semantic_owner: Portfolio Entry V2 for the 114D Critical Handoff; historical legacy handoff consumers remain KEEP_COMPAT
+authority: active Portfolio Entry Logic Contract v0.1; accepted/frozen Critical Reasoning Experience Contract v0.1; KAN-114 semantic acceptance; KAN-117/KAN-119 scoped implementation authority
+reasoning_source: KAN-114 remains the sole reasoning source
+entry_boundary: current Portfolio Entry reasoning / explicit close checkpoint
+exit_boundary: confirmed Critical Handoff only
+persistence: dedicated durable Portfolio Entry Critical Handoff artifact; sourceContextRevision binds the artifact to current session reasoning context
+currentness: latest artifact whose sourceContextRevision matches contextRevision is current; context advance invalidates prior currentness
+correction: returns through the existing reasoning/clarification cycle
+confirmation: explicit representativeness confirmation; claim != confirmation; it does not certify each claim as objective fact
+exclusions: Starteria Path 114E; Portfolio Setup continuity 114F; ADR-003 reconciliation; Core; Steps; scoring; experiment design; distinct alternative ranking
+legacy_treatment: KEEP_COMPAT for explicitly historical legacy sessions
+evidence: PR #161 (https://github.com/DarkCodePE/plataforma-starteria/pull/161); GitHub CI run #220 / 37995220187 (https://github.com/DarkCodePE/plataforma-starteria/actions/runs/37995220187) at HEAD b16dc03e04b8f3c419bfa5df565914b6613b7112; PostgreSQL repository integration 26/26; CURRENT_114D 6/6; LEGACY_COMPAT 7/7; Live Understanding full-stack E2E 1/1; Node coverage, Prisma schema/migrations, lint/build, Python and CI summary PASS
+integration_status: PENDING_MERGE
+known_non_blocking_limitation: post-confirmation reopen/correction policy is not generalized as a future reopen feature; confirmed artifact remains immutable under current v0.1 semantics
+next_authorized_slice: 114E — NOT_STARTED; requires its own authorized scope
+```
+
+PR #161 is not yet integrated into the governed baseline. CI run #220 verifies this bounded 114D implementation on the feature PR; it does not certify all Portfolio Entry or reconcile ADR-003.
 
 # 6. V2 E2E slice map
 
@@ -525,7 +553,7 @@ PR #156 CI evidence: `https://github.com/DarkCodePE/plataforma-starteria/actions
 | Public Landing - L1 Product Framing & Hero (KAN-64) | ACTIVE_V2_BASELINE (ADR-006) | IMPLEMENTED_VERIFIED; KAN-64 RESUELTO | V2_PILOT | LOCAL_REGRESSION_PASS (KAN-102 revalidation) | KEEP; Early Access/Demo runtime excluded |
 | Public Landing L2 + Portfolio Entry Convergence (KAN-102) | ACTIVE_V2_BASELINE (ADR-006) | IMPLEMENTED_VERIFIED (local) | V2_PILOT | VERIFIED (frontend + focused Chromium) | KEEP; commercial destinations pending authority |
 | Landing V4 | ACTIVE_V2_BASELINE visual spec | VERIFY_IN_REPO | V2_TARGET_DEFINED | SUPPORTED | RECONCILE |
-| Portfolio Entry logic | ACTIVE_V2_BASELINE | PARTIAL_IMPLEMENTATION; KAN-114 + 114C integrated | V2_PILOT / VERIFY | VERIFIED for KAN-115/116 114C | KEEP bounded 114C; broader stack reconciliation remains |
+| Portfolio Entry logic | ACTIVE_V2_BASELINE | PARTIAL_IMPLEMENTATION; KAN-114 + 114C integrated; 114D IMPLEMENTED_VERIFIED_ON_PR #161 | V2_PILOT | VERIFIED for 114C and 114D scoped CI | KEEP bounded slices; PR #161 pending merge |
 | Clarification | CANDIDATE + hypotheses | EXPERIMENTAL / VERIFY | V2_PILOT | TESTING | TEST |
 | Handoff / Value Handoff Cognition | CANDIDATE + hypotheses | EXPERIMENTAL / VERIFY | V2_PILOT | TESTING | TEST |
 | Registration / continuation | CANDIDATE | IMPLEMENTED_UNVERIFIED | MIXED | TESTING | VERIFY grant and full E2E |

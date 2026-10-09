@@ -13,6 +13,11 @@ import {
   type PortfolioEntryConfirmation,
 } from '../domain/portfolio-entry-confirmation.types';
 import {
+  parseCriticalHandoffPayload,
+  parseCriticalHandoffLifecycle,
+  type PortfolioEntryCriticalHandoffRecord,
+} from '../domain/portfolio-entry-critical-handoff.types';
+import {
   PORTFOLIO_ENTRY_EXECUTION_STATUSES,
   PORTFOLIO_ENTRY_SESSION_LIFECYCLE_STATUSES,
 } from '../domain/portfolio-entry-session.lifecycle';
@@ -166,6 +171,7 @@ export type PrismaPortfolioEntrySessionRow = {
   schemaVersion: string;
   promptManifestId: string | null;
   revision: number;
+  contextRevision: number;
   createdAt: Date;
   updatedAt: Date;
   lastActivityAt: Date;
@@ -206,6 +212,21 @@ export type PrismaPortfolioEntryHandoffRow = {
   schemaVersion: string;
   runtimeVersion: string;
   promptManifestId: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
+export type PrismaPortfolioEntryCriticalHandoffRow = {
+  id: string;
+  sessionId: string;
+  artifactVersion: number;
+  schemaVersion: string;
+  sourceContextRevision: number;
+  sourceTurnId: string | null;
+  payload: Prisma.JsonValue;
+  confirmationState: string;
+  confirmedAt: Date | null;
+  confirmedByUserId: string | null;
   createdAt: Date;
   updatedAt: Date;
 };
@@ -278,6 +299,7 @@ export class PrismaPortfolioEntrySessionMapper {
       confirmation,
       versioning: this.versioningFromRow(row),
       revision: row.revision,
+      contextRevision: row.contextRevision,
       createdAt: row.createdAt,
       updatedAt: row.updatedAt,
       lastActivityAt: row.lastActivityAt,
@@ -325,6 +347,26 @@ export class PrismaPortfolioEntrySessionMapper {
       sourceTurnId: row.sourceTurnId ?? undefined,
       status: handoff.handoff_status,
       versioning: this.versioningFromRow(row),
+      createdAt: row.createdAt,
+      updatedAt: row.updatedAt,
+    };
+  }
+
+  toCriticalHandoff(row: PrismaPortfolioEntryCriticalHandoffRow): PortfolioEntryCriticalHandoffRecord {
+    const lifecycle = parseCriticalHandoffLifecycle(
+      row.confirmationState,
+      row.confirmedAt,
+      row.confirmedByUserId,
+    );
+    return {
+      id: row.id,
+      sessionId: row.sessionId,
+      artifactVersion: row.artifactVersion,
+      schemaVersion: row.schemaVersion,
+      sourceContextRevision: row.sourceContextRevision,
+      sourceTurnId: row.sourceTurnId ?? undefined,
+      payload: parseCriticalHandoffPayload(row.schemaVersion, row.payload),
+      ...lifecycle,
       createdAt: row.createdAt,
       updatedAt: row.updatedAt,
     };
@@ -393,6 +435,7 @@ export class PrismaPortfolioEntrySessionMapper {
       schemaVersion: session.versioning.schemaVersion,
       promptManifestId: session.versioning.promptManifestId ?? null,
       revision: session.revision,
+      contextRevision: session.contextRevision,
       createdAt: session.createdAt,
       updatedAt: session.updatedAt,
       lastActivityAt: session.lastActivityAt,
@@ -416,6 +459,7 @@ export class PrismaPortfolioEntrySessionMapper {
         : toInputJson(session.latestAnalysis),
       continuationProfile: session.continuationProfile ?? null,
       revision: session.revision,
+      // contextRevision changes only through the dedicated repository primitive.
       updatedAt: session.updatedAt,
       lastActivityAt: session.lastActivityAt,
       expiredAt: session.expiredAt ?? null,
@@ -458,6 +502,25 @@ export class PrismaPortfolioEntrySessionMapper {
       schemaVersion: handoff.versioning.schemaVersion,
       runtimeVersion: handoff.versioning.runtimeVersion,
       promptManifestId: handoff.versioning.promptManifestId ?? null,
+      createdAt: handoff.createdAt,
+      updatedAt: handoff.updatedAt,
+    };
+  }
+
+  criticalHandoffCreateData(
+    handoff: PortfolioEntryCriticalHandoffRecord,
+  ): Prisma.PortfolioEntryCriticalHandoffUncheckedCreateInput {
+    return {
+      id: handoff.id,
+      sessionId: handoff.sessionId,
+      artifactVersion: handoff.artifactVersion,
+      schemaVersion: handoff.schemaVersion,
+      sourceContextRevision: handoff.sourceContextRevision,
+      sourceTurnId: handoff.sourceTurnId ?? null,
+      payload: toInputJson(parseCriticalHandoffPayload(handoff.schemaVersion, handoff.payload)),
+      confirmationState: handoff.confirmationState,
+      confirmedAt: handoff.confirmedAt,
+      confirmedByUserId: handoff.confirmedByUserId,
       createdAt: handoff.createdAt,
       updatedAt: handoff.updatedAt,
     };

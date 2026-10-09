@@ -128,11 +128,18 @@ export function AuthPage() {
           );
           clearPendingPortfolioEntryClaim();
           clearPortfolioEntryCurrentSession();
-          const identity = portfolioEntryClaimIdentity(claimResponse, pendingPortfolioEntryClaim.identity);
+          const identity = pendingPortfolioEntryClaim.criticalHandoffReview
+            ? null
+            : portfolioEntryClaimIdentity(claimResponse, pendingPortfolioEntryClaim.identity);
           saveClaimedPortfolioEntrySession(identity ?? { sessionId: claimResponse.id });
           savePortfolioEntryClaimedNotice(pendingPortfolioEntryClaim.sessionId);
           trackPortfolioEntryEvent('portfolio_entry_claimed', { sessionId: pendingPortfolioEntryClaim.sessionId });
-          navigate('/public/provisional-continuation', { replace: true });
+          navigate(
+            pendingPortfolioEntryClaim.criticalHandoffReview
+              ? '/public/start'
+              : '/public/provisional-continuation',
+            { replace: true },
+          );
         } catch {
           clearPendingPortfolioEntryClaim();
           clearPortfolioEntryCurrentSession();

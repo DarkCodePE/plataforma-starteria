@@ -3,9 +3,13 @@ import { http, HttpResponse } from 'msw';
 import { server } from '../../../../../tests/setup-jsdom';
 import {
   chooseGuidedExploration,
+  confirmPortfolioEntryCriticalHandoff,
   continuePortfolioEntryToPortfolio,
   createPortfolioEntrySession,
+  getPortfolioEntryCriticalHandoff,
+  getPortfolioEntryHandoff,
   getPortfolioEntrySession,
+  materializePortfolioEntryCriticalHandoff,
   normalizePortfolioEntryApiError,
   submitPortfolioEntryMessage,
 } from '../portfolioEntryPublicService';
@@ -15,6 +19,7 @@ import { createIdempotencyKey } from '../idempotency';
 function makeSession(overrides: Partial<PortfolioEntrySessionDto> = {}): PortfolioEntrySessionDto {
   return {
     id: '11111111-1111-4111-8111-111111111111',
+    handoffExperience: 'none',
     lifecycleStatus: 'ENTRY_CAPTURED',
     executionStatus: 'ACTIVE',
     revision: 0,
@@ -71,6 +76,225 @@ describe('portfolioEntryPublicService', () => {
     );
 
     await getPortfolioEntrySession('11111111-1111-4111-8111-111111111111', 'entry-token');
+  });
+
+  it('loads only the safe Critical Handoff DTO from its dedicated endpoint', async () => {
+    server.use(
+      http.get('*/public/portfolio-entry/sessions/:sessionId/critical-handoff', ({ request, params }) => {
+        expect(params.sessionId).toBe('11111111-1111-4111-8111-111111111111');
+        expect(new URL(request.url).pathname).toContain('/critical-handoff');
+        expect(new URL(request.url).search).not.toContain('entry-token');
+        expect(request.headers.get('X-Starteria-Entry-Token')).toBe('entry-token');
+        return HttpResponse.json({
+          success: true,
+          data: {
+            id: 'artifact-1',
+            version: 3,
+            schemaVersion: 'critical-handoff-projection-v0.1',
+            sourceContextRevision: 7,
+            sourceTurnId: 'turn-9',
+            claim_ref: 'private-claim-ref',
+            route_ranking: ['private-route'],
+            candidate_first_movement: { raw: 'private movement object' },
+            state: 'current',
+            confirmationState: 'provisional',
+            confirmedAt: null,
+            projection: {
+              conclusionStatus: 'bounded',
+              finalReading: 'El comité necesita comparar capacidad y urgencia antes de priorizar.',
+              decisionInView: 'Qué iniciativas reciben capacidad durante este ciclo.',
+              usableNow: [{ item: 'Datos de capacidad', howItCanHelp: 'Permiten acotar opciones.' }],
+              decisionChangingUnknowns: [{ uncertainty: 'Falta confirmar una fecha.', whyItMatters: 'Puede cambiar la secuencia.' }],
+              firstMovement: {
+                movement: 'Revisar el corte de capacidad actual.',
+                whyNow: 'Ese corte ya existe.',
+                whatItMayClarify: 'Qué opciones caben en el ciclo.',
+                boundary: 'No decide prioridades por sí solo.',
+                existingAssetsUsed: ['Informe de capacidad'],
+              },
+              reasoning_metadata: { private: true },
+            },
+            selected_lenses: ['private-lens'],
+            provenance: [{ source_ref: 'private-ref' }],
+            source_refs: ['private-source-ref'],
+            claim_refs: ['private-claim-ref'],
+            prompt_metadata: { prompt: 'private prompt metadata' },
+            model_metadata: { model: 'private-model' },
+            provider_metadata: { provider: 'private-provider' },
+            raw_synthesis: { prompt: 'private prompt' },
+            starteria_path: ['private path'],
+            recommended_approach: 'private recommendation',
+            recommended_cta: 'private CTA',
+          },
+        });
+      }),
+    );
+
+    const artifact = await getPortfolioEntryCriticalHandoff('11111111-1111-4111-8111-111111111111', 'entry-token');
+
+    expect(artifact).toEqual({
+      id: 'artifact-1',
+      version: 3,
+      sourceContextRevision: 7,
+      state: 'current',
+      confirmationState: 'provisional',
+      confirmedAt: null,
+      projection: {
+        conclusionStatus: 'bounded',
+        finalReading: 'El comité necesita comparar capacidad y urgencia antes de priorizar.',
+        decisionInView: 'Qué iniciativas reciben capacidad durante este ciclo.',
+        usableNow: [{ item: 'Datos de capacidad', howItCanHelp: 'Permiten acotar opciones.' }],
+        decisionChangingUnknowns: [{ uncertainty: 'Falta confirmar una fecha.', whyItMatters: 'Puede cambiar la secuencia.' }],
+        firstMovement: {
+          movement: 'Revisar el corte de capacidad actual.',
+          whyNow: 'Ese corte ya existe.',
+          whatItMayClarify: 'Qué opciones caben en el ciclo.',
+          boundary: 'No decide prioridades por sí solo.',
+          existingAssetsUsed: ['Informe de capacidad'],
+        },
+      },
+    });
+    expect(Object.keys(artifact ?? {})).toEqual(['id', 'version', 'sourceContextRevision', 'state', 'confirmationState', 'confirmedAt', 'projection']);
+    expect(JSON.stringify(artifact)).not.toMatch(/sourceTurnId|schemaVersion|selected_lenses|reasoning_metadata|provenance|source_refs|claim_ref|prompt_metadata|model_metadata|provider_metadata|candidate_first_movement|route_ranking|raw_synthesis|starteria_path|recommended_approach|recommended_cta/i);
+  });
+
+  it('uses the explicit current materialization endpoint and returns only its allowlisted contract', async () => {
+    server.use(http.post('*/public/portfolio-entry/sessions/:sessionId/critical-handoff', async ({ request, params }) => {
+      expect(params.sessionId).toBe('11111111-1111-4111-8111-111111111111');
+      expect(request.headers.get('X-Starteria-Entry-Token')).toBe('entry-token');
+      expect(request.headers.get('Idempotency-Key')).toBe('critical-materialization-1');
+      expect(await request.json()).toEqual({ expectedRevision: 8 });
+      return HttpResponse.json({ success: true, data: {
+        sessionRevision: 9,
+        criticalHandoff: {
+          id: 'artifact-current',
+          version: 2,
+          sourceContextRevision: 5,
+          state: 'current',
+          confirmationState: 'provisional',
+          confirmedAt: null,
+          projection: {
+            conclusionStatus: 'supported',
+            finalReading: 'Lectura permitida.',
+            decisionInView: 'Decisión en vista.',
+            usableNow: [],
+            decisionChangingUnknowns: [],
+            firstMovement: { movement: 'Un paso', whyNow: 'Ahora', whatItMayClarify: 'Una duda', boundary: 'Provisional', existingAssetsUsed: [] },
+          },
+          provenance: ['private provenance'],
+          recommended_approach: 'legacy recommendation',
+          starteria_path: ['legacy path'],
+          recommended_cta: 'legacy CTA',
+          selected_lenses: ['private lens'],
+          reasoning_metadata: { private: true },
+          raw_synthesis: { private: true },
+          confirmedByUserId: 'private-user-id',
+        },
+      } });
+    }));
+
+    const response = await materializePortfolioEntryCriticalHandoff(
+      '11111111-1111-4111-8111-111111111111',
+      'entry-token',
+      { expectedRevision: 8, idempotencyKey: 'critical-materialization-1' },
+    );
+
+    expect(response.sessionRevision).toBe(9);
+    expect(response.criticalHandoff).toMatchObject({
+      id: 'artifact-current',
+      version: 2,
+      sourceContextRevision: 5,
+      state: 'current',
+      confirmationState: 'provisional',
+      confirmedAt: null,
+    });
+    expect(JSON.stringify(response)).not.toMatch(/provenance|recommended_approach|starteria_path|recommended_cta|selected_lenses|reasoning_metadata|raw_synthesis|confirmedByUserId/i);
+  });
+
+  it('posts only explicit artifact identity and currentness expectations to the dedicated confirmation endpoint', async () => {
+    const confirmedAt = '2026-10-09T12:00:00.000Z';
+    server.use(http.post('*/public/portfolio-entry/sessions/:sessionId/critical-handoff/:artifactId/confirmation', async ({ request, params }) => {
+      expect(params.sessionId).toBe('11111111-1111-4111-8111-111111111111');
+      expect(params.artifactId).toBe('artifact-1');
+      expect(request.headers.get('Idempotency-Key')).toBe('critical-confirm-key');
+      expect(request.headers.get('X-Starteria-Entry-Token')).toBeNull();
+      expect(await request.json()).toEqual({ action: 'confirm', expectedArtifactVersion: 3, expectedContextRevision: 7 });
+      return HttpResponse.json({ success: true, data: {
+        id: 'artifact-1', version: 3, sourceContextRevision: 7, state: 'current',
+        confirmationState: 'confirmed', confirmedAt,
+        projection: {
+          conclusionStatus: 'supported', finalReading: 'Lectura segura.', decisionInView: null,
+          usableNow: [], decisionChangingUnknowns: [], firstMovement: null,
+          reasoning_metadata: { private: true },
+        },
+        acceptedFields: ['private legacy structure'], provenance: [{ source: 'private' }],
+      } });
+    }));
+
+    await expect(confirmPortfolioEntryCriticalHandoff('11111111-1111-4111-8111-111111111111', {
+      artifactId: 'artifact-1', expectedArtifactVersion: 3, expectedContextRevision: 7, idempotencyKey: 'critical-confirm-key',
+    })).resolves.toMatchObject({
+      id: 'artifact-1', version: 3, sourceContextRevision: 7, state: 'current',
+      confirmationState: 'confirmed', confirmedAt,
+      projection: { finalReading: 'Lectura segura.' },
+    });
+  });
+
+  it('treats a missing Critical Handoff as absent without reading legacy handoff data', async () => {
+    server.use(http.get('*/public/portfolio-entry/sessions/:sessionId/critical-handoff', () => HttpResponse.json({
+      success: false,
+      error: { code: 'NOT_FOUND' },
+    }, { status: 404 })));
+
+    await expect(getPortfolioEntryCriticalHandoff('11111111-1111-4111-8111-111111111111', 'entry-token')).resolves.toBeNull();
+  });
+
+  it('hydrates legacy content only through the explicit handoff endpoint', async () => {
+    server.use(http.get('*/public/portfolio-entry/sessions/:sessionId/handoff', ({ request, params }) => {
+      expect(request.headers.get('X-Starteria-Entry-Token')).toBe('entry-token');
+      expect(params.sessionId).toBe('11111111-1111-4111-8111-111111111111');
+      return HttpResponse.json({
+        success: true,
+        data: makeSession({
+          handoffExperience: 'legacy',
+          handoff: { id: 'legacy-1' } as NonNullable<PortfolioEntrySessionDto['handoff']>,
+        }),
+      });
+    }));
+
+    await expect(getPortfolioEntryHandoff('11111111-1111-4111-8111-111111111111', 'entry-token')).resolves.toMatchObject({
+      handoffExperience: 'legacy',
+      handoff: { id: 'legacy-1' },
+    });
+  });
+
+  it('uses authenticated transport for Critical Handoff reads after claim', async () => {
+    server.use(http.get('*/public/portfolio-entry/sessions/:sessionId/critical-handoff', ({ request }) => {
+      expect(request.headers.get('X-Starteria-Entry-Token')).toBeNull();
+      return HttpResponse.json({
+        success: true,
+        data: {
+          id: 'claimed-artifact',
+          version: 2,
+          sourceContextRevision: 8,
+          state: 'current',
+          confirmationState: 'confirmed',
+          confirmedAt: '2026-10-09T12:00:00.000Z',
+          projection: {
+            conclusionStatus: 'supported',
+            finalReading: 'La lectura se conserva.',
+            decisionInView: null,
+            usableNow: [],
+            decisionChangingUnknowns: [],
+            firstMovement: null,
+          },
+        },
+      });
+    }));
+
+    await expect(getPortfolioEntryCriticalHandoff('11111111-1111-4111-8111-111111111111')).resolves.toMatchObject({
+      state: 'current',
+    });
   });
 
   it('returns reason_to_ask unchanged on the question DTO', async () => {
@@ -131,6 +355,29 @@ describe('portfolioEntryPublicService', () => {
       expectedRevision: 7,
       idempotencyKey: 'correction-key',
       message: 'La lectura no refleja lo que quise decir sobre esta iniciativa.',
+      intent: 'correction',
+    });
+  });
+
+  it('submits correction context for a claimed session through authenticated transport', async () => {
+    server.use(
+      http.post('*/public/portfolio-entry/sessions/:sessionId/messages', async ({ request }) => {
+        const body = await request.json();
+        expect(request.headers.get('X-Starteria-Entry-Token')).toBeNull();
+        expect(request.headers.get('Idempotency-Key')).toBe('claimed-correction-key');
+        expect(body).toEqual({
+          expectedRevision: 12,
+          message: 'El espacio disponible depende de otra fecha.',
+          intent: 'correction',
+        });
+        return HttpResponse.json({ success: true, data: makeSession({ revision: 13, nextAction: 'answer_clarification' }) });
+      }),
+    );
+
+    await submitPortfolioEntryMessage('11111111-1111-4111-8111-111111111111', undefined, {
+      expectedRevision: 12,
+      idempotencyKey: 'claimed-correction-key',
+      message: 'El espacio disponible depende de otra fecha.',
       intent: 'correction',
     });
   });

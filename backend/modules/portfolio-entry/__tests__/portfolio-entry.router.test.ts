@@ -10,6 +10,10 @@ import type {
   PortfolioEntryAnalyzeTurnInputV2,
   PortfolioEntryAnalyzeTurnOutputV2,
 } from '../../portfolio-entry-runtime';
+import {
+  criticalSituationSynthesisSchema,
+  type CriticalSituationSynthesis,
+} from '../../portfolio-entry-runtime/domain/critical-situation-synthesis.schema';
 import { LiveModelExecutionError } from '../../portfolio-entry-runtime/model/live-model-error';
 import { hashPublicAccessToken } from '../../portfolio-entry-sessions/application/portfolio-entry-session.service';
 import type { PortfolioEntryModelExecutionRecord } from '../../portfolio-entry-sessions/observability/portfolio-entry-execution-metadata';
@@ -19,6 +23,7 @@ import type { PortfolioEntryIdempotencyRepository } from '../application/portfol
 import { buildPortfolioEntryRouter } from '../portfolio-entry.router';
 
 const base = '/api/v1/public/portfolio-entry';
+const legacyCompatibilityRepositories = new WeakMap<express.Express, InMemoryPortfolioEntrySessionRepository>();
 
 describe('Portfolio Entry Experimental Session API', () => {
   it('D1 resolves the exact owner-confirmed Brief with provenance and no session writes', async () => {
@@ -70,7 +75,7 @@ describe('Portfolio Entry Experimental Session API', () => {
       });
       await request(app).get(confirmedBriefPath(fixture)).set('Authorization', 'Bearer user-1').expect(410);
     }
-    const ready = await readySession(app);
+    const ready = await legacyHandoffReadySession(app);
     const handoff = await request(app).post(`${base}/sessions/${ready.sessionId}/handoff`)
       .set('X-Starteria-Entry-Token', ready.token).set('Idempotency-Key', `d1-not-confirmed-handoff-${ready.sessionId}`)
       .send({ expectedRevision: ready.revision }).expect(200);
@@ -123,6 +128,32 @@ describe('Portfolio Entry Experimental Session API', () => {
       .set('X-Starteria-Entry-Token', res.body.data.publicAccessToken)
       .expect(200);
     expect(read.body.data.publicAccessToken).toBeUndefined();
+  });
+
+  it('keeps a historical handoff out of generic session reads and exposes it through the explicit legacy route', async () => {
+    const { app } = makeApp();
+    const ready = await legacyHandoffReadySession(app);
+    const materialized = await request(app)
+      .post(`${base}/sessions/${ready.sessionId}/handoff`)
+      .set('X-Starteria-Entry-Token', ready.token)
+      .set('Idempotency-Key', 'legacy-experience-materialize')
+      .send({ expectedRevision: ready.revision })
+      .expect(200);
+
+    const generic = await request(app)
+      .get(`${base}/sessions/${ready.sessionId}`)
+      .set('X-Starteria-Entry-Token', ready.token)
+      .expect(200);
+    expect(generic.body.data.handoffExperience).toBe('legacy');
+    expect(generic.body.data).not.toHaveProperty('handoff');
+    expect(JSON.stringify(generic.body.data)).not.toMatch(/recommended_approach|starteria_path|recommended_cta|provenance_summary/i);
+
+    const explicitLegacyRead = await request(app)
+      .get(`${base}/sessions/${ready.sessionId}/handoff`)
+      .set('X-Starteria-Entry-Token', ready.token)
+      .expect(200);
+    expect(explicitLegacyRead.body.data.handoff).toEqual(materialized.body.data.handoff);
+    expect(explicitLegacyRead.body.data.handoff.handoff).toHaveProperty('recommended_approach');
   });
 
   it('rejects wrong or expired anonymous credentials', async () => {
@@ -560,7 +591,7 @@ describe('Portfolio Entry Experimental Session API', () => {
 
   it('materializes, reads, confirms, and corrects handoffs without exposing internals or conversion eligibility', async () => {
     const { app } = makeApp();
-    const first = await readySession(app);
+    const first = await legacyHandoffReadySession(app);
 
     const handoff = await request(app)
       .post(`${base}/sessions/${first.sessionId}/handoff`)
@@ -598,7 +629,7 @@ describe('Portfolio Entry Experimental Session API', () => {
     expect(confirmed.body.data.confirmation.status).toBe('CONFIRMED');
     expect(confirmed.body.data.lifecycleStatus).not.toBe('CONVERSION_ELIGIBLE');
 
-    const second = await readySession(app);
+    const second = await legacyHandoffReadySession(app);
     const secondHandoff = await request(app)
       .post(`${base}/sessions/${second.sessionId}/handoff`)
       .set('X-Starteria-Entry-Token', second.token)
@@ -736,7 +767,7 @@ describe('Portfolio Entry Experimental Session API', () => {
   it('preserves the frozen handoff, provenance, open items, and organizational unknowns during claim', async () => {
     const adapter = new FakeAgentAdapter();
     const { app, repository } = makeApp({ adapter });
-    const ready = await readySession(app);
+    const ready = await legacyHandoffReadySession(app);
     const handoff = await request(app)
       .post(`${base}/sessions/${ready.sessionId}/handoff`)
       .set('X-Starteria-Entry-Token', ready.token)
@@ -789,7 +820,7 @@ describe('Portfolio Entry Experimental Session API', () => {
   it('enforces authenticated owner confirmation, explicit user fields, CAS, idempotency and zero cognition', async () => {
     const adapter = new FakeAgentAdapter();
     const { app } = makeApp({ adapter });
-    const ready = await readySession(app);
+    const ready = await legacyHandoffReadySession(app);
     const handoff = await request(app)
       .post(`${base}/sessions/${ready.sessionId}/handoff`)
       .set('X-Starteria-Entry-Token', ready.token)
@@ -863,7 +894,7 @@ describe('Portfolio Entry Experimental Session API', () => {
 
   it('persists explicit Strategic Intent decisions, rejects contradictions, and exposes only stored confirmation through D1', async () => {
     const { app, repository } = makeApp();
-    const ready = await readySession(app);
+    const ready = await legacyHandoffReadySession(app);
     const handoff = await request(app).post(`${base}/sessions/${ready.sessionId}/handoff`)
       .set('X-Starteria-Entry-Token', ready.token).set('Idempotency-Key', `intent-handoff-${ready.sessionId}`)
       .send({ expectedRevision: ready.revision }).expect(200);
@@ -970,6 +1001,7 @@ function makeApp(input: {
 } = {}) {
   const app = express();
   const repository = input.repository ?? new InMemoryPortfolioEntrySessionRepository();
+  legacyCompatibilityRepositories.set(app, repository);
   app.use(express.json());
   app.use((_req, res, next) => {
     res.header('Access-Control-Allow-Origin', 'http://localhost:5173');
@@ -985,7 +1017,7 @@ function makeApp(input: {
     sessionRepository: repository as never,
     idempotencyRepository: input.idempotencyRepository ?? new InMemoryPortfolioEntryIdempotencyRepository(),
     agentAdapter: input.useDefaultAdapter ? undefined : input.adapter ?? new FakeAgentAdapter(),
-    liveUnderstandingSynthesizer: { synthesize: async () => null },
+    liveUnderstandingSynthesizer: { synthesize: async () => routerTestSynthesis() },
     authenticate: fakeAuthenticate,
     optionalAuthenticate: fakeOptionalAuthenticate,
     sessionTtlMs: 60 * 60_000,
@@ -993,6 +1025,58 @@ function makeApp(input: {
   }));
   app.use(errorHandler);
   return { app, repository };
+}
+
+function routerTestSynthesis(): CriticalSituationSynthesis {
+  return criticalSituationSynthesisSchema.parse({
+    basis_status: 'sufficient',
+    situation_model: {
+      desired_change: null,
+      current_situation: [],
+      existing_work_or_assets: [],
+      decision_to_enable: null,
+      known_evidence: [],
+      constraints: [],
+      actors_and_authority: [],
+      dependencies: [],
+      uncertainties: [],
+      time_pressure: [],
+      existing_alternatives: [],
+      material_tensions: [],
+    },
+    reasoning_metadata: { selected_lenses: ['priority / allocation'] },
+    situation_insight: {
+      statement: 'La evidencia disponible llega después del checkpoint.',
+      support: ['session.user_message:router-test'],
+      novelty_type: 'sequence_dependency_exposed',
+      epistemic_role: 'INTERPRETATION',
+      status: 'supported',
+    },
+    material_tensions: [],
+    decision_frame: {
+      status: 'not_yet_identifiable',
+      decision_to_prepare: null,
+      decision_authority: 'responsable del checkpoint',
+      materially_distinct_paths: [],
+      distinguishing_conditions: [],
+      timing_or_constraints: [],
+      unresolved_basis: [],
+    },
+    usable_now: [],
+    decision_changing_unknowns: [],
+    candidate_first_movement: null,
+    uncertainty_statement: null,
+    provenance: [{
+      id: 'router-private-provenance',
+      claim_ref: 'situation_insight.statement',
+      origin: 'AI_INFERRED',
+      review_disposition: 'UNREVIEWED',
+      source_refs: ['session.user_message:router-test'],
+      source_path: null,
+      source_text: null,
+      recorded_at: null,
+    }],
+  });
 }
 
 class CompleteFailsOnceRepository extends InMemoryPortfolioEntryIdempotencyRepository implements PortfolioEntryIdempotencyRepository {
@@ -1021,7 +1105,7 @@ async function createSession(app: express.Express): Promise<{ sessionId: string;
   };
 }
 
-async function readySession(app: express.Express): Promise<{ sessionId: string; token: string; revision: number }> {
+async function legacyHandoffReadySession(app: express.Express): Promise<{ sessionId: string; token: string; revision: number }> {
   const created = await createSession(app);
   const submitted = await request(app)
     .post(`${base}/sessions/${created.sessionId}/messages`)
@@ -1041,6 +1125,19 @@ async function readySession(app: express.Express): Promise<{ sessionId: string; 
   expect(provisional.body.data.lifecycleStatus).toBe('HANDOFF_ELIGIBLE');
   expect(provisional.body.data.nextAction).toBe('generate_handoff');
 
+  // The tests below exercise historical KEEP_COMPAT consumers. Seed the
+  // pre-119 state explicitly after preparing the shared analysis fixture.
+  const repository = legacyCompatibilityRepositories.get(app);
+  const prepared = await repository?.findSessionById(created.sessionId);
+  if (!repository || !prepared) throw new Error('Legacy compatibility session fixture was not initialized.');
+  await repository.saveSessionState({
+    session: {
+      ...prepared,
+      semanticState: { ...prepared.semanticState, userExplorationChoice: 'not_offered' },
+    },
+    expectedRevision: prepared.revision,
+  });
+
   return { ...created, revision: provisional.body.data.revision };
 }
 
@@ -1055,7 +1152,7 @@ type ConfirmedBriefIdentityFixture = {
 };
 
 async function confirmedBriefFixture(app: express.Express): Promise<ConfirmedBriefIdentityFixture> {
-  const ready = await readySession(app);
+  const ready = await legacyHandoffReadySession(app);
   const handoff = await request(app).post(`${base}/sessions/${ready.sessionId}/handoff`)
     .set('X-Starteria-Entry-Token', ready.token).set('Idempotency-Key', `d1-handoff-${ready.sessionId}`)
     .send({ expectedRevision: ready.revision }).expect(200);

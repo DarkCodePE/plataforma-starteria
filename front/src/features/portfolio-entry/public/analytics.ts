@@ -10,6 +10,7 @@ export type PortfolioEntryAnalyticsEvent =
   | 'handoff_generated'
   | 'handoff_corrected'
   | 'handoff_confirmed'
+  | 'critical_handoff_confirmed'
   | 'signup_gate_reached'
   | 'portfolio_entry_claimed'
   | 'portfolio_entry_conversion_cta_viewed'

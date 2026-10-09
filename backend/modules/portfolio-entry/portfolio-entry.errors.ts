@@ -47,6 +47,13 @@ export class PortfolioEntryApiError extends Error {
   static schemaFailure(): PortfolioEntryApiError {
     return new PortfolioEntryApiError('PORTFOLIO_ENTRY_MODEL_SCHEMA_FAILURE', 'Portfolio Entry model response could not be applied.');
   }
+
+  static criticalHandoffSynthesisUnavailable(): PortfolioEntryApiError {
+    return new PortfolioEntryApiError(
+      'PORTFOLIO_ENTRY_CRITICAL_HANDOFF_SYNTHESIS_UNAVAILABLE',
+      'No pudimos preparar la conclusión provisional en este momento.',
+    );
+  }
 }
 
 export function mapPortfolioEntryError(err: unknown): AppError | unknown {
@@ -93,6 +100,9 @@ export function mapPortfolioEntryError(err: unknown): AppError | unknown {
     }
     if (err.code === 'PORTFOLIO_ENTRY_MODEL_SCHEMA_FAILURE') {
       return new AppError(502, 'La respuesta de IA no cumple el contrato esperado.', err.code);
+    }
+    if (err.code === 'PORTFOLIO_ENTRY_CRITICAL_HANDOFF_SYNTHESIS_UNAVAILABLE') {
+      return new AppError(503, err.message, err.code);
     }
   }
   if (err instanceof LiveModelExecutionError) {

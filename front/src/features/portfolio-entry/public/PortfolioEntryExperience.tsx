@@ -16,15 +16,20 @@ import { Button } from '../../../app/components/ui/button';
 import { Textarea } from '../../../app/components/ui/textarea';
 import { AISuggestionPanel } from '../../../app/components/design-system/patterns';
 import { LiveUnderstandingPanel } from './LiveUnderstandingPanel';
+import { CriticalHandoffReview, type CriticalHandoffReviewState } from './CriticalHandoffReview';
 import {
   chooseGuidedExploration,
   abandonPortfolioEntrySession,
+  confirmPortfolioEntryCriticalHandoff,
   confirmPortfolioEntryHandoff,
   continuePortfolioEntryToPortfolio,
   correctPortfolioEntryHandoff,
   createPortfolioEntrySession,
   getClaimedPortfolioEntrySession,
+  getPortfolioEntryCriticalHandoff,
+  getPortfolioEntryHandoff,
   getPortfolioEntrySession,
+  materializePortfolioEntryCriticalHandoff,
   materializePortfolioEntryHandoff,
   normalizePortfolioEntryApiError,
   submitPortfolioEntryMessage,
@@ -35,18 +40,21 @@ import { portfolioEntryBriefIdentityFromSession } from './continuationIdentity';
 import { serializeConfirmedBriefMarkdown } from './portfolioEntryBriefExport';
 import {
   clearPortfolioEntryClaimedNotice,
+  clearCriticalHandoffReviewSession,
   clearPortfolioEntryConversionState,
   clearPortfolioEntryCurrentSession,
   clearClaimedPortfolioEntrySession,
   readClaimedPortfolioEntrySession,
   readPortfolioEntryClaimedNotice,
   readPortfolioEntryCurrentSession,
+  markCriticalHandoffReviewSession,
   savePendingPortfolioEntryClaim,
   saveClaimedPortfolioEntrySession,
   savePortfolioEntryCurrentSession,
 } from './storage';
 import type {
   PortfolioEntryHandoff,
+  PortfolioEntryCriticalHandoffDto,
   PortfolioEntryQuestion,
   PortfolioEntrySessionDto,
   GapResolution,
@@ -80,6 +88,18 @@ type EditableField = {
   path: string;
   label: string;
   value: string;
+};
+
+type CriticalHandoffLoad = {
+  sessionId: string | null;
+  state: CriticalHandoffReviewState | 'idle';
+  artifact?: PortfolioEntryCriticalHandoffDto;
+};
+
+type LegacyHandoffLoad = {
+  sessionId: string | null;
+  state: 'idle' | 'loading' | 'loaded' | 'error';
+  session?: PortfolioEntrySessionDto;
 };
 
 const MIN_ENTRY_LENGTH = 30;
@@ -1285,7 +1305,7 @@ function ConfirmedSummary({
               </div>
             ) : (
               <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
-                <Button type="button" onClick={downloadBrief}>Descargar</Button>
+                <Button type="button" disabled={!session.handoff} onClick={downloadBrief}>Descargar</Button>
                 <Button type="button" variant="secondary" disabled={conversionPending || abandonmentPending} onClick={() => setConfirmingAbandon(true)}>Eliminar</Button>
                 <Button type="button" variant="secondary" onClick={isClaimed ? onConvert : onContinue} disabled={conversionPending} loading={conversionPending} aria-busy={conversionPending}>{!conversionPending ? <ArrowRight size={16} /> : null}Trabajarlo con Starteria</Button>
               </div>
@@ -1329,6 +1349,10 @@ export function PortfolioEntryExperience({
   const { authLoading } = useApp();
   const [sessionRef, setSessionRef] = useState<StoredPortfolioEntrySession | null>(null);
   const [sessionDto, setSessionDto] = useState<PortfolioEntrySessionDto | null>(null);
+  const [criticalHandoffLoad, setCriticalHandoffLoad] = useState<CriticalHandoffLoad>({ sessionId: null, state: 'idle' });
+  const [legacyHandoffLoad, setLegacyHandoffLoad] = useState<LegacyHandoffLoad>({ sessionId: null, state: 'idle' });
+  const [criticalCorrectionOpen, setCriticalCorrectionOpen] = useState(false);
+  const [criticalCorrectionDraft, setCriticalCorrectionDraft] = useState('');
   const [currentInput, setCurrentInput] = useState('');
   const [pendingRequest, setPendingRequest] = useState<PendingRequest>(null);
   const [liveUnderstandingUpdating, setLiveUnderstandingUpdating] = useState(false);
@@ -1345,6 +1369,8 @@ export function PortfolioEntryExperience({
   const [abandonmentPending, setAbandonmentPending] = useState(false);
   const [handoffRetryRevision, setHandoffRetryRevision] = useState<number | null>(null);
   const statusRef = useRef<HTMLDivElement>(null);
+  const criticalHandoffRequestRef = useRef<{ sessionId: string | null; sequence: number }>({ sessionId: null, sequence: 0 });
+  const legacyHandoffRequestRef = useRef<{ sessionId: string | null; sequence: number }>({ sessionId: null, sequence: 0 });
   const materializedRevisionRef = useRef<number | null>(null);
   const trackedClarificationRef = useRef<number | null>(null);
   const trackedGuidedOfferRef = useRef<number | null>(null);
@@ -1353,11 +1379,74 @@ export function PortfolioEntryExperience({
   const questions = useMemo(() => latestQuestions(sessionDto), [sessionDto]);
   const activeQuestion = questions[0];
   const pending = pendingRequest !== null;
+  const legacyHandoff = sessionDto?.handoffExperience === 'legacy'
+    && legacyHandoffLoad.sessionId === sessionDto.id
+    ? legacyHandoffLoad.session?.handoff
+    : undefined;
+  // The explicit legacy route supplies semantic content only. Keep the generic
+  // session metadata authoritative for ownership, lifecycle, revision, and actions.
+  const legacySessionDto = sessionDto && legacyHandoff
+    ? { ...sessionDto, handoff: legacyHandoff }
+    : undefined;
+
+  const fetchCriticalHandoff = React.useCallback(async (
+    sessionId: string,
+    credential: string | undefined,
+    force = false,
+  ) => {
+    if (!force && criticalHandoffRequestRef.current.sessionId === sessionId) return;
+    const sequence = criticalHandoffRequestRef.current.sequence + 1;
+    criticalHandoffRequestRef.current = { sessionId, sequence };
+    setCriticalHandoffLoad({ sessionId, state: 'loading' });
+    try {
+      const artifact = await getPortfolioEntryCriticalHandoff(sessionId, credential);
+      if (criticalHandoffRequestRef.current.sequence !== sequence) return;
+      if (artifact) {
+        markCriticalHandoffReviewSession(sessionId);
+        setCriticalHandoffLoad({ sessionId, state: artifact.state, artifact });
+        return;
+      }
+      setCriticalHandoffLoad({ sessionId, state: 'absent' });
+    } catch {
+      if (criticalHandoffRequestRef.current.sequence !== sequence) return;
+      setCriticalHandoffLoad({ sessionId, state: 'error' });
+    }
+  }, []);
+
+  const fetchLegacyHandoff = React.useCallback(async (
+    sessionId: string,
+    credential: string | undefined,
+    force = false,
+  ) => {
+    if (!force && legacyHandoffRequestRef.current.sessionId === sessionId) return;
+    const sequence = legacyHandoffRequestRef.current.sequence + 1;
+    legacyHandoffRequestRef.current = { sessionId, sequence };
+    setLegacyHandoffLoad({ sessionId, state: 'loading' });
+    try {
+      const legacySession = await getPortfolioEntryHandoff(sessionId, credential);
+      if (legacyHandoffRequestRef.current.sequence !== sequence) return;
+      if (!legacySession.handoff) {
+        setLegacyHandoffLoad({ sessionId, state: 'error' });
+        return;
+      }
+      setLegacyHandoffLoad({ sessionId, state: 'loaded', session: legacySession });
+    } catch {
+      if (legacyHandoffRequestRef.current.sequence !== sequence) return;
+      setLegacyHandoffLoad({ sessionId, state: 'error' });
+    }
+  }, []);
 
   const restart = () => {
     clearPortfolioEntryCurrentSession();
     setSessionRef(null);
     setSessionDto(null);
+    setCriticalHandoffLoad({ sessionId: null, state: 'idle' });
+    setLegacyHandoffLoad({ sessionId: null, state: 'idle' });
+    setCriticalCorrectionOpen(false);
+    setCriticalCorrectionDraft('');
+    criticalHandoffRequestRef.current = { sessionId: null, sequence: criticalHandoffRequestRef.current.sequence + 1 };
+    legacyHandoffRequestRef.current = { sessionId: null, sequence: legacyHandoffRequestRef.current.sequence + 1 };
+    clearCriticalHandoffReviewSession();
     setCurrentInput('');
     setLiveUnderstandingUpdating(false);
     setLiveUnderstandingCorrectionOpen(false);
@@ -1416,14 +1505,38 @@ export function PortfolioEntryExperience({
     setError(null);
     setPendingRequest('handoff');
     try {
-      const next = await materializePortfolioEntryHandoff(ref.sessionId, ref.credential, {
-        expectedRevision: revision,
-        idempotencyKey: createIdempotencyKey('portfolio-entry:handoff'),
-      });
-      setSessionDto(next);
+      if (sessionDto?.id !== ref.sessionId || !['critical', 'legacy'].includes(sessionDto.handoffExperience)) {
+        throw new Error('Portfolio Entry no tiene una experiencia de handoff autorizada para materializar.');
+      }
+      if (sessionDto.handoffExperience === 'critical') {
+        const materialized = await materializePortfolioEntryCriticalHandoff(ref.sessionId, ref.credential, {
+          expectedRevision: revision,
+          idempotencyKey: createIdempotencyKey('portfolio-entry:critical-handoff-materialize'),
+        });
+        setSessionDto((current) => current?.id === ref.sessionId
+          ? {
+            ...current,
+            handoffExperience: 'critical',
+            revision: materialized.sessionRevision,
+            lifecycleStatus: 'HANDOFF_READY',
+            nextAction: 'review_handoff',
+            handoff: undefined,
+            provisionalContinuation: undefined,
+          }
+          : current);
+        await fetchCriticalHandoff(ref.sessionId, ref.credential, true);
+      } else {
+        // Historical sessions keep the legacy response and review contract.
+        const next = await materializePortfolioEntryHandoff(ref.sessionId, ref.credential, {
+          expectedRevision: revision,
+          idempotencyKey: createIdempotencyKey('portfolio-entry:legacy-handoff'),
+        });
+        setSessionDto(next);
+        if (next.handoff) setLegacyHandoffLoad({ sessionId: next.id, state: 'loaded', session: next });
+      }
       setError(null);
       setHandoffRetryRevision(null);
-      trackPortfolioEntryEvent('handoff_generated', { sessionId: next.id });
+      trackPortfolioEntryEvent('handoff_generated', { sessionId: ref.sessionId });
     } catch (err) {
       const apiError = normalizePortfolioEntryApiError(err);
       if (mapError(apiError.kind).retryable) setHandoffRetryRevision(revision);
@@ -1471,6 +1584,17 @@ export function PortfolioEntryExperience({
     // Run only once on mount; recovery state lives in sessionStorage.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authLoading, recoverExisting]);
+
+  useEffect(() => {
+    if (!sessionDto || !['review_handoff', 'claim_or_close'].includes(sessionDto.nextAction)) return;
+    if (sessionDto.handoffExperience === 'critical') {
+      if (criticalHandoffRequestRef.current.sessionId === sessionDto.id) return;
+      void fetchCriticalHandoff(sessionDto.id, sessionRef?.credential);
+    } else if (sessionDto.handoffExperience === 'legacy') {
+      if (legacyHandoffRequestRef.current.sessionId === sessionDto.id) return;
+      void fetchLegacyHandoff(sessionDto.id, sessionRef?.credential);
+    }
+  }, [sessionDto?.id, sessionDto?.nextAction, sessionDto?.handoffExperience, sessionRef?.credential, fetchCriticalHandoff, fetchLegacyHandoff]);
 
   useEffect(() => {
     statusRef.current?.focus();
@@ -1621,6 +1745,46 @@ export function PortfolioEntryExperience({
     }
   };
 
+  const beginCriticalHandoffCorrection = () => {
+    if (pending) return;
+    setCriticalCorrectionDraft('');
+    setCriticalCorrectionOpen(true);
+  };
+
+  const cancelCriticalHandoffCorrection = () => {
+    if (pending) return;
+    setCriticalCorrectionOpen(false);
+    setCriticalCorrectionDraft('');
+  };
+
+  const submitCriticalHandoffCorrection = async () => {
+    if (!sessionDto || pending) return;
+    if (!sessionRef && sessionDto.ownership.state !== 'CLAIMED') return;
+    const message = criticalCorrectionDraft.trim();
+    if (!message) return;
+    setError(null);
+    setPendingRequest('submitting');
+    setLiveUnderstandingUpdating(true);
+    try {
+      const next = await submitPortfolioEntryMessage(sessionDto.id, sessionRef?.credential, {
+        expectedRevision: sessionDto.revision,
+        idempotencyKey: createIdempotencyKey('portfolio-entry:critical-handoff-correction'),
+        message,
+        intent: 'correction',
+      });
+      setSessionDto(next);
+      setCurrentInput('');
+      setCriticalCorrectionOpen(false);
+      setCriticalCorrectionDraft('');
+      await fetchCriticalHandoff(next.id, sessionRef?.credential, true);
+    } catch (err) {
+      await handleRequestError(err);
+    } finally {
+      setLiveUnderstandingUpdating(false);
+      setPendingRequest(null);
+    }
+  };
+
   const retryPendingAnalysis = async () => {
     if (!sessionDto || !sessionRef || pending || sessionDto.nextAction !== 'retry_analysis' || !sessionDto.pendingInput) return;
     setError(null);
@@ -1657,6 +1821,7 @@ export function PortfolioEntryExperience({
         idempotencyKey: createIdempotencyKey(`portfolio-entry:guided:${choice}`),
         choice,
       });
+      if (choice === 'provisional_route') markCriticalHandoffReviewSession(next.id);
       setSessionDto(next);
       trackPortfolioEntryEvent(choice === 'accept' ? 'guided_exploration_accepted' : 'guided_provisional_route_selected', {
         sessionId: next.id,
@@ -1673,7 +1838,7 @@ export function PortfolioEntryExperience({
   };
 
   const beginCorrection = () => {
-    const handoff = sessionDto?.handoff?.handoff;
+    const handoff = legacySessionDto?.handoff?.handoff;
     if (!handoff) return;
     const draft = Object.fromEntries(getEditableFields(handoff).map((field) => [field.path, field.value]));
     setCorrectionDraft(draft);
@@ -1681,8 +1846,9 @@ export function PortfolioEntryExperience({
   };
 
   const correctHandoff = async () => {
-    if (!sessionDto || !sessionRef || !sessionDto.handoff || pending) return;
-    const handoff = sessionDto.handoff.handoff;
+    if (!sessionDto || !sessionRef || !legacySessionDto?.handoff || pending
+      || sessionDto.handoffExperience !== 'legacy') return;
+    const handoff = legacySessionDto.handoff.handoff;
     const base = Object.fromEntries(getEditableFields(handoff).map((field) => [field.path, field.value]));
     const changed = Object.fromEntries(
       Object.entries(correctionDraft)
@@ -1702,7 +1868,9 @@ export function PortfolioEntryExperience({
         correctedFields: changed,
         notes: correctionNotes,
       });
-      setSessionDto(next);
+      const { handoff: _handoff, handoffMode: _handoffMode, ...safeSession } = next;
+      setSessionDto(safeSession);
+      setLegacyHandoffLoad({ sessionId: next.id, state: 'loaded', session: next });
       setEditingCorrection(false);
       trackPortfolioEntryEvent('handoff_corrected', { sessionId: next.id });
     } catch (err) {
@@ -1713,8 +1881,9 @@ export function PortfolioEntryExperience({
   };
 
   const confirmHandoff = async () => {
-    if (!sessionDto || !sessionRef || !sessionDto.handoff || pending) return;
-    const handoff = sessionDto.handoff.handoff;
+    if (!sessionDto || !sessionRef || !legacySessionDto?.handoff || pending
+      || sessionDto.handoffExperience !== 'legacy') return;
+    const handoff = legacySessionDto.handoff.handoff;
     setError(null);
     setPendingRequest('confirming');
     try {
@@ -1723,7 +1892,9 @@ export function PortfolioEntryExperience({
         idempotencyKey: createIdempotencyKey('portfolio-entry:confirm'),
         acceptedFields: getEditableFields(handoff).map((field) => field.path),
       });
-      setSessionDto(next);
+      const { handoff: _handoff, handoffMode: _handoffMode, ...safeSession } = next;
+      setSessionDto(safeSession);
+      setLegacyHandoffLoad({ sessionId: next.id, state: 'loaded', session: next });
       trackPortfolioEntryEvent('handoff_confirmed', { sessionId: next.id });
     } catch (err) {
       await handleRequestError(err);
@@ -1738,6 +1909,43 @@ export function PortfolioEntryExperience({
     savePendingPortfolioEntryClaim({ ...sessionRef, ...(identity ? { identity } : {}) });
     trackPortfolioEntryEvent('signup_gate_reached', { sessionId: sessionRef.sessionId });
     navigate('/auth');
+  };
+
+  const continueCriticalHandoffToSignup = () => {
+    if (!sessionRef) return;
+    savePendingPortfolioEntryClaim({
+      ...sessionRef,
+      criticalHandoffReview: true,
+    });
+    trackPortfolioEntryEvent('signup_gate_reached', { sessionId: sessionRef.sessionId });
+    navigate('/auth');
+  };
+
+  const confirmCriticalHandoff = async () => {
+    const artifact = criticalHandoffLoad.sessionId === sessionDto?.id ? criticalHandoffLoad.artifact : undefined;
+    if (!sessionDto || !artifact || artifact.confirmationState !== 'provisional'
+      || sessionDto.ownership.state !== 'CLAIMED' || pending) return;
+    setError(null);
+    setPendingRequest('confirming');
+    try {
+      const confirmed = await confirmPortfolioEntryCriticalHandoff(sessionDto.id, {
+        artifactId: artifact.id,
+        expectedArtifactVersion: artifact.version,
+        expectedContextRevision: artifact.sourceContextRevision,
+        idempotencyKey: createIdempotencyKey('portfolio-entry:critical-handoff-confirm'),
+      });
+      setCriticalHandoffLoad({ sessionId: sessionDto.id, state: confirmed.state, artifact: confirmed });
+      trackPortfolioEntryEvent('critical_handoff_confirmed', { sessionId: sessionDto.id });
+    } catch (err) {
+      const apiError = normalizePortfolioEntryApiError(err);
+      if (apiError.kind === 'conflict') {
+        setCriticalHandoffLoad({ sessionId: sessionDto.id, state: 'conflict', artifact });
+      } else {
+        await handleRequestError(err);
+      }
+    } finally {
+      setPendingRequest(null);
+    }
   };
 
   const abandonConfirmedBrief = async () => {
@@ -1769,7 +1977,7 @@ export function PortfolioEntryExperience({
     setPendingRequest('converting');
     trackPortfolioEntryEvent('portfolio_entry_conversion_started', { sessionId: sessionDto.id });
     try {
-      const identity = portfolioEntryBriefIdentityFromSession(sessionDto);
+      const identity = portfolioEntryBriefIdentityFromSession(legacySessionDto ?? sessionDto);
       const result = await continuePortfolioEntryToPortfolio(sessionDto.id, {
         expectedRevision: sessionDto.revision,
         idempotencyKey: key,
@@ -1834,7 +2042,7 @@ export function PortfolioEntryExperience({
     if (sessionDto.lifecycleStatus === 'CONFIRMED') {
       return (
         <ConfirmedSummary
-          session={sessionDto}
+          session={legacySessionDto ?? sessionDto}
           onContinue={continueToSignup}
           onConvert={convertClaimedSession}
           conversionPending={pendingRequest === 'converting'}
@@ -1862,58 +2070,114 @@ export function PortfolioEntryExperience({
         onSubmitCorrection={submitLiveUnderstandingCorrection}
       />
     );
+    const staleHandoffNotice = criticalHandoffLoad.sessionId === sessionDto.id && criticalHandoffLoad.state === 'stale' ? (
+      <p className="mx-auto max-w-3xl rounded-ds-md border border-status-feedback-warning-border bg-status-feedback-warning-surface p-3 text-sm leading-6 text-status-feedback-warning-text" role="status">
+        La lectura anterior ya no está vigente. Seguimos desde el contexto nuevo que compartiste.
+      </p>
+    ) : null;
 
     if (sessionDto.nextAction === 'offer_guided_exploration') {
       return (
-        <GuidedExplorationOffer
-          session={sessionDto}
-          pending={pending || liveUnderstandingCorrectionOpen}
-          onChoose={chooseGuided}
-          liveUnderstandingSurface={liveUnderstandingSurface}
-          correctionSubmitting={liveUnderstandingCorrectionSubmitting}
-        />
+        <>
+          {staleHandoffNotice}
+          <GuidedExplorationOffer
+            session={sessionDto}
+            pending={pending || liveUnderstandingCorrectionOpen}
+            onChoose={chooseGuided}
+            liveUnderstandingSurface={liveUnderstandingSurface}
+            correctionSubmitting={liveUnderstandingCorrectionSubmitting}
+          />
+        </>
       );
     }
 
     if (sessionDto.nextAction === 'retry_analysis' && sessionDto.pendingInput) {
       return (
-        <section className="mx-auto max-w-3xl space-y-4 rounded-ds-lg border border-status-feedback-warning-border bg-status-feedback-warning-surface p-5" data-testid="portfolio-entry-degraded-continuation">
-          <p className="text-sm leading-6 text-status-feedback-warning-text">Tu respuesta quedó guardada, pero el análisis sigue pendiente. No necesitas escribirla de nuevo.</p>
-          <div className="flex flex-wrap gap-2">
-            <Button type="button" onClick={retryPendingAnalysis} disabled={pending}>Reintentar análisis</Button>
-            <Button type="button" variant="ghost" onClick={continueWithProvisionalReading} disabled={pending}>Continuar con lectura provisional</Button>
-          </div>
-        </section>
+        <>
+          {staleHandoffNotice}
+          <section className="mx-auto max-w-3xl space-y-4 rounded-ds-lg border border-status-feedback-warning-border bg-status-feedback-warning-surface p-5" data-testid="portfolio-entry-degraded-continuation">
+            <p className="text-sm leading-6 text-status-feedback-warning-text">Tu respuesta quedó guardada, pero el análisis sigue pendiente. No necesitas escribirla de nuevo.</p>
+            <div className="flex flex-wrap gap-2">
+              <Button type="button" onClick={retryPendingAnalysis} disabled={pending}>Reintentar análisis</Button>
+              <Button type="button" variant="ghost" onClick={continueWithProvisionalReading} disabled={pending}>Continuar con lectura provisional</Button>
+            </div>
+          </section>
+        </>
       );
     }
 
     if (sessionDto.nextAction === 'review_handoff' || sessionDto.nextAction === 'claim_or_close') {
+      if (sessionDto.handoffExperience === 'critical') {
+        const loadState = criticalHandoffLoad.sessionId === sessionDto.id ? criticalHandoffLoad.state : 'idle';
+        return (
+          <CriticalHandoffReview
+            state={loadState === 'idle' ? 'loading' : loadState}
+            artifact={criticalHandoffLoad.sessionId === sessionDto.id ? criticalHandoffLoad.artifact : undefined}
+            correctionOpen={criticalCorrectionOpen}
+            correctionDraft={criticalCorrectionDraft}
+            pending={pending}
+            canContinue={Boolean(sessionRef) && sessionDto.ownership.state === 'ANONYMOUS'}
+            canConfirm={sessionDto.ownership.state === 'CLAIMED'}
+            onCorrectionDraftChange={setCriticalCorrectionDraft}
+            onBeginCorrection={beginCriticalHandoffCorrection}
+            onCancelCorrection={cancelCriticalHandoffCorrection}
+            onSubmitCorrection={submitCriticalHandoffCorrection}
+            onContinue={continueCriticalHandoffToSignup}
+            onConfirm={confirmCriticalHandoff}
+            onRetry={() => void fetchCriticalHandoff(sessionDto.id, sessionRef?.credential, true)}
+          />
+        );
+      }
+
+      if (sessionDto.handoffExperience === 'legacy') {
+        if (legacySessionDto?.handoff) {
+          return (
+            <HandoffReview
+              session={legacySessionDto}
+              correctionDraft={correctionDraft}
+              correctionNotes={correctionNotes}
+              editing={editingCorrection}
+              pending={pending}
+              onEditChange={updateCorrectionDraft}
+              onNotesChange={setCorrectionNotes}
+              onStartEditing={continueToSignup}
+              onCancelEditing={() => setEditingCorrection(false)}
+              onCorrect={correctHandoff}
+              onConfirm={continueToSignup}
+            />
+          );
+        }
+        const loadState = legacyHandoffLoad.sessionId === sessionDto.id ? legacyHandoffLoad.state : 'idle';
+        if (loadState === 'error') {
+          return (
+            <section className="mx-auto max-w-3xl rounded-ds-lg border border-status-feedback-warning-border bg-status-feedback-warning-surface p-5" role="status" data-testid="legacy-handoff-error">
+              <p className="text-sm leading-6 text-status-feedback-warning-text">No pudimos recuperar esta lectura histórica.</p>
+              <Button type="button" variant="ghost" className="mt-3" onClick={() => void fetchLegacyHandoff(sessionDto.id, sessionRef?.credential, true)} disabled={pending}>Reintentar</Button>
+            </section>
+          );
+        }
+        return <p className="mx-auto max-w-3xl text-sm text-text-secondary" role="status">Recuperando la lectura histórica…</p>;
+      }
+
       return (
-        <HandoffReview
-          session={sessionDto}
-          correctionDraft={correctionDraft}
-          correctionNotes={correctionNotes}
-          editing={editingCorrection}
-          pending={pending}
-          onEditChange={updateCorrectionDraft}
-          onNotesChange={setCorrectionNotes}
-          onStartEditing={continueToSignup}
-          onCancelEditing={() => setEditingCorrection(false)}
-          onCorrect={correctHandoff}
-          onConfirm={continueToSignup}
-        />
+        <section className="mx-auto max-w-3xl rounded-ds-lg border border-status-feedback-warning-border bg-status-feedback-warning-surface p-5" role="status" data-testid="handoff-experience-unavailable">
+          <p className="text-sm leading-6 text-status-feedback-warning-text">Esta sesión no tiene una experiencia de lectura disponible.</p>
+        </section>
       );
     }
 
     return (
-      <ConversationPanel
-        session={sessionDto}
-        value={currentInput}
-        pending={pending}
-        onChange={setCurrentInput}
-        onSubmit={submitAnswer}
-        liveUnderstandingSurface={liveUnderstandingSurface}
-      />
+      <>
+        {staleHandoffNotice}
+        <ConversationPanel
+          session={sessionDto}
+          value={currentInput}
+          pending={pending}
+          onChange={setCurrentInput}
+          onSubmit={submitAnswer}
+          liveUnderstandingSurface={liveUnderstandingSurface}
+        />
+      </>
     );
   };
 

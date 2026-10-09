@@ -5,9 +5,12 @@ import type {
   PortfolioEntryTurn,
 } from '../portfolio-entry-sessions/domain/portfolio-entry-session.types';
 import type { LiveUnderstandingViewModel } from './presentation/live-understanding-view-model';
+import type { CriticalHandoffProjection } from './presentation/critical-handoff-projection';
+import type { PortfolioEntryCriticalHandoffRecord } from '../portfolio-entry-sessions/domain/portfolio-entry-critical-handoff.types';
 
 export type PortfolioEntrySessionClientDto = {
   id: string;
+  handoffExperience: 'critical' | 'legacy' | 'none';
   lifecycleStatus: PortfolioEntrySession['lifecycleStatus'];
   executionStatus: PortfolioEntrySession['executionStatus'];
   continuationProfile?: PortfolioEntrySession['continuationProfile'];
@@ -98,6 +101,21 @@ export type PortfolioEntryHandoffClientDto = {
   createdAt: string;
 };
 
+export type PortfolioEntryCriticalHandoffClientDto = {
+  id: string;
+  version: number;
+  sourceContextRevision: number;
+  state: 'current' | 'stale';
+  confirmationState: 'provisional' | 'confirmed';
+  confirmedAt: string | null;
+  projection: CriticalHandoffProjection;
+};
+
+export type PortfolioEntryCriticalHandoffMaterializationClientDto = {
+  sessionRevision: number;
+  criticalHandoff: PortfolioEntryCriticalHandoffClientDto;
+};
+
 export type PortfolioEntryConfirmationClientDto = {
   id: string;
   version: number;
@@ -152,10 +170,19 @@ export function toPortfolioEntrySessionClientDto(
   session: PortfolioEntrySession,
   turns: PortfolioEntryTurn[],
   liveUnderstanding?: LiveUnderstandingViewModel | null,
+  options: {
+    includeLegacyHandoff?: boolean;
+    handoffExperience?: PortfolioEntrySessionClientDto['handoffExperience'];
+  } = {},
 ): PortfolioEntrySessionClientDto {
+  const includeLegacyHandoff = options.includeLegacyHandoff ?? false;
   const activeTurnId = turns.at(-1)?.id;
   return {
     id: session.id,
+    handoffExperience: options.handoffExperience
+      ?? (session.semanticState.userExplorationChoice === 'provisional_route'
+        ? 'critical'
+        : session.latestHandoff ? 'legacy' : 'none'),
     lifecycleStatus: session.lifecycleStatus,
     executionStatus: session.executionStatus,
     continuationProfile: session.continuationProfile ?? undefined,
@@ -200,10 +227,12 @@ export function toPortfolioEntrySessionClientDto(
       understanding: buildUnderstanding(session),
     },
     nextAction: deriveNextAction(session, turns),
-    handoff: session.latestHandoff ? toHandoffClientDto(session.latestHandoff) : undefined,
+    ...(includeLegacyHandoff && session.latestHandoff
+      ? { handoff: toHandoffClientDto(session.latestHandoff) }
+      : {}),
     confirmation: session.confirmation ? toConfirmationClientDto(session.confirmation) : undefined,
     pendingInput: session.semanticState.pendingInput,
-    handoffMode: session.latestHandoff
+    handoffMode: includeLegacyHandoff && session.latestHandoff
       ? session.semanticState.pendingInput?.status === 'FAILED_RETRYABLE' ? 'degraded' : 'deterministic'
       : undefined,
     ...(liveUnderstanding ? { liveUnderstanding } : {}),
@@ -214,7 +243,7 @@ export function toPortfolioEntryAuthenticatedProvisionalContinuationDto(
   session: PortfolioEntrySession,
   turns: PortfolioEntryTurn[],
 ): PortfolioEntrySessionClientDto {
-  const dto = toPortfolioEntrySessionClientDto(session, turns);
+  const dto = toPortfolioEntrySessionClientDto(session, turns, undefined, { includeLegacyHandoff: true });
   const handoff = session.latestHandoff?.handoff;
   if (!session.ownerUserId) return dto;
 
@@ -293,6 +322,22 @@ export function toHandoffClientDto(handoff: PortfolioEntryHandoffRecord): Portfo
     reviewDisposition: 'UNREVIEWED',
     handoff: handoff.handoff,
     createdAt: handoff.createdAt.toISOString(),
+  };
+}
+
+export function toCriticalHandoffClientDto(
+  artifact: PortfolioEntryCriticalHandoffRecord,
+  isCurrent: boolean,
+): PortfolioEntryCriticalHandoffClientDto {
+  return {
+    id: artifact.id,
+    version: artifact.artifactVersion,
+    sourceContextRevision: artifact.sourceContextRevision,
+    state: isCurrent ? 'current' : 'stale',
+    confirmationState: artifact.confirmationState,
+    // Confirmation evidence has its own timestamp; updatedAt remains record maintenance metadata.
+    confirmedAt: artifact.confirmedAt?.toISOString() ?? null,
+    projection: artifact.payload,
   };
 }
 

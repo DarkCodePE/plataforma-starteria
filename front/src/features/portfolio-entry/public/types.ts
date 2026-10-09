@@ -52,6 +52,7 @@ export type PortfolioEntryLiveUnderstanding = {
 
 export type PortfolioEntrySessionDto = {
   id: string;
+  handoffExperience: 'critical' | 'legacy' | 'none';
   lifecycleStatus: PortfolioEntryLifecycleStatus;
   executionStatus: string;
   continuationProfile?: 'PORTFOLIO_LEAD_ENTRY' | 'INITIATIVE_ENTRY';
@@ -214,6 +215,39 @@ export type PortfolioEntryHandoffDto = {
   createdAt: string;
 };
 
+export type CriticalHandoffConclusionStatus = 'supported' | 'bounded' | 'insufficient_basis';
+
+export type CriticalHandoffProjection = {
+  conclusionStatus: CriticalHandoffConclusionStatus;
+  finalReading: string | null;
+  decisionInView: string | null;
+  usableNow: Array<{ item: string; howItCanHelp: string }>;
+  decisionChangingUnknowns: Array<{ uncertainty: string; whyItMatters: string }>;
+  firstMovement: {
+    movement: string;
+    whyNow: string;
+    whatItMayClarify: string;
+    boundary: string;
+    existingAssetsUsed?: string[];
+  } | null;
+};
+
+/** Safe allowlisted projection plus the identifiers needed to confirm this exact artifact. */
+export type PortfolioEntryCriticalHandoffDto = {
+  id: string;
+  version: number;
+  sourceContextRevision: number;
+  state: 'current' | 'stale';
+  confirmationState: 'provisional' | 'confirmed';
+  confirmedAt: string | null;
+  projection: CriticalHandoffProjection;
+};
+
+export type PortfolioEntryCriticalHandoffMaterializationDto = {
+  sessionRevision: number;
+  criticalHandoff: PortfolioEntryCriticalHandoffDto;
+};
+
 export type PortfolioEntryConfirmationDto = {
   id: string;
   version: number;
@@ -249,6 +283,7 @@ export type PortfolioEntryBriefIdentity = {
 
 export type PendingPortfolioEntryClaim = StoredPortfolioEntrySession & {
   identity?: PortfolioEntryBriefIdentity;
+  criticalHandoffReview?: boolean;
 };
 
 export type ClaimedPortfolioEntrySessionRef = { sessionId: string } | PortfolioEntryBriefIdentity;

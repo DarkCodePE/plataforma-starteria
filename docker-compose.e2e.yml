@@ -1,6 +1,6 @@
 services:
   postgres:
-    image: postgres:16-alpine
+    image: "${STARTERIA_CI_POSTGRES_IMAGE:-public.ecr.aws/docker/library/postgres:16-alpine}"
     environment:
       POSTGRES_DB: postgres
       POSTGRES_USER: postgres

@@ -102,6 +102,23 @@ npm run test:e2e -- e2e/portfolio-entry-conversion.spec.ts   # un spec (es el qu
 npm run test:e2e:debug -- e2e/<spec>                 # con inspector
 ```
 
+La verificación full-stack de Portfolio Entry en CI usa estos modos explícitos:
+
+```bash
+npm run test:e2e -- --portfolio-entry-full-stack-test e2e/portfolio-entry-conversion.spec.ts --grep CURRENT_114D
+npm run test:e2e -- --portfolio-entry-full-stack-test e2e/portfolio-entry-conversion.spec.ts --grep LEGACY_COMPAT
+npm run test:e2e -- --portfolio-entry-full-stack-test e2e/portfolio-entry-live-understanding.integration.spec.ts
+npm run test:e2e -- --portfolio-entry-postgres-confirmation-test
+```
+
+El modo full-stack levanta la app y API reales sobre PostgreSQL y sustituye sólo el adaptador de
+síntesis KAN-114 por el determinístico aceptado de prueba. Exige `NODE_ENV=test` y
+`PORTFOLIO_ENTRY_E2E_TEST=true`, deja vacías las claves de proveedor y eleva el límite incidental de
+creación de sesiones a 500 sólo en ese router de prueba. El router de producción y los tests del
+límite conservan el valor predeterminado de 20. El modo PostgreSQL ejecuta el archivo de integración
+Prisma con `PORTFOLIO_ENTRY_DB_INTEGRATION=1` contra la base desechable `starteria_e2e`; no cuenta
+como evidencia la sola migración y seed.
+
 Variables útiles: `E2E_SKIP_DOCKER=1` (usar una base que ya levantaste, con `E2E_DATABASE_URL`),
 `E2E_KEEP_DOCKER=1` (no bajar el contenedor al terminar), `E2E_BASE_URL`. Credenciales y flags
 tienen defaults de prueba en `run-e2e.ts`; no pongas secretos reales.

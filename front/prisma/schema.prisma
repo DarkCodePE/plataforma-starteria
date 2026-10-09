@@ -2761,6 +2761,7 @@ model PortfolioEntrySession {
   schemaVersion         String
   promptManifestId      String?
   revision              Int                           @default(0)
+  contextRevision       Int                           @default(0)
   createdAt             DateTime                      @default(now())
   updatedAt             DateTime                      @updatedAt
   lastActivityAt        DateTime
@@ -2769,6 +2770,7 @@ model PortfolioEntrySession {
 
   turns           PortfolioEntryTurn[]
   handoffs        PortfolioEntryHandoff[]
+  criticalHandoffs PortfolioEntryCriticalHandoff[]
   confirmations   PortfolioEntryConfirmation[]
   modelExecutions PortfolioEntryModelExecution[]
   conversion      PortfolioEntryConversion?
@@ -3248,6 +3250,7 @@ model PortfolioEntryTurn {
 
   session        PortfolioEntrySession          @relation(fields: [sessionId], references: [id], onDelete: Cascade)
   sourceHandoffs PortfolioEntryHandoff[]        @relation("PortfolioEntryHandoffSourceTurn")
+  criticalSourceHandoffs PortfolioEntryCriticalHandoff[] @relation("PortfolioEntryCriticalHandoffSourceTurn")
   modelExecutions PortfolioEntryModelExecution[] @relation("PortfolioEntryExecutionTurn")
 
   @@unique([sessionId, turnIndex])
@@ -3278,6 +3281,28 @@ model PortfolioEntryHandoff {
   @@index([handoffStatus])
 }
 
+model PortfolioEntryCriticalHandoff {
+  id                 String                                          @id @default(cuid())
+  sessionId          String
+  artifactVersion    Int
+  schemaVersion      String
+  sourceContextRevision Int
+  sourceTurnId       String?
+  payload            Json
+  confirmationState  PortfolioEntryCriticalHandoffConfirmationState @default(provisional)
+  confirmedAt        DateTime?
+  confirmedByUserId  String?
+  createdAt          DateTime                                        @default(now())
+  updatedAt          DateTime                                        @updatedAt
+
+  session    PortfolioEntrySession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  sourceTurn PortfolioEntryTurn?   @relation("PortfolioEntryCriticalHandoffSourceTurn", fields: [sourceTurnId], references: [id], onDelete: SetNull)
+
+  @@unique([sessionId, artifactVersion])
+  @@index([sourceTurnId])
+  @@index([confirmationState])
+}
+
 model PortfolioEntryConfirmation {
   id                String                           @id @default(cuid())
   sessionId         String
@@ -3300,6 +3325,11 @@ model PortfolioEntryConfirmation {
   @@index([sessionId, status])
   @@index([handoffId])
   @@index([confirmedByUserId])
+}
+
+enum PortfolioEntryCriticalHandoffConfirmationState {
+  provisional
+  confirmed
 }
 
 model PortfolioEntryModelExecution {

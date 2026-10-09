@@ -34,6 +34,7 @@ import { PortfolioEntryConversionController } from '../portfolio-entry-conversio
 import { PortfolioEntryConversionService } from '../portfolio-entry-conversion/portfolio-entry-conversion.service';
 import { PortfolioEntryContinuationController } from '../portfolio-entry-continuation/portfolio-entry-continuation.controller';
 import { PortfolioEntryContinuationService } from '../portfolio-entry-continuation/portfolio-entry-continuation.service';
+import type { CriticalHandoffProjection } from './presentation/critical-handoff-projection';
 
 const versioning = {
   contractVersion: 'portfolio-entry-contract-v0.1',
@@ -54,6 +55,7 @@ export interface PortfolioEntryRouterDeps {
   idempotencyRepository?: PortfolioEntryIdempotencyRepository;
   agentAdapter?: PortfolioEntryAgentAdapterV2;
   liveUnderstandingSynthesizer?: PortfolioEntryLiveUnderstandingSynthesizer;
+  criticalHandoffProjector?: (source: unknown) => CriticalHandoffProjection;
   handoffMaterializer?: PortfolioEntryHandoffMaterializer;
   authenticate?: RequestHandler;
   optionalAuthenticate?: RequestHandler;
@@ -88,6 +90,7 @@ export function buildPortfolioEntryRouter(
       versioning,
     },
     liveUnderstandingSynthesizer,
+    deps.criticalHandoffProjector,
   );
   const controller = new PortfolioEntryController(appService);
   const conversionController = new PortfolioEntryConversionController(
@@ -128,6 +131,9 @@ export function buildPortfolioEntryRouter(
   router.post('/sessions/:sessionId/guided-exploration', optionalAuth, submitLimiter, controller.guidedExploration);
   router.post('/sessions/:sessionId/handoff', optionalAuth, handoffLimiter, controller.materializeHandoff);
   router.get('/sessions/:sessionId/handoff', optionalAuth, submitLimiter, controller.readHandoff);
+  router.post('/sessions/:sessionId/critical-handoff', optionalAuth, handoffLimiter, controller.materializeCriticalHandoff);
+  router.get('/sessions/:sessionId/critical-handoff', optionalAuth, submitLimiter, controller.readCriticalHandoff);
+  router.post('/sessions/:sessionId/critical-handoff/:artifactId/confirmation', auth, handoffLimiter, controller.confirmCriticalHandoff);
   router.post('/sessions/:sessionId/handoff/confirmation', auth, handoffLimiter, controller.confirmOrCorrectHandoff);
   router.post('/sessions/:sessionId/claim', auth, handoffLimiter, controller.claim);
   router.post('/sessions/:sessionId/convert', auth, handoffLimiter, conversionController.convert);
@@ -197,7 +203,7 @@ function configuredLiveUnderstandingSynthesizer(): PortfolioEntryLiveUnderstandi
       synthesize: async (input) => {
         const result = await adapter.generate({
           authorized_snapshot: input.authorizedSnapshot,
-          call_id: `${input.sessionId}-live-understanding-turn-${input.turnIndex}`,
+          call_id: `${input.sessionId}-${input.purpose}-context-${input.contextRevision}-turn-${input.turnIndex}`,
           model_metadata: {
             provider: provider.provider,
             requested_model: provider.model,

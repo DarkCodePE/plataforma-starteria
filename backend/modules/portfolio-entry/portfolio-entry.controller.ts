@@ -2,6 +2,8 @@ import type { Request, Response, NextFunction } from 'express';
 import {
   abandonBodySchema,
   claimBodySchema,
+  criticalHandoffConfirmationBodySchema,
+  criticalHandoffConfirmationParamsSchema,
   confirmedBriefIdentitySchema,
   confirmationBodySchema,
   createSessionBodySchema,
@@ -12,6 +14,7 @@ import {
 } from './portfolio-entry.schemas';
 import { mapPortfolioEntryError } from './portfolio-entry.errors';
 import type { PortfolioEntryExperimentalSessionService } from './application/portfolio-entry-experimental-session.service';
+import type { CriticalHandoffConfirmationBody } from './portfolio-entry.schemas';
 
 export class PortfolioEntryController {
   constructor(private readonly service: PortfolioEntryExperimentalSessionService) {}
@@ -107,6 +110,22 @@ export class PortfolioEntryController {
     }
   };
 
+  materializeCriticalHandoff = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const { sessionId } = sessionParamsSchema.parse(req.params);
+      const body = materializeHandoffBodySchema.parse(req.body);
+      const data = await this.service.materializeCriticalHandoffCurrent(sessionId, body.expectedRevision, {
+        requestId: getRequestId(req),
+        publicAccessToken: getPublicToken(req),
+        principal: req.user ? { id: req.user.id } : undefined,
+        idempotencyKey: getIdempotencyKey(req),
+      });
+      res.json({ success: true, data });
+    } catch (err) {
+      next(mapPortfolioEntryError(err));
+    }
+  };
+
   guidedExploration = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
       const { sessionId } = sessionParamsSchema.parse(req.params);
@@ -130,6 +149,39 @@ export class PortfolioEntryController {
         sessionId,
         publicAccessToken: getPublicToken(req),
         principal: req.user ? { id: req.user.id } : undefined,
+      });
+      res.json({ success: true, data });
+    } catch (err) {
+      next(mapPortfolioEntryError(err));
+    }
+  };
+
+  readCriticalHandoff = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const { sessionId } = sessionParamsSchema.parse(req.params);
+      const data = await this.service.readCriticalHandoff({
+        sessionId,
+        publicAccessToken: getPublicToken(req),
+        principal: req.user ? { id: req.user.id } : undefined,
+      });
+      res.json({ success: true, data });
+    } catch (err) {
+      next(mapPortfolioEntryError(err));
+    }
+  };
+
+  confirmCriticalHandoff = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const { sessionId, artifactId } = criticalHandoffConfirmationParamsSchema.parse(req.params);
+      const body = criticalHandoffConfirmationBodySchema.parse(req.body) as CriticalHandoffConfirmationBody;
+      const data = await this.service.confirmCriticalHandoff(sessionId, artifactId, {
+        action: body.action,
+        expectedArtifactVersion: body.expectedArtifactVersion,
+        expectedContextRevision: body.expectedContextRevision,
+      }, {
+        requestId: getRequestId(req),
+        principal: req.user ? { id: req.user.id } : undefined,
+        idempotencyKey: getIdempotencyKey(req),
       });
       res.json({ success: true, data });
     } catch (err) {

@@ -298,9 +298,41 @@ Core canonicalization, or durable/Core persistence of Live Understanding. It
 does not change KAN-114's prompt, output schema or accepted reasoning
 semantics. KAN-116 only adds chronological `turn_index` ordering at the
 synthesis input assembly boundary for persisted user messages and corrections.
-The only 114D reference in the implementation tree is a negative UI regression
-assertion keeping Live Understanding out of the handoff review; 114D itself is
-not implemented. The next authorized slice is 114D.
+### KAN-117 / KAN-119 - Critical Handoff (114D), post-CI PR #161
+
+KAN-119 Critical Handoff v0.1 is `IMPLEMENTED_VERIFIED_ON_PR` on [PR #161](https://github.com/DarkCodePE/plataforma-starteria/pull/161) at
+HEAD `b16dc03e04b8f3c419bfa5df565914b6613b7112`; it is open and not merged. KAN-114
+remains the sole reasoning source. The implementation stores a dedicated durable
+Portfolio Entry Critical Handoff artifact bound to its source `contextRevision`.
+Currentness is invalidated when the reasoning context advances, and a
+pre-confirmation correction returns through the existing clarification/reasoning
+cycle. Confirmation is an explicit representativeness action: a claim is not a confirmation, and
+confirmation does not certify every statement as objective fact.
+
+The 114D close point is the confirmed Critical Handoff only. This slice does not
+implement Starteria Path 114E, Portfolio Setup continuity 114F, ADR-003
+reconciliation, Core, Steps, scoring, experiment design, or distinct alternative
+ranking. Legacy handoff/confirmation readers remain `KEEP_COMPAT` for explicitly
+historical sessions. This is bounded slice evidence, not certification of all
+Portfolio Entry.
+
+The completed [GitHub CI run #220](https://github.com/DarkCodePE/plataforma-starteria/actions/runs/37995220187) for PR #161 at the HEAD above passed: CI summary,
+Prisma schema/migration alignment, Node tests with coverage, PostgreSQL repository
+integration (26/26), CURRENT_114D browser E2E (6/6), LEGACY_COMPAT browser E2E
+(7/7), Live Understanding full-stack E2E (1/1), lint/build, and Python. The
+CURRENT_114D and LEGACY_COMPAT journeys are separate regression compositions.
+The closure report is
+`docs/implementation/portfolio-entry/KAN-119_CRITICAL_HANDOFF_V01_IMPLEMENTATION_CLOSURE.md`.
+
+Post-confirmation reopen/correction is not generalized as a future reopen
+feature; the confirmed artifact remains immutable under current v0.1 semantics.
+ADR-003 remains `PROPOSED` with its discrepancy `OPEN / DEFERRED`; it must be
+reconciled before Portfolio Setup Continuity.
+
+No generalized post-confirmation reopen/correction feature is part of v0.1; the
+confirmed artifact remains immutable. The broader future policy remains open.
+114E is not started; the ADR-003 discrepancy remains open before any Portfolio
+Setup Continuity work.
 
 This closure does not alter the unresolved ADR-003 status recorded above.
 ADR-003 remains `PROPOSED` in `CURRENT_STATE.md` and its discrepancy remains

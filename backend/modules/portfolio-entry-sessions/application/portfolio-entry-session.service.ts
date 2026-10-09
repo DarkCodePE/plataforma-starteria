@@ -1,4 +1,5 @@
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
+import type { CriticalHandoffProjection } from '../../portfolio-entry/presentation/critical-handoff-projection';
 import type { PortfolioEntryHandoffV2 } from '../../portfolio-entry-runtime/domain/handoff.schema';
 import type { SessionContext, SessionTurnTrace } from '../../portfolio-entry-runtime/domain/session.types';
 import type {
@@ -7,6 +8,12 @@ import type {
   PortfolioEntryConfirmationStatus,
 } from '../domain/portfolio-entry-confirmation.types';
 import { createPortfolioEntryExpiry } from '../domain/portfolio-entry-session-expiry';
+import {
+  type ConfirmPortfolioEntryCriticalHandoffInput,
+  isCriticalHandoffCurrent,
+  parseCriticalHandoffPayload,
+  PORTFOLIO_ENTRY_CRITICAL_HANDOFF_SCHEMA_VERSION,
+} from '../domain/portfolio-entry-critical-handoff.types';
 import {
   canTransitionPortfolioEntrySession,
   type PortfolioEntryExecutionStatus,
@@ -58,9 +65,12 @@ export type SaveTurnInput = {
   runtimeTurn: SessionTurnTrace;
   runtimeContextAfter: SessionContext;
   inputIntent?: PortfolioEntryTurnInputIntent;
+  allowCriticalHandoffCorrectionReopen?: boolean;
+  allowConfirmedCriticalHandoffContextAdvance?: boolean;
   matchedQuestionIds?: string[];
   respondedResolves?: string[];
   expectedRevision?: number;
+  expectedContextRevision?: number;
   now?: Date;
 };
 
@@ -76,6 +86,18 @@ export type SaveHandoffInput = {
   handoff: PortfolioEntryHandoffV2;
   sourceTurnId?: string;
   expectedRevision?: number;
+  now?: Date;
+};
+
+export type CreateCriticalHandoffServiceInput = {
+  sessionId: string;
+  expectedSessionRevision?: number;
+  sourceContextRevision: number;
+  sourceTurnId?: string;
+  payload: CriticalHandoffProjection;
+};
+
+export type ConfirmCriticalHandoffServiceInput = Omit<ConfirmPortfolioEntryCriticalHandoffInput, 'confirmedAt'> & {
   now?: Date;
 };
 
@@ -132,6 +154,7 @@ export class PortfolioEntrySessionService {
       confirmation: null,
       versioning: this.config.versioning,
       revision: 0,
+      contextRevision: 0,
       createdAt: now,
       updatedAt: now,
       lastActivityAt: now,
@@ -264,7 +287,12 @@ export class PortfolioEntrySessionService {
       updatedAt: now,
       lastActivityAt: now,
     };
-    assertTurnLifecycleApplication(session, updatedSession.lifecycleStatus);
+    assertTurnLifecycleApplication(
+      session,
+      updatedSession.lifecycleStatus,
+      input.allowCriticalHandoffCorrectionReopen === true,
+      input.allowConfirmedCriticalHandoffContextAdvance === true,
+    );
 
     const turn: PortfolioEntryTurn = {
       id: randomUUID(),
@@ -286,7 +314,7 @@ export class PortfolioEntrySessionService {
       updatedAt: now,
     };
 
-    return this.repository.appendTurn(turn, updatedSession, expectedRevision);
+    return this.repository.appendTurn(turn, updatedSession, expectedRevision, input.expectedContextRevision);
   }
 
   async persistPendingInput(input: {
@@ -380,6 +408,58 @@ export class PortfolioEntrySessionService {
       id: input.id ?? randomUUID(),
       createdAt: input.createdAt ?? this.now(),
     });
+  }
+
+  async createCriticalHandoff(input: CreateCriticalHandoffServiceInput) {
+    const payload = parseCriticalHandoffPayload(
+      PORTFOLIO_ENTRY_CRITICAL_HANDOFF_SCHEMA_VERSION,
+      input.payload,
+    );
+    return this.repository.createCriticalHandoff({ ...input, payload });
+  }
+
+  async getLatestCriticalHandoff(sessionId: string) {
+    const { artifact, currentContextRevision } = await this.repository.getLatestCriticalHandoff(sessionId);
+    if (!artifact) return null;
+    return {
+      artifact,
+      isCurrent: isCriticalHandoffCurrent(artifact, artifact, currentContextRevision),
+    };
+  }
+
+  async confirmCriticalHandoff(input: ConfirmCriticalHandoffServiceInput) {
+    const now = input.now ?? this.now();
+    const session = await this.requireSession(input.sessionId);
+    assertSessionIsActive(session, now);
+    // The immutable claimed owner is the persisted actor binding for this confirmation.
+    if (session.ownershipState !== 'CLAIMED' || session.ownerUserId !== input.confirmingActorId) {
+      throw PortfolioEntrySessionError.unauthorized();
+    }
+    const command = { ...input, confirmedAt: now };
+    try {
+      return await this.repository.confirmCriticalHandoff(command);
+    } catch (error) {
+      if (!(error instanceof PortfolioEntrySessionError) || error.code !== 'PORTFOLIO_ENTRY_SESSION_CONFLICT') throw error;
+      const latest = await this.repository.getLatestCriticalHandoff(input.sessionId);
+      if (latest.artifact?.id === input.artifactId
+        && latest.artifact.artifactVersion === input.expectedArtifactVersion
+        && latest.artifact.sourceContextRevision === input.expectedContextRevision
+        && latest.currentContextRevision === input.expectedContextRevision
+        && latest.artifact.confirmationState === 'confirmed'
+        && latest.artifact.confirmedByUserId === input.confirmingActorId
+        && isCriticalHandoffCurrent(latest.artifact, latest.artifact, latest.currentContextRevision)) {
+        return latest;
+      }
+      throw error;
+    }
+  }
+
+  async readContextRevision(sessionId: string): Promise<number> {
+    return this.repository.readContextRevision(sessionId);
+  }
+
+  async advanceContextRevision(sessionId: string, expectedContextRevision: number): Promise<number> {
+    return this.repository.advanceContextRevision(sessionId, expectedContextRevision, this.now());
   }
 
   async saveHandoff(input: SaveHandoffInput): Promise<PortfolioEntryHandoffRecord> {
@@ -533,8 +613,16 @@ function lifecycleFromConfirmationStatus(status: PortfolioEntryConfirmationStatu
 function assertTurnLifecycleApplication(
   session: PortfolioEntrySession,
   nextStatus: PortfolioEntrySessionLifecycleStatus,
+  allowCriticalHandoffCorrectionReopen = false,
+  allowConfirmedCriticalHandoffContextAdvance = false,
 ): void {
   if (canTransitionPortfolioEntrySession(session.lifecycleStatus, nextStatus)) return;
+  if (allowCriticalHandoffCorrectionReopen
+    && session.lifecycleStatus === 'HANDOFF_READY'
+    && nextStatus === 'CLARIFYING') return;
+  if (allowConfirmedCriticalHandoffContextAdvance
+    && session.lifecycleStatus === 'HANDOFF_READY'
+    && ['CLARIFYING', 'HANDOFF_ELIGIBLE'].includes(nextStatus)) return;
   if (
     (session.lifecycleStatus === 'ENTRY_CAPTURED' || session.lifecycleStatus === 'CLARIFYING' || session.lifecycleStatus === 'REVISIONS_REQUESTED') &&
     canTransitionPortfolioEntrySession(session.lifecycleStatus, 'ANALYZING') &&

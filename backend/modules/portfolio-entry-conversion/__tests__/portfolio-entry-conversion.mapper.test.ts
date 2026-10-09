@@ -47,6 +47,7 @@ describe('Portfolio Entry conversion mapper', () => {
         confirmation: null,
         versioning: { contractVersion: 'c', runtimeVersion: 'r', schemaVersion: 's' },
         revision: 6,
+        contextRevision: 0,
         createdAt: new Date(),
         updatedAt: new Date(),
         lastActivityAt: new Date(),
