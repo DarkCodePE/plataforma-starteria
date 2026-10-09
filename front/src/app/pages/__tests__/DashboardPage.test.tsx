@@ -13,9 +13,10 @@ const navigate = vi.fn();
 vi.mock('react-router', () => ({ useNavigate: () => navigate }));
 
 let role = 'portfolio_lead';
+let projects: unknown[] = [];
 vi.mock('../../context/AppContext', () => ({
   useApp: () => ({
-    projects: [],
+    projects,
     projectsLoading: false,
     setCurrentProject: vi.fn(),
     user: { id: 'u1', email: 'lead@test', role },
@@ -31,6 +32,7 @@ describe('DashboardPage — Portfolio Lead', () => {
   beforeEach(() => {
     navigate.mockReset();
     role = 'portfolio_lead';
+    projects = [];
   });
 
   it('se titula "Mis iniciativas", no "Iniciativas con sponsor"', () => {
@@ -51,5 +53,52 @@ describe('DashboardPage — Portfolio Lead', () => {
     role = 'sponsor';
     render(<DashboardPage />);
     expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Iniciativas con sponsor');
+  });
+});
+
+// La tabla legacy `Step` no la actualiza el flujo adaptativo: las filas quedan en BLOCKED aunque
+// la iniciativa esté decidida. La tarjeta lee el meta de portafolio, como Portafolio.
+const legacySteps = [1, 2, 3, 4].map(number => ({ number, name: `Step ${number}`, status: number === 1 ? 'No iniciado' : 'Bloqueado', progress: 0, modules: [] }));
+const decidedInitiative = (meta: Record<string, unknown>) => ({
+  id: 'p1',
+  name: '[E2E-PROD] Iniciativa',
+  status: 'En progreso',
+  currentStep: 4,
+  step0Status: 'Completado',
+  steps: legacySteps,
+  team: [{ id: 'm1' }, { id: 'm2' }],
+  sponsorTouchpoints: [],
+  lastModified: new Date().toISOString(),
+  portfolioMeta: [meta],
+});
+
+describe('DashboardPage — tarjeta de una iniciativa adaptativa', () => {
+  beforeEach(() => {
+    role = 'portfolio_lead';
+  });
+
+  it('decidida: Cerrada al 100%, sin "módulos bloqueados"', () => {
+    projects = [decidedInitiative({ status: 'closed', currentStep: 'Step 4', readyForDecision: false })];
+    render(<DashboardPage />);
+    expect(screen.getByText('Cerrada')).toBeInTheDocument();
+    expect(screen.getByText('Decisión registrada')).toBeInTheDocument();
+    expect(screen.getByText('100%')).toBeInTheDocument();
+    expect(screen.queryByText(/bloquead/i)).not.toBeInTheDocument();
+    expect(screen.getByText('2 miembros')).toBeInTheDocument();
+  });
+
+  it('lista para decisión: 100% y Steps 0–4 completos', () => {
+    projects = [decidedInitiative({ status: 'lista_para_decision', currentStep: 'Step 4', readyForDecision: true })];
+    render(<DashboardPage />);
+    expect(screen.getByText('Lista para decisión')).toBeInTheDocument();
+    expect(screen.getByText('Steps 0–4 completos')).toBeInTheDocument();
+    expect(screen.queryByText(/bloquead/i)).not.toBeInTheDocument();
+  });
+
+  it('en Step 2 con un bloqueo real, muestra ese bloqueo', () => {
+    projects = [decidedInitiative({ status: 'en_step_2', currentStep: 'Step 2', mainBlocker: 'Falta acceso a datos' })];
+    render(<DashboardPage />);
+    expect(screen.getByText('Step 2 en progreso')).toBeInTheDocument();
+    expect(screen.getByText('Bloqueo: Falta acceso a datos')).toBeInTheDocument();
   });
 });

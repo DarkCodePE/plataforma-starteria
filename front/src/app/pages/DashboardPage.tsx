@@ -8,6 +8,13 @@ import { ProgressBar } from '../components/ProgressBar';
 import { usePortfolioLead } from '../portfolio/PortfolioLeadContext';
 import { activationLabel, challengeStatusLabel, challengeTypeLabel } from '../portfolio/portfolioLeadCopy';
 import { DashboardPdfDropzone } from '../components/DashboardPdfDropzone';
+import {
+  getAdaptiveCardState,
+  getAdaptiveProgress,
+  getAdaptiveSegmentStatus,
+  getAdaptiveStatusLabel,
+  getAdaptiveStepLabel,
+} from './dashboard-initiative-state';
 
 const CREATE_INITIATIVE_PATH = '/initiatives/new';
 const IMPORT_INITIATIVE_PATH = '/projects/new?mode=import';
@@ -312,9 +319,12 @@ export function DashboardPage() {
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {visibleProjects.map(project => {
-            const dashboardSteps = project.steps;
+            const adaptive = getAdaptiveCardState(project);
+            const dashboardSteps = adaptive
+              ? project.steps.map(step => ({ ...step, status: getAdaptiveSegmentStatus(adaptive, step.number) }))
+              : project.steps;
             const currentStep = getCurrentWorkStep(project);
-            const hasBlock = project.steps.some(step => step.status === 'Bloqueado' && step.number === project.currentStep);
+            const hasBlock = hasActiveBlock(project);
             const pendingSession = project.steps.some(step => step.status === 'Sesión experto pendiente');
             const sponsorMilestone = isSponsor ? getSponsorMilestone(project) : null;
             const sponsorMember = isSponsor ? getProjectMember(project.id, user?.email) : null;
@@ -338,7 +348,7 @@ export function DashboardPage() {
                 </div>
 
                 <div className="flex items-center gap-2 mb-4">
-                  <StatusChip status={project.status} size="sm" />
+                  <StatusChip status={adaptive ? getAdaptiveStatusLabel(adaptive) : project.status} size="sm" />
                   {sponsorMember?.role === 'Sponsor' && <StatusChip status={sponsorMember.status} size="sm" />}
                   {pendingSession && <StatusChip status="Sesión experto pendiente" size="sm" />}
                 </div>
@@ -371,7 +381,7 @@ export function DashboardPage() {
                     hasBlock ? 'bg-amber-50 text-amber-700' : 'bg-violet-50 text-violet-700'
                   }`}>
                     <AlertTriangle size={11} />
-                    {hasBlock ? 'Hay módulos bloqueados que requieren atención' : 'Sesión con experto pendiente de agendar'}
+                    {hasBlock ? getBlockMessage(project) : 'Sesión con experto pendiente de agendar'}
                   </div>
                 )}
 
@@ -437,6 +447,15 @@ function isFromPublicDraft(project: Project) {
 }
 
 function getCurrentWorkStep(project: Project) {
+  const adaptive = getAdaptiveCardState(project);
+  if (adaptive) {
+    return {
+      number: adaptive.step,
+      label: getAdaptiveStepLabel(adaptive),
+      progress: getAdaptiveProgress(adaptive),
+      status: adaptive.kind === 'in_step' ? 'En progreso' : 'Aprobado',
+    };
+  }
   if (project.currentStep === 0 || project.step0Status !== 'Completado') {
     return {
       number: 0,
@@ -455,7 +474,22 @@ function getCurrentWorkStep(project: Project) {
   };
 }
 
+// Con meta de portafolio, el bloqueo es el que reporta el flujo adaptativo; las filas legacy de
+// `Step` quedan en BLOCKED aunque nadie esté bloqueado.
+function hasActiveBlock(project: Project) {
+  const adaptive = getAdaptiveCardState(project);
+  if (adaptive) return adaptive.kind === 'in_step' && adaptive.blocker !== null;
+  return project.steps.some(step => step.status === 'Bloqueado' && step.number === project.currentStep);
+}
+
+function getBlockMessage(project: Project) {
+  const adaptive = getAdaptiveCardState(project);
+  return adaptive?.kind === 'in_step' && adaptive.blocker ? `Bloqueo: ${adaptive.blocker}` : 'Hay módulos bloqueados que requieren atención';
+}
+
 function getParticipantStatus(project: Project) {
+  const adaptive = getAdaptiveCardState(project);
+  if (adaptive) return adaptive.kind === 'in_step' && adaptive.blocker ? 'Bloqueada' : getAdaptiveStatusLabel(adaptive);
   if (project.steps.some(step => step.status === 'Bloqueado')) return 'Bloqueada';
   if (project.steps.some(step => ['Enviado', 'Feedback IA', 'Sesión experto pendiente'].includes(step.status))) return 'En revisión';
   if (project.step0Status !== 'Completado' || project.status === 'Draft') return 'Borrador';
@@ -463,6 +497,11 @@ function getParticipantStatus(project: Project) {
 }
 
 function getNextParticipantAction(project: Project) {
+  const adaptive = getAdaptiveCardState(project);
+  if (adaptive?.kind === 'closed') return 'Ver la decisión registrada';
+  if (adaptive?.kind === 'ready_for_decision') return 'Decisión del Portfolio Lead pendiente';
+  if (adaptive?.kind === 'in_step' && adaptive.blocker) return 'Revisar bloqueo';
+  if (adaptive) return `Continuar Step ${adaptive.step}`;
   const current = getCurrentWorkStep(project);
   if (project.steps.some(step => step.status === 'Bloqueado')) return 'Revisar bloqueo';
   if (current.number === 0) {
@@ -474,6 +513,8 @@ function getNextParticipantAction(project: Project) {
 }
 
 function getProjectProgress(project: Project) {
+  const adaptive = getAdaptiveCardState(project);
+  if (adaptive) return getAdaptiveProgress(adaptive);
   const step0Progress = project.step0Status === 'Completado' ? 100 : project.step0Status === 'En progreso' ? 35 : 0;
   const stepProgress = project.steps.reduce((sum, step) => sum + (step.progress ?? 0), 0);
   return Math.round((step0Progress + stepProgress) / (project.steps.length + 1));
@@ -554,7 +595,10 @@ function ParticipantInitiativesDashboard({
 function ParticipantContinueCard({ project, onContinueProject }: { project: Project; onContinueProject: (id: string) => void }) {
   const current = getCurrentWorkStep(project);
   const nextAction = getNextParticipantAction(project);
-  const ctaLabel = current.number === 0 ? 'Continuar Step 0' : `Continuar Step ${current.number}`;
+  const adaptive = getAdaptiveCardState(project);
+  const ctaLabel = adaptive && adaptive.kind !== 'in_step'
+    ? 'Ver iniciativa'
+    : current.number === 0 ? 'Continuar Step 0' : `Continuar Step ${current.number}`;
 
   return (
     <button
@@ -590,9 +634,14 @@ function ParticipantInitiativeRow({
   timeAgo: (iso: string) => string;
 }) {
   const current = getCurrentWorkStep(project);
-  const hasBlock = project.steps.some(step => step.status === 'Bloqueado');
+  const adaptive = getAdaptiveCardState(project);
+  const hasBlock = adaptive ? hasActiveBlock(project) : project.steps.some(step => step.status === 'Bloqueado');
   const nextAction = getNextParticipantAction(project);
-  const actionLabel = hasBlock ? 'Ver bloqueo' : nextAction.includes('feedback') ? 'Ver feedback' : current.number === 0 ? 'Continuar en Step 0' : 'Continuar';
+  const actionLabel = hasBlock
+    ? 'Ver bloqueo'
+    : adaptive && adaptive.kind !== 'in_step'
+      ? 'Ver iniciativa'
+      : nextAction.includes('feedback') ? 'Ver feedback' : current.number === 0 ? 'Continuar en Step 0' : 'Continuar';
   const progress = getProjectProgress(project);
 
   return (

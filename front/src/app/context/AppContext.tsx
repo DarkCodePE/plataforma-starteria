@@ -424,13 +424,17 @@ export function enrichProject(raw: any, currentUser: User | null): Project {
   const capitalize = (r: string) =>
     r ? r.charAt(0).toUpperCase() + r.slice(1).toLowerCase() : 'Editor';
 
-  let team: TeamMember[] = Array.isArray(raw.team)
-    ? raw.team.map((m: any) => ({
+  const MEMBER_STATUS: Record<string, TeamMemberStatus> = { ACTIVE: 'Activo', PENDING: 'Pendiente' };
+  // El backend devuelve el equipo como `teamMembers` (filas TeamMember); `team` es la forma local.
+  const rawTeam = Array.isArray(raw.team) ? raw.team : Array.isArray(raw.teamMembers) ? raw.teamMembers : null;
+
+  let team: TeamMember[] = rawTeam
+    ? rawTeam.map((m: any) => ({
         id: m.id ?? `m${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-        name: m.name ?? m.email?.split('@')[0] ?? '',
-        email: m.email ?? '',
+        name: m.name ?? m.user?.name ?? m.email?.split('@')[0] ?? '',
+        email: m.email ?? m.user?.email ?? '',
         role: capitalize(m.role ?? 'editor') as TeamMemberRole,
-        status: (m.status ?? 'Activo') as TeamMemberStatus,
+        status: (MEMBER_STATUS[m.status] ?? m.status ?? 'Activo') as TeamMemberStatus,
         initials:
           m.initials ?? (m.name ?? m.email ?? '').toString().slice(0, 2).toUpperCase(),
       }))
