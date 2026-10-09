@@ -9,6 +9,7 @@ import type {
 } from '../domain/portfolio-entry-confirmation.types';
 import { createPortfolioEntryExpiry } from '../domain/portfolio-entry-session-expiry';
 import {
+  type ConfirmPortfolioEntryCriticalHandoffInput,
   isCriticalHandoffCurrent,
   parseCriticalHandoffPayload,
   PORTFOLIO_ENTRY_CRITICAL_HANDOFF_SCHEMA_VERSION,
@@ -65,6 +66,7 @@ export type SaveTurnInput = {
   runtimeContextAfter: SessionContext;
   inputIntent?: PortfolioEntryTurnInputIntent;
   allowCriticalHandoffCorrectionReopen?: boolean;
+  allowConfirmedCriticalHandoffContextAdvance?: boolean;
   matchedQuestionIds?: string[];
   respondedResolves?: string[];
   expectedRevision?: number;
@@ -93,6 +95,10 @@ export type CreateCriticalHandoffServiceInput = {
   sourceContextRevision: number;
   sourceTurnId?: string;
   payload: CriticalHandoffProjection;
+};
+
+export type ConfirmCriticalHandoffServiceInput = Omit<ConfirmPortfolioEntryCriticalHandoffInput, 'confirmedAt'> & {
+  now?: Date;
 };
 
 export type SaveConfirmationInput = {
@@ -281,7 +287,12 @@ export class PortfolioEntrySessionService {
       updatedAt: now,
       lastActivityAt: now,
     };
-    assertTurnLifecycleApplication(session, updatedSession.lifecycleStatus, input.allowCriticalHandoffCorrectionReopen === true);
+    assertTurnLifecycleApplication(
+      session,
+      updatedSession.lifecycleStatus,
+      input.allowCriticalHandoffCorrectionReopen === true,
+      input.allowConfirmedCriticalHandoffContextAdvance === true,
+    );
 
     const turn: PortfolioEntryTurn = {
       id: randomUUID(),
@@ -414,6 +425,33 @@ export class PortfolioEntrySessionService {
       artifact,
       isCurrent: isCriticalHandoffCurrent(artifact, artifact, currentContextRevision),
     };
+  }
+
+  async confirmCriticalHandoff(input: ConfirmCriticalHandoffServiceInput) {
+    const now = input.now ?? this.now();
+    const session = await this.requireSession(input.sessionId);
+    assertSessionIsActive(session, now);
+    // The immutable claimed owner is the persisted actor binding for this confirmation.
+    if (session.ownershipState !== 'CLAIMED' || session.ownerUserId !== input.confirmingActorId) {
+      throw PortfolioEntrySessionError.unauthorized();
+    }
+    const command = { ...input, confirmedAt: now };
+    try {
+      return await this.repository.confirmCriticalHandoff(command);
+    } catch (error) {
+      if (!(error instanceof PortfolioEntrySessionError) || error.code !== 'PORTFOLIO_ENTRY_SESSION_CONFLICT') throw error;
+      const latest = await this.repository.getLatestCriticalHandoff(input.sessionId);
+      if (latest.artifact?.id === input.artifactId
+        && latest.artifact.artifactVersion === input.expectedArtifactVersion
+        && latest.artifact.sourceContextRevision === input.expectedContextRevision
+        && latest.currentContextRevision === input.expectedContextRevision
+        && latest.artifact.confirmationState === 'confirmed'
+        && latest.artifact.confirmedByUserId === input.confirmingActorId
+        && isCriticalHandoffCurrent(latest.artifact, latest.artifact, latest.currentContextRevision)) {
+        return latest;
+      }
+      throw error;
+    }
   }
 
   async readContextRevision(sessionId: string): Promise<number> {
@@ -576,11 +614,15 @@ function assertTurnLifecycleApplication(
   session: PortfolioEntrySession,
   nextStatus: PortfolioEntrySessionLifecycleStatus,
   allowCriticalHandoffCorrectionReopen = false,
+  allowConfirmedCriticalHandoffContextAdvance = false,
 ): void {
   if (canTransitionPortfolioEntrySession(session.lifecycleStatus, nextStatus)) return;
   if (allowCriticalHandoffCorrectionReopen
     && session.lifecycleStatus === 'HANDOFF_READY'
     && nextStatus === 'CLARIFYING') return;
+  if (allowConfirmedCriticalHandoffContextAdvance
+    && session.lifecycleStatus === 'HANDOFF_READY'
+    && ['CLARIFYING', 'HANDOFF_ELIGIBLE'].includes(nextStatus)) return;
   if (
     (session.lifecycleStatus === 'ENTRY_CAPTURED' || session.lifecycleStatus === 'CLARIFYING' || session.lifecycleStatus === 'REVISIONS_REQUESTED') &&
     canTransitionPortfolioEntrySession(session.lifecycleStatus, 'ANALYZING') &&

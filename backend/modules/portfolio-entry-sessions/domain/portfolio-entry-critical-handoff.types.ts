@@ -47,6 +47,8 @@ export type PortfolioEntryCriticalHandoffRecord = {
   sourceTurnId?: string;
   payload: CriticalHandoffPayload;
   confirmationState: PortfolioEntryCriticalHandoffConfirmationState;
+  confirmedAt: Date | null;
+  confirmedByUserId: string | null;
   createdAt: Date;
   updatedAt: Date;
 };
@@ -57,6 +59,21 @@ export type CreatePortfolioEntryCriticalHandoffInput = {
   sourceContextRevision: number;
   sourceTurnId?: string;
   payload: CriticalHandoffPayload;
+};
+
+export type ConfirmPortfolioEntryCriticalHandoffInput = {
+  sessionId: string;
+  artifactId: string;
+  expectedArtifactVersion: number;
+  expectedContextRevision: number;
+  confirmingActorId: string;
+  confirmedAt: Date;
+};
+
+export type PortfolioEntryCriticalHandoffLifecycle = {
+  confirmationState: PortfolioEntryCriticalHandoffConfirmationState;
+  confirmedAt: Date | null;
+  confirmedByUserId: string | null;
 };
 
 export type PortfolioEntryCriticalHandoffCurrentness = {
@@ -82,6 +99,29 @@ export function parseCriticalHandoffPayload(schemaVersion: string, payload: unkn
   // The runtime schema checks the complete strict object; this assertion restores
   // required keys because backend TypeScript compilation disables strictNullChecks.
   return parsed.data as CriticalHandoffProjection;
+}
+
+export function parseCriticalHandoffLifecycle(
+  confirmationState: string,
+  confirmedAt: Date | null,
+  confirmedByUserId: string | null,
+): PortfolioEntryCriticalHandoffLifecycle {
+  if (confirmationState !== 'provisional' && confirmationState !== 'confirmed') {
+    throw new Error(`Invalid persisted Critical Handoff confirmation state: ${confirmationState}`);
+  }
+
+  const evidenceIsValid = confirmationState === 'provisional'
+    ? confirmedAt === null && confirmedByUserId === null
+    : confirmedAt instanceof Date
+      && Number.isFinite(confirmedAt.getTime())
+      && typeof confirmedByUserId === 'string'
+      && confirmedByUserId.trim().length > 0;
+
+  if (!evidenceIsValid) {
+    throw new Error('Invalid persisted Critical Handoff confirmation evidence.');
+  }
+
+  return { confirmationState, confirmedAt, confirmedByUserId };
 }
 
 export function nextCriticalHandoffArtifactVersion(latestArtifactVersion?: number): number {

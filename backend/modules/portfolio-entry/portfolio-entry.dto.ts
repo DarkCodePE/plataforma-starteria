@@ -103,10 +103,10 @@ export type PortfolioEntryHandoffClientDto = {
 export type PortfolioEntryCriticalHandoffClientDto = {
   id: string;
   version: number;
-  schemaVersion: string;
   sourceContextRevision: number;
-  sourceTurnId?: string;
   state: 'current' | 'stale';
+  confirmationState: 'provisional' | 'confirmed';
+  confirmedAt: string | null;
   projection: CriticalHandoffProjection;
 };
 
@@ -315,10 +315,11 @@ export function toCriticalHandoffClientDto(
   return {
     id: artifact.id,
     version: artifact.artifactVersion,
-    schemaVersion: artifact.schemaVersion,
     sourceContextRevision: artifact.sourceContextRevision,
-    sourceTurnId: artifact.sourceTurnId,
     state: isCurrent ? 'current' : 'stale',
+    confirmationState: artifact.confirmationState,
+    // Critical Handoff content never changes after creation; its updatedAt records confirmation time.
+    confirmedAt: artifact.confirmedAt?.toISOString() ?? null,
     projection: artifact.payload,
   };
 }

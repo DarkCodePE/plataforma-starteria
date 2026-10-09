@@ -132,6 +132,7 @@ export function buildPortfolioEntryRouter(
   router.post('/sessions/:sessionId/handoff', optionalAuth, handoffLimiter, controller.materializeHandoff);
   router.get('/sessions/:sessionId/handoff', optionalAuth, submitLimiter, controller.readHandoff);
   router.get('/sessions/:sessionId/critical-handoff', optionalAuth, submitLimiter, controller.readCriticalHandoff);
+  router.post('/sessions/:sessionId/critical-handoff/:artifactId/confirmation', auth, handoffLimiter, controller.confirmCriticalHandoff);
   router.post('/sessions/:sessionId/handoff/confirmation', auth, handoffLimiter, controller.confirmOrCorrectHandoff);
   router.post('/sessions/:sessionId/claim', auth, handoffLimiter, controller.claim);
   router.post('/sessions/:sessionId/convert', auth, handoffLimiter, conversionController.convert);

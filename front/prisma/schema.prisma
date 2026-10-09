@@ -3290,6 +3290,8 @@ model PortfolioEntryCriticalHandoff {
   sourceTurnId       String?
   payload            Json
   confirmationState  PortfolioEntryCriticalHandoffConfirmationState @default(provisional)
+  confirmedAt        DateTime?
+  confirmedByUserId  String?
   createdAt          DateTime                                        @default(now())
   updatedAt          DateTime                                        @updatedAt
 

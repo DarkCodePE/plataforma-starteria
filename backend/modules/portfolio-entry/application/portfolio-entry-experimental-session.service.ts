@@ -60,7 +60,7 @@ type RequestContext = {
   idempotencyKey?: string;
   idempotencyRecordId?: string;
 };
-type Operation = 'submit_message' | 'guided_exploration_choice' | 'materialize_handoff' | 'confirm_handoff' | 'claim_session' | 'abandon_session';
+type Operation = 'submit_message' | 'guided_exploration_choice' | 'materialize_handoff' | 'confirm_handoff' | 'confirm_critical_handoff' | 'claim_session' | 'abandon_session';
 const USER_CONFIRMABLE_FIELDS = new Set([
   'understood_need', 'understanding', 'desired_outcome', 'decision_to_enable', 'known_context',
   'unresolved_context', 'evidence_or_clarity_needed', 'recommended_approach',
@@ -169,6 +169,9 @@ export class PortfolioEntryExperimentalSessionService {
       this.assertExpectedRevision(session, body.expectedRevision);
       const turnsBefore = await this.sessionRepository.listTurns(sessionId);
       const criticalHandoffSnapshot = await this.sessionService.getLatestCriticalHandoff(sessionId);
+      if (inputIntent === 'correction' && criticalHandoffSnapshot?.artifact.confirmationState === 'confirmed') {
+        throw PortfolioEntrySessionError.invalidTransition('A confirmed Critical Handoff cannot be edited in this slice.');
+      }
       const hasCriticalHandoff = criticalHandoffSnapshot !== null;
       assertMessageInputAllowed(session, turnsBefore, inputIntent, hasCriticalHandoff);
       if (session.semanticState.pendingInput?.value === body.message
@@ -252,6 +255,8 @@ export class PortfolioEntryExperimentalSessionService {
         runtimeContextAfter: result.final_context,
         inputIntent,
         allowCriticalHandoffCorrectionReopen: inputIntent === 'correction' && hasCriticalHandoff,
+        allowConfirmedCriticalHandoffContextAdvance: inputIntent === 'answer'
+          && criticalHandoffSnapshot?.artifact.confirmationState === 'confirmed',
         matchedQuestionIds: resolvedAnswer.matchedQuestionIds,
         respondedResolves: resolvedAnswer.respondedResolves,
         expectedRevision: pendingSession.revision,
@@ -425,6 +430,52 @@ export class PortfolioEntryExperimentalSessionService {
     const latest = await this.sessionService.getLatestCriticalHandoff(session.id);
     if (!latest) return null;
     return toCriticalHandoffClientDto(latest.artifact, latest.isCurrent);
+  }
+
+  async confirmCriticalHandoff(
+    sessionId: string,
+    artifactId: string,
+    body: { action: 'confirm'; expectedArtifactVersion: number; expectedContextRevision: number },
+    context: RequestContext,
+  ) {
+    // This confirms representativeness for continuing; it does not validate claims or choose a path.
+    if (!context.principal) throw PortfolioEntrySessionError.unauthorized();
+    const initial = await this.sessionRepository.findSessionById(sessionId);
+    if (!initial) throw PortfolioEntrySessionError.notFound();
+    if (initial.ownershipState !== 'CLAIMED' || initial.ownerUserId !== context.principal.id) {
+      throw PortfolioEntryApiError.forbiddenOwner();
+    }
+    assertNotConverted(initial);
+    await this.sessionService.getForOwner(sessionId, context.principal.id, this.now());
+
+    const request = { artifactId, ...body };
+    return this.withIdempotency('confirm_critical_handoff', sessionId, request, context, async () => {
+      const session = await this.sessionService.getForOwner(sessionId, context.principal!.id, this.now());
+      assertNotConverted(session);
+      const confirmed = await this.sessionService.confirmCriticalHandoff({
+        sessionId,
+        artifactId,
+        expectedArtifactVersion: body.expectedArtifactVersion,
+        expectedContextRevision: body.expectedContextRevision,
+        confirmingActorId: context.principal!.id,
+        now: this.now(),
+      });
+      const isCurrent = isCriticalHandoffCurrent(
+        confirmed.artifact,
+        confirmed.artifact,
+        confirmed.currentContextRevision,
+      );
+      return toCriticalHandoffClientDto(confirmed.artifact, isCurrent);
+    }, async () => {
+      const latest = await this.sessionService.getLatestCriticalHandoff(sessionId);
+      if (!latest
+        || !latest.isCurrent
+        || latest.artifact.id !== artifactId
+        || latest.artifact.artifactVersion !== body.expectedArtifactVersion
+        || latest.artifact.sourceContextRevision !== body.expectedContextRevision
+        || latest.artifact.confirmationState !== 'confirmed') return null;
+      return toCriticalHandoffClientDto(latest.artifact, true);
+    });
   }
 
   private async materializeCriticalHandoff(

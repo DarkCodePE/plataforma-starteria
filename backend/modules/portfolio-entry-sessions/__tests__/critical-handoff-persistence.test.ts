@@ -28,6 +28,31 @@ const payload: CriticalHandoffProjection = {
 };
 
 describe('Critical Handoff persistence boundary', () => {
+  it('accepts provisional lifecycle only without confirmation evidence', () => {
+    expect(() => mapCriticalHandoff({
+      confirmationState: 'provisional',
+      confirmedAt: null,
+      confirmedByUserId: null,
+    })).not.toThrow();
+  });
+
+  it('accepts confirmed lifecycle only with actor and timestamp evidence', () => {
+    expect(() => mapCriticalHandoff({
+      confirmationState: 'confirmed',
+      confirmedAt: new Date('2026-10-09T10:05:00.000Z'),
+      confirmedByUserId: 'user-1',
+    })).not.toThrow();
+  });
+
+  it.each([
+    ['confirmed without actor', { confirmationState: 'confirmed', confirmedAt: new Date('2026-10-09T10:05:00.000Z'), confirmedByUserId: null }],
+    ['confirmed without timestamp', { confirmationState: 'confirmed', confirmedAt: null, confirmedByUserId: 'user-1' }],
+    ['provisional with actor', { confirmationState: 'provisional', confirmedAt: null, confirmedByUserId: 'user-1' }],
+    ['provisional with timestamp', { confirmationState: 'provisional', confirmedAt: new Date('2026-10-09T10:05:00.000Z'), confirmedByUserId: null }],
+  ])('rejects malformed lifecycle: %s', (_description, lifecycle) => {
+    expect(() => mapCriticalHandoff(lifecycle)).toThrow(/Invalid persisted Critical Handoff confirmation evidence/);
+  });
+
   it('parses only the versioned public projection payload', () => {
     expect(parseCriticalHandoffPayload(PORTFOLIO_ENTRY_CRITICAL_HANDOFF_SCHEMA_VERSION, payload)).toEqual(payload);
     expect(() => parseCriticalHandoffPayload(PORTFOLIO_ENTRY_CRITICAL_HANDOFF_SCHEMA_VERSION, {
@@ -51,6 +76,8 @@ describe('Critical Handoff persistence boundary', () => {
       sourceTurnId: null,
       payload: { unexpected: true } as Prisma.JsonObject,
       confirmationState: 'provisional',
+      confirmedAt: null,
+      confirmedByUserId: null,
       createdAt: new Date(),
       updatedAt: new Date(),
     })).toThrow(/Invalid persisted Critical Handoff payload/);
@@ -121,7 +148,28 @@ function makeArtifact(id: string, artifactVersion: number, sourceContextRevision
     sourceTurnId: undefined,
     payload,
     confirmationState: 'provisional',
+    confirmedAt: null,
+    confirmedByUserId: null,
     createdAt: new Date('2026-10-09T10:00:00.000Z'),
     updatedAt: new Date('2026-10-09T10:00:00.000Z'),
   };
+}
+
+function mapCriticalHandoff(lifecycle: {
+  confirmationState: string;
+  confirmedAt: Date | null;
+  confirmedByUserId: string | null;
+}) {
+  return new PrismaPortfolioEntrySessionMapper().toCriticalHandoff({
+    id: 'critical-handoff-lifecycle',
+    sessionId: 'session-1',
+    artifactVersion: 1,
+    schemaVersion: PORTFOLIO_ENTRY_CRITICAL_HANDOFF_SCHEMA_VERSION,
+    sourceContextRevision: 0,
+    sourceTurnId: null,
+    payload,
+    ...lifecycle,
+    createdAt: new Date('2026-10-09T10:00:00.000Z'),
+    updatedAt: new Date('2026-10-09T10:00:00.000Z'),
+  } as never);
 }

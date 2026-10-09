@@ -2,8 +2,10 @@ import { randomUUID } from 'node:crypto';
 import { Prisma, type PrismaClient } from '@prisma/client';
 import { canClaimPortfolioEntrySession } from '../domain/portfolio-entry-session-ownership';
 import {
+  type ConfirmPortfolioEntryCriticalHandoffInput,
   nextCriticalHandoffArtifactVersion,
   parseCriticalHandoffPayload,
+  parseCriticalHandoffLifecycle,
   PORTFOLIO_ENTRY_CRITICAL_HANDOFF_SCHEMA_VERSION,
   type CreatePortfolioEntryCriticalHandoffInput,
   type PortfolioEntryCriticalHandoffRecord,
@@ -179,8 +181,19 @@ export class PrismaPortfolioEntrySessionRepository implements PortfolioEntrySess
         const latest = await tx.portfolioEntryCriticalHandoff.findFirst({
           where: { sessionId: input.sessionId },
           orderBy: { artifactVersion: 'desc' },
-          select: { artifactVersion: true },
+          select: {
+            artifactVersion: true,
+            sourceContextRevision: true,
+            confirmationState: true,
+            confirmedAt: true,
+            confirmedByUserId: true,
+          },
         });
+        if (latest) {
+          parseCriticalHandoffLifecycle(latest.confirmationState, latest.confirmedAt, latest.confirmedByUserId);
+        }
+        if (latest?.confirmationState === 'confirmed'
+          && input.sourceContextRevision <= latest.sourceContextRevision) throw PortfolioEntrySessionError.conflict();
         const now = new Date();
         const artifact: PortfolioEntryCriticalHandoffRecord = {
           id: randomUUID(),
@@ -191,6 +204,8 @@ export class PrismaPortfolioEntrySessionRepository implements PortfolioEntrySess
           sourceTurnId: sourceTurnId ?? undefined,
           payload,
           confirmationState: 'provisional',
+          confirmedAt: null,
+          confirmedByUserId: null,
           createdAt: now,
           updatedAt: now,
         };
@@ -220,6 +235,79 @@ export class PrismaPortfolioEntrySessionRepository implements PortfolioEntrySess
         currentContextRevision: session.contextRevision,
       };
     }, { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead });
+  }
+
+  async confirmCriticalHandoff(input: ConfirmPortfolioEntryCriticalHandoffInput) {
+    try {
+      return await this.prisma.$transaction(async (tx) => {
+        // Lock the same session row written by answer/correction revision CAS. The lock
+        // remains held through the artifact CAS, giving confirmation and context advance
+        // one database serialization point without changing contextRevision.
+        const lockedSessions = await tx.$queryRaw<Array<{
+          contextRevision: number;
+          ownerUserId: string | null;
+          ownershipState: string;
+        }>>(Prisma.sql`
+          SELECT "contextRevision", "ownerUserId", "ownershipState"
+          FROM "PortfolioEntrySession"
+          WHERE "id" = ${input.sessionId}
+          FOR UPDATE
+        `);
+        const session = lockedSessions[0];
+        if (!session) throw PortfolioEntrySessionError.notFound();
+        if (session.ownershipState !== 'CLAIMED' || session.ownerUserId !== input.confirmingActorId) {
+          throw PortfolioEntrySessionError.conflict();
+        }
+
+        const latest = await tx.portfolioEntryCriticalHandoff.findFirst({
+          where: { sessionId: input.sessionId },
+          orderBy: { artifactVersion: 'desc' },
+        });
+        if (!latest
+          || latest.id !== input.artifactId
+          || latest.artifactVersion !== input.expectedArtifactVersion
+          || latest.sourceContextRevision !== input.expectedContextRevision
+          || session.contextRevision !== input.expectedContextRevision) {
+          throw PortfolioEntrySessionError.conflict();
+        }
+        const currentArtifact = this.mapper.toCriticalHandoff(latest as PrismaPortfolioEntryCriticalHandoffRow);
+
+        if (currentArtifact.confirmationState === 'confirmed') {
+          return {
+            artifact: currentArtifact,
+            currentContextRevision: session.contextRevision,
+          };
+        }
+        if (currentArtifact.confirmationState !== 'provisional') throw PortfolioEntrySessionError.conflict();
+
+        const changed = await tx.portfolioEntryCriticalHandoff.updateMany({
+          where: {
+            id: input.artifactId,
+            sessionId: input.sessionId,
+            artifactVersion: input.expectedArtifactVersion,
+            sourceContextRevision: input.expectedContextRevision,
+            confirmationState: 'provisional',
+            confirmedAt: null,
+            confirmedByUserId: null,
+          },
+          data: {
+            confirmationState: 'confirmed',
+            confirmedAt: input.confirmedAt,
+            confirmedByUserId: input.confirmingActorId,
+          },
+        });
+        if (changed.count !== 1) throw PortfolioEntrySessionError.conflict();
+
+        const confirmed = await tx.portfolioEntryCriticalHandoff.findUnique({ where: { id: input.artifactId } });
+        if (!confirmed) throw PortfolioEntrySessionError.conflict();
+        return {
+          artifact: this.mapper.toCriticalHandoff(confirmed as PrismaPortfolioEntryCriticalHandoffRow),
+          currentContextRevision: session.contextRevision,
+        };
+      }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+    } catch (err) {
+      throw mapPrismaConflict(err);
+    }
   }
 
   async readContextRevision(sessionId: string): Promise<number> {

@@ -261,6 +261,239 @@ describeIntegration('PrismaPortfolioEntrySessionRepository', () => {
     expect(await prisma.portfolioEntryCriticalHandoff.count({ where: { sessionId: session.id } })).toBe(2);
   });
 
+  it('persists explicit confirmation actor and time without changing the projection or source binding', async () => {
+    const { service, repository } = makeService();
+    const { session } = await createSession(service);
+    const artifact = await service.createCriticalHandoff({
+      sessionId: session.id,
+      sourceContextRevision: session.contextRevision,
+      payload: makeCriticalHandoffProjection(),
+    });
+    const provisionalRow = await prisma.portfolioEntryCriticalHandoff.findUnique({ where: { id: artifact.id } });
+    expect(provisionalRow).toMatchObject({ confirmedAt: null, confirmedByUserId: null, confirmationState: 'provisional' });
+    await service.claimOwnership(session.id, 'user-portfolio-entry-db');
+
+    const confirmedAt = new Date('2026-09-11T10:00:30.000Z');
+    const first = await service.confirmCriticalHandoff({
+      sessionId: session.id,
+      artifactId: artifact.id,
+      expectedArtifactVersion: artifact.artifactVersion,
+      expectedContextRevision: artifact.sourceContextRevision,
+      confirmingActorId: 'user-portfolio-entry-db',
+      now: confirmedAt,
+    });
+    const confirmedRow = await prisma.portfolioEntryCriticalHandoff.findUnique({ where: { id: artifact.id } });
+
+    expect(confirmedRow).toMatchObject({
+      confirmationState: 'confirmed',
+      confirmedAt,
+      confirmedByUserId: 'user-portfolio-entry-db',
+      artifactVersion: artifact.artifactVersion,
+      sourceContextRevision: artifact.sourceContextRevision,
+      payload: artifact.payload,
+    });
+    expect(first.artifact).toMatchObject({
+      id: artifact.id,
+      artifactVersion: artifact.artifactVersion,
+      sourceContextRevision: artifact.sourceContextRevision,
+      payload: artifact.payload,
+      confirmedAt,
+      confirmedByUserId: 'user-portfolio-entry-db',
+    });
+
+    const replay = await service.confirmCriticalHandoff({
+      sessionId: session.id,
+      artifactId: artifact.id,
+      expectedArtifactVersion: artifact.artifactVersion,
+      expectedContextRevision: artifact.sourceContextRevision,
+      confirmingActorId: 'user-portfolio-entry-db',
+      now: new Date('2026-09-11T10:00:40.000Z'),
+    });
+    const replayedRow = await prisma.portfolioEntryCriticalHandoff.findUnique({ where: { id: artifact.id } });
+
+    expect(replay.artifact.confirmedAt).toEqual(confirmedAt);
+    expect(replay.artifact.confirmedByUserId).toBe('user-portfolio-entry-db');
+    expect(replayedRow?.confirmedAt).toEqual(confirmedAt);
+    expect(replayedRow?.confirmedByUserId).toBe('user-portfolio-entry-db');
+    expect(replayedRow?.payload).toEqual(artifact.payload);
+  });
+
+  it('serializes concurrent confirmations and preserves one winning evidence pair', async () => {
+    const { service, repository } = makeService();
+    const { session } = await createSession(service);
+    const artifact = await service.createCriticalHandoff({
+      sessionId: session.id,
+      sourceContextRevision: session.contextRevision,
+      payload: makeCriticalHandoffProjection(),
+    });
+    await service.claimOwnership(session.id, 'user-portfolio-entry-db');
+    const confirm = (now: string) => service.confirmCriticalHandoff({
+      sessionId: session.id,
+      artifactId: artifact.id,
+      expectedArtifactVersion: artifact.artifactVersion,
+      expectedContextRevision: artifact.sourceContextRevision,
+      confirmingActorId: 'user-portfolio-entry-db',
+      now: new Date(now),
+    });
+
+    const [first, second] = await Promise.all([
+      confirm('2026-09-11T10:00:30.000Z'),
+      confirm('2026-09-11T10:00:40.000Z'),
+    ]);
+    const persisted = await repository.getLatestCriticalHandoff(session.id);
+
+    expect(first.artifact.confirmationState).toBe('confirmed');
+    expect(second.artifact.confirmationState).toBe('confirmed');
+    expect(first.artifact.confirmedAt).toEqual(second.artifact.confirmedAt);
+    expect(first.artifact.confirmedByUserId).toBe('user-portfolio-entry-db');
+    expect(second.artifact.confirmedByUserId).toBe('user-portfolio-entry-db');
+    expect(persisted.artifact?.confirmedAt).toEqual(first.artifact.confirmedAt);
+    expect(persisted.artifact?.confirmedByUserId).toBe('user-portfolio-entry-db');
+  });
+
+  it('rejects confirmation when context commits first and keeps confirmed evidence historical after later context changes', async () => {
+    const { service, repository } = makeService();
+    const { session } = await createSession(service);
+    const artifact = await service.createCriticalHandoff({
+      sessionId: session.id,
+      sourceContextRevision: session.contextRevision,
+      payload: makeCriticalHandoffProjection(),
+    });
+    await service.claimOwnership(session.id, 'user-portfolio-entry-db');
+    const command = {
+      sessionId: session.id,
+      artifactId: artifact.id,
+      expectedArtifactVersion: artifact.artifactVersion,
+      expectedContextRevision: artifact.sourceContextRevision,
+      confirmingActorId: 'user-portfolio-entry-db',
+    };
+
+    await service.advanceContextRevision(session.id, artifact.sourceContextRevision);
+    await expect(service.confirmCriticalHandoff(command)).rejects.toMatchObject({
+      code: 'PORTFOLIO_ENTRY_SESSION_CONFLICT',
+    });
+    await expect(repository.getLatestCriticalHandoff(session.id)).resolves.toMatchObject({
+      artifact: { confirmationState: 'provisional', confirmedAt: null, confirmedByUserId: null },
+      currentContextRevision: artifact.sourceContextRevision + 1,
+    });
+  });
+
+  it('linearizes a racing context revision against confirmation on the session row', async () => {
+    const { service, repository } = makeService();
+    const { session } = await createSession(service);
+    const artifact = await service.createCriticalHandoff({
+      sessionId: session.id,
+      sourceContextRevision: session.contextRevision,
+      payload: makeCriticalHandoffProjection(),
+    });
+    await service.claimOwnership(session.id, 'user-portfolio-entry-db');
+    const confirmation = service.confirmCriticalHandoff({
+      sessionId: session.id,
+      artifactId: artifact.id,
+      expectedArtifactVersion: artifact.artifactVersion,
+      expectedContextRevision: artifact.sourceContextRevision,
+      confirmingActorId: 'user-portfolio-entry-db',
+      now: new Date('2026-09-11T10:00:30.000Z'),
+    });
+    const contextAdvance = service.advanceContextRevision(session.id, artifact.sourceContextRevision);
+    const [confirmationResult, contextResult] = await Promise.allSettled([confirmation, contextAdvance]);
+    const snapshot = await repository.getLatestCriticalHandoff(session.id);
+
+    expect(contextResult.status).toBe('fulfilled');
+    expect(snapshot.currentContextRevision).toBe(artifact.sourceContextRevision + 1);
+    if (confirmationResult.status === 'fulfilled') {
+      expect(snapshot.artifact).toMatchObject({
+        confirmationState: 'confirmed',
+        confirmedByUserId: 'user-portfolio-entry-db',
+        confirmedAt: new Date('2026-09-11T10:00:30.000Z'),
+        sourceContextRevision: artifact.sourceContextRevision,
+      });
+    } else {
+      expect(confirmationResult.reason).toMatchObject({ code: 'PORTFOLIO_ENTRY_SESSION_CONFLICT' });
+      expect(snapshot.artifact).toMatchObject({
+        confirmationState: 'provisional',
+        confirmedAt: null,
+        confirmedByUserId: null,
+        sourceContextRevision: artifact.sourceContextRevision,
+      });
+    }
+  });
+
+  it('leaves a stored legacy confirmation untouched by Critical Handoff confirmation', async () => {
+    const { service, repository } = makeService();
+    const { session, handoff } = await createSessionWithHandoff(service);
+    await service.transitionLifecycle(session.id, 'AWAITING_CONFIRMATION');
+    await service.saveConfirmation({
+      sessionId: session.id,
+      handoffId: handoff.id,
+      status: 'PARTIALLY_CONFIRMED',
+      acceptedFields: ['understanding'],
+      confirmedByUserId: 'legacy-user',
+    });
+    const legacyBefore = await prisma.portfolioEntryConfirmation.findMany({ where: { sessionId: session.id } });
+    const critical = await service.createCriticalHandoff({
+      sessionId: session.id,
+      sourceContextRevision: session.contextRevision,
+      payload: makeCriticalHandoffProjection(),
+    });
+    await service.claimOwnership(session.id, 'user-portfolio-entry-db');
+    await service.confirmCriticalHandoff({
+      sessionId: session.id,
+      artifactId: critical.id,
+      expectedArtifactVersion: critical.artifactVersion,
+      expectedContextRevision: critical.sourceContextRevision,
+      confirmingActorId: 'user-portfolio-entry-db',
+    });
+
+    const legacyAfter = await prisma.portfolioEntryConfirmation.findMany({ where: { sessionId: session.id } });
+    const loaded = await repository.findSessionById(session.id);
+    expect(legacyAfter).toEqual(legacyBefore);
+    expect(loaded?.confirmation).toMatchObject({
+      id: legacyBefore[0]?.id,
+      acceptedFields: ['understanding'],
+      status: 'PARTIALLY_CONFIRMED',
+      confirmedByUserId: 'legacy-user',
+    });
+    expect(loaded?.latestHandoff?.id).toBe(handoff.id);
+    expect((await repository.getLatestCriticalHandoff(session.id)).artifact?.id).toBe(critical.id);
+  });
+
+  it('keeps a confirmation historical when a later context revision commits', async () => {
+    const { service, repository } = makeService();
+    const { session } = await createSession(service);
+    const artifact = await service.createCriticalHandoff({
+      sessionId: session.id,
+      sourceContextRevision: session.contextRevision,
+      payload: makeCriticalHandoffProjection(),
+    });
+    await service.claimOwnership(session.id, 'user-portfolio-entry-db');
+    const confirmedAt = new Date('2026-09-11T10:00:30.000Z');
+    await service.confirmCriticalHandoff({
+      sessionId: session.id,
+      artifactId: artifact.id,
+      expectedArtifactVersion: artifact.artifactVersion,
+      expectedContextRevision: artifact.sourceContextRevision,
+      confirmingActorId: 'user-portfolio-entry-db',
+      now: confirmedAt,
+    });
+
+    await service.advanceContextRevision(session.id, artifact.sourceContextRevision);
+    const latest = await service.getLatestCriticalHandoff(session.id);
+
+    expect(latest).toMatchObject({
+      artifact: {
+        id: artifact.id,
+        confirmationState: 'confirmed',
+        confirmedAt,
+        confirmedByUserId: 'user-portfolio-entry-db',
+        artifactVersion: artifact.artifactVersion,
+        sourceContextRevision: artifact.sourceContextRevision,
+        payload: artifact.payload,
+      },
+      isCurrent: false,
+    });
+  });
+
   it('does not invent a source turn for a session with no persisted analyzed turns', async () => {
     const { service } = makeService();
     const { session } = await createSession(service);

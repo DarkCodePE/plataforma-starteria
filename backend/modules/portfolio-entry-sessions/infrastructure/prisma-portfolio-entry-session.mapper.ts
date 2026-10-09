@@ -14,7 +14,7 @@ import {
 } from '../domain/portfolio-entry-confirmation.types';
 import {
   parseCriticalHandoffPayload,
-  type PortfolioEntryCriticalHandoffConfirmationState,
+  parseCriticalHandoffLifecycle,
   type PortfolioEntryCriticalHandoffRecord,
 } from '../domain/portfolio-entry-critical-handoff.types';
 import {
@@ -225,6 +225,8 @@ export type PrismaPortfolioEntryCriticalHandoffRow = {
   sourceTurnId: string | null;
   payload: Prisma.JsonValue;
   confirmationState: string;
+  confirmedAt: Date | null;
+  confirmedByUserId: string | null;
   createdAt: Date;
   updatedAt: Date;
 };
@@ -351,6 +353,11 @@ export class PrismaPortfolioEntrySessionMapper {
   }
 
   toCriticalHandoff(row: PrismaPortfolioEntryCriticalHandoffRow): PortfolioEntryCriticalHandoffRecord {
+    const lifecycle = parseCriticalHandoffLifecycle(
+      row.confirmationState,
+      row.confirmedAt,
+      row.confirmedByUserId,
+    );
     return {
       id: row.id,
       sessionId: row.sessionId,
@@ -359,11 +366,7 @@ export class PrismaPortfolioEntrySessionMapper {
       sourceContextRevision: row.sourceContextRevision,
       sourceTurnId: row.sourceTurnId ?? undefined,
       payload: parseCriticalHandoffPayload(row.schemaVersion, row.payload),
-      confirmationState: assertEnumValue(
-        ['provisional', 'confirmed'] as const satisfies readonly PortfolioEntryCriticalHandoffConfirmationState[],
-        row.confirmationState,
-        'criticalHandoff.confirmationState',
-      ),
+      ...lifecycle,
       createdAt: row.createdAt,
       updatedAt: row.updatedAt,
     };
@@ -515,6 +518,9 @@ export class PrismaPortfolioEntrySessionMapper {
       sourceContextRevision: handoff.sourceContextRevision,
       sourceTurnId: handoff.sourceTurnId ?? null,
       payload: toInputJson(parseCriticalHandoffPayload(handoff.schemaVersion, handoff.payload)),
+      confirmationState: handoff.confirmationState,
+      confirmedAt: handoff.confirmedAt,
+      confirmedByUserId: handoff.confirmedByUserId,
       createdAt: handoff.createdAt,
       updatedAt: handoff.updatedAt,
     };

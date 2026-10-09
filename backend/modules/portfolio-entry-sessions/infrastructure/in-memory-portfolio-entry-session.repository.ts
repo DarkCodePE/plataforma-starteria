@@ -1,8 +1,11 @@
 import { randomUUID } from 'node:crypto';
 import type { PortfolioEntryConfirmation } from '../domain/portfolio-entry-confirmation.types';
 import {
+  isCriticalHandoffCurrent,
   nextCriticalHandoffArtifactVersion,
   parseCriticalHandoffPayload,
+  parseCriticalHandoffLifecycle,
+  type ConfirmPortfolioEntryCriticalHandoffInput,
   PORTFOLIO_ENTRY_CRITICAL_HANDOFF_SCHEMA_VERSION,
   type CreatePortfolioEntryCriticalHandoffInput,
   type PortfolioEntryCriticalHandoffRecord,
@@ -152,7 +155,13 @@ export class InMemoryPortfolioEntrySessionRepository implements PortfolioEntrySe
       throw PortfolioEntrySessionError.conflict();
     }
 
-    const latestVersion = existing.at(-1)?.artifactVersion;
+    const latestArtifact = existing.at(-1);
+    if (latestArtifact) {
+      parseCriticalHandoffLifecycle(latestArtifact.confirmationState, latestArtifact.confirmedAt, latestArtifact.confirmedByUserId);
+    }
+    if (latestArtifact?.confirmationState === 'confirmed'
+      && input.sourceContextRevision <= latestArtifact.sourceContextRevision) throw PortfolioEntrySessionError.conflict();
+    const latestVersion = latestArtifact?.artifactVersion;
     const now = new Date();
     const stored: PortfolioEntryCriticalHandoffRecord = {
       id: randomUUID(),
@@ -163,11 +172,51 @@ export class InMemoryPortfolioEntrySessionRepository implements PortfolioEntrySe
       sourceTurnId: latestTurn?.id,
       payload: parseCriticalHandoffPayload(PORTFOLIO_ENTRY_CRITICAL_HANDOFF_SCHEMA_VERSION, input.payload),
       confirmationState: 'provisional',
+      confirmedAt: null,
+      confirmedByUserId: null,
       createdAt: now,
       updatedAt: now,
     };
     existing.push(stored);
     return cloneCriticalHandoff(stored);
+  }
+
+  async confirmCriticalHandoff(input: ConfirmPortfolioEntryCriticalHandoffInput) {
+    const session = this.sessions.get(input.sessionId);
+    const artifacts = this.criticalHandoffs.get(input.sessionId);
+    if (!session || !artifacts) throw PortfolioEntrySessionError.notFound();
+    if (session.ownershipState !== 'CLAIMED' || session.ownerUserId !== input.confirmingActorId) {
+      throw PortfolioEntrySessionError.unauthorized();
+    }
+
+    const latest = [...artifacts].sort((left, right) => right.artifactVersion - left.artifactVersion)[0] ?? null;
+    const artifact = artifacts.find((candidate) => candidate.id === input.artifactId) ?? null;
+    if (artifact) parseCriticalHandoffLifecycle(artifact.confirmationState, artifact.confirmedAt, artifact.confirmedByUserId);
+    if (!artifact
+      || !latest
+      || artifact.id !== latest.id
+      || artifact.artifactVersion !== input.expectedArtifactVersion
+      || artifact.sourceContextRevision !== input.expectedContextRevision
+      || session.contextRevision !== input.expectedContextRevision
+      || !isCriticalHandoffCurrent(artifact, latest, session.contextRevision)) {
+      throw PortfolioEntrySessionError.conflict();
+    }
+
+    if (artifact.confirmationState === 'confirmed') {
+      return { artifact: cloneCriticalHandoff(artifact), currentContextRevision: session.contextRevision };
+    }
+    if (artifact.confirmationState !== 'provisional') throw PortfolioEntrySessionError.conflict();
+
+    const confirmed = cloneCriticalHandoff({
+      ...artifact,
+      confirmationState: 'confirmed',
+      confirmedAt: input.confirmedAt,
+      confirmedByUserId: input.confirmingActorId,
+      updatedAt: input.confirmedAt,
+    });
+    const index = artifacts.findIndex((candidate) => candidate.id === input.artifactId);
+    artifacts[index] = confirmed;
+    return { artifact: cloneCriticalHandoff(confirmed), currentContextRevision: session.contextRevision };
   }
 
   async getLatestCriticalHandoff(sessionId: string) {
@@ -325,9 +374,11 @@ function cloneHandoff(handoff: PortfolioEntryHandoffRecord): PortfolioEntryHando
 }
 
 function cloneCriticalHandoff(handoff: PortfolioEntryCriticalHandoffRecord): PortfolioEntryCriticalHandoffRecord {
+  parseCriticalHandoffLifecycle(handoff.confirmationState, handoff.confirmedAt, handoff.confirmedByUserId);
   return {
     ...handoff,
     payload: cloneJson(handoff.payload),
+    confirmedAt: handoff.confirmedAt ? new Date(handoff.confirmedAt) : null,
     createdAt: new Date(handoff.createdAt),
     updatedAt: new Date(handoff.updatedAt),
   };

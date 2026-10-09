@@ -252,12 +252,14 @@ describe('Portfolio Entry Live Understanding session integration', () => {
     expect(criticalRead.body.data).toMatchObject({
       id: expect.any(String),
       version: 1,
-      schemaVersion: 'critical-handoff-projection-v0.1',
       sourceContextRevision: synthesizer.calls[1].contextRevision,
-      sourceTurnId: turns[0].id,
       state: 'current',
+      confirmationState: 'provisional',
+      confirmedAt: null,
       projection: projectionCalls[0].projection,
     });
+    expect(criticalRead.body.data).not.toHaveProperty('schemaVersion');
+    expect(criticalRead.body.data).not.toHaveProperty('sourceTurnId');
     expect(criticalRead.body.data.projection).not.toHaveProperty('starteria_path');
     expect(JSON.stringify(criticalRead.body.data)).not.toMatch(/recommended_approach|recommended_cta|provenance|situation_model|reasoning_metadata|provider|model/i);
     expect(legacyMaterialization.body.data.handoff.handoff).toHaveProperty('starteria_path');
@@ -547,6 +549,17 @@ describe('Portfolio Entry Live Understanding session integration', () => {
       .set('Idempotency-Key', 'critical-handoff-legacy-edit-claim')
       .send({ expectedRevision: legacy.body.data.revision })
       .expect(200);
+    const criticalConfirmation = await request(app)
+      .post(`${base}/sessions/${sessionId}/critical-handoff/${criticalBefore!.id}/confirmation`)
+      .set('Authorization', 'Bearer user-1')
+      .set('Idempotency-Key', 'critical-handoff-legacy-edit-confirm-artifact')
+      .send({
+        action: 'confirm',
+        expectedArtifactVersion: criticalBefore!.artifactVersion,
+        expectedContextRevision: criticalBefore!.sourceContextRevision,
+      })
+      .expect(200);
+    const confirmedCriticalBefore = (await repository.getLatestCriticalHandoff(sessionId)).artifact;
     const legacyCorrection = await request(app)
       .post(`${base}/sessions/${sessionId}/handoff/confirmation`)
       .set('Authorization', 'Bearer user-1')
@@ -569,9 +582,313 @@ describe('Portfolio Entry Live Understanding session integration', () => {
       .expect(200);
 
     const criticalAfter = (await repository.getLatestCriticalHandoff(sessionId)).artifact;
-    expect(criticalAfter?.id).toBe(criticalBefore?.id);
-    expect(criticalAfter?.payload).toEqual(criticalBefore?.payload);
-    expect(criticalAfter?.confirmationState).toBe('provisional');
+    expect(criticalAfter?.id).toBe(confirmedCriticalBefore?.id);
+    expect(criticalAfter?.payload).toEqual(confirmedCriticalBefore?.payload);
+    expect(criticalAfter?.confirmationState).toBe('confirmed');
+    expect(criticalAfter?.confirmedAt).toEqual(new Date(criticalConfirmation.body.data.confirmedAt));
+    expect(criticalAfter?.confirmedByUserId).toBe('user-1');
+  });
+
+  it('confirms only the current Critical Handoff and binds the state change without touching its projection or legacy confirmation', async () => {
+    const { app, repository } = makeApp(new FakeSynthesizer(() => supportedSynthesis()));
+    const fixture = await createCriticalHandoffReview(app);
+    const claimed = await claimCriticalHandoffReview(app, fixture);
+    const before = (await repository.getLatestCriticalHandoff(fixture.sessionId)).artifact!;
+
+    expect(before.confirmationState).toBe('provisional');
+    expect(claimed.body.data.revision).toBe(fixture.sessionRevision + 1);
+
+    const confirmed = await request(app)
+      .post(`${base}/sessions/${fixture.sessionId}/critical-handoff/${fixture.artifact.id}/confirmation`)
+      .set('Authorization', 'Bearer user-1')
+      .set('Idempotency-Key', 'critical-confirm-current')
+      .send({
+        action: 'confirm',
+        expectedArtifactVersion: fixture.artifact.version,
+        expectedContextRevision: fixture.artifact.sourceContextRevision,
+      })
+      .expect(200);
+
+    const after = (await repository.getLatestCriticalHandoff(fixture.sessionId)).artifact!;
+    const session = await repository.findSessionById(fixture.sessionId);
+    expect(confirmed.body.data).toMatchObject({
+      id: before.id,
+      version: before.artifactVersion,
+      sourceContextRevision: before.sourceContextRevision,
+      state: 'current',
+      confirmationState: 'confirmed',
+      confirmedAt: expect.any(String),
+      projection: before.payload,
+    });
+    expect(after).toMatchObject({
+      id: before.id,
+      artifactVersion: before.artifactVersion,
+      sessionId: fixture.sessionId,
+      sourceContextRevision: fixture.artifact.sourceContextRevision,
+      confirmationState: 'confirmed',
+      confirmedAt: new Date(confirmed.body.data.confirmedAt),
+      confirmedByUserId: 'user-1',
+      payload: before.payload,
+    });
+    expect(session).toMatchObject({ ownerUserId: 'user-1', contextRevision: before.sourceContextRevision });
+    expect(session?.confirmation).toBeNull();
+    expect(session?.lifecycleStatus).toBe('HANDOFF_READY');
+    expect(confirmed.body.data).not.toHaveProperty('acceptedFields');
+    expect(confirmed.body.data).not.toHaveProperty('correctedFields');
+    expect(confirmed.body.data).not.toHaveProperty('rejectedFields');
+    expect(confirmed.body.data).not.toHaveProperty('confirmedByUserId');
+    expect(confirmed.body.data).not.toHaveProperty('destinationRoute');
+    expect(JSON.stringify(confirmed.body)).not.toMatch(/provenance|reasoning_metadata|provider|model|sourceTurnId|starteriaPath/i);
+  });
+
+  it('rejects a Critical Handoff after its source context revision changes and leaves it provisional', async () => {
+    const { app, repository } = makeApp(new FakeSynthesizer(() => supportedSynthesis()), new CorrectionTestAgentAdapter([false, false]));
+    const created = await createCorrectionSession(app);
+    const initial = await postInitialCorrectionTurn(app, created);
+    const checkpoint = await request(app)
+      .post(`${base}/sessions/${created.sessionId}/guided-exploration`)
+      .set('X-Starteria-Entry-Token', created.token)
+      .set('Idempotency-Key', 'critical-confirm-stale-checkpoint')
+      .send({ expectedRevision: initial.body.data.revision, choice: 'provisional_route' })
+      .expect(200);
+    const handoff = await request(app)
+      .post(`${base}/sessions/${created.sessionId}/handoff`)
+      .set('X-Starteria-Entry-Token', created.token)
+      .set('Idempotency-Key', 'critical-confirm-stale-materialize')
+      .send({ expectedRevision: checkpoint.body.data.revision })
+      .expect(200);
+    const artifact = (await request(app)
+      .get(`${base}/sessions/${created.sessionId}/critical-handoff`)
+      .set('X-Starteria-Entry-Token', created.token)
+      .expect(200)).body.data;
+    const corrected = await request(app)
+      .post(`${base}/sessions/${created.sessionId}/messages`)
+      .set('X-Starteria-Entry-Token', created.token)
+      .set('Idempotency-Key', 'critical-confirm-stale-context-change')
+      .send({ expectedRevision: handoff.body.data.revision, intent: 'correction', message: 'La capacidad del equipo limita el calendario.' })
+      .expect(200);
+    const claimed = await request(app)
+      .post(`${base}/sessions/${created.sessionId}/claim`)
+      .set('Authorization', 'Bearer user-1')
+      .set('X-Starteria-Entry-Token', created.token)
+      .set('Idempotency-Key', 'critical-confirm-stale-claim')
+      .send({ expectedRevision: corrected.body.data.revision })
+      .expect(200);
+
+    await request(app)
+      .post(`${base}/sessions/${created.sessionId}/critical-handoff/${artifact.id}/confirmation`)
+      .set('Authorization', 'Bearer user-1')
+      .set('Idempotency-Key', 'critical-confirm-stale-attempt')
+      .send({ action: 'confirm', expectedArtifactVersion: artifact.version, expectedContextRevision: artifact.sourceContextRevision })
+      .expect(409);
+
+    expect(claimed.body.data.revision).toBe(corrected.body.data.revision + 1);
+    expect((await repository.getLatestCriticalHandoff(created.sessionId)).artifact).toMatchObject({
+      id: artifact.id,
+      confirmationState: 'provisional',
+      payload: artifact.projection,
+    });
+    await expect(repository.readContextRevision(created.sessionId)).resolves.toBe(artifact.sourceContextRevision + 1);
+  });
+
+  it('rejects an older artifact version after a newer Critical Handoff has become latest', async () => {
+    const { app, repository } = makeApp(new FakeSynthesizer(() => supportedSynthesis()), new CorrectionTestAgentAdapter([false, false]));
+    const created = await createCorrectionSession(app);
+    const initial = await postInitialCorrectionTurn(app, created);
+    const firstCheckpoint = await request(app)
+      .post(`${base}/sessions/${created.sessionId}/guided-exploration`)
+      .set('X-Starteria-Entry-Token', created.token)
+      .set('Idempotency-Key', 'critical-confirm-older-checkpoint-1')
+      .send({ expectedRevision: initial.body.data.revision, choice: 'provisional_route' })
+      .expect(200);
+    const firstHandoff = await request(app)
+      .post(`${base}/sessions/${created.sessionId}/handoff`)
+      .set('X-Starteria-Entry-Token', created.token)
+      .set('Idempotency-Key', 'critical-confirm-older-materialize-1')
+      .send({ expectedRevision: firstCheckpoint.body.data.revision })
+      .expect(200);
+    const firstArtifact = (await request(app)
+      .get(`${base}/sessions/${created.sessionId}/critical-handoff`)
+      .set('X-Starteria-Entry-Token', created.token)
+      .expect(200)).body.data;
+    const corrected = await request(app)
+      .post(`${base}/sessions/${created.sessionId}/messages`)
+      .set('X-Starteria-Entry-Token', created.token)
+      .set('Idempotency-Key', 'critical-confirm-older-context-change')
+      .send({ expectedRevision: firstHandoff.body.data.revision, intent: 'correction', message: 'La dependencia externa cambia la secuencia.' })
+      .expect(200);
+    const secondCheckpoint = await request(app)
+      .post(`${base}/sessions/${created.sessionId}/guided-exploration`)
+      .set('X-Starteria-Entry-Token', created.token)
+      .set('Idempotency-Key', 'critical-confirm-older-checkpoint-2')
+      .send({ expectedRevision: corrected.body.data.revision, choice: 'provisional_route' })
+      .expect(200);
+    await request(app)
+      .post(`${base}/sessions/${created.sessionId}/handoff`)
+      .set('X-Starteria-Entry-Token', created.token)
+      .set('Idempotency-Key', 'critical-confirm-older-materialize-2')
+      .send({ expectedRevision: secondCheckpoint.body.data.revision })
+      .expect(200);
+    const latest = (await request(app)
+      .get(`${base}/sessions/${created.sessionId}/critical-handoff`)
+      .set('X-Starteria-Entry-Token', created.token)
+      .expect(200)).body.data;
+    const session = await repository.findSessionById(created.sessionId);
+    const claimed = await request(app)
+      .post(`${base}/sessions/${created.sessionId}/claim`)
+      .set('Authorization', 'Bearer user-1')
+      .set('X-Starteria-Entry-Token', created.token)
+      .set('Idempotency-Key', 'critical-confirm-older-claim')
+      .send({ expectedRevision: session!.revision })
+      .expect(200);
+
+    expect(latest.version).toBe(firstArtifact.version + 1);
+    await request(app)
+      .post(`${base}/sessions/${created.sessionId}/critical-handoff/${firstArtifact.id}/confirmation`)
+      .set('Authorization', 'Bearer user-1')
+      .set('Idempotency-Key', 'critical-confirm-older-attempt')
+      .send({ action: 'confirm', expectedArtifactVersion: firstArtifact.version, expectedContextRevision: firstArtifact.sourceContextRevision })
+      .expect(409);
+    expect(claimed.body.data.ownership.state).toBe('CLAIMED');
+    expect((await repository.getLatestCriticalHandoff(created.sessionId)).artifact).toMatchObject({
+      id: latest.id,
+      artifactVersion: latest.version,
+      confirmationState: 'provisional',
+    });
+  });
+
+  it('requires the claimed owner and rejects semantic fields on the dedicated confirmation API', async () => {
+    const { app, repository } = makeApp(new FakeSynthesizer(() => supportedSynthesis()));
+    const fixture = await createCriticalHandoffReview(app);
+    const path = `${base}/sessions/${fixture.sessionId}/critical-handoff/${fixture.artifact.id}/confirmation`;
+    const body = { action: 'confirm', expectedArtifactVersion: fixture.artifact.version, expectedContextRevision: fixture.artifact.sourceContextRevision };
+
+    await request(app).post(path).set('Idempotency-Key', 'critical-confirm-no-auth').send(body).expect(401);
+    await request(app).post(path).set('Authorization', 'Bearer user-1').set('X-Starteria-Entry-Token', fixture.token)
+      .set('Idempotency-Key', 'critical-confirm-unclaimed').send(body).expect(403);
+    const afterClaim = await claimCriticalHandoffReview(app, fixture);
+    expect(afterClaim.body.data.ownership.state).toBe('CLAIMED');
+    expect((await repository.getLatestCriticalHandoff(fixture.sessionId)).artifact?.confirmationState).toBe('provisional');
+
+    await request(app).post(path).set('Authorization', 'Bearer user-2').set('Idempotency-Key', 'critical-confirm-wrong-owner')
+      .send(body).expect(403);
+    expect((await repository.getLatestCriticalHandoff(fixture.sessionId)).artifact?.confirmationState).toBe('provisional');
+
+    await request(app).post(path).set('Authorization', 'Bearer user-1').set('Idempotency-Key', 'critical-confirm-with-legacy-fields')
+      .send({ ...body, acceptedFields: ['final_reading'] }).expect(400);
+    await request(app).post(path).set('Authorization', 'Bearer user-1').set('Idempotency-Key', 'critical-confirm-with-forged-evidence')
+      .send({ ...body, confirmedAt: new Date().toISOString(), confirmedByUserId: 'user-1' }).expect(400);
+    expect((await repository.getLatestCriticalHandoff(fixture.sessionId)).artifact?.confirmationState).toBe('provisional');
+  });
+
+  it('makes same-artifact confirmation replay idempotent and prevents a second version from being confirmed', async () => {
+    const { app, repository } = makeApp(new FakeSynthesizer(() => supportedSynthesis()));
+    const fixture = await createCriticalHandoffReview(app);
+    await claimCriticalHandoffReview(app, fixture);
+    const path = `${base}/sessions/${fixture.sessionId}/critical-handoff/${fixture.artifact.id}/confirmation`;
+    const body = { action: 'confirm', expectedArtifactVersion: fixture.artifact.version, expectedContextRevision: fixture.artifact.sourceContextRevision };
+    const first = await request(app).post(path).set('Authorization', 'Bearer user-1').set('Idempotency-Key', 'critical-confirm-replay')
+      .send(body).expect(200);
+    const replay = await request(app).post(path).set('Authorization', 'Bearer user-1').set('Idempotency-Key', 'critical-confirm-replay')
+      .send(body).expect(200);
+    const anotherDelivery = await request(app).post(path).set('Authorization', 'Bearer user-1').set('Idempotency-Key', 'critical-confirm-already-done')
+      .send(body).expect(200);
+
+    expect(replay.body).toEqual(first.body);
+    expect(anotherDelivery.body.data).toMatchObject({ id: fixture.artifact.id, version: fixture.artifact.version, confirmationState: 'confirmed' });
+    expect(anotherDelivery.body.data.confirmedAt).toBe(first.body.data.confirmedAt);
+    expect((await repository.getLatestCriticalHandoff(fixture.sessionId)).artifact).toMatchObject({
+      id: fixture.artifact.id,
+      artifactVersion: fixture.artifact.version,
+      confirmationState: 'confirmed',
+    });
+    expect((await repository.findSessionById(fixture.sessionId))?.confirmation).toBeNull();
+  });
+
+  it('serializes concurrent confirmations so both deliveries resolve to the same current artifact', async () => {
+    const { app, repository } = makeApp(new FakeSynthesizer(() => supportedSynthesis()));
+    const fixture = await createCriticalHandoffReview(app);
+    await claimCriticalHandoffReview(app, fixture);
+    const path = `${base}/sessions/${fixture.sessionId}/critical-handoff/${fixture.artifact.id}/confirmation`;
+    const body = { action: 'confirm', expectedArtifactVersion: fixture.artifact.version, expectedContextRevision: fixture.artifact.sourceContextRevision };
+
+    const [first, second] = await Promise.all([
+      request(app).post(path).set('Authorization', 'Bearer user-1').set('Idempotency-Key', 'critical-confirm-concurrent-1').send(body),
+      request(app).post(path).set('Authorization', 'Bearer user-1').set('Idempotency-Key', 'critical-confirm-concurrent-2').send(body),
+    ]);
+    const stored = (await repository.getLatestCriticalHandoff(fixture.sessionId)).artifact;
+
+    expect([first.status, second.status]).toEqual([200, 200]);
+    expect(first.body.data).toMatchObject({ id: fixture.artifact.id, version: fixture.artifact.version, confirmationState: 'confirmed' });
+    expect(second.body.data).toMatchObject({ id: fixture.artifact.id, version: fixture.artifact.version, confirmationState: 'confirmed' });
+    expect(first.body.data.projection).toEqual(fixture.artifact.projection);
+    expect(second.body.data.projection).toEqual(fixture.artifact.projection);
+    expect(second.body.data.confirmedAt).toBe(first.body.data.confirmedAt);
+    expect(stored).toMatchObject({ id: fixture.artifact.id, artifactVersion: fixture.artifact.version, confirmationState: 'confirmed' });
+    expect((await repository.findSessionById(fixture.sessionId))?.confirmation).toBeNull();
+  });
+
+  it('does not reopen a confirmed Critical Handoff when a correction is submitted', async () => {
+    const { app, repository } = makeApp(new FakeSynthesizer(() => supportedSynthesis()));
+    const fixture = await createCriticalHandoffReview(app);
+    await claimCriticalHandoffReview(app, fixture);
+    await request(app)
+      .post(`${base}/sessions/${fixture.sessionId}/critical-handoff/${fixture.artifact.id}/confirmation`)
+      .set('Authorization', 'Bearer user-1')
+      .set('Idempotency-Key', 'critical-confirm-before-correction')
+      .send({ action: 'confirm', expectedArtifactVersion: fixture.artifact.version, expectedContextRevision: fixture.artifact.sourceContextRevision })
+      .expect(200);
+    const session = await repository.findSessionById(fixture.sessionId);
+
+    await request(app)
+      .post(`${base}/sessions/${fixture.sessionId}/messages`)
+      .set('Authorization', 'Bearer user-1')
+      .set('Idempotency-Key', 'critical-correction-after-confirm')
+      .send({ expectedRevision: session!.revision, intent: 'correction', message: 'Quiero cambiar esta lectura confirmada.' })
+      .expect(409);
+
+    expect((await repository.findSessionById(fixture.sessionId))?.revision).toBe(session!.revision);
+    expect((await repository.getLatestCriticalHandoff(fixture.sessionId)).artifact).toMatchObject({
+      id: fixture.artifact.id,
+      confirmationState: 'confirmed',
+      payload: fixture.artifact.projection,
+    });
+  });
+
+  it('allows later answer context to advance and leaves confirmation evidence historical', async () => {
+    const { app, repository } = makeApp(new FakeSynthesizer(() => supportedSynthesis()));
+    const fixture = await createCriticalHandoffReview(app);
+    await claimCriticalHandoffReview(app, fixture);
+    await request(app)
+      .post(`${base}/sessions/${fixture.sessionId}/critical-handoff/${fixture.artifact.id}/confirmation`)
+      .set('Authorization', 'Bearer user-1')
+      .set('Idempotency-Key', 'critical-confirm-before-later-answer')
+      .send({ action: 'confirm', expectedArtifactVersion: fixture.artifact.version, expectedContextRevision: fixture.artifact.sourceContextRevision })
+      .expect(200);
+    const before = (await repository.getLatestCriticalHandoff(fixture.sessionId)).artifact!;
+    const session = await repository.findSessionById(fixture.sessionId);
+
+    const answer = await request(app)
+      .post(`${base}/sessions/${fixture.sessionId}/messages`)
+      .set('Authorization', 'Bearer user-1')
+      .set('Idempotency-Key', 'critical-confirm-later-answer')
+      .send({ expectedRevision: session!.revision, intent: 'answer', message: 'Una señal nueva estará disponible después del comité.' })
+      .expect(200);
+
+    const after = (await repository.getLatestCriticalHandoff(fixture.sessionId)).artifact!;
+    expect(answer.body.data.id).toBe(fixture.sessionId);
+    expect((await repository.findSessionById(fixture.sessionId))?.contextRevision).toBe(before.sourceContextRevision + 1);
+    expect(after).toMatchObject({
+      id: before.id,
+      confirmationState: 'confirmed',
+      confirmedAt: before.confirmedAt,
+      confirmedByUserId: before.confirmedByUserId,
+      sourceContextRevision: before.sourceContextRevision,
+      artifactVersion: before.artifactVersion,
+      payload: before.payload,
+    });
+    const staleSnapshot = await repository.getLatestCriticalHandoff(fixture.sessionId);
+    expect(staleSnapshot.currentContextRevision).not.toBe(staleSnapshot.artifact?.sourceContextRevision);
   });
 
   it('never serializes KAN-114 internal fields or metadata in the client DTO', async () => {
@@ -941,6 +1258,55 @@ describe('Portfolio Entry Live Understanding correction loop', () => {
 });
 
 type CorrectionSession = { sessionId: string; token: string };
+
+type CriticalHandoffReviewFixture = {
+  sessionId: string;
+  token: string;
+  sessionRevision: number;
+  artifact: {
+    id: string;
+    version: number;
+    sourceContextRevision: number;
+    projection: CriticalHandoffProjection;
+  };
+};
+
+async function createCriticalHandoffReview(app: express.Express): Promise<CriticalHandoffReviewFixture> {
+  const turn = await submitTurn(app);
+  const sessionId = turn.body.data.id as string;
+  const checkpoint = await request(app)
+    .post(`${base}/sessions/${sessionId}/guided-exploration`)
+    .set('X-Starteria-Entry-Token', turn.token)
+    .set('Idempotency-Key', `critical-confirm-checkpoint-${sessionId}`)
+    .send({ expectedRevision: turn.body.data.revision, choice: 'provisional_route' })
+    .expect(200);
+  const handoff = await request(app)
+    .post(`${base}/sessions/${sessionId}/handoff`)
+    .set('X-Starteria-Entry-Token', turn.token)
+    .set('Idempotency-Key', `critical-confirm-materialize-${sessionId}`)
+    .send({ expectedRevision: checkpoint.body.data.revision })
+    .expect(200);
+  const response = await request(app)
+    .get(`${base}/sessions/${sessionId}/critical-handoff`)
+    .set('X-Starteria-Entry-Token', turn.token)
+    .expect(200);
+  return {
+    sessionId,
+    token: turn.token,
+    sessionRevision: handoff.body.data.revision,
+    artifact: response.body.data,
+  };
+}
+
+async function claimCriticalHandoffReview(app: express.Express, fixture: CriticalHandoffReviewFixture) {
+  return request(app)
+    .post(`${base}/sessions/${fixture.sessionId}/claim`)
+    .set('Authorization', 'Bearer user-1')
+    .set('X-Starteria-Entry-Token', fixture.token)
+    .set('Idempotency-Key', `critical-confirm-claim-${fixture.sessionId}`)
+    .send({ expectedRevision: fixture.sessionRevision })
+    .expect(200);
+}
 
 async function createCorrectionSession(app: express.Express): Promise<CorrectionSession> {
   const created = await request(app).post(`${base}/sessions`).send({}).expect(201);
