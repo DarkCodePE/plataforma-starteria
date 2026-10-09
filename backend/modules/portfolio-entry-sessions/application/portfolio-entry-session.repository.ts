@@ -5,6 +5,11 @@ import type {
   PortfolioEntryTurn,
 } from '../domain/portfolio-entry-session.types';
 import type { PortfolioEntryModelExecutionRecord } from '../observability/portfolio-entry-execution-metadata';
+import type {
+  CreatePortfolioEntryCriticalHandoffInput,
+  PortfolioEntryCriticalHandoffLatestSnapshot,
+  PortfolioEntryCriticalHandoffRecord,
+} from '../domain/portfolio-entry-critical-handoff.types';
 
 export type CreatePortfolioEntrySessionInput = PortfolioEntrySession;
 
@@ -29,6 +34,10 @@ export interface PortfolioEntrySessionRepository {
   appendTurn(turn: PortfolioEntryTurn, session: PortfolioEntrySession, expectedRevision: number): Promise<PortfolioEntryTurn>;
   appendModelExecution(execution: PortfolioEntryModelExecutionRecord): Promise<PortfolioEntryModelExecutionRecord>;
   saveHandoff(handoff: PortfolioEntryHandoffRecord, session: PortfolioEntrySession, expectedRevision: number): Promise<PortfolioEntryHandoffRecord>;
+  createCriticalHandoff(input: CreatePortfolioEntryCriticalHandoffInput): Promise<PortfolioEntryCriticalHandoffRecord>;
+  getLatestCriticalHandoff(sessionId: string): Promise<PortfolioEntryCriticalHandoffLatestSnapshot>;
+  readContextRevision(sessionId: string): Promise<number>;
+  advanceContextRevision(sessionId: string, expectedContextRevision: number, now: Date): Promise<number>;
   saveConfirmation(confirmation: PortfolioEntryConfirmation, session: PortfolioEntrySession, expectedRevision: number): Promise<PortfolioEntryConfirmation>;
   claimOwnership(input: ClaimPortfolioEntrySessionOwnershipInput): Promise<PortfolioEntrySession>;
   touchActivity(sessionId: string, now: Date, expectedRevision: number): Promise<PortfolioEntrySession>;

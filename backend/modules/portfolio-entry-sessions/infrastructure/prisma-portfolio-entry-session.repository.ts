@@ -1,5 +1,13 @@
+import { randomUUID } from 'node:crypto';
 import { Prisma, type PrismaClient } from '@prisma/client';
 import { canClaimPortfolioEntrySession } from '../domain/portfolio-entry-session-ownership';
+import {
+  nextCriticalHandoffArtifactVersion,
+  parseCriticalHandoffPayload,
+  PORTFOLIO_ENTRY_CRITICAL_HANDOFF_SCHEMA_VERSION,
+  type CreatePortfolioEntryCriticalHandoffInput,
+  type PortfolioEntryCriticalHandoffRecord,
+} from '../domain/portfolio-entry-critical-handoff.types';
 import type { PortfolioEntryConfirmation } from '../domain/portfolio-entry-confirmation.types';
 import type {
   PortfolioEntryHandoffRecord,
@@ -17,6 +25,7 @@ import type { PortfolioEntryModelExecutionRecord } from '../observability/portfo
 import {
   PrismaPortfolioEntrySessionMapper,
   type PrismaPortfolioEntryConfirmationRow,
+  type PrismaPortfolioEntryCriticalHandoffRow,
   type PrismaPortfolioEntryHandoffRow,
   type PrismaPortfolioEntrySessionRow,
 } from './prisma-portfolio-entry-session.mapper';
@@ -129,6 +138,116 @@ export class PrismaPortfolioEntrySessionRepository implements PortfolioEntrySess
         });
         return this.mapper.toHandoff(row);
       });
+    } catch (err) {
+      throw mapPrismaConflict(err);
+    }
+  }
+
+  async createCriticalHandoff(
+    input: CreatePortfolioEntryCriticalHandoffInput,
+  ): Promise<PortfolioEntryCriticalHandoffRecord> {
+    assertContextRevision(input.sourceContextRevision);
+    const payload = parseCriticalHandoffPayload(PORTFOLIO_ENTRY_CRITICAL_HANDOFF_SCHEMA_VERSION, input.payload);
+    try {
+      const row = await this.prisma.$transaction(async (tx) => {
+        const session = await tx.portfolioEntrySession.findUnique({
+          where: { id: input.sessionId },
+          select: { contextRevision: true },
+        });
+        if (!session) throw PortfolioEntrySessionError.notFound();
+        if (session.contextRevision !== input.sourceContextRevision) throw PortfolioEntrySessionError.conflict();
+
+        const latestTurn = await tx.portfolioEntryTurn.findFirst({
+          where: { sessionId: input.sessionId },
+          orderBy: [{ turnIndex: 'desc' }, { createdAt: 'desc' }],
+          select: { id: true },
+        });
+        let sourceTurnId = latestTurn?.id ?? null;
+        if (input.sourceTurnId) {
+          await this.assertTurnBelongsToSession(tx, input.sourceTurnId, input.sessionId);
+          if (latestTurn?.id !== input.sourceTurnId) throw PortfolioEntrySessionError.conflict();
+          sourceTurnId = input.sourceTurnId;
+        }
+
+        const latest = await tx.portfolioEntryCriticalHandoff.findFirst({
+          where: { sessionId: input.sessionId },
+          orderBy: { artifactVersion: 'desc' },
+          select: { artifactVersion: true },
+        });
+        const now = new Date();
+        const artifact: PortfolioEntryCriticalHandoffRecord = {
+          id: randomUUID(),
+          sessionId: input.sessionId,
+          artifactVersion: nextCriticalHandoffArtifactVersion(latest?.artifactVersion),
+          schemaVersion: PORTFOLIO_ENTRY_CRITICAL_HANDOFF_SCHEMA_VERSION,
+          sourceContextRevision: input.sourceContextRevision,
+          sourceTurnId: sourceTurnId ?? undefined,
+          payload,
+          confirmationState: 'provisional',
+          createdAt: now,
+          updatedAt: now,
+        };
+        return tx.portfolioEntryCriticalHandoff.create({
+          data: this.mapper.criticalHandoffCreateData(artifact),
+        });
+      }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+      return this.mapper.toCriticalHandoff(row as PrismaPortfolioEntryCriticalHandoffRow);
+    } catch (err) {
+      throw mapPrismaConflict(err);
+    }
+  }
+
+  async getLatestCriticalHandoff(sessionId: string) {
+    return this.prisma.$transaction(async (tx) => {
+      const session = await tx.portfolioEntrySession.findUnique({
+        where: { id: sessionId },
+        select: { contextRevision: true },
+      });
+      if (!session) throw PortfolioEntrySessionError.notFound();
+      const row = await tx.portfolioEntryCriticalHandoff.findFirst({
+        where: { sessionId },
+        orderBy: { artifactVersion: 'desc' },
+      });
+      return {
+        artifact: row ? this.mapper.toCriticalHandoff(row as PrismaPortfolioEntryCriticalHandoffRow) : null,
+        currentContextRevision: session.contextRevision,
+      };
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead });
+  }
+
+  async readContextRevision(sessionId: string): Promise<number> {
+    const session = await this.prisma.portfolioEntrySession.findUnique({
+      where: { id: sessionId },
+      select: { contextRevision: true },
+    });
+    if (!session) throw PortfolioEntrySessionError.notFound();
+    return session.contextRevision;
+  }
+
+  async advanceContextRevision(
+    sessionId: string,
+    expectedContextRevision: number,
+    now: Date,
+  ): Promise<number> {
+    assertContextRevision(expectedContextRevision);
+    try {
+      return await this.prisma.$transaction(async (tx) => {
+        const updated = await tx.portfolioEntrySession.updateMany({
+          where: { id: sessionId, contextRevision: expectedContextRevision },
+          data: { contextRevision: { increment: 1 }, updatedAt: now },
+        });
+        if (updated.count !== 1) {
+          const existing = await tx.portfolioEntrySession.findUnique({ where: { id: sessionId }, select: { id: true } });
+          if (!existing) throw PortfolioEntrySessionError.notFound();
+          throw PortfolioEntrySessionError.conflict();
+        }
+        const updatedSession = await tx.portfolioEntrySession.findUnique({
+          where: { id: sessionId },
+          select: { contextRevision: true },
+        });
+        if (!updatedSession) throw PortfolioEntrySessionError.notFound();
+        return updatedSession.contextRevision;
+      }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
     } catch (err) {
       throw mapPrismaConflict(err);
     }
@@ -327,11 +446,17 @@ function assertNextRevision(session: PortfolioEntrySession, expectedRevision: nu
   }
 }
 
+function assertContextRevision(contextRevision: number): void {
+  if (!Number.isSafeInteger(contextRevision) || contextRevision < 0 || contextRevision >= 2_147_483_647) {
+    throw PortfolioEntrySessionError.conflict();
+  }
+}
+
 function mapPrismaConflict(err: unknown): never {
   if (err instanceof PortfolioEntrySessionError) throw err;
   if (
     err instanceof Prisma.PrismaClientKnownRequestError &&
-    (err.code === 'P2002' || err.code === 'P2003')
+    (err.code === 'P2002' || err.code === 'P2003' || err.code === 'P2034')
   ) {
     throw PortfolioEntrySessionError.conflict();
   }

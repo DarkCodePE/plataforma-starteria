@@ -1,4 +1,5 @@
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
+import type { CriticalHandoffProjection } from '../../portfolio-entry/presentation/critical-handoff-projection';
 import type { PortfolioEntryHandoffV2 } from '../../portfolio-entry-runtime/domain/handoff.schema';
 import type { SessionContext, SessionTurnTrace } from '../../portfolio-entry-runtime/domain/session.types';
 import type {
@@ -7,6 +8,11 @@ import type {
   PortfolioEntryConfirmationStatus,
 } from '../domain/portfolio-entry-confirmation.types';
 import { createPortfolioEntryExpiry } from '../domain/portfolio-entry-session-expiry';
+import {
+  isCriticalHandoffCurrent,
+  parseCriticalHandoffPayload,
+  PORTFOLIO_ENTRY_CRITICAL_HANDOFF_SCHEMA_VERSION,
+} from '../domain/portfolio-entry-critical-handoff.types';
 import {
   canTransitionPortfolioEntrySession,
   type PortfolioEntryExecutionStatus,
@@ -79,6 +85,13 @@ export type SaveHandoffInput = {
   now?: Date;
 };
 
+export type CreateCriticalHandoffServiceInput = {
+  sessionId: string;
+  sourceContextRevision: number;
+  sourceTurnId?: string;
+  payload: CriticalHandoffProjection;
+};
+
 export type SaveConfirmationInput = {
   sessionId: string;
   handoffId: string;
@@ -132,6 +145,7 @@ export class PortfolioEntrySessionService {
       confirmation: null,
       versioning: this.config.versioning,
       revision: 0,
+      contextRevision: 0,
       createdAt: now,
       updatedAt: now,
       lastActivityAt: now,
@@ -380,6 +394,31 @@ export class PortfolioEntrySessionService {
       id: input.id ?? randomUUID(),
       createdAt: input.createdAt ?? this.now(),
     });
+  }
+
+  async createCriticalHandoff(input: CreateCriticalHandoffServiceInput) {
+    const payload = parseCriticalHandoffPayload(
+      PORTFOLIO_ENTRY_CRITICAL_HANDOFF_SCHEMA_VERSION,
+      input.payload,
+    );
+    return this.repository.createCriticalHandoff({ ...input, payload });
+  }
+
+  async getLatestCriticalHandoff(sessionId: string) {
+    const { artifact, currentContextRevision } = await this.repository.getLatestCriticalHandoff(sessionId);
+    if (!artifact) return null;
+    return {
+      artifact,
+      isCurrent: isCriticalHandoffCurrent(artifact, artifact, currentContextRevision),
+    };
+  }
+
+  async readContextRevision(sessionId: string): Promise<number> {
+    return this.repository.readContextRevision(sessionId);
+  }
+
+  async advanceContextRevision(sessionId: string, expectedContextRevision: number): Promise<number> {
+    return this.repository.advanceContextRevision(sessionId, expectedContextRevision, this.now());
   }
 
   async saveHandoff(input: SaveHandoffInput): Promise<PortfolioEntryHandoffRecord> {

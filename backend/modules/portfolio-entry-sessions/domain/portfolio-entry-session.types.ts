@@ -134,6 +134,7 @@ export type PortfolioEntrySession = {
   confirmation?: PortfolioEntryConfirmation | null;
   versioning: PortfolioEntryVersioning;
   revision: number;
+  contextRevision: number;
   createdAt: Date;
   updatedAt: Date;
   lastActivityAt: Date;

@@ -1,4 +1,12 @@
+import { randomUUID } from 'node:crypto';
 import type { PortfolioEntryConfirmation } from '../domain/portfolio-entry-confirmation.types';
+import {
+  nextCriticalHandoffArtifactVersion,
+  parseCriticalHandoffPayload,
+  PORTFOLIO_ENTRY_CRITICAL_HANDOFF_SCHEMA_VERSION,
+  type CreatePortfolioEntryCriticalHandoffInput,
+  type PortfolioEntryCriticalHandoffRecord,
+} from '../domain/portfolio-entry-critical-handoff.types';
 import { canClaimPortfolioEntrySession } from '../domain/portfolio-entry-session-ownership';
 import type {
   PortfolioEntryHandoffRecord,
@@ -19,6 +27,7 @@ export class InMemoryPortfolioEntrySessionRepository implements PortfolioEntrySe
   private readonly turns = new Map<string, PortfolioEntryTurn[]>();
   private readonly executions = new Map<string, PortfolioEntryModelExecutionRecord[]>();
   private readonly handoffs = new Map<string, PortfolioEntryHandoffRecord[]>();
+  private readonly criticalHandoffs = new Map<string, PortfolioEntryCriticalHandoffRecord[]>();
   private readonly confirmations = new Map<string, PortfolioEntryConfirmation[]>();
 
   async createSession(input: CreatePortfolioEntrySessionInput): Promise<PortfolioEntrySession> {
@@ -26,6 +35,7 @@ export class InMemoryPortfolioEntrySessionRepository implements PortfolioEntrySe
     this.turns.set(input.id, []);
     this.executions.set(input.id, []);
     this.handoffs.set(input.id, []);
+    this.criticalHandoffs.set(input.id, []);
     this.confirmations.set(input.id, []);
     return cloneSession(input);
   }
@@ -54,8 +64,9 @@ export class InMemoryPortfolioEntrySessionRepository implements PortfolioEntrySe
     const existing = this.sessions.get(input.session.id);
     if (!existing) throw PortfolioEntrySessionError.notFound();
     assertExpectedRevision(existing, input.expectedRevision);
-    this.sessions.set(input.session.id, cloneSession(input.session));
-    return cloneSession(input.session);
+    const updated = { ...input.session, contextRevision: existing.contextRevision };
+    this.sessions.set(input.session.id, cloneSession(updated));
+    return cloneSession(updated);
   }
 
   async appendTurn(
@@ -73,7 +84,7 @@ export class InMemoryPortfolioEntrySessionRepository implements PortfolioEntrySe
     }
     const stored = cloneTurn(turn);
     existing.push(stored);
-    this.sessions.set(session.id, cloneSession(session));
+    this.sessions.set(session.id, cloneSession({ ...session, contextRevision: existingSession.contextRevision }));
     return cloneTurn(stored);
   }
 
@@ -106,8 +117,74 @@ export class InMemoryPortfolioEntrySessionRepository implements PortfolioEntrySe
     }
     const stored = cloneHandoff(handoff);
     existing.push(stored);
-    this.sessions.set(session.id, cloneSession(session));
+    this.sessions.set(session.id, cloneSession({ ...session, contextRevision: existingSession.contextRevision }));
     return cloneHandoff(stored);
+  }
+
+  async createCriticalHandoff(input: CreatePortfolioEntryCriticalHandoffInput): Promise<PortfolioEntryCriticalHandoffRecord> {
+    const session = this.sessions.get(input.sessionId);
+    const existing = this.criticalHandoffs.get(input.sessionId);
+    if (!session || !existing) throw PortfolioEntrySessionError.notFound();
+    if (session.contextRevision !== input.sourceContextRevision) throw PortfolioEntrySessionError.conflict();
+
+    const latestTurn = [...(this.turns.get(input.sessionId) ?? [])]
+      .sort((left, right) => right.turnIndex - left.turnIndex || right.createdAt.getTime() - left.createdAt.getTime())[0];
+    if (input.sourceTurnId && (!latestTurn || latestTurn.id !== input.sourceTurnId)) {
+      throw PortfolioEntrySessionError.conflict();
+    }
+    if (input.sourceTurnId && latestTurn.sessionId !== input.sessionId) {
+      throw PortfolioEntrySessionError.conflict();
+    }
+
+    const latestVersion = existing.at(-1)?.artifactVersion;
+    const now = new Date();
+    const stored: PortfolioEntryCriticalHandoffRecord = {
+      id: randomUUID(),
+      sessionId: input.sessionId,
+      artifactVersion: nextCriticalHandoffArtifactVersion(latestVersion),
+      schemaVersion: PORTFOLIO_ENTRY_CRITICAL_HANDOFF_SCHEMA_VERSION,
+      sourceContextRevision: input.sourceContextRevision,
+      sourceTurnId: latestTurn?.id,
+      payload: parseCriticalHandoffPayload(PORTFOLIO_ENTRY_CRITICAL_HANDOFF_SCHEMA_VERSION, input.payload),
+      confirmationState: 'provisional',
+      createdAt: now,
+      updatedAt: now,
+    };
+    existing.push(stored);
+    return cloneCriticalHandoff(stored);
+  }
+
+  async getLatestCriticalHandoff(sessionId: string) {
+    const session = this.sessions.get(sessionId);
+    if (!session) throw PortfolioEntrySessionError.notFound();
+    const latest = [...(this.criticalHandoffs.get(sessionId) ?? [])]
+      .sort((left, right) => right.artifactVersion - left.artifactVersion)[0];
+    return {
+      artifact: latest ? cloneCriticalHandoff(latest) : null,
+      currentContextRevision: session.contextRevision,
+    };
+  }
+
+  async readContextRevision(sessionId: string): Promise<number> {
+    const session = this.sessions.get(sessionId);
+    if (!session) throw PortfolioEntrySessionError.notFound();
+    return session.contextRevision;
+  }
+
+  async advanceContextRevision(sessionId: string, expectedContextRevision: number, now: Date): Promise<number> {
+    const session = this.sessions.get(sessionId);
+    if (!session) throw PortfolioEntrySessionError.notFound();
+    if (session.contextRevision !== expectedContextRevision || !Number.isSafeInteger(expectedContextRevision)
+      || expectedContextRevision < 0 || expectedContextRevision >= 2_147_483_647) {
+      throw PortfolioEntrySessionError.conflict();
+    }
+    const updated = {
+      ...cloneSession(session),
+      contextRevision: expectedContextRevision + 1,
+      updatedAt: now,
+    };
+    this.sessions.set(sessionId, updated);
+    return updated.contextRevision;
   }
 
   async saveConfirmation(
@@ -128,7 +205,7 @@ export class InMemoryPortfolioEntrySessionRepository implements PortfolioEntrySe
     }
     const stored = cloneConfirmation(confirmation);
     existing.push(stored);
-    this.sessions.set(session.id, cloneSession(session));
+    this.sessions.set(session.id, cloneSession({ ...session, contextRevision: existingSession.contextRevision }));
     return cloneConfirmation(stored);
   }
 
@@ -226,6 +303,15 @@ function cloneHandoff(handoff: PortfolioEntryHandoffRecord): PortfolioEntryHando
     ...handoff,
     handoff: cloneJson(handoff.handoff),
     versioning: { ...handoff.versioning },
+    createdAt: new Date(handoff.createdAt),
+    updatedAt: new Date(handoff.updatedAt),
+  };
+}
+
+function cloneCriticalHandoff(handoff: PortfolioEntryCriticalHandoffRecord): PortfolioEntryCriticalHandoffRecord {
+  return {
+    ...handoff,
+    payload: cloneJson(handoff.payload),
     createdAt: new Date(handoff.createdAt),
     updatedAt: new Date(handoff.updatedAt),
   };

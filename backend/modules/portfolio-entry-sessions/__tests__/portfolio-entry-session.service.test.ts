@@ -29,6 +29,7 @@ describe('PortfolioEntrySessionService', () => {
     expect(session.lifecycleStatus).toBe('ENTRY_CAPTURED');
     expect(session.executionStatus).toBe('NOT_STARTED');
     expect(session.revision).toBe(0);
+    expect(session.contextRevision).toBe(0);
     expect(publicAccessToken).toHaveLength(64);
   });
 
@@ -77,6 +78,7 @@ describe('PortfolioEntrySessionService', () => {
 
     expect(claimed.ownershipState).toBe('CLAIMED');
     expect(claimed.ownerUserId).toBe('user-1');
+    expect(claimed.contextRevision).toBe(0);
     await expect(service.getForOwner(session.id, 'user-1')).resolves.toMatchObject({ id: session.id });
   });
 
@@ -129,8 +131,25 @@ describe('PortfolioEntrySessionService', () => {
     await service.appendTurn(makeTurnInput(session.id, 2, 'no_questions_required'));
 
     const turns = await repository.listTurns(session.id);
+    const storedSession = await repository.findSessionById(session.id);
     expect(turns.map((turn) => turn.turnIndex)).toEqual([1, 2]);
     expect(turns[0]?.emittedQuestions[0]?.reason_to_ask).toBe('Aclarar decision');
+    expect(storedSession?.contextRevision).toBe(0);
+  });
+
+  it('does not advance contextRevision when persisting a correction turn', async () => {
+    const { service, repository } = makeService();
+    const { session } = await createAnalyzingSession(service);
+
+    await service.appendTurn({
+      ...makeTurnInput(session.id, 1, 'questions_required'),
+      inputIntent: 'correction',
+    });
+
+    await expect(repository.findSessionById(session.id)).resolves.toMatchObject({
+      revision: 2,
+      contextRevision: 0,
+    });
   });
 
   it('preserves responded_resolves without answered gap promotion', async () => {
@@ -320,7 +339,7 @@ describe('PortfolioEntrySessionService', () => {
   });
 
   it('saves full confirmation', async () => {
-    const { service } = makeService();
+    const { service, repository } = makeService();
     const { session, handoff } = await createSessionWithHandoff(service);
     await service.transitionLifecycle(session.id, 'AWAITING_CONFIRMATION');
 
@@ -334,6 +353,7 @@ describe('PortfolioEntrySessionService', () => {
 
     expect(confirmation.status).toBe('CONFIRMED');
     expect(confirmation.confirmedAt).toBeInstanceOf(Date);
+    await expect(repository.findSessionById(session.id)).resolves.toMatchObject({ contextRevision: 0 });
   });
 
   it('does not treat CONFIRMED as CONVERSION_ELIGIBLE automatically', async () => {
