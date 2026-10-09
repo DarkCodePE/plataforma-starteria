@@ -52,6 +52,7 @@ export type PortfolioEntryLiveUnderstanding = {
 
 export type PortfolioEntrySessionDto = {
   id: string;
+  handoffExperience: 'critical' | 'legacy' | 'none';
   lifecycleStatus: PortfolioEntryLifecycleStatus;
   executionStatus: string;
   continuationProfile?: 'PORTFOLIO_LEAD_ENTRY' | 'INITIATIVE_ENTRY';

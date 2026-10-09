@@ -33,10 +33,20 @@ const localStorageDir = path.join(
 const baseURL = process.env.E2E_BASE_URL || `http://${frontendHost}:${frontendPort}`;
 const backendHealthURL = process.env.E2E_BACKEND_HEALTH_URL || `http://${backendHost}:${backendPort}/api/health`;
 const fullStackPortfolioEntryFlag = '--portfolio-entry-full-stack-test';
+const postgresConfirmationIntegrationFlag = '--portfolio-entry-postgres-confirmation-test';
 const fullStackPortfolioEntry = process.argv.slice(2).includes(fullStackPortfolioEntryFlag);
-const playwrightArgs = process.argv.slice(2).filter((argument) => argument !== fullStackPortfolioEntryFlag);
-if (fullStackPortfolioEntry && !playwrightArgs.some((argument) => argument.includes('portfolio-entry-live-understanding.integration.spec.ts'))) {
-  throw new Error(`${fullStackPortfolioEntryFlag} requires the full-stack Live Understanding Playwright spec.`);
+const postgresConfirmationIntegration = process.argv.slice(2).includes(postgresConfirmationIntegrationFlag);
+const playwrightArgs = process.argv.slice(2).filter((argument) =>
+  argument !== fullStackPortfolioEntryFlag && argument !== postgresConfirmationIntegrationFlag,
+);
+if (fullStackPortfolioEntry && !playwrightArgs.some((argument) =>
+  argument.includes('portfolio-entry-live-understanding.integration.spec.ts')
+  || argument.includes('portfolio-entry-conversion.spec.ts'))
+) {
+  throw new Error(`${fullStackPortfolioEntryFlag} requires a full-stack Portfolio Entry Playwright spec.`);
+}
+if (postgresConfirmationIntegration && (playwrightArgs.length > 0 || fullStackPortfolioEntry)) {
+  throw new Error(`${postgresConfirmationIntegrationFlag} runs alone without Playwright specs.`);
 }
 const databaseURL =
   process.env.E2E_DATABASE_URL || `postgresql://postgres:postgres@localhost:${e2ePostgresPort}/starteria_e2e`;
@@ -211,6 +221,7 @@ async function main() {
     AUTH_RATE_LIMIT_DISABLED: process.env.AUTH_RATE_LIMIT_DISABLED || 'true',
     PORTFOLIO_ENTRY_RUNTIME_MODE: process.env.PORTFOLIO_ENTRY_RUNTIME_MODE || 'deterministic',
     ...(fullStackPortfolioEntry ? {
+      PORTFOLIO_ENTRY_E2E_TEST: 'true',
       PORTFOLIO_ENTRY_API_KEY: '',
       PORTFOLIO_ENTRY_HARNESS_API_KEY: '',
       PORTFOLIO_ENTRY_FALLBACK_API_KEY: '',
@@ -255,6 +266,15 @@ async function main() {
 
   console.log('[E2E] Provision database');
   runChecked(npmCmd, ['run', 'db:e2e:provision'], frontRoot, env);
+
+  if (postgresConfirmationIntegration) {
+    console.log('[E2E] Run Portfolio Entry Prisma confirmation integration against the migrated starteria_e2e database');
+    runChecked(npmCmd, [
+      'run', 'test:backend', '--',
+      '../backend/modules/portfolio-entry-sessions/__tests__/prisma-portfolio-entry-session.repository.integration.test.ts',
+    ], frontRoot, { ...env, PORTFOLIO_ENTRY_DB_INTEGRATION: '1' });
+    return;
+  }
 
   const backendEntry = fullStackPortfolioEntry
     ? path.join(frontRoot, 'scripts', 'e2e', 'portfolio-entry-live-understanding-backend.ts')

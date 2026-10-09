@@ -198,12 +198,15 @@ export async function materializePortfolioEntryCriticalHandoff(
 
 export async function getPortfolioEntryHandoff(
   sessionId: string,
-  credential: string,
+  credential?: string,
 ): Promise<PortfolioEntrySessionDto> {
-  const response = await publicApi.get<PortfolioEntryApiEnvelope<PortfolioEntrySessionDto>>(
-    `/public/portfolio-entry/sessions/${encodeURIComponent(sessionId)}/handoff`,
-    { headers: authHeaders(credential) },
-  );
+  const endpoint = `/public/portfolio-entry/sessions/${encodeURIComponent(sessionId)}/handoff`;
+  const response = credential
+    ? await publicApi.get<PortfolioEntryApiEnvelope<PortfolioEntrySessionDto>>(
+      endpoint,
+      { headers: authHeaders(credential) },
+    )
+    : await (await import('../../../app/services/api')).default.get<PortfolioEntryApiEnvelope<PortfolioEntrySessionDto>>(endpoint);
   return unwrap(response);
 }
 

@@ -13,9 +13,8 @@ import type { CriticalSituationSynthesisAuthorizedSnapshot } from '../../../back
 import type { PortfolioEntryAgentAdapterV2 } from '../../../backend/modules/portfolio-entry-runtime/agent/portfolio-entry-agent-adapter';
 
 const backendRequire = createRequire(import.meta.url);
-const { errorHandler } = backendRequire('../../../backend/shared/errors/error-handler') as typeof import('../../../backend/shared/errors/error-handler');
-const { requestId } = backendRequire('../../../backend/shared/middleware/request-id') as typeof import('../../../backend/shared/middleware/request-id');
 const { prisma } = backendRequire('../../../backend/shared/db/prisma') as typeof import('../../../backend/shared/db/prisma');
+const { createApp } = backendRequire('../../../backend/app') as typeof import('../../../backend/app');
 const { DeterministicPortfolioEntryAgentAdapter } = backendRequire(
   '../../../backend/modules/portfolio-entry/application/portfolio-entry-experimental-session.service',
 ) as typeof import('../../../backend/modules/portfolio-entry/application/portfolio-entry-experimental-session.service');
@@ -25,6 +24,10 @@ const { buildPortfolioEntryRouter } = backendRequire(
 const { CriticalSituationSynthesisAdapter } = backendRequire(
   '../../../backend/modules/portfolio-entry-runtime/agent/critical-situation-synthesis-adapter',
 ) as typeof import('../../../backend/modules/portfolio-entry-runtime/agent/critical-situation-synthesis-adapter');
+
+if (process.env.NODE_ENV !== 'test' || process.env.PORTFOLIO_ENTRY_E2E_TEST !== 'true') {
+  throw new Error('The deterministic Portfolio Entry composition requires NODE_ENV=test and PORTFOLIO_ENTRY_E2E_TEST=true.');
+}
 
 /**
  * Test-only composition root for the real Portfolio Entry router and Prisma
@@ -179,8 +182,6 @@ function provenance(id: string, claimRef: string, sourceRef: string): CriticalSi
 
 const app = express();
 app.use(express.json());
-app.use(requestId);
-app.get('/api/health', (_req, res) => res.json({ status: 'ok' }));
 app.get('/__test/portfolio-entry-stats', (req, res, next) => {
   void (async () => {
     const sessionId = typeof req.query.sessionId === 'string' ? req.query.sessionId : undefined;
@@ -215,15 +216,20 @@ app.get('/__test/portfolio-entry-stats', (req, res, next) => {
     });
   })().catch(next);
 });
-app.use('/api/v1/public/portfolio-entry', buildPortfolioEntryRouter({}, {
+const portfolioEntryRouter = buildPortfolioEntryRouter({
+  // The broad browser suite creates independent sessions. Keep abuse coverage
+  // in production and unit tests at the production default; only this explicit
+  // NODE_ENV=test composition raises the incidental fixture ceiling.
+  maxCreateRequests: 500,
+}, {
   agentAdapter,
   liveUnderstandingSynthesizer,
-}));
-app.use(errorHandler);
+});
+app.use(createApp({ portfolioEntryRouter }));
 
 const port = Number(process.env.PORT || 4100);
 const server = app.listen(port, '127.0.0.1');
-server.on('listening', () => console.log(`[E2E test composition] Portfolio Entry backend listening on ${port}`));
+server.on('listening', () => console.log(`[E2E test composition] Full backend with deterministic Portfolio Entry synthesis listening on ${port}; create limit 500`));
 
 function shutdown() {
   server.close(() => {

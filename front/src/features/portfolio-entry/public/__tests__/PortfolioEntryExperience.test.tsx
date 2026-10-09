@@ -18,6 +18,7 @@ const serviceMocks = vi.hoisted(() => ({
   createPortfolioEntrySession: vi.fn(),
   getPortfolioEntrySession: vi.fn(),
   getPortfolioEntryCriticalHandoff: vi.fn(),
+  getPortfolioEntryHandoff: vi.fn(),
   getClaimedPortfolioEntrySession: vi.fn(),
   submitPortfolioEntryMessage: vi.fn(),
   chooseGuidedExploration: vi.fn(),
@@ -110,6 +111,7 @@ function makeHandoff(overrides: Partial<PortfolioEntryHandoff> = {}): PortfolioE
 function makeSession(overrides: Partial<PortfolioEntrySessionDto> = {}): PortfolioEntrySessionDto {
   return {
     id: '11111111-1111-4111-8111-111111111111',
+    handoffExperience: 'none',
     lifecycleStatus: 'ENTRY_CAPTURED',
     executionStatus: 'ACTIVE',
     revision: 0,
@@ -212,6 +214,14 @@ function sessionWithHandoff(overrides: Partial<PortfolioEntrySessionDto> = {}): 
     lifecycleStatus: 'HANDOFF_READY',
     revision: 3,
     nextAction: 'review_handoff',
+    handoffExperience: 'legacy',
+    ...overrides,
+  });
+}
+
+function explicitLegacyHandoffSession(overrides: Partial<PortfolioEntrySessionDto> = {}): PortfolioEntrySessionDto {
+  return {
+    ...sessionWithHandoff(overrides),
     handoff: {
       id: 'handoff-1',
       version: 1,
@@ -220,8 +230,7 @@ function sessionWithHandoff(overrides: Partial<PortfolioEntrySessionDto> = {}): 
       handoff: makeHandoff(),
       createdAt: new Date().toISOString(),
     },
-    ...overrides,
-  });
+  };
 }
 
 describe('PortfolioEntryExperience', () => {
@@ -230,6 +239,9 @@ describe('PortfolioEntryExperience', () => {
     serviceMocks.authState.authLoading = false;
     serviceMocks.getPortfolioEntryCriticalHandoff.mockReset();
     serviceMocks.getPortfolioEntryCriticalHandoff.mockResolvedValue(null);
+    serviceMocks.getPortfolioEntryHandoff.mockReset();
+    serviceMocks.getPortfolioEntryHandoff.mockImplementation(async (sessionId: string) =>
+      explicitLegacyHandoffSession({ id: sessionId }));
     navigateSpy.mockClear();
     vi.clearAllMocks();
   });
@@ -283,7 +295,7 @@ describe('PortfolioEntryExperience', () => {
   });
 
   it('exports only confirmed handoff fields and never substitutes rawEntry', () => {
-    const session = sessionWithHandoff({
+    const session = explicitLegacyHandoffSession({
       lifecycleStatus: 'CONFIRMED',
       revision: 17,
       confirmation: {
@@ -310,6 +322,7 @@ describe('PortfolioEntryExperience', () => {
     }));
     serviceMocks.abandonPortfolioEntrySession.mockResolvedValue({ sessionId: '11111111-1111-4111-8111-111111111111', lifecycleStatus: 'ABANDONED', revision: 9 });
     renderExperience();
+    await waitFor(() => expect(serviceMocks.getPortfolioEntryHandoff).toHaveBeenCalled());
     const actions = await screen.findByTestId('portfolio-entry-confirmed-brief-actions');
     fireEvent.click(within(actions).getByRole('button', { name: 'Eliminar' }));
     expect(serviceMocks.abandonPortfolioEntrySession).not.toHaveBeenCalled();
@@ -332,8 +345,11 @@ describe('PortfolioEntryExperience', () => {
     Object.defineProperty(URL, 'revokeObjectURL', { configurable: true, value: vi.fn() });
     const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => undefined);
     renderExperience();
+    await waitFor(() => expect(serviceMocks.getPortfolioEntryHandoff).toHaveBeenCalled());
     const actions = await screen.findByTestId('portfolio-entry-confirmed-brief-actions');
-    fireEvent.click(within(actions).getByRole('button', { name: 'Descargar' }));
+    const downloadButton = within(actions).getByRole('button', { name: 'Descargar' });
+    await waitFor(() => expect(downloadButton).toBeEnabled());
+    fireEvent.click(downloadButton);
     expect(click).toHaveBeenCalledOnce();
     expect((createUrl.mock.calls[0][0] as Blob).type).toBe('text/markdown;charset=utf-8');
     expect(createUrl.mock.calls[0][0]).toBeInstanceOf(Blob);
@@ -810,6 +826,7 @@ describe('PortfolioEntryExperience', () => {
       lifecycleStatus: 'HANDOFF_ELIGIBLE',
       revision: 2,
       nextAction: 'generate_handoff',
+      handoffExperience: 'critical',
     }));
     serviceMocks.getPortfolioEntryCriticalHandoff.mockResolvedValue(makeCriticalHandoff());
     serviceMocks.materializePortfolioEntryCriticalHandoff.mockResolvedValue({
@@ -863,6 +880,7 @@ describe('PortfolioEntryExperience', () => {
       revision: 9,
       nextAction: 'claim_or_close',
       ownership: { state: 'CLAIMED', ownerUserId: 'user-1' },
+      handoffExperience: 'critical',
     });
     saveClaimedPortfolioEntrySession({ sessionId: claimed.id });
     serviceMocks.getClaimedPortfolioEntrySession.mockResolvedValue(claimed);
@@ -899,6 +917,7 @@ describe('PortfolioEntryExperience', () => {
       revision: 9,
       nextAction: 'claim_or_close',
       ownership: { state: 'CLAIMED', ownerUserId: 'user-1' },
+      handoffExperience: 'critical',
     });
     saveClaimedPortfolioEntrySession({ sessionId: claimed.id });
     serviceMocks.getClaimedPortfolioEntrySession.mockResolvedValue(claimed);
@@ -918,7 +937,7 @@ describe('PortfolioEntryExperience', () => {
     const sessionId = '11111111-1111-4111-8111-111111111111';
     savePortfolioEntryCurrentSession({ sessionId, credential: 'entry-token' });
     markCriticalHandoffReviewSession(sessionId);
-    serviceMocks.getPortfolioEntrySession.mockResolvedValue(makeSession({ nextAction: 'generate_handoff', revision: 2 }));
+    serviceMocks.getPortfolioEntrySession.mockResolvedValue(makeSession({ nextAction: 'generate_handoff', revision: 2, handoffExperience: 'critical' }));
     serviceMocks.materializePortfolioEntryCriticalHandoff.mockResolvedValue({ sessionRevision: 3, criticalHandoff: makeCriticalHandoff() });
     serviceMocks.getPortfolioEntryCriticalHandoff.mockResolvedValue(null);
 
@@ -928,10 +947,11 @@ describe('PortfolioEntryExperience', () => {
     expect(screen.queryByTestId('handoff-expanded-analysis')).not.toBeInTheDocument();
     expect(screen.queryByText(/Cómo lo abordaría Starteria|Ruta sugerida|Portfolio Setup/i)).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Volver a aclarar' })).toBeInTheDocument();
+    expect(serviceMocks.getPortfolioEntryHandoff).not.toHaveBeenCalled();
   });
 
   it('returns Critical Handoff correction through the reasoning message lifecycle and does not edit projection fields', async () => {
-    const reviewSession = sessionWithHandoff({ nextAction: 'review_handoff', revision: 4 });
+    const reviewSession = sessionWithHandoff({ nextAction: 'review_handoff', revision: 4, handoffExperience: 'critical' });
     savePortfolioEntryCurrentSession({ sessionId: reviewSession.id, credential: 'entry-token' });
     serviceMocks.getPortfolioEntrySession.mockResolvedValue(reviewSession);
     serviceMocks.getPortfolioEntryCriticalHandoff
@@ -981,6 +1001,10 @@ describe('PortfolioEntryExperience', () => {
     expect(await screen.findByTestId('handoff-expanded-analysis')).toBeInTheDocument();
     expect(screen.getByTestId('handoff-starteria-path-expanded')).toBeInTheDocument();
     expect(screen.queryByTestId('critical-handoff-review')).not.toBeInTheDocument();
+    expect(historical).not.toHaveProperty('handoff');
+    expect(historical.handoffExperience).toBe('legacy');
+    expect(serviceMocks.getPortfolioEntryHandoff).toHaveBeenCalledWith(historical.id, 'entry-token');
+    expect(serviceMocks.getPortfolioEntryCriticalHandoff).not.toHaveBeenCalled();
   });
 
   it('preserves the session and retries handoff with the same revision and a fresh idempotency key', async () => {
@@ -988,6 +1012,7 @@ describe('PortfolioEntryExperience', () => {
       lifecycleStatus: 'HANDOFF_ELIGIBLE',
       revision: 2,
       nextAction: 'generate_handoff',
+      handoffExperience: 'critical',
     });
     savePortfolioEntryCurrentSession({ sessionId: eligible.id, credential: 'entry-token' });
     markCriticalHandoffReviewSession(eligible.id);
@@ -1019,6 +1044,7 @@ describe('PortfolioEntryExperience', () => {
       lifecycleStatus: 'HANDOFF_ELIGIBLE',
       revision: 2,
       nextAction: 'generate_handoff',
+      handoffExperience: 'critical',
     });
     savePortfolioEntryCurrentSession({ sessionId: eligible.id, credential: 'entry-token' });
     markCriticalHandoffReviewSession(eligible.id);
@@ -1046,6 +1072,7 @@ describe('PortfolioEntryExperience', () => {
       lifecycleStatus: 'HANDOFF_ELIGIBLE',
       revision: 2,
       nextAction: 'generate_handoff',
+      handoffExperience: 'critical',
     });
     savePortfolioEntryCurrentSession({ sessionId: eligible.id, credential: 'entry-token' });
     markCriticalHandoffReviewSession(eligible.id);
@@ -1091,7 +1118,7 @@ describe('PortfolioEntryExperience', () => {
 
   it('keeps deeper handoff material collapsed and reachable without changing the CTA', async () => {
     savePortfolioEntryCurrentSession({ sessionId: '11111111-1111-4111-8111-111111111111', credential: 'entry-token' });
-    const session = sessionWithHandoff();
+    const session = explicitLegacyHandoffSession();
     session.handoff!.handoff = makeHandoff({
       known_context: [{ key: 'Restricción', value: 'La capacidad del equipo es limitada.', provenance: { origin: 'USER_DECLARED' } }],
       unresolved_context: [
@@ -1109,7 +1136,8 @@ describe('PortfolioEntryExperience', () => {
         { action: 'prepare_decision', description: 'Preparar la decisión.' },
       ],
     });
-    serviceMocks.getPortfolioEntrySession.mockResolvedValue(session);
+    serviceMocks.getPortfolioEntrySession.mockResolvedValue(sessionWithHandoff({ id: session.id }));
+    serviceMocks.getPortfolioEntryHandoff.mockResolvedValue(session);
 
     renderExperience();
 
@@ -1135,14 +1163,15 @@ describe('PortfolioEntryExperience', () => {
 
   it('keeps an unresolved decision visible as uncertainty and renders a resolution-less gap safely', async () => {
     savePortfolioEntryCurrentSession({ sessionId: '11111111-1111-4111-8111-111111111111', credential: 'entry-token' });
-    const session = sessionWithHandoff();
+    const session = explicitLegacyHandoffSession();
     session.handoff!.handoff = makeHandoff({
       decision_to_enable: 'unresolved',
       gap_resolution_map: [],
       alternative_approaches: [],
       starteria_path: [],
     });
-    serviceMocks.getPortfolioEntrySession.mockResolvedValue(session);
+    serviceMocks.getPortfolioEntrySession.mockResolvedValue(sessionWithHandoff({ id: session.id }));
+    serviceMocks.getPortfolioEntryHandoff.mockResolvedValue(session);
 
     renderExperience();
 

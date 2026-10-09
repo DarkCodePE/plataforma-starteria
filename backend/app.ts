@@ -1,4 +1,4 @@
-import express from 'express';
+import express, { type Router as ExpressRouter } from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import cookieParser from 'cookie-parser';
@@ -25,7 +25,7 @@ import { pdfRouter, initiativePdfService } from './modules/initiative-pdfs/pdf.r
 import { publicPdfRouter } from './modules/initiative-pdfs/public-pdf.router';
 import { pilotLeadRouter } from './modules/pilot-leads';
 import { refineFieldRouter } from './modules/public-ai';
-import { portfolioEntryRouter } from './modules/portfolio-entry';
+import { buildPortfolioEntryRouter } from './modules/portfolio-entry/portfolio-entry.router';
 import { portfolioBootstrapRouter } from './modules/portfolio-bootstrap';
 import { createAiWebhookRouter } from './modules/initiative-pdfs/webhook.router';
 import { billingRouter } from './modules/billing/billing.router';
@@ -39,7 +39,10 @@ import { portfolioHandoffInvitationRouter, portfolioHandoffDeliveryRouter, portf
 import { firstValueP3Router } from './modules/first-value-p3/first-value-p3.router';
 import { reconstructionRouter } from './modules/reconstruction/reconstruction.router';
 
-export function createApp() {
+export function createApp(options: { portfolioEntryRouter?: ExpressRouter } = {}) {
+  if (options.portfolioEntryRouter && config.nodeEnv !== 'test') {
+    throw new Error('A custom Portfolio Entry router can only be injected in test mode.');
+  }
   const app = express();
 
   // Global middleware
@@ -95,7 +98,7 @@ export function createApp() {
   // chain (ADR-006). Rate-limited (cost cap proxy); HMAC/X-Internal-Token to the
   // ai-service. On failure the frontend falls back to a local heuristic.
   app.use('/api/v1/public/refine-field', refineFieldRouter);
-  app.use('/api/v1/public/portfolio-entry', portfolioEntryRouter);
+  app.use('/api/v1/public/portfolio-entry', options.portfolioEntryRouter ?? buildPortfolioEntryRouter());
   app.use('/api/v1/portfolio-bootstrap', portfolioBootstrapRouter);
   app.use('/api/v1/strategic-framing', strategicFramingRouter);
   app.use('/api/v1/public/handoff-invitations', portfolioHandoffInvitationRouter);

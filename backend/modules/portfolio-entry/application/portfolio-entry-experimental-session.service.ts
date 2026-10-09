@@ -703,13 +703,15 @@ export class PortfolioEntryExperimentalSessionService {
       liveUnderstanding?: LiveUnderstandingViewModel | null;
     } = {},
   ): Promise<PortfolioEntrySessionClientDto> {
-    const includeLegacyHandoff = options.includeLegacyHandoff
-      ?? !(await this.shouldSuppressLegacyHandoff(session));
+    const handoffExperience = await this.resolveHandoffExperience(session);
+    // Generic session DTOs carry only the routing discriminator. Legacy
+    // semantic content is available through the explicit /handoff endpoint.
+    const includeLegacyHandoff = options.includeLegacyHandoff ?? false;
     return toPortfolioEntrySessionClientDto(
       session,
       await this.sessionRepository.listTurns(session.id),
       options.liveUnderstanding,
-      { includeLegacyHandoff },
+      { includeLegacyHandoff, handoffExperience },
     );
   }
 
@@ -724,9 +726,14 @@ export class PortfolioEntryExperimentalSessionService {
   }
 
   private async shouldSuppressLegacyHandoff(session: PortfolioEntrySession): Promise<boolean> {
-    if (isCurrentCriticalHandoffSession(session)) return true;
-    if (!session.latestHandoff) return false;
-    return (await this.sessionService.getLatestCriticalHandoff(session.id)) !== null;
+    return (await this.resolveHandoffExperience(session)) === 'critical';
+  }
+
+  private async resolveHandoffExperience(session: PortfolioEntrySession): Promise<PortfolioEntrySessionClientDto['handoffExperience']> {
+    if (isCurrentCriticalHandoffSession(session)) return 'critical';
+    const latestCriticalHandoff = await this.sessionService.getLatestCriticalHandoff(session.id);
+    if (latestCriticalHandoff?.artifact) return 'critical';
+    return session.latestHandoff ? 'legacy' : 'none';
   }
 
   private assertExpectedRevision(session: PortfolioEntrySession, expectedRevision: number): void {

@@ -164,6 +164,10 @@ Los comandos completos, los niveles de test y los gotchas están en [`TESTING.md
   servicio en `app/services/` tipado con el esquema del backend → test en
   `*.test.tsx` (Testing Library + msw) → si es un journey, spec E2E en `front/e2e/`. Componentes y
   tokens del Design System, no estilos sueltos.
+- **Portfolio Entry full-stack E2E.** Usar los modos explícitos documentados en `TESTING.md` §6:
+  la prueba real de navegador/API/Prisma inyecta sólo el adaptador determinístico KAN-114 bajo
+  `NODE_ENV=test` y `PORTFOLIO_ENTRY_E2E_TEST=true`; no requiere claves de proveedor. El límite de
+  creación de sesiones sólo se eleva en esa composición de prueba.
 
 ### back — `backend/`
 
@@ -240,5 +244,6 @@ ignora y se avisa.
   sólo si el diff o la evidencia lo muestran, resumen visual, evidencia antes/después, peligro de
   mergear (puerta de una o dos vías, radio de impacto).
 - **CI** (`.github/workflows/ci.yml`): tests Node con cobertura 80 %, tests Python con cobertura
-  75 %, build y el E2E liviano de Portfolio Entry. No corre `typecheck` ni `npm run lint`: los corre
-  `/verificar` antes del PR.
+  75 %, build, los recorridos full-stack CURRENT_114D y LEGACY_COMPAT de Portfolio Entry y la
+  integración Prisma de confirmación sobre PostgreSQL desechable. No corre `typecheck` ni
+  `npm run lint`: los corre `/verificar` antes del PR.

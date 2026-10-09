@@ -7,6 +7,7 @@ import {
   continuePortfolioEntryToPortfolio,
   createPortfolioEntrySession,
   getPortfolioEntryCriticalHandoff,
+  getPortfolioEntryHandoff,
   getPortfolioEntrySession,
   materializePortfolioEntryCriticalHandoff,
   normalizePortfolioEntryApiError,
@@ -18,6 +19,7 @@ import { createIdempotencyKey } from '../idempotency';
 function makeSession(overrides: Partial<PortfolioEntrySessionDto> = {}): PortfolioEntrySessionDto {
   return {
     id: '11111111-1111-4111-8111-111111111111',
+    handoffExperience: 'none',
     lifecycleStatus: 'ENTRY_CAPTURED',
     executionStatus: 'ACTIVE',
     revision: 0,
@@ -245,6 +247,25 @@ describe('portfolioEntryPublicService', () => {
     }, { status: 404 })));
 
     await expect(getPortfolioEntryCriticalHandoff('11111111-1111-4111-8111-111111111111', 'entry-token')).resolves.toBeNull();
+  });
+
+  it('hydrates legacy content only through the explicit handoff endpoint', async () => {
+    server.use(http.get('*/public/portfolio-entry/sessions/:sessionId/handoff', ({ request, params }) => {
+      expect(request.headers.get('X-Starteria-Entry-Token')).toBe('entry-token');
+      expect(params.sessionId).toBe('11111111-1111-4111-8111-111111111111');
+      return HttpResponse.json({
+        success: true,
+        data: makeSession({
+          handoffExperience: 'legacy',
+          handoff: { id: 'legacy-1' } as NonNullable<PortfolioEntrySessionDto['handoff']>,
+        }),
+      });
+    }));
+
+    await expect(getPortfolioEntryHandoff('11111111-1111-4111-8111-111111111111', 'entry-token')).resolves.toMatchObject({
+      handoffExperience: 'legacy',
+      handoff: { id: 'legacy-1' },
+    });
   });
 
   it('uses authenticated transport for Critical Handoff reads after claim', async () => {

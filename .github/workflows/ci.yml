@@ -285,10 +285,17 @@ jobs:
           done
           echo "::error::no se pudo instalar Chromium de Playwright en 3 intentos"; exit 1
 
-      - name: Run Portfolio Entry smoke
-        run: |
-          npm run test:e2e -- e2e/portfolio-entry-conversion.spec.ts
-          npm run test:e2e -- --portfolio-entry-full-stack-test e2e/portfolio-entry-live-understanding.integration.spec.ts
+      - name: CURRENT_114D — deterministic full-stack browser journey
+        run: npm run test:e2e -- --portfolio-entry-full-stack-test e2e/portfolio-entry-conversion.spec.ts --grep CURRENT_114D
+
+      - name: LEGACY_COMPAT — seeded historical handoff journeys
+        run: npm run test:e2e -- --portfolio-entry-full-stack-test e2e/portfolio-entry-conversion.spec.ts --grep LEGACY_COMPAT
+
+      - name: Live Understanding full-stack integration
+        run: npm run test:e2e -- --portfolio-entry-full-stack-test e2e/portfolio-entry-live-understanding.integration.spec.ts
+
+      - name: POSTGRES_CONFIRMATION_INTEGRATION (119E)
+        run: npm run test:e2e -- --portfolio-entry-postgres-confirmation-test
 
   # ---------------------------------------------------------------------------
   # Job 5: Aggregate summary — runs even on partial failure to give one place

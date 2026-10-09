@@ -290,6 +290,7 @@ async function seedLegacyHandoff(api: APIRequestContext, rawEntry: string): Prom
   });
   const createdText = await created.text();
   expect(created.status(), `legacy fixture session creation: ${createdText}`).toBe(201);
+  expect(created.headers()['x-ratelimit-limit']).toBe('500');
   const createdBody = JSON.parse(createdText);
   const sessionId = createdBody?.data?.session?.id;
   const publicAccessToken = createdBody?.data?.publicAccessToken;
@@ -342,10 +343,29 @@ async function seedLegacyHandoff(api: APIRequestContext, rawEntry: string): Prom
     },
   });
   expect(await prisma.portfolioEntryCriticalHandoff.count({ where: { sessionId } })).toBe(0);
+  expect(await prisma.portfolioEntryHandoff.count({ where: { sessionId } })).toBe(1);
   return { sessionId, publicAccessToken };
 }
 
 async function openLegacyHandoff(page: Page, fixture: LegacyHandoffFixture) {
+  const backendUrl = process.env.E2E_BACKEND_URL || 'http://127.0.0.1:4100';
+  const genericResponse = await fetch(`${backendUrl}/api/v1/public/portfolio-entry/sessions/${fixture.sessionId}`, {
+    headers: { 'X-Starteria-Entry-Token': fixture.publicAccessToken },
+  });
+  expect(genericResponse.status).toBe(200);
+  const genericSession = (await genericResponse.json()).data;
+  expect(genericSession.handoffExperience).toBe('legacy');
+  expect(genericSession).not.toHaveProperty('handoff');
+  expect(JSON.stringify(genericSession)).not.toMatch(/recommended_approach|starteria_path|recommended_cta|provenance|selected_lenses|reasoning_metadata|source_refs|confirmedByUserId|provider|model|raw_synthesis/i);
+
+  const handoffReads: string[] = [];
+  page.on('request', (request) => {
+    if (request.method() !== 'GET') return;
+    const pathname = new URL(request.url()).pathname;
+    if (/\/sessions\/[^/]+\/(?:handoff|critical-handoff)$/.test(pathname)) {
+      handoffReads.push(`${request.method()} ${pathname}`);
+    }
+  });
   await page.goto('/public/start');
   await page.evaluate(({ sessionId, credential }) => {
     window.sessionStorage.setItem('starteria.portfolioEntry.current', JSON.stringify({ sessionId, credential }));
@@ -356,6 +376,8 @@ async function openLegacyHandoff(page: Page, fixture: LegacyHandoffFixture) {
   await expect(page.getByRole('heading', { name: /Esto estoy entendiendo/i })).toBeVisible();
   await expect(page.getByText('Comparar las iniciativas con la evidencia y la capacidad disponibles.')).toBeVisible();
   await expect(page.getByTestId('critical-handoff-review')).toHaveCount(0);
+  expect(handoffReads.some((read) => read.endsWith('/handoff'))).toBe(true);
+  expect(handoffReads.some((read) => read.endsWith('/critical-handoff'))).toBe(false);
 }
 
 async function continueThroughAuthenticatedLegacyPortfolioEntry(
@@ -690,6 +712,20 @@ async function reachCriticalHandoff(page: Page, scenario: Scenario, testInfo: Te
     return raw ? JSON.parse(raw).sessionId : null;
   });
   expect(sessionId).toEqual(expect.any(String));
+  const credential = await page.evaluate(() => {
+    const raw = window.sessionStorage.getItem('starteria.portfolioEntry.current');
+    return raw ? JSON.parse(raw).credential : null;
+  });
+  const genericSessionResponse = await fetch(
+    `${process.env.E2E_BACKEND_URL || 'http://127.0.0.1:4100'}/api/v1/public/portfolio-entry/sessions/${sessionId}`,
+    { headers: { 'X-Starteria-Entry-Token': credential } },
+  );
+  expect(genericSessionResponse.status).toBe(200);
+  const genericSession = (await genericSessionResponse.json()).data;
+  expect(genericSession.handoffExperience).toBe('critical');
+  expect(genericSession).not.toHaveProperty('handoff');
+  expect(genericSession).not.toHaveProperty('provisionalContinuation');
+  expect(JSON.stringify(genericSession)).not.toMatch(/recommended_approach|starteria_path|recommended_cta|provenance|selected_lenses|reasoning_metadata|source_refs|confirmedByUserId|provider|model|raw_synthesis/i);
   return sessionId as string;
 }
 
@@ -740,6 +776,7 @@ async function closeCriticalHandoffAfterCorrection(page: Page, answerText: strin
 async function expectNoCriticalHandoffLegacyFallback(page: Page) {
   const review = page.getByTestId('critical-handoff-review');
   await expect(review).toBeVisible();
+  await expect(page.getByTestId('handoff-first-view')).toHaveCount(0);
   await expect(review).not.toContainText(/recommended_approach|starteria_path|recommended_cta|Cómo lo abordaría Starteria|Ruta completa en Starteria|route recommendation/i);
   await expect(page.getByText('Esto estoy entendiendo', { exact: true })).toHaveCount(0);
   await expect(page.getByText('Decisión que necesitas habilitar', { exact: true })).toHaveCount(0);
@@ -794,7 +831,7 @@ test.describe('Portfolio Entry 114D Critical Handoff and explicit legacy compati
     await prisma.$disconnect();
   });
 
-  test('renders quick clarification as a guided pre-handoff state', async ({ page }, testInfo) => {
+  test('[CURRENT_114D] renders quick clarification as a guided pre-handoff state', async ({ page }, testInfo) => {
     await page.goto('/public/start');
     await page.evaluate(() => window.sessionStorage.clear());
     await page.goto('/public/start');
@@ -815,7 +852,7 @@ test.describe('Portfolio Entry 114D Critical Handoff and explicit legacy compati
   });
 
   // CURRENT_114D: this browser journey stops after the confirmed Critical Handoff.
-  test('KAN-102 Landing → Entry → clarification → confirmed Critical Handoff', async ({ page }, testInfo) => {
+  test('[CURRENT_114D] KAN-102 Landing → Entry → clarification → confirmed Critical Handoff', async ({ page }, testInfo) => {
     const currentBoundary = watchForbiddenCriticalHandoffNavigation(page);
     const entryRequests: string[] = [];
     page.on('request', (request) => {
@@ -865,6 +902,15 @@ test.describe('Portfolio Entry 114D Critical Handoff and explicit legacy compati
     const afterCorrectionSession = await prisma.portfolioEntrySession.findUniqueOrThrow({ where: { id: sessionId } });
     expect(afterCorrectionSession.contextRevision).toBeGreaterThan(firstPersisted!.sourceContextRevision);
     expect(stalePersisted.confirmationState).toBe('provisional');
+    const staleRead = await api.get(`/api/v1/public/portfolio-entry/sessions/${sessionId}/critical-handoff`, {
+      headers: { 'X-Starteria-Entry-Token': credential },
+      failOnStatusCode: false,
+    });
+    const staleReadText = await staleRead.text();
+    expect(staleRead.status(), staleReadText).toBe(200);
+    const staleArtifact = JSON.parse(staleReadText).data;
+    expect(staleArtifact).toMatchObject({ id: firstPersisted!.id, state: 'stale', confirmationState: 'provisional' });
+    expect(JSON.stringify(staleArtifact)).not.toMatch(/recommended_approach|starteria_path|recommended_cta|provenance|provider|model|raw_synthesis/i);
     await closeCriticalHandoffAfterCorrection(page, scenario.answer);
     await expectNoCriticalHandoffLegacyFallback(page);
 
@@ -925,6 +971,9 @@ test.describe('Portfolio Entry 114D Critical Handoff and explicit legacy compati
     expect(confirmedPersisted.confirmedAt?.toISOString()).toBe(confirmedBody.data.confirmedAt);
     expect(confirmedPersisted.payload).toEqual(freshPersisted!.payload);
 
+    // Hydration follows the server-owned experience discriminator even when
+    // the optional browser marker has been cleared.
+    await page.evaluate(() => sessionStorage.removeItem('starteria.portfolioEntry.criticalHandoffReviewSession'));
     const finalResponsePromise = page.waitForResponse((response) => response.request().method() === 'GET'
       && new URL(response.url()).pathname === `/api/v1/public/portfolio-entry/sessions/${sessionId}/critical-handoff`);
     await page.reload();
@@ -951,6 +1000,7 @@ test.describe('Portfolio Entry 114D Critical Handoff and explicit legacy compati
       expect(serialized).not.toMatch(/selected_lenses|reasoning_metadata|source_refs|sourceTurnId|confirmedByUserId|prompt_manifest|providerReportedModel|raw_synthesis|raw KAN-114 output/i);
     }
     expect(entryRequests.some((request) => request.startsWith('GET ') && request.endsWith('/critical-handoff'))).toBe(true);
+    expect(entryRequests.some((request) => request.startsWith('GET ') && request.endsWith('/handoff'))).toBe(false);
     expect(entryRequests.some((request) => request.startsWith('POST ') && request.endsWith('/critical-handoff'))).toBe(true);
     expect(entryRequests.some((request) => request.startsWith('POST ') && request.endsWith('/handoff'))).toBe(false);
     expect(entryRequests.some((request) => /\/continue-portfolio$|\/convert$|\/handoff\/confirmation$/.test(request))).toBe(false);

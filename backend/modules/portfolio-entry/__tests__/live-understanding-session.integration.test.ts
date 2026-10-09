@@ -422,6 +422,7 @@ describe('Portfolio Entry Live Understanding session integration', () => {
 
     const stored = await repository.findSessionById(sessionId);
     expect(legacy.body.data.handoff.handoff).toHaveProperty('starteria_path');
+    expect(legacy.body.data.handoffExperience).toBe('critical');
     expect((await repository.getLatestCriticalHandoff(sessionId)).artifact).toBeNull();
     expect(stored?.latestHandoff).not.toBeNull();
     expect(stored?.lifecycleStatus).toBe('HANDOFF_READY');
@@ -466,6 +467,7 @@ describe('Portfolio Entry Live Understanding session integration', () => {
       .expect(200);
     expect(refreshed.body.data).not.toHaveProperty('handoff');
     expect(refreshed.body.data).not.toHaveProperty('provisionalContinuation');
+    expect(refreshed.body.data.handoffExperience).toBe('critical');
     expect(JSON.stringify(refreshed.body.data)).not.toMatch(/provenance_summary|recommended_approach|starteria_path|recommended_cta|private provider detail/i);
     const absentCriticalRead = await request(app)
       .get(`${base}/sessions/${sessionId}/critical-handoff`)

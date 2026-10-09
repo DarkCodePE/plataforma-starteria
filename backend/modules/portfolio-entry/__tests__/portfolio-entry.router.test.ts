@@ -130,6 +130,32 @@ describe('Portfolio Entry Experimental Session API', () => {
     expect(read.body.data.publicAccessToken).toBeUndefined();
   });
 
+  it('keeps a historical handoff out of generic session reads and exposes it through the explicit legacy route', async () => {
+    const { app } = makeApp();
+    const ready = await legacyHandoffReadySession(app);
+    const materialized = await request(app)
+      .post(`${base}/sessions/${ready.sessionId}/handoff`)
+      .set('X-Starteria-Entry-Token', ready.token)
+      .set('Idempotency-Key', 'legacy-experience-materialize')
+      .send({ expectedRevision: ready.revision })
+      .expect(200);
+
+    const generic = await request(app)
+      .get(`${base}/sessions/${ready.sessionId}`)
+      .set('X-Starteria-Entry-Token', ready.token)
+      .expect(200);
+    expect(generic.body.data.handoffExperience).toBe('legacy');
+    expect(generic.body.data).not.toHaveProperty('handoff');
+    expect(JSON.stringify(generic.body.data)).not.toMatch(/recommended_approach|starteria_path|recommended_cta|provenance_summary/i);
+
+    const explicitLegacyRead = await request(app)
+      .get(`${base}/sessions/${ready.sessionId}/handoff`)
+      .set('X-Starteria-Entry-Token', ready.token)
+      .expect(200);
+    expect(explicitLegacyRead.body.data.handoff).toEqual(materialized.body.data.handoff);
+    expect(explicitLegacyRead.body.data.handoff.handoff).toHaveProperty('recommended_approach');
+  });
+
   it('rejects wrong or expired anonymous credentials', async () => {
     const { app, repository } = makeApp();
     const created = await createSession(app);
