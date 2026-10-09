@@ -298,33 +298,41 @@ Core canonicalization, or durable/Core persistence of Live Understanding. It
 does not change KAN-114's prompt, output schema or accepted reasoning
 semantics. KAN-116 only adds chronological `turn_index` ordering at the
 synthesis input assembly boundary for persisted user messages and corrections.
-KAN-119 implements the bounded 114D Critical Handoff on branch
-`feat/KAN-119-critical-handoff`, currently PR #161 and not merged. The 114D
-journey ends with an explicitly confirmed Critical Handoff. It does not select
-Starteria Path, continue to Portfolio Setup, call `continue-portfolio` or
-`convert`, write Steps, or canonicalize Core. Legacy handoff/confirmation and
-continuation readers remain `KEEP_COMPAT` for explicitly historical sessions.
+### KAN-117 / KAN-119 - Critical Handoff (114D), post-CI PR #161
 
-The branch contains the 119A projection, 119B persistence, 119C lifecycle,
-119D review UI, and 119E confirmation slices. KAN-119F has split current 114D
-browser coverage from explicitly seeded legacy compatibility journeys. Local
-backend/frontend tests, typechecks, lint, and the mocked Critical Handoff
-Playwright review pass. The full-stack Portfolio Entry Playwright suite and the
-PostgreSQL confirmation integration have not executed locally because the
-Docker engine and disposable `starteria_e2e` database are unavailable.
+KAN-119 Critical Handoff v0.1 is `IMPLEMENTED_VERIFIED_ON_PR` on [PR #161](https://github.com/DarkCodePE/plataforma-starteria/pull/161) at
+HEAD `b16dc03e04b8f3c419bfa5df565914b6613b7112`; it is open and not merged. KAN-114
+remains the sole reasoning source. The implementation stores a dedicated durable
+Portfolio Entry Critical Handoff artifact bound to its source `contextRevision`.
+Currentness is invalidated when the reasoning context advances, and a
+pre-confirmation correction returns through the existing clarification/reasoning
+cycle. Confirmation is an explicit representativeness action: a claim is not a confirmation, and
+confirmation does not certify every statement as objective fact.
 
-CONFLICT
-Contract: Critical Reasoning Experience Contract v0.1 public projection boundary.
-Requirement: KAN-119F security audit requires browser DTOs to exclude provenance, selected lenses, reasoning metadata, source references, confirmer ID, provider/model metadata, and raw KAN-114 output.
-Current document/code: `PortfolioEntrySessionClientDto.handoff` is produced by `toHandoffClientDto`, which returns the complete legacy `handoff.handoff` value; current 114D materialization saves that legacy row and returns the session DTO.
-Observed mismatch: the new 114D browser path can receive provenance-bearing legacy semantics in the session DTO even though the separate Critical Handoff DTO is an allowlisted projection.
-Risk: private or internal reasoning fields cross the browser API boundary and old legacy recommendations can re-enter current-flow state.
-Recommended treatment: UPDATE the current 114D DTO boundary while preserving the legacy DTO for explicitly historical sessions.
-Requires ADR: no; KAN-119F explicitly defines the boundary, but the change must preserve an unambiguous legacy/current owner.
+The 114D close point is the confirmed Critical Handoff only. This slice does not
+implement Starteria Path 114E, Portfolio Setup continuity 114F, ADR-003
+reconciliation, Core, Steps, scoring, experiment design, or distinct alternative
+ranking. Legacy handoff/confirmation readers remain `KEEP_COMPAT` for explicitly
+historical sessions. This is bounded slice evidence, not certification of all
+Portfolio Entry.
 
-The policy for correcting context after a confirmed Critical Handoff also remains
-unresolved. 114E is not started; the ADR-003 discrepancy remains open before any
-Portfolio Setup Continuity work.
+The completed [GitHub CI run #220](https://github.com/DarkCodePE/plataforma-starteria/actions/runs/37995220187) for PR #161 at the HEAD above passed: CI summary,
+Prisma schema/migration alignment, Node tests with coverage, PostgreSQL repository
+integration (26/26), CURRENT_114D browser E2E (6/6), LEGACY_COMPAT browser E2E
+(7/7), Live Understanding full-stack E2E (1/1), lint/build, and Python. The
+CURRENT_114D and LEGACY_COMPAT journeys are separate regression compositions.
+The closure report is
+`docs/implementation/portfolio-entry/KAN-119_CRITICAL_HANDOFF_V01_IMPLEMENTATION_CLOSURE.md`.
+
+Post-confirmation reopen/correction is not generalized as a future reopen
+feature; the confirmed artifact remains immutable under current v0.1 semantics.
+ADR-003 remains `PROPOSED` with its discrepancy `OPEN / DEFERRED`; it must be
+reconciled before Portfolio Setup Continuity.
+
+No generalized post-confirmation reopen/correction feature is part of v0.1; the
+confirmed artifact remains immutable. The broader future policy remains open.
+114E is not started; the ADR-003 discrepancy remains open before any Portfolio
+Setup Continuity work.
 
 This closure does not alter the unresolved ADR-003 status recorded above.
 ADR-003 remains `PROPOSED` in `CURRENT_STATE.md` and its discrepancy remains
