@@ -70,6 +70,12 @@ export async function patchOk(api: APIRequestContext, token: string, url: string
   return (await res.json()).data;
 }
 
+export async function putOk(api: APIRequestContext, token: string, url: string, data: Record<string, unknown>) {
+  const res = await api.put(url, { headers: auth(token), data, failOnStatusCode: false });
+  expect(res.ok(), `${url}: ${await res.text()}`).toBeTruthy();
+  return (await res.json()).data;
+}
+
 export async function getOk(api: APIRequestContext, token: string, url: string) {
   const res = await api.get(url, { headers: auth(token), failOnStatusCode: false });
   expect(res.ok(), `${url}: ${await res.text()}`).toBeTruthy();
