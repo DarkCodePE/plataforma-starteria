@@ -586,7 +586,21 @@ function getActionFilterLabel(value: InitiativeActionFilter) {
   return ACTION_FILTER_OPTIONS.find(item => item.value === value)?.label ?? 'Todas';
 }
 
-function getInitiativeAttentionModel(
+const DECISION_READY_ATTENTION: InitiativeAttentionModel = {
+  kind: 'decision_ready',
+  filter: 'decision_ready',
+  score: 60,
+  label: 'Lista para decisión',
+  whatHappens: 'La iniciativa ya tiene señal suficiente para una revisión ejecutiva.',
+  whyItMatters: 'La evidencia ya puede convertirse en una decisión, un reporte o un siguiente paso claro.',
+  suggestedAction: 'Generar reporte y llevarla a decisión con el contexto del reto y el frente.',
+  expectedResponsible: 'Portfolio Lead',
+  ctaLabel: 'Generar reporte',
+  tone: 'violet',
+  actionKind: 'none',
+};
+
+export function getInitiativeAttentionModel(
   initiative: InitiativeItem,
   challenge: ReturnType<typeof usePortfolioLead>['challenges'][number] | null,
   uiState: InitiativeUiState | null = null,
@@ -625,25 +639,15 @@ function getInitiativeAttentionModel(
   }
 
   if (uiState?.status === 'decision_ready') {
-    return {
-      kind: 'decision_ready',
-      filter: 'decision_ready',
-      score: 60,
-      label: 'Lista para decisión',
-      whatHappens: 'La iniciativa ya tiene señal suficiente para una revisión ejecutiva.',
-      whyItMatters: 'La evidencia ya puede convertirse en una decisión, un reporte o un siguiente paso claro.',
-      suggestedAction: 'Generar reporte y llevarla a decisión con el contexto del reto y el frente.',
-      expectedResponsible: 'Portfolio Lead',
-      ctaLabel: 'Generar reporte',
-      tone: 'violet',
-      actionKind: 'none',
-    };
+    return DECISION_READY_ATTENTION;
   }
 
   const sponsorPending = !challenge || challenge.sponsorStatus !== 'confirmado' || !initiative.sponsorTouchpoint.trim();
   const ownerPending = !challenge || challenge.challengeOwnerStatus !== 'confirmado' || !initiative.teamOwner.trim();
   const hasEvidenceGap = initiative.deliverables.length === 0 || initiative.partialSignal || !initiative.signalSummary.trim();
-  const isDecisionReady = initiative.readyForDecision || initiative.currentStep === 'Step 4' || initiative.status === 'lista_para_decision';
+  const isDecisionReady = initiative.readyForDecision || initiative.status === 'lista_para_decision';
+  // Step 4 en curso todavía no está presentado: cuenta como lista sólo si no hay otra alerta.
+  const reachedStep4 = initiative.currentStep === 'Step 4';
   const hasDelay = initiative.blockedDays >= 14;
   const hasBlocker = initiative.status === 'bloqueada' || /bloque|fricci|tecnic|integraci|soporte/i.test(initiative.mainBlocker || initiative.mainAlert);
 
@@ -661,6 +665,12 @@ function getInitiativeAttentionModel(
       tone: 'rose',
       actionKind: 'resolver_bloqueo',
     };
+  }
+
+  // Lista para decisión confirmada por backend gana a las alertas de sponsor y owner: quien
+  // decide es el Portfolio Lead, y marcarla "Sin respuesta" la sacaba de "Listas para decisión".
+  if (isDecisionReady) {
+    return DECISION_READY_ATTENTION;
   }
 
   if (sponsorPending) {
@@ -729,20 +739,8 @@ function getInitiativeAttentionModel(
     };
   }
 
-  if (isDecisionReady) {
-    return {
-      kind: 'decision_ready',
-      filter: 'decision_ready',
-      score: 60,
-      label: 'Lista para decisión',
-      whatHappens: 'La iniciativa ya tiene señal suficiente para una revisión ejecutiva.',
-      whyItMatters: 'La evidencia ya puede convertirse en una decisión, un reporte o un siguiente paso claro.',
-      suggestedAction: 'Generar reporte y llevarla a decisión con el contexto del reto y el frente.',
-      expectedResponsible: 'Portfolio Lead',
-      ctaLabel: 'Generar reporte',
-      tone: 'violet',
-      actionKind: 'none',
-    };
+  if (reachedStep4) {
+    return DECISION_READY_ATTENTION;
   }
 
   if (initiative.status === 'cerrada') {

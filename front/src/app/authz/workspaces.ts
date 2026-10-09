@@ -80,7 +80,11 @@ export function rememberWorkspace(id: WorkspaceId): void {
  */
 export function resolveInitialWorkspace(user: UsuarioConPermisos): Workspace {
   const disponibles = availableWorkspaces(user);
-  const fallback = disponibles[0] ?? WORKSPACES[0];
+  // Sin preferencia, quien entra a portafolio pero no es dueño de iniciativas arranca en
+  // portafolio: no está en el equipo de ninguna, y "Mis iniciativas" le saldría vacío.
+  const portafolio = disponibles.find((w) => w.id === 'portafolio');
+  const fallback =
+    (portafolio && !can(user, 'project:own') ? portafolio : disponibles[0]) ?? WORKSPACES[0];
 
   let guardada: string | null = null;
   try {

@@ -83,6 +83,8 @@ export function DashboardPage() {
 
   const isOwner = user?.role === 'owner';
   const isSponsor = user?.role === 'sponsor';
+  // El Portfolio Lead no es del equipo de las iniciativas que sigue: las ve en Portafolio.
+  const isPortfolioLead = user?.role === 'portfolio_lead';
   const filtered = projects.filter(project =>
     project.name.toLowerCase().includes(search.toLowerCase()) ||
     project.description?.toLowerCase().includes(search.toLowerCase())
@@ -147,7 +149,9 @@ export function DashboardPage() {
                 ? 'Proyectos a revisar'
                 : user?.role === 'admin'
                 ? 'Todos los proyectos'
-                  : 'Iniciativas con sponsor'}
+                  : isPortfolioLead
+                    ? 'Mis iniciativas'
+                    : 'Iniciativas con sponsor'}
           </h1>
           {user?.role === 'owner' && (
             <p className="text-sm text-slate-500">
@@ -260,15 +264,32 @@ export function DashboardPage() {
             <Folder size={24} className="text-indigo-400" />
           </div>
           <h3 className="text-slate-800 mb-2" style={{ fontWeight: 600 }}>
-            {search ? 'Sin resultados' : isSponsor ? 'No tienes iniciativas asignadas como sponsor' : 'No tienes iniciativas aún'}
+            {search
+              ? 'Sin resultados'
+              : isSponsor
+                ? 'No tienes iniciativas asignadas como sponsor'
+                : isPortfolioLead
+                  ? 'No formas parte del equipo de ninguna iniciativa'
+                  : 'No tienes iniciativas aún'}
           </h3>
           <p className="text-sm text-slate-500 mb-6 max-w-xs">
             {search
               ? `No encontramos proyectos con "${search}". Prueba con otro término.`
               : isSponsor
                 ? 'Cuando te asignen como sponsor verás aquí el avance, los hitos donde debes intervenir y la siguiente convocatoria.'
-                : 'Crea tu primera iniciativa y empieza a ordenarla desde Step 0.'}
+                : isPortfolioLead
+                  ? 'Las iniciativas de tus frentes y retos las sigues desde Portafolio.'
+                  : 'Crea tu primera iniciativa y empieza a ordenarla desde Step 0.'}
           </p>
+          {!search && isPortfolioLead && (
+            <button
+              onClick={() => navigate('/portfolio/iniciativas')}
+              className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2.5 rounded-xl text-sm transition-colors"
+              style={{ fontWeight: 500 }}
+            >
+              <Layers3 size={16} /> Ver iniciativas del portafolio
+            </button>
+          )}
           {!search && user?.role === 'owner' && (
             <button
               onClick={() => navigate(CREATE_INITIATIVE_PATH)}

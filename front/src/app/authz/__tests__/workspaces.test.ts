@@ -68,6 +68,17 @@ describe('resolveInitialWorkspace', () => {
     expect(resolveInitialWorkspace(dobleRol).id).toBe('iniciativas');
   });
 
+  it('un portfolio lead puro sin preferencia arranca en portafolio: su workspace siempre está vacío', () => {
+    // No es parte del equipo de ninguna iniciativa (las crea el participante), así que
+    // "Mis iniciativas" le mostraría "No tienes iniciativas aún".
+    expect(resolveInitialWorkspace(portfolioLead).id).toBe('portafolio');
+  });
+
+  it('un portfolio lead puro que eligió el workspace vuelve a él', () => {
+    rememberWorkspace('iniciativas');
+    expect(resolveInitialWorkspace(portfolioLead).id).toBe('iniciativas');
+  });
+
   it('una zona guardada a la que YA NO tiene acceso degrada a una permitida', () => {
     // Le retiraron el rol de portafolio pero su localStorage sigue apuntando allí.
     rememberWorkspace('portafolio');
