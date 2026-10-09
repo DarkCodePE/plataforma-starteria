@@ -54,7 +54,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Setup Node.js 20.x
         uses: actions/setup-node@v4
@@ -118,7 +118,7 @@ jobs:
           --health-cmd "pg_isready -U shadow" --health-interval 2s --health-timeout 5s --health-retries 15
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Setup Node.js 20.x
         uses: actions/setup-node@v4
@@ -160,7 +160,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Setup Python 3.11
         uses: actions/setup-python@v5
@@ -201,7 +201,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       # ----- Node side -----
       - name: Setup Node.js 20.x
@@ -257,7 +257,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Setup Node.js 20.x
         uses: actions/setup-node@v4
