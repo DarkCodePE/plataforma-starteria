@@ -558,11 +558,19 @@ function assertContextRevision(contextRevision: number): void {
 
 function mapPrismaConflict(err: unknown): never {
   if (err instanceof PortfolioEntrySessionError) throw err;
-  if (
-    err instanceof Prisma.PrismaClientKnownRequestError &&
-    (err.code === 'P2002' || err.code === 'P2003' || err.code === 'P2034')
-  ) {
-    throw PortfolioEntrySessionError.conflict();
-  }
+  if (isPrismaConcurrencyConflict(err)) throw PortfolioEntrySessionError.conflict();
   throw err;
+}
+
+function isPrismaConcurrencyConflict(err: unknown): boolean {
+  if (!(err instanceof Prisma.PrismaClientKnownRequestError)) return false;
+  if (err.code === 'P2002' || err.code === 'P2003' || err.code === 'P2034') return true;
+  if (err.code !== 'P2010' || !isRecord(err.meta)) return false;
+
+  const sqlState = err.meta.code;
+  return sqlState === '40001' || sqlState === '40P01';
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
