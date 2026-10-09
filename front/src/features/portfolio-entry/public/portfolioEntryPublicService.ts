@@ -4,6 +4,7 @@ import type {
   PortfolioEntryContinuationResult,
   PortfolioEntryContextResolution,
   PortfolioEntryConversionResult,
+  PortfolioEntryCriticalHandoffDto,
   PortfolioEntrySessionDto,
 } from './types';
 
@@ -114,19 +115,27 @@ export async function getPortfolioEntrySession(
 
 export async function submitPortfolioEntryMessage(
   sessionId: string,
-  credential: string,
+  credential: string | undefined,
   input: SubmitPortfolioEntryMessageInput,
 ): Promise<PortfolioEntrySessionDto> {
-  const response = await publicApi.post<PortfolioEntryApiEnvelope<PortfolioEntrySessionDto>>(
-    `/public/portfolio-entry/sessions/${encodeURIComponent(sessionId)}/messages`,
-    {
-      expectedRevision: input.expectedRevision,
-      message: input.message,
-      ...(input.intent ? { intent: input.intent } : {}),
-      ...(input.matchedQuestionIds?.length ? { matchedQuestionIds: input.matchedQuestionIds } : {}),
-    },
-    { headers: authHeaders(credential, input.idempotencyKey) },
-  );
+  const body = {
+    expectedRevision: input.expectedRevision,
+    message: input.message,
+    ...(input.intent ? { intent: input.intent } : {}),
+    ...(input.matchedQuestionIds?.length ? { matchedQuestionIds: input.matchedQuestionIds } : {}),
+  };
+  const endpoint = `/public/portfolio-entry/sessions/${encodeURIComponent(sessionId)}/messages`;
+  const response = credential
+    ? await publicApi.post<PortfolioEntryApiEnvelope<PortfolioEntrySessionDto>>(
+      endpoint,
+      body,
+      { headers: authHeaders(credential, input.idempotencyKey) },
+    )
+    : await (await import('../../../app/services/api')).default.post<PortfolioEntryApiEnvelope<PortfolioEntrySessionDto>>(
+      endpoint,
+      body,
+      { headers: { [IDEMPOTENCY_HEADER]: input.idempotencyKey } },
+    );
   return unwrap(response);
 }
 
@@ -168,6 +177,53 @@ export async function getPortfolioEntryHandoff(
     { headers: authHeaders(credential) },
   );
   return unwrap(response);
+}
+
+type CriticalHandoffWireDto = {
+  state: 'current' | 'stale';
+  projection: PortfolioEntryCriticalHandoffDto['projection'];
+};
+
+function toSafeCriticalHandoffDto(dto: CriticalHandoffWireDto): PortfolioEntryCriticalHandoffDto {
+  const projection = dto.projection;
+  const firstMovement = projection.firstMovement;
+  return {
+    state: dto.state,
+    projection: {
+      conclusionStatus: projection.conclusionStatus,
+      finalReading: projection.finalReading,
+      decisionInView: projection.decisionInView,
+      usableNow: projection.usableNow.map(({ item, howItCanHelp }) => ({ item, howItCanHelp })),
+      decisionChangingUnknowns: projection.decisionChangingUnknowns.map(({ uncertainty, whyItMatters }) => ({ uncertainty, whyItMatters })),
+      firstMovement: firstMovement ? {
+        movement: firstMovement.movement,
+        whyNow: firstMovement.whyNow,
+        whatItMayClarify: firstMovement.whatItMayClarify,
+        boundary: firstMovement.boundary,
+        ...(firstMovement.existingAssetsUsed ? { existingAssetsUsed: [...firstMovement.existingAssetsUsed] } : {}),
+      } : null,
+    },
+  };
+}
+
+/** Reads only the dedicated, backend-currentness-qualified Critical Handoff endpoint. */
+export async function getPortfolioEntryCriticalHandoff(
+  sessionId: string,
+  credential?: string,
+): Promise<PortfolioEntryCriticalHandoffDto | null> {
+  const endpoint = `/public/portfolio-entry/sessions/${encodeURIComponent(sessionId)}/critical-handoff`;
+  try {
+    const response = credential
+      ? await publicApi.get<PortfolioEntryApiEnvelope<CriticalHandoffWireDto>>(
+        endpoint,
+        { headers: authHeaders(credential) },
+      )
+      : await (await import('../../../app/services/api')).default.get<PortfolioEntryApiEnvelope<CriticalHandoffWireDto>>(endpoint);
+    return toSafeCriticalHandoffDto(unwrap(response));
+  } catch (err) {
+    if (normalizePortfolioEntryApiError(err).kind === 'not_found') return null;
+    throw err;
+  }
 }
 
 export async function correctPortfolioEntryHandoff(

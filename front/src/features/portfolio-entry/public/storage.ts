@@ -5,6 +5,7 @@ const CURRENT_SESSION_KEY = 'starteria.portfolioEntry.current';
 const PENDING_CLAIM_KEY = 'starteria.portfolioEntry.pendingClaim';
 const CLAIMED_NOTICE_KEY = 'starteria.portfolioEntry.claimedNotice';
 const CLAIMED_SESSION_KEY = 'starteria.portfolioEntry.claimedSession';
+const CRITICAL_HANDOFF_REVIEW_SESSION_KEY = 'starteria.portfolioEntry.criticalHandoffReviewSession';
 
 type ClaimedNotice = {
   sessionId: string;
@@ -41,6 +42,19 @@ export function clearPortfolioEntryCurrentSession(): void {
   getSessionStorage()?.removeItem(CURRENT_SESSION_KEY);
 }
 
+/** Local presentation marker that distinguishes new Critical Handoff reviews from historical legacy reviews. */
+export function markCriticalHandoffReviewSession(sessionId: string): void {
+  getSessionStorage()?.setItem(CRITICAL_HANDOFF_REVIEW_SESSION_KEY, sessionId);
+}
+
+export function hasCriticalHandoffReviewSession(sessionId: string): boolean {
+  return getSessionStorage()?.getItem(CRITICAL_HANDOFF_REVIEW_SESSION_KEY) === sessionId;
+}
+
+export function clearCriticalHandoffReviewSession(): void {
+  getSessionStorage()?.removeItem(CRITICAL_HANDOFF_REVIEW_SESSION_KEY);
+}
+
 export function savePendingPortfolioEntryClaim(ref: PendingPortfolioEntryClaim): void {
   getSessionStorage()?.setItem(PENDING_CLAIM_KEY, JSON.stringify(ref));
 }
@@ -55,6 +69,7 @@ export function readPendingPortfolioEntryClaim(): PendingPortfolioEntryClaim | n
         sessionId: parsed.sessionId,
         credential: parsed.credential,
         ...(isPortfolioEntryBriefIdentity(parsed.identity) ? { identity: parsed.identity } : {}),
+        ...(parsed.criticalHandoffReview === true ? { criticalHandoffReview: true } : {}),
       };
     }
   } catch {

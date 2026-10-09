@@ -4,6 +4,9 @@ import {
   clearPortfolioEntryConversionState,
   clearPortfolioEntryAnonymousState,
   clearPortfolioEntryCurrentSession,
+  clearCriticalHandoffReviewSession,
+  hasCriticalHandoffReviewSession,
+  markCriticalHandoffReviewSession,
   readClaimedPortfolioEntrySession,
   readClaimedPortfolioEntryBriefIdentity,
   readPendingPortfolioEntryClaim,
@@ -39,6 +42,30 @@ describe('Portfolio Entry public storage', () => {
 
     clearPendingPortfolioEntryClaim();
     expect(readPendingPortfolioEntryClaim()).toBeNull();
+  });
+
+  it('preserves the Critical Handoff presentation mode across the auth claim', () => {
+    markCriticalHandoffReviewSession('session-critical');
+    savePendingPortfolioEntryClaim({
+      sessionId: 'session-critical',
+      credential: 'secret-token',
+      criticalHandoffReview: true,
+    });
+
+    expect(hasCriticalHandoffReviewSession('session-critical')).toBe(true);
+    expect(hasCriticalHandoffReviewSession('different-session')).toBe(false);
+    expect(window.sessionStorage.getItem('starteria.portfolioEntry.criticalHandoffReviewSession')).toBe('session-critical');
+    expect(readPendingPortfolioEntryClaim()).toEqual({
+      sessionId: 'session-critical',
+      credential: 'secret-token',
+      criticalHandoffReview: true,
+    });
+    expect(window.sessionStorage.getItem('starteria.portfolioEntry.current')).toBeNull();
+    expect([...Array(window.sessionStorage.length)].map((_, index) => window.sessionStorage.getItem(window.sessionStorage.key(index) ?? '')).join('\n'))
+      .not.toMatch(/finalReading|decisionInView|usableNow|decisionChangingUnknowns|firstMovement|selected_lenses|reasoning_metadata|provenance|source_refs/i);
+
+    clearCriticalHandoffReviewSession();
+    expect(hasCriticalHandoffReviewSession('session-critical')).toBe(false);
   });
 
   it('clears anonymous credentials after claim or expiry', () => {

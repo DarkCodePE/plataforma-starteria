@@ -5,6 +5,7 @@ import {
   chooseGuidedExploration,
   continuePortfolioEntryToPortfolio,
   createPortfolioEntrySession,
+  getPortfolioEntryCriticalHandoff,
   getPortfolioEntrySession,
   normalizePortfolioEntryApiError,
   submitPortfolioEntryMessage,
@@ -73,6 +74,116 @@ describe('portfolioEntryPublicService', () => {
     await getPortfolioEntrySession('11111111-1111-4111-8111-111111111111', 'entry-token');
   });
 
+  it('loads only the safe Critical Handoff DTO from its dedicated endpoint', async () => {
+    server.use(
+      http.get('*/public/portfolio-entry/sessions/:sessionId/critical-handoff', ({ request, params }) => {
+        expect(params.sessionId).toBe('11111111-1111-4111-8111-111111111111');
+        expect(new URL(request.url).pathname).toContain('/critical-handoff');
+        expect(new URL(request.url).search).not.toContain('entry-token');
+        expect(request.headers.get('X-Starteria-Entry-Token')).toBe('entry-token');
+        return HttpResponse.json({
+          success: true,
+          data: {
+            id: 'artifact-1',
+            version: 3,
+            schemaVersion: 'critical-handoff-projection-v0.1',
+            sourceContextRevision: 7,
+            sourceTurnId: 'turn-9',
+            claim_ref: 'private-claim-ref',
+            route_ranking: ['private-route'],
+            candidate_first_movement: { raw: 'private movement object' },
+            state: 'current',
+            projection: {
+              conclusionStatus: 'bounded',
+              finalReading: 'El comité necesita comparar capacidad y urgencia antes de priorizar.',
+              decisionInView: 'Qué iniciativas reciben capacidad durante este ciclo.',
+              usableNow: [{ item: 'Datos de capacidad', howItCanHelp: 'Permiten acotar opciones.' }],
+              decisionChangingUnknowns: [{ uncertainty: 'Falta confirmar una fecha.', whyItMatters: 'Puede cambiar la secuencia.' }],
+              firstMovement: {
+                movement: 'Revisar el corte de capacidad actual.',
+                whyNow: 'Ese corte ya existe.',
+                whatItMayClarify: 'Qué opciones caben en el ciclo.',
+                boundary: 'No decide prioridades por sí solo.',
+                existingAssetsUsed: ['Informe de capacidad'],
+              },
+              reasoning_metadata: { private: true },
+            },
+            selected_lenses: ['private-lens'],
+            provenance: [{ source_ref: 'private-ref' }],
+            source_refs: ['private-source-ref'],
+            claim_refs: ['private-claim-ref'],
+            prompt_metadata: { prompt: 'private prompt metadata' },
+            model_metadata: { model: 'private-model' },
+            provider_metadata: { provider: 'private-provider' },
+            raw_synthesis: { prompt: 'private prompt' },
+            starteria_path: ['private path'],
+            recommended_approach: 'private recommendation',
+            recommended_cta: 'private CTA',
+          },
+        });
+      }),
+    );
+
+    const artifact = await getPortfolioEntryCriticalHandoff('11111111-1111-4111-8111-111111111111', 'entry-token');
+
+    expect(artifact).toEqual({
+      state: 'current',
+      projection: {
+        conclusionStatus: 'bounded',
+        finalReading: 'El comité necesita comparar capacidad y urgencia antes de priorizar.',
+        decisionInView: 'Qué iniciativas reciben capacidad durante este ciclo.',
+        usableNow: [{ item: 'Datos de capacidad', howItCanHelp: 'Permiten acotar opciones.' }],
+        decisionChangingUnknowns: [{ uncertainty: 'Falta confirmar una fecha.', whyItMatters: 'Puede cambiar la secuencia.' }],
+        firstMovement: {
+          movement: 'Revisar el corte de capacidad actual.',
+          whyNow: 'Ese corte ya existe.',
+          whatItMayClarify: 'Qué opciones caben en el ciclo.',
+          boundary: 'No decide prioridades por sí solo.',
+          existingAssetsUsed: ['Informe de capacidad'],
+        },
+      },
+    });
+    expect(Object.keys(artifact ?? {})).toEqual(['state', 'projection']);
+    expect(JSON.stringify(artifact)).not.toMatch(/sourceTurnId|sourceContextRevision|selected_lenses|reasoning_metadata|provenance|source_refs|claim_ref|prompt_metadata|model_metadata|provider_metadata|candidate_first_movement|route_ranking|raw_synthesis|starteria_path|recommended_approach|recommended_cta/i);
+  });
+
+  it('treats a missing Critical Handoff as absent without reading legacy handoff data', async () => {
+    server.use(http.get('*/public/portfolio-entry/sessions/:sessionId/critical-handoff', () => HttpResponse.json({
+      success: false,
+      error: { code: 'NOT_FOUND' },
+    }, { status: 404 })));
+
+    await expect(getPortfolioEntryCriticalHandoff('11111111-1111-4111-8111-111111111111', 'entry-token')).resolves.toBeNull();
+  });
+
+  it('uses authenticated transport for Critical Handoff reads after claim', async () => {
+    server.use(http.get('*/public/portfolio-entry/sessions/:sessionId/critical-handoff', ({ request }) => {
+      expect(request.headers.get('X-Starteria-Entry-Token')).toBeNull();
+      return HttpResponse.json({
+        success: true,
+        data: {
+          id: 'claimed-artifact',
+          version: 2,
+          schemaVersion: 'critical-handoff-projection-v0.1',
+          sourceContextRevision: 8,
+          state: 'current',
+          projection: {
+            conclusionStatus: 'supported',
+            finalReading: 'La lectura se conserva.',
+            decisionInView: null,
+            usableNow: [],
+            decisionChangingUnknowns: [],
+            firstMovement: null,
+          },
+        },
+      });
+    }));
+
+    await expect(getPortfolioEntryCriticalHandoff('11111111-1111-4111-8111-111111111111')).resolves.toMatchObject({
+      state: 'current',
+    });
+  });
+
   it('returns reason_to_ask unchanged on the question DTO', async () => {
     const reason = 'Puede cambiar la decisión que necesitas preparar.';
     server.use(http.get('*/public/portfolio-entry/sessions/:sessionId', () => HttpResponse.json({
@@ -131,6 +242,29 @@ describe('portfolioEntryPublicService', () => {
       expectedRevision: 7,
       idempotencyKey: 'correction-key',
       message: 'La lectura no refleja lo que quise decir sobre esta iniciativa.',
+      intent: 'correction',
+    });
+  });
+
+  it('submits correction context for a claimed session through authenticated transport', async () => {
+    server.use(
+      http.post('*/public/portfolio-entry/sessions/:sessionId/messages', async ({ request }) => {
+        const body = await request.json();
+        expect(request.headers.get('X-Starteria-Entry-Token')).toBeNull();
+        expect(request.headers.get('Idempotency-Key')).toBe('claimed-correction-key');
+        expect(body).toEqual({
+          expectedRevision: 12,
+          message: 'El espacio disponible depende de otra fecha.',
+          intent: 'correction',
+        });
+        return HttpResponse.json({ success: true, data: makeSession({ revision: 13, nextAction: 'answer_clarification' }) });
+      }),
+    );
+
+    await submitPortfolioEntryMessage('11111111-1111-4111-8111-111111111111', undefined, {
+      expectedRevision: 12,
+      idempotencyKey: 'claimed-correction-key',
+      message: 'El espacio disponible depende de otra fecha.',
       intent: 'correction',
     });
   });

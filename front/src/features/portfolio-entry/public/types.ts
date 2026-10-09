@@ -214,6 +214,29 @@ export type PortfolioEntryHandoffDto = {
   createdAt: string;
 };
 
+export type CriticalHandoffConclusionStatus = 'supported' | 'bounded' | 'insufficient_basis';
+
+export type CriticalHandoffProjection = {
+  conclusionStatus: CriticalHandoffConclusionStatus;
+  finalReading: string | null;
+  decisionInView: string | null;
+  usableNow: Array<{ item: string; howItCanHelp: string }>;
+  decisionChangingUnknowns: Array<{ uncertainty: string; whyItMatters: string }>;
+  firstMovement: {
+    movement: string;
+    whyNow: string;
+    whatItMayClarify: string;
+    boundary: string;
+    existingAssetsUsed?: string[];
+  } | null;
+};
+
+/** Safe client projection; artifact and source identifiers stay on the backend. */
+export type PortfolioEntryCriticalHandoffDto = {
+  state: 'current' | 'stale';
+  projection: CriticalHandoffProjection;
+};
+
 export type PortfolioEntryConfirmationDto = {
   id: string;
   version: number;
@@ -249,6 +272,7 @@ export type PortfolioEntryBriefIdentity = {
 
 export type PendingPortfolioEntryClaim = StoredPortfolioEntrySession & {
   identity?: PortfolioEntryBriefIdentity;
+  criticalHandoffReview?: boolean;
 };
 
 export type ClaimedPortfolioEntrySessionRef = { sessionId: string } | PortfolioEntryBriefIdentity;

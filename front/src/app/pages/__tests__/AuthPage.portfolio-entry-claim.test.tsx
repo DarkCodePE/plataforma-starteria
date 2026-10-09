@@ -2,15 +2,17 @@ import React from 'react';
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { render, waitFor } from '@testing-library/react';
 import { AuthPage } from '../AuthPage';
+import type { PendingPortfolioEntryClaim } from '../../../features/portfolio-entry/public/types';
 
 const navigateSpy = vi.hoisted(() => vi.fn());
 const appMocks = vi.hoisted(() => ({
   createProjectFromPublicDraft: vi.fn(),
 }));
 const portfolioEntryMocks = vi.hoisted(() => ({
-  readPendingPortfolioEntryClaim: vi.fn(() => ({
+  readPendingPortfolioEntryClaim: vi.fn((): PendingPortfolioEntryClaim => ({
     sessionId: 'session-1', credential: 'entry-token',
     identity: { source: 'portfolio_entry', sessionId: 'session-1', sessionRevision: 6, handoffId: 'handoff-1', handoffVersion: 2, confirmationId: 'confirmation-1', confirmationVersion: 3 },
+    criticalHandoffReview: false,
   })),
   clearPendingPortfolioEntryClaim: vi.fn(),
   clearPortfolioEntryCurrentSession: vi.fn(),
@@ -61,6 +63,12 @@ vi.mock('../../../features/portfolio-entry/public/idempotency', () => ({
 describe('AuthPage Portfolio Entry claim continuation', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    portfolioEntryMocks.readPendingPortfolioEntryClaim.mockReturnValue({
+      sessionId: 'session-1',
+      credential: 'entry-token',
+      identity: { source: 'portfolio_entry', sessionId: 'session-1', sessionRevision: 6, handoffId: 'handoff-1', handoffVersion: 2, confirmationId: 'confirmation-1', confirmationVersion: 3 },
+      criticalHandoffReview: false,
+    });
   });
 
   it('claims pending Portfolio Entry before any pilot/PublicDraft conversion path', async () => {
@@ -84,5 +92,21 @@ describe('AuthPage Portfolio Entry claim continuation', () => {
     expect(appMocks.createProjectFromPublicDraft).not.toHaveBeenCalled();
     expect(navigateSpy).toHaveBeenCalledWith('/public/provisional-continuation', { replace: true });
     expect(navigateSpy).not.toHaveBeenCalledWith('/continuar-piloto', expect.anything());
+  });
+
+  it('returns Critical Handoff identity claims to the artifact review, without entering legacy confirmation', async () => {
+    portfolioEntryMocks.readPendingPortfolioEntryClaim.mockReturnValue({
+      sessionId: 'session-1',
+      credential: 'entry-token',
+      criticalHandoffReview: true,
+    });
+
+    render(<AuthPage />);
+
+    await waitFor(() => expect(navigateSpy).toHaveBeenCalledWith('/public/start', { replace: true }));
+    expect(portfolioEntryMocks.claimPortfolioEntrySession).toHaveBeenCalledTimes(1);
+    expect(portfolioEntryMocks.portfolioEntryClaimIdentity).not.toHaveBeenCalled();
+    expect(portfolioEntryMocks.saveClaimedPortfolioEntrySession).toHaveBeenCalledWith({ sessionId: 'session-1' });
+    expect(navigateSpy).not.toHaveBeenCalledWith('/public/provisional-continuation', { replace: true });
   });
 });
