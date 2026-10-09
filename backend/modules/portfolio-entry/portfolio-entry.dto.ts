@@ -110,6 +110,11 @@ export type PortfolioEntryCriticalHandoffClientDto = {
   projection: CriticalHandoffProjection;
 };
 
+export type PortfolioEntryCriticalHandoffMaterializationClientDto = {
+  sessionRevision: number;
+  criticalHandoff: PortfolioEntryCriticalHandoffClientDto;
+};
+
 export type PortfolioEntryConfirmationClientDto = {
   id: string;
   version: number;
@@ -164,7 +169,9 @@ export function toPortfolioEntrySessionClientDto(
   session: PortfolioEntrySession,
   turns: PortfolioEntryTurn[],
   liveUnderstanding?: LiveUnderstandingViewModel | null,
+  options: { includeLegacyHandoff?: boolean } = {},
 ): PortfolioEntrySessionClientDto {
+  const includeLegacyHandoff = options.includeLegacyHandoff ?? true;
   const activeTurnId = turns.at(-1)?.id;
   return {
     id: session.id,
@@ -212,10 +219,12 @@ export function toPortfolioEntrySessionClientDto(
       understanding: buildUnderstanding(session),
     },
     nextAction: deriveNextAction(session, turns),
-    handoff: session.latestHandoff ? toHandoffClientDto(session.latestHandoff) : undefined,
+    ...(includeLegacyHandoff && session.latestHandoff
+      ? { handoff: toHandoffClientDto(session.latestHandoff) }
+      : {}),
     confirmation: session.confirmation ? toConfirmationClientDto(session.confirmation) : undefined,
     pendingInput: session.semanticState.pendingInput,
-    handoffMode: session.latestHandoff
+    handoffMode: includeLegacyHandoff && session.latestHandoff
       ? session.semanticState.pendingInput?.status === 'FAILED_RETRYABLE' ? 'degraded' : 'deterministic'
       : undefined,
     ...(liveUnderstanding ? { liveUnderstanding } : {}),
@@ -318,7 +327,7 @@ export function toCriticalHandoffClientDto(
     sourceContextRevision: artifact.sourceContextRevision,
     state: isCurrent ? 'current' : 'stale',
     confirmationState: artifact.confirmationState,
-    // Critical Handoff content never changes after creation; its updatedAt records confirmation time.
+    // Confirmation evidence has its own timestamp; updatedAt remains record maintenance metadata.
     confirmedAt: artifact.confirmedAt?.toISOString() ?? null,
     projection: artifact.payload,
   };

@@ -110,6 +110,22 @@ export class PortfolioEntryController {
     }
   };
 
+  materializeCriticalHandoff = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const { sessionId } = sessionParamsSchema.parse(req.params);
+      const body = materializeHandoffBodySchema.parse(req.body);
+      const data = await this.service.materializeCriticalHandoffCurrent(sessionId, body.expectedRevision, {
+        requestId: getRequestId(req),
+        publicAccessToken: getPublicToken(req),
+        principal: req.user ? { id: req.user.id } : undefined,
+        idempotencyKey: getIdempotencyKey(req),
+      });
+      res.json({ success: true, data });
+    } catch (err) {
+      next(mapPortfolioEntryError(err));
+    }
+  };
+
   guidedExploration = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
       const { sessionId } = sessionParamsSchema.parse(req.params);

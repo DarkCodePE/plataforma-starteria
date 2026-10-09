@@ -23,6 +23,7 @@ import type { PortfolioEntryIdempotencyRepository } from '../application/portfol
 import { buildPortfolioEntryRouter } from '../portfolio-entry.router';
 
 const base = '/api/v1/public/portfolio-entry';
+const legacyCompatibilityRepositories = new WeakMap<express.Express, InMemoryPortfolioEntrySessionRepository>();
 
 describe('Portfolio Entry Experimental Session API', () => {
   it('D1 resolves the exact owner-confirmed Brief with provenance and no session writes', async () => {
@@ -74,7 +75,7 @@ describe('Portfolio Entry Experimental Session API', () => {
       });
       await request(app).get(confirmedBriefPath(fixture)).set('Authorization', 'Bearer user-1').expect(410);
     }
-    const ready = await readySession(app);
+    const ready = await legacyHandoffReadySession(app);
     const handoff = await request(app).post(`${base}/sessions/${ready.sessionId}/handoff`)
       .set('X-Starteria-Entry-Token', ready.token).set('Idempotency-Key', `d1-not-confirmed-handoff-${ready.sessionId}`)
       .send({ expectedRevision: ready.revision }).expect(200);
@@ -564,7 +565,7 @@ describe('Portfolio Entry Experimental Session API', () => {
 
   it('materializes, reads, confirms, and corrects handoffs without exposing internals or conversion eligibility', async () => {
     const { app } = makeApp();
-    const first = await readySession(app);
+    const first = await legacyHandoffReadySession(app);
 
     const handoff = await request(app)
       .post(`${base}/sessions/${first.sessionId}/handoff`)
@@ -602,7 +603,7 @@ describe('Portfolio Entry Experimental Session API', () => {
     expect(confirmed.body.data.confirmation.status).toBe('CONFIRMED');
     expect(confirmed.body.data.lifecycleStatus).not.toBe('CONVERSION_ELIGIBLE');
 
-    const second = await readySession(app);
+    const second = await legacyHandoffReadySession(app);
     const secondHandoff = await request(app)
       .post(`${base}/sessions/${second.sessionId}/handoff`)
       .set('X-Starteria-Entry-Token', second.token)
@@ -740,7 +741,7 @@ describe('Portfolio Entry Experimental Session API', () => {
   it('preserves the frozen handoff, provenance, open items, and organizational unknowns during claim', async () => {
     const adapter = new FakeAgentAdapter();
     const { app, repository } = makeApp({ adapter });
-    const ready = await readySession(app);
+    const ready = await legacyHandoffReadySession(app);
     const handoff = await request(app)
       .post(`${base}/sessions/${ready.sessionId}/handoff`)
       .set('X-Starteria-Entry-Token', ready.token)
@@ -793,7 +794,7 @@ describe('Portfolio Entry Experimental Session API', () => {
   it('enforces authenticated owner confirmation, explicit user fields, CAS, idempotency and zero cognition', async () => {
     const adapter = new FakeAgentAdapter();
     const { app } = makeApp({ adapter });
-    const ready = await readySession(app);
+    const ready = await legacyHandoffReadySession(app);
     const handoff = await request(app)
       .post(`${base}/sessions/${ready.sessionId}/handoff`)
       .set('X-Starteria-Entry-Token', ready.token)
@@ -867,7 +868,7 @@ describe('Portfolio Entry Experimental Session API', () => {
 
   it('persists explicit Strategic Intent decisions, rejects contradictions, and exposes only stored confirmation through D1', async () => {
     const { app, repository } = makeApp();
-    const ready = await readySession(app);
+    const ready = await legacyHandoffReadySession(app);
     const handoff = await request(app).post(`${base}/sessions/${ready.sessionId}/handoff`)
       .set('X-Starteria-Entry-Token', ready.token).set('Idempotency-Key', `intent-handoff-${ready.sessionId}`)
       .send({ expectedRevision: ready.revision }).expect(200);
@@ -974,6 +975,7 @@ function makeApp(input: {
 } = {}) {
   const app = express();
   const repository = input.repository ?? new InMemoryPortfolioEntrySessionRepository();
+  legacyCompatibilityRepositories.set(app, repository);
   app.use(express.json());
   app.use((_req, res, next) => {
     res.header('Access-Control-Allow-Origin', 'http://localhost:5173');
@@ -1077,7 +1079,7 @@ async function createSession(app: express.Express): Promise<{ sessionId: string;
   };
 }
 
-async function readySession(app: express.Express): Promise<{ sessionId: string; token: string; revision: number }> {
+async function legacyHandoffReadySession(app: express.Express): Promise<{ sessionId: string; token: string; revision: number }> {
   const created = await createSession(app);
   const submitted = await request(app)
     .post(`${base}/sessions/${created.sessionId}/messages`)
@@ -1097,6 +1099,19 @@ async function readySession(app: express.Express): Promise<{ sessionId: string; 
   expect(provisional.body.data.lifecycleStatus).toBe('HANDOFF_ELIGIBLE');
   expect(provisional.body.data.nextAction).toBe('generate_handoff');
 
+  // The tests below exercise historical KEEP_COMPAT consumers. Seed the
+  // pre-119 state explicitly after preparing the shared analysis fixture.
+  const repository = legacyCompatibilityRepositories.get(app);
+  const prepared = await repository?.findSessionById(created.sessionId);
+  if (!repository || !prepared) throw new Error('Legacy compatibility session fixture was not initialized.');
+  await repository.saveSessionState({
+    session: {
+      ...prepared,
+      semanticState: { ...prepared.semanticState, userExplorationChoice: 'not_offered' },
+    },
+    expectedRevision: prepared.revision,
+  });
+
   return { ...created, revision: provisional.body.data.revision };
 }
 
@@ -1111,7 +1126,7 @@ type ConfirmedBriefIdentityFixture = {
 };
 
 async function confirmedBriefFixture(app: express.Express): Promise<ConfirmedBriefIdentityFixture> {
-  const ready = await readySession(app);
+  const ready = await legacyHandoffReadySession(app);
   const handoff = await request(app).post(`${base}/sessions/${ready.sessionId}/handoff`)
     .set('X-Starteria-Entry-Token', ready.token).set('Idempotency-Key', `d1-handoff-${ready.sessionId}`)
     .send({ expectedRevision: ready.revision }).expect(200);

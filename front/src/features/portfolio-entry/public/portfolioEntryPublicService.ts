@@ -5,6 +5,7 @@ import type {
   PortfolioEntryContextResolution,
   PortfolioEntryConversionResult,
   PortfolioEntryCriticalHandoffDto,
+  PortfolioEntryCriticalHandoffMaterializationDto,
   PortfolioEntrySessionDto,
 } from './types';
 
@@ -173,6 +174,26 @@ export async function materializePortfolioEntryHandoff(
     { headers: authHeaders(credential, input.idempotencyKey) },
   );
   return unwrap(response);
+}
+
+export async function materializePortfolioEntryCriticalHandoff(
+  sessionId: string,
+  credential: string,
+  input: MutationOptions,
+): Promise<PortfolioEntryCriticalHandoffMaterializationDto> {
+  const response = await publicApi.post<PortfolioEntryApiEnvelope<{
+    sessionRevision: number;
+    criticalHandoff: CriticalHandoffWireDto;
+  }>>(
+    `/public/portfolio-entry/sessions/${encodeURIComponent(sessionId)}/critical-handoff`,
+    { expectedRevision: input.expectedRevision },
+    { headers: authHeaders(credential, input.idempotencyKey) },
+  );
+  const data = unwrap(response);
+  return {
+    sessionRevision: data.sessionRevision,
+    criticalHandoff: toSafeCriticalHandoffDto(data.criticalHandoff),
+  };
 }
 
 export async function getPortfolioEntryHandoff(

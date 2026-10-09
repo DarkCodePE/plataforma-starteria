@@ -510,10 +510,33 @@ integration_note: KAN-116 adds turn_index ordering to the synthesis input assemb
 exclusions: 114D final handoff/conclusion; candidate_first_movement as recommendation; Starteria Path; Portfolio Setup continuity; Steps; Core canonicalization; persistence of Live Understanding as Core truth; KAN-114 reasoning-semantic changes
 migration_status: PARTIAL (this closes the bounded 114C capability, not the broader Portfolio Entry migration)
 legacy_treatment: KEEP_COMPAT; no retirement action is authorized or required by 114C
-next_authorized_slice: 114D final handoff/conclusion — NOT_IMPLEMENTED
+next_authorized_slice: 114D final handoff/conclusion — KAN-119 implementation in PR #161; pending verification and review
 ```
 
 PR #156 CI evidence: `https://github.com/DarkCodePE/plataforma-starteria/actions/runs/37847682123`. The PostgreSQL integration and full-stack E2E steps completed successfully and were not skipped. This is scoped slice evidence, not global production certification.
+
+## KAN-117 / KAN-119 — Critical Handoff (114D), PR #161
+
+```text
+slice_id: PORTFOLIO_ENTRY_CRITICAL_HANDOFF_114D
+HU: KAN-117 semantic acceptance; KAN-119 implementation and regression/closure
+logic_status: ACTIVE_V2_BASELINE (bounded Critical Handoff, subordinate to Core v0.2 and the approved Portfolio Entry Logic Contract v0.1)
+implementation_status: IMPLEMENTED_UNVERIFIED (branch feat/KAN-119-critical-handoff; PR #161 open)
+visual_status: V2_PILOT / VERIFY
+evidence_status: TESTING (unit/frontend and mocked review E2E pass; full-stack browser E2E and PostgreSQL confirmation integration not executed locally)
+semantic_owner: Portfolio Entry V2 for the 114D Critical Handoff; historical legacy handoff consumers remain KEEP_COMPAT
+authority: KAN-117, KAN-118, KAN-119; Core v0.2; Portfolio Entry Logic Contract v0.1; Critical Reasoning Experience Contract v0.1
+capability: public entry -> clarification -> close exploration -> provisional Critical Handoff -> review -> claim if required -> explicit representation confirmation
+boundary: ends at confirmed Critical Handoff
+exclusions: Starteria Path; Portfolio Setup; continue-portfolio; convert; Steps; Core canonicalization
+persistence: additive Critical Handoff table and confirmation evidence columns; migrations are present in PR #161, database application evidence pending
+legacy_treatment: KEEP_COMPAT for explicitly historical legacy sessions; current 114D journeys must not fall back to legacy recommendation semantics
+known_gap: session client DTO still includes the legacy handoff payload on the current 114D response path; privacy/semantic exposure requires resolution before merge
+known_gap: post-confirmation correction policy remains unresolved
+next_authorized_slice: 114E — NOT_STARTED; requires its own authorized scope
+```
+
+PR #161 is not merge-ready until the Critical Handoff DTO privacy gap is resolved and the full-stack browser and PostgreSQL integration suites execute successfully. Current local checks are not a substitute for those required evidence steps.
 
 # 6. V2 E2E slice map
 
@@ -525,7 +548,7 @@ PR #156 CI evidence: `https://github.com/DarkCodePE/plataforma-starteria/actions
 | Public Landing - L1 Product Framing & Hero (KAN-64) | ACTIVE_V2_BASELINE (ADR-006) | IMPLEMENTED_VERIFIED; KAN-64 RESUELTO | V2_PILOT | LOCAL_REGRESSION_PASS (KAN-102 revalidation) | KEEP; Early Access/Demo runtime excluded |
 | Public Landing L2 + Portfolio Entry Convergence (KAN-102) | ACTIVE_V2_BASELINE (ADR-006) | IMPLEMENTED_VERIFIED (local) | V2_PILOT | VERIFIED (frontend + focused Chromium) | KEEP; commercial destinations pending authority |
 | Landing V4 | ACTIVE_V2_BASELINE visual spec | VERIFY_IN_REPO | V2_TARGET_DEFINED | SUPPORTED | RECONCILE |
-| Portfolio Entry logic | ACTIVE_V2_BASELINE | PARTIAL_IMPLEMENTATION; KAN-114 + 114C integrated | V2_PILOT / VERIFY | VERIFIED for KAN-115/116 114C | KEEP bounded 114C; broader stack reconciliation remains |
+| Portfolio Entry logic | ACTIVE_V2_BASELINE | PARTIAL_IMPLEMENTATION; KAN-114 + 114C integrated; 114D in PR #161 | V2_PILOT / VERIFY | VERIFIED for 114C; 114D TESTING | KEEP bounded 114C; 114D pending privacy and required DB/browser evidence |
 | Clarification | CANDIDATE + hypotheses | EXPERIMENTAL / VERIFY | V2_PILOT | TESTING | TEST |
 | Handoff / Value Handoff Cognition | CANDIDATE + hypotheses | EXPERIMENTAL / VERIFY | V2_PILOT | TESTING | TEST |
 | Registration / continuation | CANDIDATE | IMPLEMENTED_UNVERIFIED | MIXED | TESTING | VERIFY grant and full E2E |

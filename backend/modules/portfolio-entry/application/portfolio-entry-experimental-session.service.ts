@@ -34,6 +34,7 @@ import {
   toPortfolioEntrySessionClientDto,
   toPortfolioEntryConfirmedBriefDto,
   type PortfolioEntryConfirmedBriefDto,
+  type PortfolioEntryCriticalHandoffMaterializationClientDto,
   type PortfolioEntrySessionClientDto,
 } from '../portfolio-entry.dto';
 import {
@@ -60,7 +61,7 @@ type RequestContext = {
   idempotencyKey?: string;
   idempotencyRecordId?: string;
 };
-type Operation = 'submit_message' | 'guided_exploration_choice' | 'materialize_handoff' | 'confirm_handoff' | 'confirm_critical_handoff' | 'claim_session' | 'abandon_session';
+type Operation = 'submit_message' | 'guided_exploration_choice' | 'materialize_handoff' | 'materialize_critical_handoff' | 'confirm_handoff' | 'confirm_critical_handoff' | 'claim_session' | 'abandon_session';
 const USER_CONFIRMABLE_FIELDS = new Set([
   'understood_need', 'understanding', 'desired_outcome', 'decision_to_enable', 'known_context',
   'unresolved_context', 'evidence_or_clarity_needed', 'recommended_approach',
@@ -294,11 +295,9 @@ export class PortfolioEntryExperimentalSessionService {
       const responseSession = await this.requireSession(sessionId);
       const resultIsCurrent = responseSession.revision === analyzedRevision
         && responseTurns.at(-1)?.id === appendedTurn.id;
-      return toPortfolioEntrySessionClientDto(
-        responseSession,
-        responseTurns,
-        resultIsCurrent ? liveUnderstanding : liveUnderstandingUnavailableViewModel(),
-      );
+      return this.toDto(responseSession, {
+        liveUnderstanding: resultIsCurrent ? liveUnderstanding : liveUnderstandingUnavailableViewModel(),
+      });
     }, (record) => this.recoverSubmit(sessionId, record, body.expectedRevision, body.message, inputIntent));
   }
 
@@ -372,57 +371,45 @@ export class PortfolioEntryExperimentalSessionService {
     const initial = await this.authorize(sessionId, context);
     assertNotConverted(initial);
     return this.withIdempotency('materialize_handoff', sessionId, { expectedRevision }, context, async () => {
+      const completed = await this.performHandoffMaterialization(sessionId, expectedRevision, context, 'materialize_handoff');
+      return this.toDto(completed, { includeLegacyHandoff: true });
+    }, (record) => this.recoverSessionRevision(sessionId, record, expectedRevision, true));
+  }
+
+  async materializeCriticalHandoffCurrent(
+    sessionId: string,
+    expectedRevision: number,
+    context: RequestContext,
+  ): Promise<PortfolioEntryCriticalHandoffMaterializationClientDto> {
+    const initial = await this.authorize(sessionId, context);
+    assertNotConverted(initial);
+    const existing = await this.sessionService.getLatestCriticalHandoff(sessionId);
+    if (!isCurrentCriticalHandoffSession(initial) && !existing) {
+      throw PortfolioEntrySessionError.invalidTransition('Critical Handoff materialization requires the current Portfolio Entry checkpoint.');
+    }
+
+    return this.withIdempotency('materialize_critical_handoff', sessionId, { expectedRevision }, context, async () => {
       this.assertExpectedRevision(initial, expectedRevision);
       const session = await this.authorize(sessionId, context);
       assertNotConverted(session);
-      this.assertExpectedRevision(session, expectedRevision);
-      if (!session.latestAnalysis) throw PortfolioEntrySessionError.invalidTransition('Portfolio Entry analysis is not ready for handoff.');
-      const shouldMaterializeCriticalHandoff = isCriticalHandoffCheckpoint(session);
-      const sourceContextRevision = session.contextRevision;
-      const sourceTurnId = shouldMaterializeCriticalHandoff
-        ? latestAnalyzedContextTurn(await this.sessionRepository.listTurns(sessionId))?.id
-        : undefined;
-      let materialized;
-      try {
-        materialized = await this.handoffMaterializer.materialize({
-          sessionId,
-          runId: context.requestId ?? randomUUID(),
-          analysis: session.latestAnalysis,
-          context: contextFromSession(session),
-        });
-      } catch (error) {
-        await this.recordFailure(sessionId, error);
-        throw error;
+      const existingAtRun = await this.sessionService.getLatestCriticalHandoff(sessionId);
+      if (!isCurrentCriticalHandoffSession(session) && !existingAtRun) {
+        throw PortfolioEntrySessionError.invalidTransition('Critical Handoff materialization requires the current Portfolio Entry checkpoint.');
       }
-      if (materialized.modelExecution) await this.recordExecution(sessionId, materialized.modelExecution);
-      await this.storeRecovery(context, { kind: 'portfolio-entry-recovery', operation: 'materialize_handoff', expectedRevision });
-      await this.sessionService.saveHandoff({ sessionId, handoff: materialized.handoff, expectedRevision, now: this.now() });
 
-      // Critical Handoff is a side-car to the KEEP_COMPAT legacy handoff. The
-      // legacy artifact is committed first; a failed KAN-114 synthesis or a
-      // stale source must not turn the legacy endpoint into a provider-dependent
-      // failure or synthesize from a newer context than the one this request saw.
-      if (shouldMaterializeCriticalHandoff && sourceTurnId) {
-        try {
-          const currentSession = await this.authorize(sessionId, context);
-          const currentTurns = await this.sessionRepository.listTurns(sessionId);
-          const currentSourceTurn = latestAnalyzedContextTurn(currentTurns);
-          if (currentSession.contextRevision === sourceContextRevision
-            && currentSourceTurn?.id === sourceTurnId) {
-            await this.materializeCriticalHandoff(currentSession, currentSession.revision, currentTurns);
-          }
-        } catch {
-          // Legacy handoff availability is independent of the Critical Handoff
-          // projection. Its GET endpoint remains empty until a real artifact is
-          // successfully synthesized and persisted.
-        }
-      }
-      return this.toDto(await this.requireSession(sessionId));
-    }, (record) => this.recoverSessionRevision(sessionId, record, expectedRevision));
+      const completed = await this.performHandoffMaterialization(
+        sessionId,
+        expectedRevision,
+        context,
+        'materialize_critical_handoff',
+      );
+      return this.criticalHandoffMaterializationDto(completed);
+    }, (record) => this.recoverCriticalHandoffMaterialization(sessionId, record, expectedRevision));
   }
 
   async readHandoff(input: { sessionId: string; publicAccessToken?: string; principal?: Principal }): Promise<PortfolioEntrySessionClientDto> {
-    return this.readSession(input);
+    const session = await this.authorize(input.sessionId, input);
+    return this.toDto(session, { includeLegacyHandoff: true });
   }
 
   async readCriticalHandoff(input: { sessionId: string; publicAccessToken?: string; principal?: Principal }) {
@@ -634,15 +621,112 @@ export class PortfolioEntryExperimentalSessionService {
     return session;
   }
 
-  private async toDto(session: PortfolioEntrySession): Promise<PortfolioEntrySessionClientDto> {
-    return toPortfolioEntrySessionClientDto(session, await this.sessionRepository.listTurns(session.id));
+  private async performHandoffMaterialization(
+    sessionId: string,
+    expectedRevision: number,
+    context: RequestContext,
+    operation: 'materialize_handoff' | 'materialize_critical_handoff',
+  ): Promise<PortfolioEntrySession> {
+    const session = await this.authorize(sessionId, context);
+    assertNotConverted(session);
+    this.assertExpectedRevision(session, expectedRevision);
+    if (!session.latestAnalysis) throw PortfolioEntrySessionError.invalidTransition('Portfolio Entry analysis is not ready for handoff.');
+    const shouldMaterializeCriticalHandoff = isCriticalHandoffCheckpoint(session);
+    const sourceContextRevision = session.contextRevision;
+    const sourceTurnId = shouldMaterializeCriticalHandoff
+      ? latestAnalyzedContextTurn(await this.sessionRepository.listTurns(sessionId))?.id
+      : undefined;
+    let materialized;
+    try {
+      materialized = await this.handoffMaterializer.materialize({
+        sessionId,
+        runId: context.requestId ?? randomUUID(),
+        analysis: session.latestAnalysis,
+        context: contextFromSession(session),
+      });
+    } catch (error) {
+      await this.recordFailure(sessionId, error);
+      throw error;
+    }
+    if (materialized.modelExecution) await this.recordExecution(sessionId, materialized.modelExecution);
+    await this.storeRecovery(context, { kind: 'portfolio-entry-recovery', operation, expectedRevision });
+    await this.sessionService.saveHandoff({ sessionId, handoff: materialized.handoff, expectedRevision, now: this.now() });
+
+    // Critical Handoff remains a side-car to the KEEP_COMPAT legacy artifact.
+    // A KAN-114 failure cannot undo the legacy write or become its response.
+    if (shouldMaterializeCriticalHandoff && sourceTurnId) {
+      try {
+        const currentSession = await this.authorize(sessionId, context);
+        const currentTurns = await this.sessionRepository.listTurns(sessionId);
+        const currentSourceTurn = latestAnalyzedContextTurn(currentTurns);
+        if (currentSession.contextRevision === sourceContextRevision
+          && currentSourceTurn?.id === sourceTurnId) {
+          await this.materializeCriticalHandoff(currentSession, currentSession.revision, currentTurns);
+        }
+      } catch {
+        // The current endpoint reports Critical Handoff unavailable after this
+        // block; the legacy endpoint continues to return its persisted artifact.
+      }
+    }
+    return this.requireSession(sessionId);
+  }
+
+  private async criticalHandoffMaterializationDto(
+    session: PortfolioEntrySession,
+  ): Promise<PortfolioEntryCriticalHandoffMaterializationClientDto> {
+    const latest = await this.sessionService.getLatestCriticalHandoff(session.id);
+    if (!latest) throw PortfolioEntryApiError.criticalHandoffSynthesisUnavailable();
+    return {
+      sessionRevision: session.revision,
+      criticalHandoff: toCriticalHandoffClientDto(latest.artifact, latest.isCurrent),
+    };
+  }
+
+  private async recoverCriticalHandoffMaterialization(
+    sessionId: string,
+    record: PortfolioEntryIdempotencyRecord,
+    expectedRevision: number,
+  ): Promise<PortfolioEntryCriticalHandoffMaterializationClientDto | null> {
+    const hint = recoveryHint(record, 'materialize_critical_handoff', expectedRevision);
+    if (!hint) return null;
+    const session = await this.requireSession(sessionId);
+    if (session.revision !== expectedRevision + 1) return null;
+    const latest = await this.sessionService.getLatestCriticalHandoff(sessionId);
+    if (!latest) return null;
+    return this.criticalHandoffMaterializationDto(session);
+  }
+
+  private async toDto(
+    session: PortfolioEntrySession,
+    options: {
+      includeLegacyHandoff?: boolean;
+      liveUnderstanding?: LiveUnderstandingViewModel | null;
+    } = {},
+  ): Promise<PortfolioEntrySessionClientDto> {
+    const includeLegacyHandoff = options.includeLegacyHandoff
+      ?? !(await this.shouldSuppressLegacyHandoff(session));
+    return toPortfolioEntrySessionClientDto(
+      session,
+      await this.sessionRepository.listTurns(session.id),
+      options.liveUnderstanding,
+      { includeLegacyHandoff },
+    );
   }
 
   private async toProvisionalDto(session: PortfolioEntrySession): Promise<PortfolioEntrySessionClientDto> {
+    if (await this.shouldSuppressLegacyHandoff(session)) {
+      return this.toDto(session, { includeLegacyHandoff: false });
+    }
     return toPortfolioEntryAuthenticatedProvisionalContinuationDto(
       session,
       await this.sessionRepository.listTurns(session.id),
     );
+  }
+
+  private async shouldSuppressLegacyHandoff(session: PortfolioEntrySession): Promise<boolean> {
+    if (isCurrentCriticalHandoffSession(session)) return true;
+    if (!session.latestHandoff) return false;
+    return (await this.sessionService.getLatestCriticalHandoff(session.id)) !== null;
   }
 
   private assertExpectedRevision(session: PortfolioEntrySession, expectedRevision: number): void {
@@ -714,19 +798,26 @@ export class PortfolioEntryExperimentalSessionService {
     const pending = session.semanticState.pendingInput;
     if (!pending || pending.id !== hint.pendingInputId || pending.value !== message) return null;
     const turns = await this.sessionRepository.listTurns(sessionId);
-    if (pending.status === 'FAILED_RETRYABLE') return toPortfolioEntrySessionClientDto(session, turns);
+    if (pending.status === 'FAILED_RETRYABLE') return this.toDto(session);
     if (pending.status !== 'ANALYZED' || !hint.turnIndex) return null;
     if (!turns.some((turn) => turn.turnIndex === hint.turnIndex
       && turn.userInput === pending.value
       && (turn.inputIntent ?? 'answer') === inputIntent)) return null;
-    return toPortfolioEntrySessionClientDto(session, turns);
+    return this.toDto(session);
   }
 
-  private async recoverSessionRevision(sessionId: string, record: PortfolioEntryIdempotencyRecord, expectedRevision: number): Promise<PortfolioEntrySessionClientDto | null> {
+  private async recoverSessionRevision(
+    sessionId: string,
+    record: PortfolioEntryIdempotencyRecord,
+    expectedRevision: number,
+    includeLegacyHandoff = false,
+  ): Promise<PortfolioEntrySessionClientDto | null> {
     const hint = recoveryHint(record, record.operation as Operation, expectedRevision);
     if (!hint) return null;
     const session = await this.requireSession(sessionId);
-    return session.revision === expectedRevision + 1 ? this.toDto(session) : null;
+    return session.revision === expectedRevision + 1
+      ? this.toDto(session, { includeLegacyHandoff })
+      : null;
   }
 
   private async recoverClaim(sessionId: string, record: PortfolioEntryIdempotencyRecord, expectedRevision: number): Promise<PortfolioEntrySessionClientDto | null> {
@@ -874,6 +965,10 @@ function isCriticalHandoffCheckpoint(session: PortfolioEntrySession): boolean {
   return session.lifecycleStatus === 'HANDOFF_ELIGIBLE'
     && session.semanticState.runtimeClarificationStatus === 'ready_for_handoff'
     && session.semanticState.userExplorationChoice === 'provisional_route';
+}
+
+function isCurrentCriticalHandoffSession(session: PortfolioEntrySession): boolean {
+  return session.semanticState.userExplorationChoice === 'provisional_route';
 }
 
 function assertMessageInputAllowed(

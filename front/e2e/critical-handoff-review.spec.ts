@@ -201,6 +201,13 @@ async function openReview(page: Page, scenario?: Scenario) {
   await page.goto('/public/start');
 }
 
+async function expectNoLegacyFallback(page: Page) {
+  const content = await page.locator('body').innerText();
+  expect(content).not.toMatch(/recommended_approach|starteria_path|recommended_cta|Cómo lo abordaría Starteria|Ruta completa en Starteria|Trabajarlo con Starteria|LEGACY_RECOMMENDATION_MARKER|LEGACY_PATH_MARKER/i);
+  await expect(page.getByTestId('handoff-first-view')).toHaveCount(0);
+  await expect(page.getByTestId('portfolio-entry-confirmed-brief-actions')).toHaveCount(0);
+}
+
 async function installExplorationJourneyMocks(page: Page) {
   const requests: Array<{ path: string; method: string; body?: Record<string, unknown> }> = [];
   let criticalReadCount = 0;
@@ -215,7 +222,6 @@ async function installExplorationJourneyMocks(page: Page) {
     },
   });
   const eligible = sessionDto({ lifecycleStatus: 'HANDOFF_ELIGIBLE', revision: 2, nextAction: 'generate_handoff' });
-  const review = sessionDto({ lifecycleStatus: 'AWAITING_CONFIRMATION', revision: 3, nextAction: 'review_handoff' });
   const clarified = sessionDto({
     lifecycleStatus: 'CLARIFYING',
     revision: 4,
@@ -266,8 +272,19 @@ async function installExplorationJourneyMocks(page: Page) {
       await route.fulfill({ json: { success: true, data: eligible } });
       return;
     }
-    if (pathname.endsWith(`/${SESSION_ID}/handoff`) && request.method() === 'POST') {
-      await route.fulfill({ json: { success: true, data: review } });
+    if (pathname === `/api/v1/public/portfolio-entry/sessions/${SESSION_ID}/critical-handoff` && request.method() === 'POST') {
+      await route.fulfill({ json: { success: true, data: {
+        sessionRevision: 3,
+        criticalHandoff: {
+          id: 'artifact-journey',
+          version: 2,
+          sourceContextRevision: 4,
+          state: 'current',
+          confirmationState: 'provisional',
+          confirmedAt: null,
+          projection: criticalProjection(),
+        },
+      } } });
       return;
     }
     if (pathname === `/api/v1/public/portfolio-entry/sessions/${SESSION_ID}/critical-handoff` && request.method() === 'GET') {
@@ -357,11 +374,12 @@ test('exploration close creates the legacy handoff, loads the Critical Handoff, 
   await expect(page.getByTestId('portfolio-entry-active-question-text')).toContainText('¿Qué fecha de capacidad debemos considerar?');
   await expect(page.getByTestId('portfolio-entry-live-understanding')).toContainText('La fecha de capacidad puede cambiar la decisión.');
   await expect(page.getByText(/La lectura anterior ya no está vigente/)).toBeVisible();
-  const handoffPost = requests.findIndex((request) => request.method === 'POST' && request.path.endsWith('/handoff'));
+  const handoffPost = requests.findIndex((request) => request.method === 'POST' && request.path.endsWith('/critical-handoff'));
   const firstCriticalRead = requests.findIndex((request) => request.method === 'GET' && request.path.endsWith('/critical-handoff'));
   expect(handoffPost).toBeGreaterThanOrEqual(0);
   expect(firstCriticalRead).toBeGreaterThan(handoffPost);
-  expect(requests.filter((request) => request.method === 'POST' && request.path.endsWith('/handoff'))).toHaveLength(1);
+  expect(requests.filter((request) => request.method === 'POST' && request.path.endsWith('/critical-handoff'))).toHaveLength(1);
+  expect(requests.filter((request) => request.method === 'POST' && request.path.endsWith('/handoff'))).toHaveLength(0);
   expect(requests.filter((request) => request.method === 'GET' && request.path.endsWith('/critical-handoff'))).toHaveLength(2);
   expect(requests.filter((request) => request.method === 'POST' && request.path.endsWith('/messages'))[1]?.body)
     .toMatchObject({ intent: 'correction', message: 'La disponibilidad cambia antes del comité.' });
@@ -442,6 +460,7 @@ test('stale Critical Handoff is never rendered as the current conclusion', async
   await openReview(page, { state: 'stale' });
   await expect(page.getByTestId('critical-handoff-stale')).toBeVisible();
   await expect(page.getByText('El comité necesita comparar capacidad y urgencia antes de priorizar.')).toHaveCount(0);
+  await expectNoLegacyFallback(page);
 });
 
 test('absent and failed Critical Handoff stay bounded and do not fall back to legacy recommendations', async ({ page }) => {
@@ -449,12 +468,14 @@ test('absent and failed Critical Handoff stay bounded and do not fall back to le
   await expect(page.getByTestId('critical-handoff-absent')).toBeVisible();
   await expect(page.getByText('LEGACY_RECOMMENDATION_MARKER')).toHaveCount(0);
   await expect(page.getByText('LEGACY_PATH_MARKER')).toHaveCount(0);
+  await expectNoLegacyFallback(page);
 });
 
 test('Critical Handoff fetch failure exposes retry without rendering legacy content', async ({ page }) => {
   await openReview(page, { failure: true, marker: true });
   await expect(page.getByTestId('critical-handoff-error')).toBeVisible();
   await expect(page.getByText('LEGACY_RECOMMENDATION_MARKER')).toHaveCount(0);
+  await expectNoLegacyFallback(page);
   await page.getByRole('button', { name: 'Intentar de nuevo' }).click();
   await expect(page.getByTestId('critical-handoff-error')).toBeVisible();
 });

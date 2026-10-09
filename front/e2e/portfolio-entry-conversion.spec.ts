@@ -124,6 +124,11 @@ type Scenario = {
   exerciseGuidedExploration?: boolean;
 };
 
+type LegacyHandoffFixture = {
+  sessionId: string;
+  publicAccessToken: string;
+};
+
 const SCENARIOS: Scenario[] = [
   {
     id: 'portfolio-first',
@@ -272,12 +277,100 @@ async function loginThroughUi(page: Page, email: string, password: string) {
   await page.getByRole('button', { name: /^Entrar$/i }).click();
 }
 
-async function continueThroughAuthenticatedPortfolioEntry(
+/**
+ * LEGACY_COMPAT fixture: this inserts a historical-format handoff without running
+ * the current Portfolio Entry reasoning or creating a Critical Handoff sidecar.
+ * Keep it isolated from reachCriticalHandoff so old consumers cannot silently
+ * become the current 114D journey again.
+ */
+async function seedLegacyHandoff(api: APIRequestContext, rawEntry: string): Promise<LegacyHandoffFixture> {
+  const created = await api.post('/api/v1/public/portfolio-entry/sessions', {
+    data: { sourceMetadata: { channel: 'public_start_frontend' } },
+    failOnStatusCode: false,
+  });
+  const createdText = await created.text();
+  expect(created.status(), `legacy fixture session creation: ${createdText}`).toBe(201);
+  const createdBody = JSON.parse(createdText);
+  const sessionId = createdBody?.data?.session?.id;
+  const publicAccessToken = createdBody?.data?.publicAccessToken;
+  expect(sessionId).toEqual(expect.any(String));
+  expect(publicAccessToken).toEqual(expect.any(String));
+
+  const now = new Date();
+  const handoffPayload = {
+    understanding: { value: 'La persona necesita ordenar prioridades del portafolio.' },
+    desired_outcome: { value: 'Preparar una comparación de iniciativas para el comité.' },
+    decision_to_enable: { value: 'Qué iniciativas reciben capacidad durante este ciclo.' },
+    recommended_approach: {
+      description: 'Comparar las iniciativas con la evidencia y la capacidad disponibles.',
+      rationale: 'La comparación permite preparar una conversación de priorización.',
+      assumption: 'El comité conserva la decisión final.',
+      origin: 'AI_SUGGESTED',
+      review_disposition: 'UNREVIEWED',
+      provenance: [],
+    },
+    alternative_approaches: [],
+    known_context: [],
+    unresolved_context: [{ gap_id: 'capacity_window', description: 'La capacidad disponible todavía debe confirmarse.' }],
+    gap_resolution_map: [{
+      gap_id: 'capacity_window',
+      gap_description: 'La capacidad disponible todavía debe confirmarse.',
+      resolution_type: 'REQUIRES_ORGANIZATIONAL_INPUT',
+      resolution_stage: 'PORTFOLIO',
+    }],
+    evidence_or_clarity_needed: [],
+    starteria_path: [{ action: 'structure', description: 'Ordenar la comparación antes de decidir.' }],
+    recommended_cta: 'Trabajarlo con Starteria',
+    provenance_summary: [],
+    handoff_status: 'ready_with_uncertainty',
+  };
+
+  await prisma.portfolioEntrySession.update({
+    where: { id: sessionId },
+    data: { rawEntry, lifecycleStatus: 'AWAITING_CONFIRMATION', revision: 2, lastActivityAt: now },
+  });
+  await prisma.portfolioEntryHandoff.create({
+    data: {
+      sessionId,
+      version: 1,
+      handoffPayload,
+      handoffStatus: 'ready_with_uncertainty',
+      schemaVersion: 'portfolio-entry-handoff-v2',
+      runtimeVersion: 'legacy-e2e-fixture',
+      createdAt: now,
+      updatedAt: now,
+    },
+  });
+  expect(await prisma.portfolioEntryCriticalHandoff.count({ where: { sessionId } })).toBe(0);
+  return { sessionId, publicAccessToken };
+}
+
+async function openLegacyHandoff(page: Page, fixture: LegacyHandoffFixture) {
+  await page.goto('/public/start');
+  await page.evaluate(({ sessionId, credential }) => {
+    window.sessionStorage.setItem('starteria.portfolioEntry.current', JSON.stringify({ sessionId, credential }));
+    window.sessionStorage.removeItem('starteria.portfolioEntry.criticalHandoffReviewSession');
+  }, { sessionId: fixture.sessionId, credential: fixture.publicAccessToken });
+  await page.reload();
+  await expect(page.getByTestId('handoff-first-view')).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByRole('heading', { name: /Esto estoy entendiendo/i })).toBeVisible();
+  await expect(page.getByText('Comparar las iniciativas con la evidencia y la capacidad disponibles.')).toBeVisible();
+  await expect(page.getByTestId('critical-handoff-review')).toHaveCount(0);
+}
+
+async function continueThroughAuthenticatedLegacyPortfolioEntry(
   page: Page,
   user: { email: string; password: string },
   organization: { name: string },
+  fixture: LegacyHandoffFixture,
   options: { openPortfolioHomeForHomeCoverage?: boolean; alreadyAuthenticated?: boolean } = {},
 ): Promise<string> {
+  const storedSessionId = await page.evaluate(() => {
+    const raw = window.sessionStorage.getItem('starteria.portfolioEntry.current');
+    return raw ? JSON.parse(raw).sessionId : null;
+  });
+  expect(storedSessionId).toBe(fixture.sessionId);
+  await expect(page.getByTestId('handoff-first-view')).toBeVisible();
   await page.getByRole('button', { name: /Trabajarlo con Starteria/i }).click();
   if (options.alreadyAuthenticated) {
     await expect(page).toHaveURL(/\/public\/provisional-continuation/, { timeout: 30_000 });
@@ -372,14 +465,16 @@ async function visible(locator: ReturnType<Page['getByText']>): Promise<boolean>
 }
 
 async function canonicalCounts() {
-  const [strategicFronts, challenges, projects, steps, initiativePortfolioMetas] = await Promise.all([
+  const [organizations, strategicFronts, challenges, projects, steps, decisions, initiativePortfolioMetas] = await Promise.all([
+    prisma.organization.count(),
     prisma.strategicFront.count(),
     prisma.challenge.count(),
     prisma.project.count(),
     prisma.step.count(),
+    prisma.decision.count(),
     prisma.initiativePortfolioMeta.count(),
   ]);
-  return { strategicFronts, challenges, projects, steps, initiativePortfolioMetas };
+  return { organizations, strategicFronts, challenges, projects, steps, decisions, initiativePortfolioMetas };
 }
 
 function watchForbiddenPortfolioEntryNavigation(page: Page) {
@@ -439,7 +534,15 @@ async function expectOneBootstrapSession(continuationId: string) {
   return state;
 }
 
-async function reachHandoff(page: Page, scenario: Scenario, testInfo: TestInfo, viaLanding = false) {
+async function reachCriticalHandoff(page: Page, scenario: Scenario, testInfo: TestInfo, viaLanding = false): Promise<string> {
+  const handoffMaterialization = page.waitForResponse((response) => {
+    if (response.request().method() !== 'POST') return false;
+    return /^\/api\/v1\/public\/portfolio-entry\/sessions\/[^/]+\/critical-handoff$/.test(new URL(response.url()).pathname);
+  });
+  const criticalHandoffRead = page.waitForResponse((response) => {
+    if (response.request().method() !== 'GET' || response.status() !== 200) return false;
+    return /^\/api\/v1\/public\/portfolio-entry\/sessions\/[^/]+\/critical-handoff$/.test(new URL(response.url()).pathname);
+  });
   if (viaLanding) {
     await page.setViewportSize({ width: 390, height: 844 });
     await page.goto('/');
@@ -472,7 +575,7 @@ async function reachHandoff(page: Page, scenario: Scenario, testInfo: TestInfo, 
   let guidedOptedIn = false;
   const activeQuestionWording = new Set<string>();
   for (let attempt = 0; attempt < 10; attempt += 1) {
-    if (await visible(page.getByText(/Esto estoy entendiendo/i))) return;
+    if (await visible(page.getByTestId('critical-handoff-review'))) break;
 
     const provisionalRoute = page.getByRole('button', { name: /Ver mi propuesta de abordaje/i });
     if (await provisionalRoute.isVisible().catch(() => false)) {
@@ -504,6 +607,7 @@ async function reachHandoff(page: Page, scenario: Scenario, testInfo: TestInfo, 
       await expect(answer).toBeVisible();
       await expect(answer).toBeEnabled();
       await expect(page.getByTestId('portfolio-entry-understanding')).toBeVisible();
+      const understandingBeforeAnswer = (await page.getByTestId('portfolio-entry-understanding').innerText()).trim();
       const activeReason = activeQuestion.getByTestId('portfolio-entry-active-question-reason');
       if (scenario.id === 'portfolio-first' && attempt === 0) {
         await expect(activeReason).toBeVisible();
@@ -542,6 +646,11 @@ async function reachHandoff(page: Page, scenario: Scenario, testInfo: TestInfo, 
       await page.getByRole('button', { name: /Enviar respuesta/i }).click();
       const answerResponse = await clarificationResponse;
       const answerPayload = await answerResponse.json();
+      if (scenario.id === 'portfolio-first' && clarificationAnswers === 1) {
+        expect(answerPayload.data.liveUnderstanding?.reading).toEqual(expect.any(String));
+        await expect.poll(async () => (await page.getByTestId('portfolio-entry-understanding').innerText()).trim())
+          .not.toBe(understandingBeforeAnswer);
+      }
       const returnedTurns = answerPayload.data.conversation as Array<{ emittedQuestions: Array<Record<string, unknown>> }>;
       expect(returnedTurns.at(-1)?.emittedQuestions.length ?? 0).toBeLessThanOrEqual(1);
       expect(returnedTurns.slice(0, -1).flatMap((turn) => turn.emittedQuestions)
@@ -561,7 +670,7 @@ async function reachHandoff(page: Page, scenario: Scenario, testInfo: TestInfo, 
 
     await expect
       .poll(async () => {
-        if (await page.getByText(/Esto estoy entendiendo/i).isVisible().catch(() => false)) return 'handoff';
+        if (await page.getByTestId('critical-handoff-review').isVisible().catch(() => false)) return 'handoff';
         if (await provisionalRoute.isVisible().catch(() => false)) return 'guided-offer';
         if (await activeQuestion.isVisible().catch(() => false)) return 'active-question';
         return 'transitioning';
@@ -569,15 +678,104 @@ async function reachHandoff(page: Page, scenario: Scenario, testInfo: TestInfo, 
       .not.toBe('transitioning');
   }
 
-  await expect(page.getByText(/Esto estoy entendiendo/i)).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByTestId('critical-handoff-review')).toBeVisible({ timeout: 30_000 });
+  const [materializationResponse, criticalResponse] = await Promise.all([handoffMaterialization, criticalHandoffRead]);
+  expect(materializationResponse.status(), `Critical Handoff materialization response: ${materializationResponse.url()}`).toBe(200);
+  const materializationBody = await materializationResponse.json();
+  expect(Object.keys(materializationBody.data).sort()).toEqual(['criticalHandoff', 'sessionRevision']);
+  expect(JSON.stringify(materializationBody.data)).not.toMatch(/handoffPayload|provenance_summary|provenance|recommended_approach|starteria_path|recommended_cta|reasoning_metadata|selected_lenses|source_refs|sourceTurnId|provider|model|raw_synthesis|confirmedByUserId/i);
+  expect(criticalResponse.status(), `Critical Handoff read response: ${criticalResponse.url()}`).toBe(200);
+  const sessionId = await page.evaluate(() => {
+    const raw = window.sessionStorage.getItem('starteria.portfolioEntry.current');
+    return raw ? JSON.parse(raw).sessionId : null;
+  });
+  expect(sessionId).toEqual(expect.any(String));
+  return sessionId as string;
 }
 
-async function continueAndReturnToConfirmedEntryActions(
+async function closeCriticalHandoffAfterCorrection(page: Page, answerText: string) {
+  for (let attempt = 0; attempt < 8; attempt += 1) {
+    if (await page.getByTestId('critical-handoff-review').isVisible().catch(() => false)) break;
+
+    const activeQuestion = page.getByTestId('portfolio-entry-active-question');
+    if (await activeQuestion.isVisible().catch(() => false)) {
+      const response = page.waitForResponse((candidate) => candidate.request().method() === 'POST'
+        && /^\/api\/v1\/public\/portfolio-entry\/sessions\/[^/]+\/messages$/.test(new URL(candidate.url()).pathname));
+      await page.getByLabel(/Tu respuesta/i).fill(answerText);
+      await page.getByRole('button', { name: /Enviar respuesta/i }).click();
+      expect((await response).status()).toBe(200);
+      continue;
+    }
+
+    const closeExploration = page.getByRole('button', { name: /Ver mi propuesta de abordaje/i });
+    if (await closeExploration.isVisible().catch(() => false)) {
+      const guidedResponse = page.waitForResponse((candidate) => candidate.request().method() === 'POST'
+        && /^\/api\/v1\/public\/portfolio-entry\/sessions\/[^/]+\/guided-exploration$/.test(new URL(candidate.url()).pathname));
+      const handoffResponse = page.waitForResponse((candidate) => candidate.request().method() === 'POST'
+        && /^\/api\/v1\/public\/portfolio-entry\/sessions\/[^/]+\/critical-handoff$/.test(new URL(candidate.url()).pathname));
+      const criticalRead = page.waitForResponse((candidate) => candidate.request().method() === 'GET'
+        && candidate.status() === 200
+        && /^\/api\/v1\/public\/portfolio-entry\/sessions\/[^/]+\/critical-handoff$/.test(new URL(candidate.url()).pathname));
+      await closeExploration.click();
+      expect((await guidedResponse).status()).toBe(200);
+      const [materialized, read] = await Promise.all([handoffResponse, criticalRead]);
+      expect(materialized.status()).toBe(200);
+      const materializedBody = await materialized.json();
+      expect(Object.keys(materializedBody.data).sort()).toEqual(['criticalHandoff', 'sessionRevision']);
+      expect(JSON.stringify(materializedBody.data)).not.toMatch(/handoffPayload|provenance_summary|provenance|recommended_approach|starteria_path|recommended_cta|reasoning_metadata|selected_lenses|source_refs|sourceTurnId|provider|model|raw_synthesis|confirmedByUserId/i);
+      expect(read.status()).toBe(200);
+      break;
+    }
+
+    await expect.poll(async () => {
+      if (await activeQuestion.isVisible().catch(() => false)) return 'question';
+      if (await closeExploration.isVisible().catch(() => false)) return 'close';
+      if (await page.getByTestId('critical-handoff-review').isVisible().catch(() => false)) return 'review';
+      return 'transitioning';
+    }).not.toBe('transitioning');
+  }
+  await expect(page.getByTestId('critical-handoff-review')).toBeVisible({ timeout: 30_000 });
+}
+
+async function expectNoCriticalHandoffLegacyFallback(page: Page) {
+  const review = page.getByTestId('critical-handoff-review');
+  await expect(review).toBeVisible();
+  await expect(review).not.toContainText(/recommended_approach|starteria_path|recommended_cta|Cómo lo abordaría Starteria|Ruta completa en Starteria|route recommendation/i);
+  await expect(page.getByText('Esto estoy entendiendo', { exact: true })).toHaveCount(0);
+  await expect(page.getByText('Decisión que necesitas habilitar', { exact: true })).toHaveCount(0);
+  await expect(page.getByText('Cómo lo abordaría Starteria', { exact: true })).toHaveCount(0);
+  await expect(page.getByTestId('handoff-first-view')).toHaveCount(0);
+}
+
+function watchForbiddenCriticalHandoffNavigation(page: Page) {
+  const forbidden: string[] = [];
+  const onFrameNavigated = (frame: Frame) => {
+    if (frame !== page.mainFrame()) return;
+    try {
+      const path = new URL(frame.url()).pathname;
+      if (/^\/public\/provisional-continuation$|^\/portfolio\/setup$|^\/portfolio\/inicio$/.test(path)) forbidden.push(path);
+    } catch {
+      // Ignore transient about:blank and browser-internal URLs.
+    }
+  };
+  page.on('framenavigated', onFrameNavigated);
+  return {
+    expectClean() {
+      expect(forbidden, `114D navigated beyond Critical Handoff: ${forbidden.join(', ')}`).toEqual([]);
+    },
+    dispose() {
+      page.off('framenavigated', onFrameNavigated);
+    },
+  };
+}
+
+async function continueAndReturnToLegacyConfirmedEntryActions(
   page: Page,
   user: { email: string; password: string },
   organization: { name: string },
+  fixture: LegacyHandoffFixture,
 ) {
-  await continueThroughAuthenticatedPortfolioEntry(page, user, organization);
+  await continueThroughAuthenticatedLegacyPortfolioEntry(page, user, organization, fixture);
   await expect(page).toHaveURL(/\/portfolio\/setup$/);
   const identity = await page.evaluate(() => JSON.parse(window.sessionStorage.getItem('starteria.portfolioEntry.claimedSession') || 'null'));
   expect(identity).toMatchObject({ source: 'portfolio_entry', sessionId: expect.any(String) });
@@ -591,7 +789,7 @@ async function continueAndReturnToConfirmedEntryActions(
   return identity.sessionId as string;
 }
 
-test.describe('Portfolio Entry visible UX and Portfolio continuation', () => {
+test.describe('Portfolio Entry 114D Critical Handoff and explicit legacy compatibility', () => {
   test.afterAll(async () => {
     await prisma.$disconnect();
   });
@@ -616,297 +814,190 @@ test.describe('Portfolio Entry visible UX and Portfolio continuation', () => {
     await page.screenshot({ path: testInfo.outputPath('portfolio-entry-clarification.png'), fullPage: true });
   });
 
-  test('KAN-102 Landing → optional Entry → clarification → confirmed Strategic Intent → final actions', async ({ page }, testInfo) => {
-    const scenario = SCENARIOS[0];
-    await reachHandoff(page, scenario, testInfo, true);
-    await expect(page.getByText('Lectura inicial lista', { exact: true })).toBeVisible();
-    await expect(page.getByText('Decisión que necesitas habilitar', { exact: true })).toBeVisible();
+  // CURRENT_114D: this browser journey stops after the confirmed Critical Handoff.
+  test('KAN-102 Landing → Entry → clarification → confirmed Critical Handoff', async ({ page }, testInfo) => {
+    const currentBoundary = watchForbiddenCriticalHandoffNavigation(page);
+    const entryRequests: string[] = [];
+    page.on('request', (request) => {
+      const url = new URL(request.url());
+      if (url.pathname.startsWith('/api/v1/public/portfolio-entry/')) {
+        entryRequests.push(`${request.method()} ${url.pathname}`);
+      }
+    });
 
     const api = await pwRequest.newContext({ baseURL: process.env.E2E_BASE_URL || 'http://127.0.0.1:5176' });
     const user = await registerPortfolioUser(api);
-    const organization = await provisionScopedPortfolioAccess(user.userId);
-    await continueAndReturnToConfirmedEntryActions(page, user, organization);
-    await expect(page.getByTestId('portfolio-entry-confirmed-brief-actions').getByRole('button', { name: 'Descargar', exact: true })).toBeVisible();
-    await expect(page.getByTestId('portfolio-entry-confirmed-brief-actions').getByRole('button', { name: 'Eliminar', exact: true })).toBeVisible();
-    await expect(page.getByTestId('portfolio-entry-confirmed-brief-actions').getByRole('button', { name: 'Trabajarlo con Starteria', exact: true })).toBeVisible();
+    const before = await canonicalCounts();
+    const scenario = SCENARIOS[0];
+    const sessionId = await reachCriticalHandoff(page, scenario, testInfo, true);
+    await expectNoCriticalHandoffLegacyFallback(page);
+
+    const credential = await page.evaluate(() => {
+      const raw = window.sessionStorage.getItem('starteria.portfolioEntry.current');
+      return raw ? JSON.parse(raw).credential : null;
+    });
+    expect(credential).toEqual(expect.any(String));
+    const firstResponse = await api.get(`/api/v1/public/portfolio-entry/sessions/${sessionId}/critical-handoff`, {
+      headers: { 'X-Starteria-Entry-Token': credential },
+      failOnStatusCode: false,
+    });
+    const firstResponseText = await firstResponse.text();
+    expect(firstResponse.status(), firstResponseText).toBe(200);
+    const firstBody = JSON.parse(firstResponseText);
+    const firstArtifact = firstBody.data;
+    expect(firstArtifact).toMatchObject({ confirmationState: 'provisional', confirmedAt: null, state: 'current' });
+    expect(JSON.stringify(firstArtifact)).not.toMatch(/provenance|selected_lenses|reasoning_metadata|source_refs|sourceTurnId|confirmedByUserId|prompt|provider|model|raw_synthesis/i);
+    expect(await prisma.portfolioEntryHandoff.count({ where: { sessionId } })).toBeGreaterThan(0);
+    const firstPersisted = await prisma.portfolioEntryCriticalHandoff.findFirst({
+      where: { sessionId }, orderBy: { artifactVersion: 'desc' },
+    });
+    expect(firstPersisted).toMatchObject({ confirmationState: 'provisional', confirmedAt: null, confirmedByUserId: null });
+
+    await page.getByRole('button', { name: 'Esto no refleja suficientemente mi situación' }).click();
+    const correction = page.getByRole('textbox', { name: '¿Qué deberíamos entender mejor?' });
+    await correction.fill('La disponibilidad del equipo cambia antes del comité y puede cambiar la decisión.');
+    const correctionResponsePromise = page.waitForResponse((response) => response.request().method() === 'POST'
+      && /^\/api\/v1\/public\/portfolio-entry\/sessions\/[^/]+\/messages$/.test(new URL(response.url()).pathname));
+    await page.getByRole('button', { name: 'Volver a aclarar' }).click();
+    expect((await correctionResponsePromise).status()).toBe(200);
+    await expect(page.getByText(/La lectura anterior ya no está vigente/i)).toBeVisible();
+    const stalePersisted = await prisma.portfolioEntryCriticalHandoff.findUniqueOrThrow({ where: { id: firstPersisted!.id } });
+    const afterCorrectionSession = await prisma.portfolioEntrySession.findUniqueOrThrow({ where: { id: sessionId } });
+    expect(afterCorrectionSession.contextRevision).toBeGreaterThan(firstPersisted!.sourceContextRevision);
+    expect(stalePersisted.confirmationState).toBe('provisional');
+    await closeCriticalHandoffAfterCorrection(page, scenario.answer);
+    await expectNoCriticalHandoffLegacyFallback(page);
+
+    const freshPersisted = await prisma.portfolioEntryCriticalHandoff.findFirst({
+      where: { sessionId }, orderBy: { artifactVersion: 'desc' },
+    });
+    expect(freshPersisted).toBeTruthy();
+    expect(freshPersisted!.id).not.toBe(firstPersisted!.id);
+    expect(freshPersisted!.artifactVersion).toBeGreaterThan(firstPersisted!.artifactVersion);
+    expect(freshPersisted!.sourceContextRevision).toBe(afterCorrectionSession.contextRevision);
+    const freshResponse = await api.get(`/api/v1/public/portfolio-entry/sessions/${sessionId}/critical-handoff`, {
+      headers: { 'X-Starteria-Entry-Token': credential },
+      failOnStatusCode: false,
+    });
+    const freshResponseText = await freshResponse.text();
+    expect(freshResponse.status(), freshResponseText).toBe(200);
+    const freshArtifact = JSON.parse(freshResponseText).data;
+    expect(freshArtifact).toMatchObject({ id: freshPersisted!.id, confirmationState: 'provisional', confirmedAt: null, state: 'current' });
+
+    await page.getByRole('button', { name: /iniciar sesi.*para confirmar esta lectura/i }).click();
+    await expect(page).toHaveURL(/\/auth$/);
+    const pendingClaim = await page.evaluate(() => JSON.parse(window.sessionStorage.getItem('starteria.portfolioEntry.pendingClaim') || '{}'));
+    expect(pendingClaim).toMatchObject({ sessionId, criticalHandoffReview: true });
+    expect(pendingClaim).not.toHaveProperty('identity');
+    const claimResponsePromise = page.waitForResponse((response) => response.request().method() === 'POST'
+      && new URL(response.url()).pathname === `/api/v1/public/portfolio-entry/sessions/${sessionId}/claim`);
+    await loginThroughUi(page, user.email, user.password);
+    const claimResponse = await claimResponsePromise;
+    expect(claimResponse.status()).toBe(200);
+    await expect(page).toHaveURL(/\/public\/start$/);
+    await expect(page.getByRole('button', { name: 'Confirmar esta lectura' })).toBeVisible();
+    const claimedSession = await prisma.portfolioEntrySession.findUniqueOrThrow({ where: { id: sessionId } });
+    const afterClaimArtifact = await prisma.portfolioEntryCriticalHandoff.findUniqueOrThrow({ where: { id: freshPersisted!.id } });
+    expect(claimedSession.ownershipState).toBe('CLAIMED');
+    expect(claimedSession.ownerUserId).toBe(user.userId);
+    expect(afterClaimArtifact).toMatchObject({ confirmationState: 'provisional', confirmedAt: null, confirmedByUserId: null });
+    expect(entryRequests.some((request) => request.startsWith('POST ') && /\/critical-handoff\/[^/]+\/confirmation$/.test(request))).toBe(false);
+
+    const confirmationResponsePromise = page.waitForResponse((response) => response.request().method() === 'POST'
+      && new URL(response.url()).pathname === `/api/v1/public/portfolio-entry/sessions/${sessionId}/critical-handoff/${freshPersisted!.id}/confirmation`);
+    await page.getByRole('button', { name: 'Confirmar esta lectura' }).click();
+    const confirmationResponse = await confirmationResponsePromise;
+    expect(confirmationResponse.status()).toBe(200);
+    const confirmedBody = await confirmationResponse.json();
+    expect(confirmedBody.data).toMatchObject({
+      id: freshPersisted!.id,
+      confirmationState: 'confirmed',
+      state: 'current',
+      confirmedAt: expect.any(String),
+    });
+    expect(confirmedBody.data).not.toHaveProperty('confirmedByUserId');
+    await expect(page.getByTestId('critical-handoff-confirmed')).toContainText(/representa suficientemente tu situaci.n/i);
+    await expect(page).toHaveURL(/\/public\/start$/);
+
+    const confirmedPersisted = await prisma.portfolioEntryCriticalHandoff.findUniqueOrThrow({ where: { id: freshPersisted!.id } });
+    expect(confirmedPersisted.confirmationState).toBe('confirmed');
+    expect(confirmedPersisted.confirmedByUserId).toBe(user.userId);
+    expect(confirmedPersisted.confirmedAt?.toISOString()).toBe(confirmedBody.data.confirmedAt);
+    expect(confirmedPersisted.payload).toEqual(freshPersisted!.payload);
+
+    const finalResponsePromise = page.waitForResponse((response) => response.request().method() === 'GET'
+      && new URL(response.url()).pathname === `/api/v1/public/portfolio-entry/sessions/${sessionId}/critical-handoff`);
+    await page.reload();
+    const finalResponse = await finalResponsePromise;
+    expect(finalResponse.status()).toBe(200);
+    const finalArtifact = (await finalResponse.json()).data;
+    expect(finalArtifact.projection).toEqual(freshArtifact.projection);
+    expect(finalArtifact.confirmedAt).toBe(confirmedBody.data.confirmedAt);
+    expect(finalArtifact).not.toHaveProperty('confirmedByUserId');
+    await expectNoCriticalHandoffLegacyFallback(page);
+
+    const browserStorage = await page.evaluate(() => JSON.stringify({
+      local: Array.from({ length: localStorage.length }, (_, index) => {
+        const key = localStorage.key(index);
+        return key ? [key, localStorage.getItem(key)] : null;
+      }),
+      session: Array.from({ length: sessionStorage.length }, (_, index) => {
+        const key = sessionStorage.key(index);
+        return key ? [key, sessionStorage.getItem(key)] : null;
+      }),
+    }));
+    const renderedDom = await page.locator('body').innerHTML();
+    for (const serialized of [browserStorage, renderedDom]) {
+      expect(serialized).not.toMatch(/selected_lenses|reasoning_metadata|source_refs|sourceTurnId|confirmedByUserId|prompt_manifest|providerReportedModel|raw_synthesis|raw KAN-114 output/i);
+    }
+    expect(entryRequests.some((request) => request.startsWith('GET ') && request.endsWith('/critical-handoff'))).toBe(true);
+    expect(entryRequests.some((request) => request.startsWith('POST ') && request.endsWith('/critical-handoff'))).toBe(true);
+    expect(entryRequests.some((request) => request.startsWith('POST ') && request.endsWith('/handoff'))).toBe(false);
+    expect(entryRequests.some((request) => /\/continue-portfolio$|\/convert$|\/handoff\/confirmation$/.test(request))).toBe(false);
+    expect(entryRequests.some((request) => /\/critical-handoff\/[^/]+\/confirmation$/.test(request))).toBe(true);
+    expect(await canonicalCounts()).toEqual(before);
+    currentBoundary.expectClean();
+    currentBoundary.dispose();
     await api.dispose();
   });
 
+  // CURRENT_114D: adaptive examples all end at the Critical Handoff review.
   for (const scenario of SCENARIOS) {
-    test(`${scenario.id} reaches adaptive handoff without Project/Steps language`, async ({ page }, testInfo) => {
-      const legacyNavigation = watchForbiddenPortfolioEntryNavigation(page);
-      await reachHandoff(page, scenario, testInfo);
-
-      await expect(page.getByText('Lectura inicial lista', { exact: true })).toBeVisible();
-      await expect(page.getByText('Esto estoy entendiendo', { exact: true })).toBeVisible();
-      await expect(page.getByText('Decisión que necesitas habilitar', { exact: true })).toBeVisible();
-      await expect(page.getByText('Cómo lo abordaría Starteria', { exact: true })).toBeVisible();
-      await expect(page.getByText('Lo que todavía puede cambiar la decisión', { exact: true })).toBeVisible();
-      await expect(page.getByTestId('handoff-expanded-analysis')).toBeVisible();
-      await expect(page.getByTestId('handoff-starteria-path-expanded')).not.toBeVisible();
-      await page.getByText('Ver análisis completo', { exact: true }).click();
-      await expect(page.getByTestId('handoff-starteria-path-expanded')).toBeVisible();
-      await expect(page.getByText('Ver conversación', { exact: true })).toBeVisible();
-      await expect(page.getByRole('button', { name: /Trabajarlo con Starteria/i })).toBeVisible();
-      await expect(page.getByRole('button', { name: /Ajustar esta lectura/i })).toBeVisible();
-      const recommendedApproach = page.getByTestId('handoff-approach');
-      await expect(recommendedApproach).toHaveCount(1);
-      await expect(recommendedApproach.getByTestId('handoff-approach-step').first()).toBeVisible();
-      await expect(page.getByText(/Crear iniciativa y continuar/i)).toHaveCount(0);
-      await expect(page.getByText(/\bProject\b/i)).toHaveCount(0);
-      await expect(page.getByText(/Step0/i)).toHaveCount(0);
-      await expect(page.getByText(/Step 0/i)).toHaveCount(0);
-      await expect(page.getByText(/Initiative Overview/i)).toHaveCount(0);
-
+    test(`[CURRENT_114D] ${scenario.id} reaches Critical Handoff without legacy semantic fallback`, async ({ page }, testInfo) => {
+      const currentBoundary = watchForbiddenCriticalHandoffNavigation(page);
+      const sessionId = await reachCriticalHandoff(page, scenario, testInfo);
+      await expectNoCriticalHandoffLegacyFallback(page);
+      const artifact = await prisma.portfolioEntryCriticalHandoff.findFirst({
+        where: { sessionId }, orderBy: { artifactVersion: 'desc' },
+      });
+      expect(artifact).toMatchObject({ confirmationState: 'provisional', confirmedAt: null, confirmedByUserId: null });
+      expect(await prisma.portfolioEntryHandoff.count({ where: { sessionId } })).toBeGreaterThan(0);
+      expect(await prisma.portfolioEntryCriticalHandoff.count({ where: { sessionId } })).toBeGreaterThan(0);
       if (scenario.id === 'portfolio-first') {
-        await page.screenshot({ path: testInfo.outputPath('portfolio-entry-handoff-desktop.png'), fullPage: true });
+        await page.screenshot({ path: testInfo.outputPath('portfolio-entry-critical-handoff-desktop.png'), fullPage: true });
         await page.setViewportSize({ width: 390, height: 900 });
-        await page.screenshot({ path: testInfo.outputPath('portfolio-entry-handoff-mobile.png'), fullPage: true });
-        await page.setViewportSize({ width: 1280, height: 900 });
-
+        await page.screenshot({ path: testInfo.outputPath('portfolio-entry-critical-handoff-mobile.png'), fullPage: true });
       }
-
-      if (!scenario.continueToPortfolio) {
-        legacyNavigation.expectClean();
-        legacyNavigation.dispose();
-        return;
-      }
-
-      const api = await pwRequest.newContext({ baseURL: process.env.E2E_BASE_URL || 'http://127.0.0.1:5176' });
-      const user = await registerPortfolioUser(api);
-      const organization = await provisionScopedPortfolioAccess(user.userId);
-
-      const continuationId = await continueThroughAuthenticatedPortfolioEntry(page, user, organization, { openPortfolioHomeForHomeCoverage: true });
-      await expectScopedPortfolioAccess(page, api, user, organization.id);
-      const continuationIdentity = await page.evaluate(() => {
-        const raw = window.sessionStorage.getItem('starteria.portfolioEntry.claimedSession');
-        return raw ? JSON.parse(raw) : null;
-      });
-      expect(continuationIdentity).toMatchObject({ source: 'portfolio_entry' });
-
-      const login = await api.post('/api/v1/auth/login', {
-        data: { email: user.email, password: user.password },
-        failOnStatusCode: false,
-      });
-      const loginBodyText = await login.text();
-      expect(login.status(), loginBodyText).toBe(200);
-      const accessToken = extractToken(JSON.parse(loginBodyText));
-      const exactIdentity = new URLSearchParams({
-        source: continuationIdentity.source,
-        sessionRevision: String(continuationIdentity.sessionRevision),
-        handoffId: continuationIdentity.handoffId,
-        handoffVersion: String(continuationIdentity.handoffVersion),
-        confirmationId: continuationIdentity.confirmationId,
-        confirmationVersion: String(continuationIdentity.confirmationVersion),
-      });
-      const d1 = await api.get(
-        `/api/v1/public/portfolio-entry/sessions/${encodeURIComponent(continuationIdentity.sessionId)}/confirmed-brief?${exactIdentity}`,
-        { headers: { Authorization: `Bearer ${accessToken}` }, failOnStatusCode: false },
-      );
-      const d1BodyText = await d1.text();
-      expect(d1.status(), `exact confirmed Brief identity: ${d1BodyText}`).toBe(200);
-      expect(JSON.parse(d1BodyText).data).toMatchObject({
-        sessionId: continuationIdentity.sessionId,
-        revision: continuationIdentity.sessionRevision,
-        handoffId: continuationIdentity.handoffId,
-        handoffVersion: continuationIdentity.handoffVersion,
-        confirmationId: continuationIdentity.confirmationId,
-        confirmationVersion: continuationIdentity.confirmationVersion,
-      });
-      const sourceSession = await prisma.portfolioEntrySession.findUniqueOrThrow({
-        where: { id: continuationIdentity.sessionId },
-      });
-      expect(sourceSession.lifecycleStatus).toBe('CONFIRMED');
-      expect(sourceSession.revision).toBe(continuationIdentity.sessionRevision);
-      expect(await prisma.portfolioEntryPortfolioContinuation.count({ where: { id: continuationId } })).toBe(1);
-      expect(await prisma.portfolioEntryConversion.count({ where: { sessionId: continuationIdentity.sessionId } })).toBe(0);
-
-      await expect(page.getByText(/Portfolio Bootstrap|Ya tenemos un punto de partida/i)).toBeVisible();
-      await expect(page.getByText(/Esto entendimos/i)).toBeVisible();
-      await expect(page.getByText(/Todavia falta aclarar|Informacion conocida/i)).toBeVisible();
-      let dbState = await expectOneBootstrapSession(continuationId);
-      const bootstrapSessionId = dbState.session.id;
-    const anchorId = dbState.session.anchor.id;
-    const confirmAnchor = page.getByRole('button', { name: /Confirmar punto de partida/i });
-    const anchorConfirmStatuses: number[] = [];
-    if (scenario.id === 'portfolio-first') {
-      page.on('response', (response) => {
-        const pathname = new URL(response.url()).pathname;
-        if (
-          response.request().method() === 'POST'
-          && /\/api\/v1\/portfolio-bootstrap\/sessions\/[^/]+\/anchor\/confirm$/.test(pathname)
-        ) {
-          anchorConfirmStatuses.push(response.status());
-        }
-      });
-    }
-    if (await confirmAnchor.isVisible().catch(() => false)) {
-      await confirmAnchor.dblclick();
-      await expect(page.getByText('Confirmado', { exact: true })).toBeVisible({ timeout: 15_000 });
-    }
-    if (scenario.id === 'portfolio-first') {
-      await expect.poll(() => anchorConfirmStatuses.length).toBe(2);
-      expect(anchorConfirmStatuses).toEqual([200, 200]);
-    }
-    dbState = await expectOneBootstrapSession(continuationId);
-    expect(dbState.session.id).toBe(bootstrapSessionId);
-    expect(dbState.session.anchor.id).toBe(anchorId);
-    expect(dbState.session.anchor.status).toBe('anchor_confirmed');
-    if (scenario.id === 'portfolio-first') {
-      expect(dbState.session.anchor.version).toBe(2);
-      const anchorHistory = await prisma.portfolioAnchorHistory.findMany({
-        where: { anchorId },
-        orderBy: { version: 'asc' },
-        select: { version: true },
-      });
-      expect(anchorHistory.map((item) => item.version)).toEqual([1]);
-    }
-    expect(dbState.session.workItems).toHaveLength(0);
-      await page.reload();
-      await expect(page.getByRole('button', { name: /Incorporar trabajo existente/i })).toBeVisible();
-      dbState = await expectOneBootstrapSession(continuationId);
-      expect(dbState.session.id).toBe(bootstrapSessionId);
-      expect(dbState.session.anchor.id).toBe(anchorId);
-      expect(dbState.session.workItems).toHaveLength(0);
-      const beforeBootstrapIntake = await canonicalCounts();
-      await expect(page.getByRole('button', { name: /Incorporar trabajo existente/i })).toBeVisible();
-      await page.getByRole('button', { name: /Incorporar trabajo existente/i }).click();
-      await expect(page.getByTestId('portfolio-bootstrap-work-intake')).toBeVisible();
-      await page.getByLabel(/Pega nombres de iniciativas/i).fill([
-        'Nuevo onboarding digital',
-        'Chatbot de soporte',
-        'Programa loyalty',
-        'Migracion CRM',
-      ].join('\n'));
-      await page.getByRole('button', { name: /Agregar trabajo/i }).dblclick();
-      await expect(page.getByText(/4 elementos detectados/i)).toBeVisible({ timeout: 15_000 });
-      await expect(page.getByText('Nuevo onboarding digital')).toBeVisible();
-      await expect(page.getByText('Chatbot de soporte')).toBeVisible();
-      await expect(page.getByText('Programa loyalty')).toBeVisible();
-      await expect(page.getByText('Migracion CRM')).toBeVisible();
-      await expect(page.getByText(/Provisional - pegado por usuario/i).first()).toBeVisible();
-      dbState = await expectOneBootstrapSession(continuationId);
-      expect(dbState.session.workItems).toHaveLength(4);
-      expect(dbState.session.workItems.map((item: any) => item.rawLabel)).toEqual([
-        'Nuevo onboarding digital',
-        'Chatbot de soporte',
-        'Programa loyalty',
-        'Migracion CRM',
-      ]);
-      await page.reload();
-      await expect(page.getByText(/4 elementos detectados/i)).toBeVisible({ timeout: 15_000 });
-      dbState = await expectOneBootstrapSession(continuationId);
-      expect(dbState.session.id).toBe(bootstrapSessionId);
-      expect(dbState.session.workItems).toHaveLength(4);
-      await expect(page.getByRole('button', { name: /Analizar trabajo detectado/i })).toBeEnabled();
-      await page.getByRole('button', { name: /Analizar trabajo detectado/i }).dblclick();
-      await expect(page.getByText(/Starteria esta organizando esta primera lectura/i)).toBeVisible();
-      await expect(page.getByTestId('portfolio-bootstrap-proposed-structure').getByText(/Pendiente de tu revision/i)).toBeVisible({ timeout: 15_000 });
-      await expect(page.getByText(/Primera lectura provisional/i)).toBeVisible();
-      await expect(page.getByText(/AI_INFERRED|AI_SUGGESTED/i).first()).toBeVisible();
-      dbState = await expectOneBootstrapSession(continuationId);
-      expect(dbState.session.analysisRuns).toHaveLength(1);
-      expect(dbState.session.proposedMutations.length).toBeGreaterThan(0);
-      const proposedMutationCount = dbState.session.proposedMutations.length;
-      await page.reload();
-      await expect(page.getByTestId('portfolio-bootstrap-proposed-structure').getByText(/Pendiente de tu revision/i)).toBeVisible({ timeout: 15_000 });
-      dbState = await expectOneBootstrapSession(continuationId);
-      expect(dbState.session.analysisRuns).toHaveLength(1);
-      expect(dbState.session.proposedMutations).toHaveLength(proposedMutationCount);
-      await expect(page.getByRole('button', { name: /Revisar propuesta/i })).toBeEnabled();
-      await page.getByRole('button', { name: /Revisar propuesta/i }).click();
-      await expect(page.getByTestId('portfolio-bootstrap-material-review')).toBeVisible();
-      await page.getByTestId('portfolio-bootstrap-material-review').getByRole('button', { name: /^Confirmar$/i }).first().dblclick();
-      await expect(page.getByText(/1 confirmadas/i)).toBeVisible({ timeout: 15_000 });
-      const correctedMutation = page.getByTestId('portfolio-bootstrap-material-review')
-        .locator('[data-testid^="portfolio-bootstrap-mutation-"]')
-        .filter({ hasText: /No hay owner organizacional confirmado/i })
-        .first();
-      await correctedMutation.getByRole('button', { name: /Corregir/i }).click();
-      await page.getByLabel(/Correccion propuesta/i).selectOption('partial_alignment');
-      await page.getByLabel(/Motivo de correccion/i).fill('Solo cubre una parte de la prioridad');
-      await page.getByRole('button', { name: /Guardar correccion/i }).click();
-      await expect(page.getByText(/Conserva propuesta original/i)).toBeVisible({ timeout: 15_000 });
-      await correctedMutation.getByRole('button', { name: /^Confirmar$/i }).click();
-      await expect(page.getByText(/2 confirmadas/i)).toBeVisible({ timeout: 15_000 });
-      await page.getByTestId('portfolio-bootstrap-material-review').locator('button[data-review-action="reject"]:not([disabled])').first().click();
-      await expect(page.getByText(/1 rechazadas/i)).toBeVisible({ timeout: 15_000 });
-      await page.getByTestId('portfolio-bootstrap-material-review').locator('button[data-review-action="leave-pending"]:not([disabled])').first().click();
-      await expect(page.getByTestId('portfolio-bootstrap-material-review').getByText(/\d+ pendientes/i)).toBeVisible({ timeout: 15_000 });
-      await page.getByRole('button', { name: /Dejar pendientes restantes/i }).click();
-      await expect(page.getByRole('button', { name: /Generar primera lectura del portafolio/i })).toBeEnabled({ timeout: 15_000 });
-      dbState = await expectOneBootstrapSession(continuationId);
-      expect(dbState.session.status).toBe('awaiting_first_reading');
-      expect(dbState.session.proposedMutations).toHaveLength(proposedMutationCount);
-      expect(dbState.session.proposedMutations.some((mutation: any) => mutation.status === 'confirmed')).toBe(true);
-      expect(dbState.session.proposedMutations.some((mutation: any) => mutation.status === 'rejected')).toBe(true);
-      expect(dbState.session.proposedMutations.some((mutation: any) => mutation.status === 'reviewed')).toBe(true);
-      await page.reload();
-      await expect(page.getByRole('button', { name: /Generar primera lectura del portafolio/i })).toBeEnabled({ timeout: 15_000 });
-      dbState = await expectOneBootstrapSession(continuationId);
-      expect(dbState.session.status).toBe('awaiting_first_reading');
-      const publishReading = page.getByRole('button', { name: /Generar primera lectura del portafolio/i });
-      await expect(publishReading).toBeEnabled({ timeout: 15_000 });
-      await publishReading.dblclick();
-      await expect(page.getByText(/Starteria esta consolidando tu primera lectura del portafolio/i)).toBeVisible();
-      await expect(page.getByTestId('portfolio-first-reading')).toBeVisible({ timeout: 15_000 });
-      await expect(page.getByText(/Primera lectura del portafolio/i)).toBeVisible();
-      await expect(page.getByText(/Requiere atencion/i)).toBeVisible();
-      await expect(page.getByTestId('portfolio-attention-item').first()).toBeVisible();
-      await expect(page.getByTestId('portfolio-reading-provenance')).toBeVisible();
-      dbState = await expectOneBootstrapSession(continuationId);
-      expect(dbState.session.status).toBe('reading_published');
-      expect(dbState.session.bootstrapPhase).toBe('B5_FIRST_READING');
-      expect(dbState.session.readings).toHaveLength(1);
-      expect(dbState.session.readings[0].homeState).toMatch(/HOME_D|HOME_E/);
-      expect(await canonicalCounts()).toEqual(beforeBootstrapIntake);
-      await expect(page.getByText(/Crear frente estrategico/i)).toHaveCount(0);
-      await expect(page.getByText(/Crear reto/i)).toHaveCount(0);
-      await expect(page.getByText(/Crear iniciativa y continuar/i)).toHaveCount(0);
-      await expect(page.getByText(/Step 0/i)).toHaveCount(0);
-      await expect(page.getByText(/HMW|Test Card|experiment|prototype/i)).toHaveCount(0);
-      await expect(page).not.toHaveURL(/\/initiatives\/|\/overview|\/step\/0/);
-      await page.screenshot({ path: testInfo.outputPath('portfolio-home-after-continuation.png'), fullPage: true });
-
-      await page.reload();
-      await expect(page.getByTestId('portfolio-first-reading')).toBeVisible();
-      await expect(page.getByText(/Esto entendimos/i)).toBeVisible();
-      await expect(page.getByText('Nuevo onboarding digital')).toBeVisible();
-      await expect(page.getByText('Chatbot de soporte')).toBeVisible();
-      await expect(page.getByText('Programa loyalty')).toBeVisible();
-      await expect(page.getByText('Migracion CRM')).toBeVisible();
-      await expect(page.getByText(/Primera lectura del portafolio/i)).toBeVisible();
-      await expect(page.getByText(/Lectura versionada desde el Bootstrap revisado/i)).toBeVisible();
-      await expect(page.getByRole('button', { name: /Generar primera lectura del portafolio/i })).toHaveCount(0);
-      dbState = await expectOneBootstrapSession(continuationId);
-      expect(dbState.session.id).toBe(bootstrapSessionId);
-      expect(dbState.session.anchor.id).toBe(anchorId);
-      expect(dbState.session.workItems).toHaveLength(4);
-      expect(dbState.session.analysisRuns).toHaveLength(1);
-      expect(dbState.session.proposedMutations).toHaveLength(proposedMutationCount);
-      expect(dbState.session.readings).toHaveLength(1);
-      expect(await canonicalCounts()).toEqual(beforeBootstrapIntake);
-      if (await page.getByText('Confirmado', { exact: true }).isVisible().catch(() => false)) {
-        await expect(page.getByText('Confirmado', { exact: true })).toBeVisible();
-      }
-      legacyNavigation.expectClean();
-      legacyNavigation.dispose();
+      currentBoundary.expectClean();
+      currentBoundary.dispose();
     });
   }
 
-  test('KAN-96 hydrates the exact confirmed Brief after continuation and refresh before explicit P1 action', async ({ page }, testInfo) => {
+  // LEGACY_COMPAT: all continuation readers below use a separately seeded historical handoff.
+  test('[LEGACY_COMPAT] KAN-96 hydrates the exact confirmed Brief after continuation and refresh before explicit P1 action', async ({ page }) => {
     const legacyNavigation = watchForbiddenPortfolioEntryNavigation(page);
-    await reachHandoff(page, SCENARIOS[0], testInfo);
     const api = await pwRequest.newContext({ baseURL: process.env.E2E_BASE_URL || 'http://127.0.0.1:5176' });
     const user = await registerPortfolioUser(api);
     // Keep this user at the base participant role. The continuation grants only
     // scoped access; the setup route must authorize that exact handoff without
     // granting global portfolio:read.
     const organization = await provisionScopedPortfolioAccess(user.userId);
+    const legacyFixture = await seedLegacyHandoff(api, SCENARIOS[0].input);
+    await openLegacyHandoff(page, legacyFixture);
     const beforeHydration = await canonicalCounts();
     const d1Capture = await captureJsonResponse(page, 'KAN-96 D1');
 
-    await continueThroughAuthenticatedPortfolioEntry(page, user, organization);
+    await continueThroughAuthenticatedLegacyPortfolioEntry(page, user, organization, legacyFixture);
     const identity = await page.evaluate(() => JSON.parse(window.sessionStorage.getItem('starteria.portfolioEntry.claimedSession') || 'null'));
     expect(identity).toMatchObject({ source: 'portfolio_entry', sessionId: expect.any(String), sessionRevision: expect.any(Number), handoffId: expect.any(String), handoffVersion: expect.any(Number), confirmationId: expect.any(String), confirmationVersion: expect.any(Number) });
     await expect(page).toHaveURL(/\/portfolio\/setup$/);
@@ -963,12 +1054,13 @@ test.describe('Portfolio Entry visible UX and Portfolio continuation', () => {
     await api.dispose();
   });
 
-  test('KAN-100 already-authenticated Portfolio Entry continues with the same identity to First Value', async ({ page }, testInfo) => {
+  test('[LEGACY_COMPAT] KAN-100 already-authenticated Entry continues with the same identity to First Value', async ({ page }, testInfo) => {
     const legacyNavigation = watchForbiddenPortfolioEntryNavigation(page);
     const api = await pwRequest.newContext({ baseURL: process.env.E2E_BASE_URL || 'http://127.0.0.1:5176' });
     const user = await registerPortfolioUser(api);
     const organization = await provisionScopedPortfolioAccess(user.userId);
-    await reachHandoff(page, SCENARIOS[0], testInfo);
+    const legacyFixture = await seedLegacyHandoff(api, SCENARIOS[0].input);
+    await openLegacyHandoff(page, legacyFixture);
     await page.goto('/auth');
     await loginThroughUi(page, user.email, user.password);
     await expect(page).toHaveURL(/\/(dashboard|portfolio\/inicio)/, { timeout: 20_000 });
@@ -976,7 +1068,7 @@ test.describe('Portfolio Entry visible UX and Portfolio continuation', () => {
     await expect(page.getByRole('button', { name: /Trabajarlo con Starteria/i })).toBeVisible();
     const d1Capture = await captureJsonResponse(page, 'KAN-100 D1');
 
-    await continueThroughAuthenticatedPortfolioEntry(page, user, organization, { alreadyAuthenticated: true });
+    await continueThroughAuthenticatedLegacyPortfolioEntry(page, user, organization, legacyFixture, { alreadyAuthenticated: true });
     await expect(page).toHaveURL(/\/portfolio\/setup$/);
     await expect(page.getByTestId('portfolio-lead-first-value')).toBeVisible();
     const identity = await page.evaluate(() => JSON.parse(window.sessionStorage.getItem('starteria.portfolioEntry.claimedSession') || 'null'));
@@ -1007,13 +1099,14 @@ test.describe('Portfolio Entry visible UX and Portfolio continuation', () => {
     await api.dispose();
   });
 
-  test('KAN-101 DOWNLOAD exports the confirmed Brief without lifecycle or Portfolio writes', async ({ page }, testInfo) => {
+  test('[LEGACY_COMPAT] KAN-101 DOWNLOAD exports the confirmed Brief without lifecycle or Portfolio writes', async ({ page }, testInfo) => {
     const legacyNavigation = watchForbiddenPortfolioEntryNavigation(page);
     const api = await pwRequest.newContext({ baseURL: process.env.E2E_BASE_URL || 'http://127.0.0.1:5176' });
     const user = await registerPortfolioUser(api);
     const organization = await provisionScopedPortfolioAccess(user.userId);
-    await reachHandoff(page, SCENARIOS[0], testInfo);
-    const sessionId = await continueAndReturnToConfirmedEntryActions(page, user, organization);
+    const legacyFixture = await seedLegacyHandoff(api, SCENARIOS[0].input);
+    await openLegacyHandoff(page, legacyFixture);
+    const sessionId = await continueAndReturnToLegacyConfirmedEntryActions(page, user, organization, legacyFixture);
     const before = await prisma.portfolioEntrySession.findUniqueOrThrow({ where: { id: sessionId } });
     const portfolioBefore = await canonicalCounts();
     await page.screenshot({ path: testInfo.outputPath('portfolio-entry-confirmed-brief-actions.png'), fullPage: true });
@@ -1036,7 +1129,7 @@ test.describe('Portfolio Entry visible UX and Portfolio continuation', () => {
     await api.dispose();
   });
 
-  test('KAN-101 DELETE confirms abandonment, blocks continuation and performs zero Portfolio writes', async ({ page }, testInfo) => {
+  test('[LEGACY_COMPAT] KAN-101 DELETE confirms abandonment, blocks continuation and performs zero Portfolio writes', async ({ page }, testInfo) => {
     const legacyNavigation = watchForbiddenPortfolioEntryNavigation(page);
     const sessionReadResponses: Array<Promise<{ sessionId: string; status: number; authorization?: string }>> = [];
     page.on('response', (response) => {
@@ -1052,10 +1145,11 @@ test.describe('Portfolio Entry visible UX and Portfolio continuation', () => {
     const api = await pwRequest.newContext({ baseURL: process.env.E2E_BASE_URL || 'http://127.0.0.1:5176' });
     const user = await registerPortfolioUser(api);
     const organization = await provisionScopedPortfolioAccess(user.userId);
-    await reachHandoff(page, SCENARIOS[0], testInfo);
+    const legacyFixture = await seedLegacyHandoff(api, SCENARIOS[0].input);
+    await openLegacyHandoff(page, legacyFixture);
     let sessionId: string;
     try {
-      sessionId = await continueAndReturnToConfirmedEntryActions(page, user, organization);
+      sessionId = await continueAndReturnToLegacyConfirmedEntryActions(page, user, organization, legacyFixture);
     } catch (error) {
       const claimed = await page.evaluate(() => JSON.parse(window.sessionStorage.getItem('starteria.portfolioEntry.claimedSession') || 'null'));
       const observations = await Promise.all(sessionReadResponses);
@@ -1110,15 +1204,16 @@ test.describe('Portfolio Entry visible UX and Portfolio continuation', () => {
     await api.dispose();
   });
 
-  test('portfolio-first can persist explicit no-existing-work state through reload', async ({ page }, testInfo) => {
+  test('[LEGACY_COMPAT] portfolio-first persists explicit no-existing-work state through reload', async ({ page }) => {
     const legacyNavigation = watchForbiddenPortfolioEntryNavigation(page);
     const scenario = SCENARIOS[0];
-    await reachHandoff(page, scenario, testInfo);
     const api = await pwRequest.newContext({ baseURL: process.env.E2E_BASE_URL || 'http://127.0.0.1:5176' });
     const user = await registerPortfolioUser(api);
     const organization = await provisionScopedPortfolioAccess(user.userId);
+    const legacyFixture = await seedLegacyHandoff(api, scenario.input);
+    await openLegacyHandoff(page, legacyFixture);
 
-    await continueThroughAuthenticatedPortfolioEntry(page, user, organization, { openPortfolioHomeForHomeCoverage: true });
+    await continueThroughAuthenticatedLegacyPortfolioEntry(page, user, organization, legacyFixture, { openPortfolioHomeForHomeCoverage: true });
     await expectScopedPortfolioAccess(page, api, user, organization.id);
 
     const confirmAnchor = page.getByRole('button', { name: /Confirmar punto de partida/i });
@@ -1143,9 +1238,9 @@ test.describe('Portfolio Entry visible UX and Portfolio continuation', () => {
   });
 
   for (const format of ['csv', 'xlsx'] as const) {
-    test(`portfolio-first imports ${format.toUpperCase()} through B5 without canonical writes`, async ({ page }, testInfo) => {
+    test(`[LEGACY_COMPAT] portfolio-first imports ${format.toUpperCase()} through B5 without canonical writes`, async ({ page }, testInfo) => {
       const legacyNavigation = watchForbiddenPortfolioEntryNavigation(page);
-      const { continuationId, bootstrapSessionId, anchorId } = await startPortfolioBootstrapFromEntry(page, testInfo);
+      const { continuationId, bootstrapSessionId, anchorId } = await startPortfolioBootstrapFromLegacyEntry(page);
       const beforeImport = await canonicalCounts();
       const importFile = createPortfolioImportFixture(format, testInfo);
 
@@ -1226,14 +1321,15 @@ test.describe('Portfolio Entry visible UX and Portfolio continuation', () => {
   }
 });
 
-async function startPortfolioBootstrapFromEntry(page: Page, testInfo: TestInfo) {
+async function startPortfolioBootstrapFromLegacyEntry(page: Page) {
   const scenario = SCENARIOS[0];
-  await reachHandoff(page, scenario, testInfo);
   const api = await pwRequest.newContext({ baseURL: process.env.E2E_BASE_URL || 'http://127.0.0.1:5176' });
   const user = await registerPortfolioUser(api);
   const organization = await provisionScopedPortfolioAccess(user.userId);
+  const legacyFixture = await seedLegacyHandoff(api, scenario.input);
+  await openLegacyHandoff(page, legacyFixture);
 
-  const continuationId = await continueThroughAuthenticatedPortfolioEntry(page, user, organization, { openPortfolioHomeForHomeCoverage: true });
+  const continuationId = await continueThroughAuthenticatedLegacyPortfolioEntry(page, user, organization, legacyFixture, { openPortfolioHomeForHomeCoverage: true });
   await expectScopedPortfolioAccess(page, api, user, organization.id);
 
   let dbState = await expectOneBootstrapSession(continuationId);

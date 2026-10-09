@@ -28,6 +28,7 @@ import {
   getClaimedPortfolioEntrySession,
   getPortfolioEntryCriticalHandoff,
   getPortfolioEntrySession,
+  materializePortfolioEntryCriticalHandoff,
   materializePortfolioEntryHandoff,
   normalizePortfolioEntryApiError,
   submitPortfolioEntryMessage,
@@ -1463,18 +1464,34 @@ export function PortfolioEntryExperience({
     setError(null);
     setPendingRequest('handoff');
     try {
-      const next = await materializePortfolioEntryHandoff(ref.sessionId, ref.credential, {
-        expectedRevision: revision,
-        idempotencyKey: createIdempotencyKey('portfolio-entry:handoff'),
-      });
-      // POST /handoff remains a legacy response. It only triggers the explicit
-      // Critical Handoff GET; its fields are never rendered as the new artifact.
-      markCriticalHandoffReviewSession(next.id);
-      setSessionDto(next);
-      await fetchCriticalHandoff(next.id, ref.credential, true, true);
+      if (hasCriticalHandoffReviewSession(ref.sessionId)) {
+        const materialized = await materializePortfolioEntryCriticalHandoff(ref.sessionId, ref.credential, {
+          expectedRevision: revision,
+          idempotencyKey: createIdempotencyKey('portfolio-entry:critical-handoff-materialize'),
+        });
+        setSessionDto((current) => current?.id === ref.sessionId
+          ? {
+            ...current,
+            revision: materialized.sessionRevision,
+            lifecycleStatus: 'HANDOFF_READY',
+            nextAction: 'review_handoff',
+            handoff: undefined,
+            provisionalContinuation: undefined,
+          }
+          : current);
+        await fetchCriticalHandoff(ref.sessionId, ref.credential, true, true);
+      } else {
+        // Historical sessions keep the legacy response and review contract.
+        const next = await materializePortfolioEntryHandoff(ref.sessionId, ref.credential, {
+          expectedRevision: revision,
+          idempotencyKey: createIdempotencyKey('portfolio-entry:legacy-handoff'),
+        });
+        setSessionDto(next);
+        await fetchCriticalHandoff(next.id, ref.credential, false, true);
+      }
       setError(null);
       setHandoffRetryRevision(null);
-      trackPortfolioEntryEvent('handoff_generated', { sessionId: next.id });
+      trackPortfolioEntryEvent('handoff_generated', { sessionId: ref.sessionId });
     } catch (err) {
       const apiError = normalizePortfolioEntryApiError(err);
       if (mapError(apiError.kind).retryable) setHandoffRetryRevision(revision);
@@ -1758,6 +1775,7 @@ export function PortfolioEntryExperience({
         idempotencyKey: createIdempotencyKey(`portfolio-entry:guided:${choice}`),
         choice,
       });
+      if (choice === 'provisional_route') markCriticalHandoffReviewSession(next.id);
       setSessionDto(next);
       trackPortfolioEntryEvent(choice === 'accept' ? 'guided_exploration_accepted' : 'guided_provisional_route_selected', {
         sessionId: next.id,

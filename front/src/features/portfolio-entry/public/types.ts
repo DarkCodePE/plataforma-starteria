@@ -242,6 +242,11 @@ export type PortfolioEntryCriticalHandoffDto = {
   projection: CriticalHandoffProjection;
 };
 
+export type PortfolioEntryCriticalHandoffMaterializationDto = {
+  sessionRevision: number;
+  criticalHandoff: PortfolioEntryCriticalHandoffDto;
+};
+
 export type PortfolioEntryConfirmationDto = {
   id: string;
   version: number;

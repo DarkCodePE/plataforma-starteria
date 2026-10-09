@@ -210,7 +210,7 @@ describe('Portfolio Entry Live Understanding session integration', () => {
     expect(synthesizer.calls).toHaveLength(1);
   });
 
-  it('materializes Critical Handoff only at provisional_route and keeps its read DTO separate from legacy handoff', async () => {
+  it('materializes Critical Handoff through a safe current response while retaining the legacy artifact internally', async () => {
     const synthesizer = new FakeSynthesizer(() => supportedSynthesis());
     const projectionCalls: Array<{ synthesis: CriticalSituationSynthesis; projection: CriticalHandoffProjection }> = [];
     const projector = (synthesis: CriticalSituationSynthesis) => {
@@ -229,10 +229,16 @@ describe('Portfolio Entry Live Understanding session integration', () => {
       .set('Idempotency-Key', 'critical-handoff-close-exploration')
       .send({ expectedRevision: turn.body.data.revision, choice: 'provisional_route' })
       .expect(200);
-    const legacyMaterialization = await request(app)
-      .post(`${base}/sessions/${sessionId}/handoff`)
+    const currentMaterialization = await request(app)
+      .post(`${base}/sessions/${sessionId}/critical-handoff`)
       .set('X-Starteria-Entry-Token', turn.token)
-      .set('Idempotency-Key', 'critical-handoff-legacy-coexistence')
+      .set('Idempotency-Key', 'critical-handoff-current-materialization')
+      .send({ expectedRevision: checkpoint.body.data.revision })
+      .expect(200);
+    const repeatedMaterialization = await request(app)
+      .post(`${base}/sessions/${sessionId}/critical-handoff`)
+      .set('X-Starteria-Entry-Token', turn.token)
+      .set('Idempotency-Key', 'critical-handoff-current-materialization')
       .send({ expectedRevision: checkpoint.body.data.revision })
       .expect(200);
 
@@ -249,7 +255,9 @@ describe('Portfolio Entry Live Understanding session integration', () => {
     });
     expect(synthesizer.calls[1].authorizedSnapshot).toEqual(synthesizer.calls[0].authorizedSnapshot);
     expect(projectionCalls).toHaveLength(1);
-    expect(criticalRead.body.data).toMatchObject({
+    expect(currentMaterialization.body.data).toMatchObject({
+      sessionRevision: expect.any(Number),
+      criticalHandoff: {
       id: expect.any(String),
       version: 1,
       sourceContextRevision: synthesizer.calls[1].contextRevision,
@@ -257,25 +265,122 @@ describe('Portfolio Entry Live Understanding session integration', () => {
       confirmationState: 'provisional',
       confirmedAt: null,
       projection: projectionCalls[0].projection,
+      },
     });
+    const currentResponseJson = JSON.stringify(currentMaterialization.body.data);
+    expect(Object.keys(currentMaterialization.body.data).sort()).toEqual(['criticalHandoff', 'sessionRevision']);
+    expect(currentResponseJson).not.toMatch(/handoffPayload|provenance_summary|provenance|recommended_approach|starteria_path|recommended_cta|reasoning_metadata|selected_lenses|source_refs|sourceTurnId|provider|model|raw_synthesis|confirmedByUserId/i);
+    expect(repeatedMaterialization.body.data).toEqual(currentMaterialization.body.data);
+    expect(currentMaterialization.body.data.sessionRevision).toBe(checkpoint.body.data.revision + 1);
+    expect(criticalRead.body.data).toMatchObject(currentMaterialization.body.data.criticalHandoff);
     expect(criticalRead.body.data).not.toHaveProperty('schemaVersion');
     expect(criticalRead.body.data).not.toHaveProperty('sourceTurnId');
     expect(criticalRead.body.data.projection).not.toHaveProperty('starteria_path');
     expect(JSON.stringify(criticalRead.body.data)).not.toMatch(/recommended_approach|recommended_cta|provenance|situation_model|reasoning_metadata|provider|model/i);
-    expect(legacyMaterialization.body.data.handoff.handoff).toHaveProperty('starteria_path');
-    expect(legacyMaterialization.body.data.handoff.handoff).toHaveProperty('recommended_approach');
+    const storedSession = await repository.findSessionById(sessionId);
+    expect(storedSession?.latestHandoff?.version).toBe(1);
+    expect(storedSession?.latestHandoff?.handoff).toHaveProperty('starteria_path');
+    expect(storedSession?.latestHandoff?.handoff).toHaveProperty('recommended_approach');
 
     const legacyRead = await request(app)
       .get(`${base}/sessions/${sessionId}/handoff`)
       .set('X-Starteria-Entry-Token', turn.token)
       .expect(200);
-    expect(legacyRead.body.data.handoff).toEqual(legacyMaterialization.body.data.handoff);
+    expect(legacyRead.body.data.handoff.handoff).toEqual(storedSession?.latestHandoff?.handoff);
+    expect(legacyRead.body.data.handoff.handoff).toHaveProperty('starteria_path');
+    expect(legacyRead.body.data.handoff.handoff).toHaveProperty('recommended_approach');
     expect(legacyRead.body.data).not.toHaveProperty('criticalHandoff');
-    expect(legacyMaterialization.body.data).not.toHaveProperty('criticalHandoff');
-    expect(legacyMaterialization.body.data).not.toHaveProperty('continuation');
-    expect(legacyMaterialization.body.data).not.toHaveProperty('convertedAt');
+    expect(currentMaterialization.body.data).not.toHaveProperty('handoff');
+    expect(currentMaterialization.body.data).not.toHaveProperty('continuation');
+    expect(currentMaterialization.body.data).not.toHaveProperty('convertedAt');
+    const currentSessionRead = await request(app)
+      .get(`${base}/sessions/${sessionId}`)
+      .set('X-Starteria-Entry-Token', turn.token)
+      .expect(200);
+    expect(currentSessionRead.body.data).not.toHaveProperty('handoff');
+    expect(currentSessionRead.body.data).not.toHaveProperty('provisionalContinuation');
+    expect(JSON.stringify(currentSessionRead.body.data)).not.toMatch(/provenance_summary|recommended_approach|starteria_path|recommended_cta|selected_lenses|reasoning_metadata|provider|model|raw_synthesis/i);
+
+    const claim = await request(app)
+      .post(`${base}/sessions/${sessionId}/claim`)
+      .set('Authorization', 'Bearer user-1')
+      .set('X-Starteria-Entry-Token', turn.token)
+      .set('Idempotency-Key', 'critical-handoff-safe-claim')
+      .send({ expectedRevision: currentMaterialization.body.data.sessionRevision })
+      .expect(200);
+    expect(claim.body.data).not.toHaveProperty('handoff');
+    expect(claim.body.data).not.toHaveProperty('provisionalContinuation');
+    expect(JSON.stringify(claim.body.data)).not.toMatch(/provenance_summary|recommended_approach|starteria_path|recommended_cta|selected_lenses|reasoning_metadata|provider|model|raw_synthesis/i);
+
+    const confirmed = await request(app)
+      .post(`${base}/sessions/${sessionId}/critical-handoff/${currentMaterialization.body.data.criticalHandoff.id}/confirmation`)
+      .set('Authorization', 'Bearer user-1')
+      .set('Idempotency-Key', 'critical-handoff-safe-explicit-confirmation')
+      .send({
+        action: 'confirm',
+        expectedArtifactVersion: currentMaterialization.body.data.criticalHandoff.version,
+        expectedContextRevision: currentMaterialization.body.data.criticalHandoff.sourceContextRevision,
+      })
+      .expect(200);
+    expect(confirmed.body.data).toMatchObject({
+      id: currentMaterialization.body.data.criticalHandoff.id,
+      confirmationState: 'confirmed',
+      confirmedAt: expect.any(String),
+      projection: currentMaterialization.body.data.criticalHandoff.projection,
+    });
+    expect(confirmed.body.data).not.toHaveProperty('confirmedByUserId');
+    expect(confirmed.body.data.projection).toEqual(currentMaterialization.body.data.criticalHandoff.projection);
     expect((await repository.findSessionById(sessionId))?.lifecycleStatus).toBe('HANDOFF_READY');
     await expect(repository.readContextRevision(sessionId)).resolves.toBe(1);
+  });
+
+  it('keeps the legacy handoff POST and GET response contract for legacy consumers', async () => {
+    const { app, repository } = makeApp(new FakeSynthesizer(() => supportedSynthesis()));
+    const turn = await submitTurn(app);
+    const sessionId = turn.body.data.id as string;
+    const initialSession = await repository.findSessionById(sessionId);
+    expect(initialSession).not.toBeNull();
+    await repository.saveSessionState({
+      session: {
+        ...initialSession!,
+        lifecycleStatus: 'HANDOFF_ELIGIBLE',
+        semanticState: {
+          ...initialSession!.semanticState,
+          runtimeClarificationStatus: 'ready_for_handoff',
+          userExplorationChoice: 'not_offered',
+        },
+      },
+      expectedRevision: initialSession!.revision,
+    });
+    const legacyPost = await request(app)
+      .post(`${base}/sessions/${sessionId}/handoff`)
+      .set('X-Starteria-Entry-Token', turn.token)
+      .set('Idempotency-Key', 'legacy-handoff-post-contract')
+      .send({ expectedRevision: turn.body.data.revision })
+      .expect(200);
+    const legacyGet = await request(app)
+      .get(`${base}/sessions/${sessionId}/handoff`)
+      .set('X-Starteria-Entry-Token', turn.token)
+      .expect(200);
+
+    expect(legacyPost.body.data.handoff).toMatchObject({
+      id: expect.any(String),
+      version: 1,
+      status: expect.any(String),
+      reviewDisposition: 'UNREVIEWED',
+      handoff: expect.objectContaining({ recommended_approach: expect.any(Object), starteria_path: expect.any(Array) }),
+      createdAt: expect.any(String),
+    });
+    expect(legacyGet.body.data.handoff).toEqual(legacyPost.body.data.handoff);
+    expect(legacyGet.body.data.handoff.handoff).toHaveProperty('provenance_summary');
+    expect((await repository.getLatestCriticalHandoff(sessionId)).artifact).toBeNull();
+    const currentEndpointOnLegacyState = await request(app)
+      .post(`${base}/sessions/${sessionId}/critical-handoff`)
+      .set('X-Starteria-Entry-Token', turn.token)
+      .set('Idempotency-Key', 'current-endpoint-rejects-legacy-state')
+      .send({ expectedRevision: legacyPost.body.data.revision })
+      .expect(409);
+    expect(JSON.stringify(currentEndpointOnLegacyState.body)).not.toMatch(/recommended_approach|starteria_path|recommended_cta|provenance_summary/i);
   });
 
   it('keeps legacy handoff available when KAN-114 synthesis fails and creates no Critical artifact', async () => {
@@ -326,6 +431,47 @@ describe('Portfolio Entry Live Understanding session integration', () => {
       .expect(200);
     expect(criticalRead.body.data).toBeNull();
     expect(JSON.stringify(legacy.body)).not.toContain('private provider detail');
+  });
+
+  it('returns no legacy semantics from current materialization when Critical Handoff synthesis fails', async () => {
+    const synthesizer = new FakeSynthesizer(async (input) => {
+      if (input.purpose === 'critical_handoff') throw new Error('private provider detail');
+      return supportedSynthesis();
+    });
+    const { app, repository } = makeApp(synthesizer);
+    const turn = await submitTurn(app);
+    const sessionId = turn.body.data.id as string;
+    const checkpoint = await request(app)
+      .post(`${base}/sessions/${sessionId}/guided-exploration`)
+      .set('X-Starteria-Entry-Token', turn.token)
+      .set('Idempotency-Key', 'critical-handoff-current-failure-checkpoint')
+      .send({ expectedRevision: turn.body.data.revision, choice: 'provisional_route' })
+      .expect(200);
+
+    const response = await request(app)
+      .post(`${base}/sessions/${sessionId}/critical-handoff`)
+      .set('X-Starteria-Entry-Token', turn.token)
+      .set('Idempotency-Key', 'critical-handoff-current-failure-materialization')
+      .send({ expectedRevision: checkpoint.body.data.revision })
+      .expect(503);
+
+    expect(response.body.error.code).toBe('PORTFOLIO_ENTRY_CRITICAL_HANDOFF_SYNTHESIS_UNAVAILABLE');
+    expect(JSON.stringify(response.body)).not.toMatch(/recommended_approach|starteria_path|recommended_cta|provenance|private provider detail/i);
+    expect((await repository.findSessionById(sessionId))?.latestHandoff).not.toBeNull();
+    expect((await repository.getLatestCriticalHandoff(sessionId)).artifact).toBeNull();
+    await expect(repository.readContextRevision(sessionId)).resolves.toBe(1);
+    const refreshed = await request(app)
+      .get(`${base}/sessions/${sessionId}`)
+      .set('X-Starteria-Entry-Token', turn.token)
+      .expect(200);
+    expect(refreshed.body.data).not.toHaveProperty('handoff');
+    expect(refreshed.body.data).not.toHaveProperty('provisionalContinuation');
+    expect(JSON.stringify(refreshed.body.data)).not.toMatch(/provenance_summary|recommended_approach|starteria_path|recommended_cta|private provider detail/i);
+    const absentCriticalRead = await request(app)
+      .get(`${base}/sessions/${sessionId}/critical-handoff`)
+      .set('X-Starteria-Entry-Token', turn.token)
+      .expect(200);
+    expect(absentCriticalRead.body.data).toBeNull();
   });
 
   it('keeps legacy handoff available when Critical Handoff synthesis is malformed', async () => {

@@ -8,6 +8,7 @@ import {
   createPortfolioEntrySession,
   getPortfolioEntryCriticalHandoff,
   getPortfolioEntrySession,
+  materializePortfolioEntryCriticalHandoff,
   normalizePortfolioEntryApiError,
   submitPortfolioEntryMessage,
 } from '../portfolioEntryPublicService';
@@ -153,6 +154,59 @@ describe('portfolioEntryPublicService', () => {
     });
     expect(Object.keys(artifact ?? {})).toEqual(['id', 'version', 'sourceContextRevision', 'state', 'confirmationState', 'confirmedAt', 'projection']);
     expect(JSON.stringify(artifact)).not.toMatch(/sourceTurnId|schemaVersion|selected_lenses|reasoning_metadata|provenance|source_refs|claim_ref|prompt_metadata|model_metadata|provider_metadata|candidate_first_movement|route_ranking|raw_synthesis|starteria_path|recommended_approach|recommended_cta/i);
+  });
+
+  it('uses the explicit current materialization endpoint and returns only its allowlisted contract', async () => {
+    server.use(http.post('*/public/portfolio-entry/sessions/:sessionId/critical-handoff', async ({ request, params }) => {
+      expect(params.sessionId).toBe('11111111-1111-4111-8111-111111111111');
+      expect(request.headers.get('X-Starteria-Entry-Token')).toBe('entry-token');
+      expect(request.headers.get('Idempotency-Key')).toBe('critical-materialization-1');
+      expect(await request.json()).toEqual({ expectedRevision: 8 });
+      return HttpResponse.json({ success: true, data: {
+        sessionRevision: 9,
+        criticalHandoff: {
+          id: 'artifact-current',
+          version: 2,
+          sourceContextRevision: 5,
+          state: 'current',
+          confirmationState: 'provisional',
+          confirmedAt: null,
+          projection: {
+            conclusionStatus: 'supported',
+            finalReading: 'Lectura permitida.',
+            decisionInView: 'Decisión en vista.',
+            usableNow: [],
+            decisionChangingUnknowns: [],
+            firstMovement: { movement: 'Un paso', whyNow: 'Ahora', whatItMayClarify: 'Una duda', boundary: 'Provisional', existingAssetsUsed: [] },
+          },
+          provenance: ['private provenance'],
+          recommended_approach: 'legacy recommendation',
+          starteria_path: ['legacy path'],
+          recommended_cta: 'legacy CTA',
+          selected_lenses: ['private lens'],
+          reasoning_metadata: { private: true },
+          raw_synthesis: { private: true },
+          confirmedByUserId: 'private-user-id',
+        },
+      } });
+    }));
+
+    const response = await materializePortfolioEntryCriticalHandoff(
+      '11111111-1111-4111-8111-111111111111',
+      'entry-token',
+      { expectedRevision: 8, idempotencyKey: 'critical-materialization-1' },
+    );
+
+    expect(response.sessionRevision).toBe(9);
+    expect(response.criticalHandoff).toMatchObject({
+      id: 'artifact-current',
+      version: 2,
+      sourceContextRevision: 5,
+      state: 'current',
+      confirmationState: 'provisional',
+      confirmedAt: null,
+    });
+    expect(JSON.stringify(response)).not.toMatch(/provenance|recommended_approach|starteria_path|recommended_cta|selected_lenses|reasoning_metadata|raw_synthesis|confirmedByUserId/i);
   });
 
   it('posts only explicit artifact identity and currentness expectations to the dedicated confirmation endpoint', async () => {
