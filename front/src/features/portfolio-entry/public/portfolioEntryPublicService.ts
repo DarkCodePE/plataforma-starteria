@@ -73,6 +73,13 @@ export type HandoffCorrectionInput = HandoffConfirmationInput & {
   correctedFields: Record<string, unknown>;
 };
 
+export type CriticalHandoffConfirmationInput = {
+  artifactId: string;
+  expectedArtifactVersion: number;
+  expectedContextRevision: number;
+  idempotencyKey: string;
+};
+
 export type AuthenticatedProvisionalConfirmationInput = {
   expectedRevision: number;
   idempotencyKey: string;
@@ -180,7 +187,12 @@ export async function getPortfolioEntryHandoff(
 }
 
 type CriticalHandoffWireDto = {
+  id: string;
+  version: number;
+  sourceContextRevision: number;
   state: 'current' | 'stale';
+  confirmationState: 'provisional' | 'confirmed';
+  confirmedAt: string | null;
   projection: PortfolioEntryCriticalHandoffDto['projection'];
 };
 
@@ -188,7 +200,12 @@ function toSafeCriticalHandoffDto(dto: CriticalHandoffWireDto): PortfolioEntryCr
   const projection = dto.projection;
   const firstMovement = projection.firstMovement;
   return {
+    id: dto.id,
+    version: dto.version,
+    sourceContextRevision: dto.sourceContextRevision,
     state: dto.state,
+    confirmationState: dto.confirmationState,
+    confirmedAt: dto.confirmedAt,
     projection: {
       conclusionStatus: projection.conclusionStatus,
       finalReading: projection.finalReading,
@@ -224,6 +241,23 @@ export async function getPortfolioEntryCriticalHandoff(
     if (normalizePortfolioEntryApiError(err).kind === 'not_found') return null;
     throw err;
   }
+}
+
+export async function confirmPortfolioEntryCriticalHandoff(
+  sessionId: string,
+  input: CriticalHandoffConfirmationInput,
+): Promise<PortfolioEntryCriticalHandoffDto> {
+  const { default: api } = await import('../../../app/services/api');
+  const response = await api.post<PortfolioEntryApiEnvelope<CriticalHandoffWireDto>>(
+    `/public/portfolio-entry/sessions/${encodeURIComponent(sessionId)}/critical-handoff/${encodeURIComponent(input.artifactId)}/confirmation`,
+    {
+      action: 'confirm',
+      expectedArtifactVersion: input.expectedArtifactVersion,
+      expectedContextRevision: input.expectedContextRevision,
+    },
+    { headers: { [IDEMPOTENCY_HEADER]: input.idempotencyKey } },
+  );
+  return toSafeCriticalHandoffDto(unwrap(response));
 }
 
 export async function correctPortfolioEntryHandoff(

@@ -2,12 +2,13 @@ import { expect, test, type Page, type Route } from '@playwright/test';
 
 const SESSION_ID = 'session-kan-119d';
 const SESSION_PATH = new RegExp(`/api/v1/public/portfolio-entry/sessions/${SESSION_ID}$`);
-const CRITICAL_HANDOFF_PATH = new RegExp(`/api/v1/public/portfolio-entry/sessions/${SESSION_ID}/critical-handoff$`);
+const CRITICAL_HANDOFF_PATH = new RegExp(`/api/v1/public/portfolio-entry/sessions/${SESSION_ID}/critical-handoff(?:/[^/]+/confirmation)?$`);
 const MESSAGE_PATH = new RegExp(`/api/v1/public/portfolio-entry/sessions/${SESSION_ID}/messages$`);
 
 type Scenario = {
   projection?: Record<string, unknown>;
   state?: 'current' | 'stale';
+  confirmationState?: 'provisional' | 'confirmed';
   absent?: boolean;
   failure?: boolean;
   marker?: boolean;
@@ -115,6 +116,14 @@ async function installSessionMocks(page: Page, scenario: Scenario = {}) {
 
   let criticalReadCount = 0;
   await page.route(CRITICAL_HANDOFF_PATH, async (route: Route) => {
+    if (route.request().method() === 'POST') {
+      await route.fulfill({ json: { success: true, data: {
+        id: 'critical-artifact-1', version: 2, sourceContextRevision: 4, state: 'current',
+        confirmationState: 'confirmed', confirmedAt: '2026-10-09T12:00:00.000Z',
+        projection: scenario.projection ?? criticalProjection(),
+      } } });
+      return;
+    }
     criticalReadCount += 1;
     scenario.onCriticalRead?.();
     if (scenario.criticalGate) await scenario.criticalGate;
@@ -133,10 +142,10 @@ async function installSessionMocks(page: Page, scenario: Scenario = {}) {
         data: {
           id: 'critical-artifact-1',
           version: 2,
-          schemaVersion: 'critical-handoff-projection-v0.1',
           sourceContextRevision: 4,
-          sourceTurnId: 'turn-4',
           state,
+          confirmationState: scenario.confirmationState ?? 'provisional',
+          confirmedAt: scenario.confirmationState === 'confirmed' ? '2026-10-09T12:00:00.000Z' : null,
           projection: scenario.projection ?? criticalProjection(),
           selected_lenses: ['LEAK_SELECTED_LENS'],
           reasoning_metadata: { private: 'LEAK_REASONING_METADATA' },
@@ -304,6 +313,8 @@ test('supported Critical Handoff review renders on desktop without legacy or int
   await expect(review.getByRole('heading', { name: 'Lo que ya puedes usar' })).toBeVisible();
   await expect(review.getByRole('heading', { name: 'Qué podría cambiar la decisión' })).toBeVisible();
   await expect(review.getByRole('heading', { name: 'Un posible primer movimiento' })).toBeVisible();
+  await expect(review).toContainText(/representa suficientemente tu situaci.n para continuar/i);
+  await expect(review.getByRole('button', { name: /iniciar sesi.*para confirmar esta lectura/i })).toBeVisible();
   await expect(review).not.toContainText(/LEGACY_|selected_lenses|reasoning_metadata|source_refs|raw_synthesis|starteria_path|recommended_approach|recommended_cta/i);
   const renderedDom = await page.locator('body').innerHTML();
   expect(renderedDom).not.toMatch(/LEAK_SELECTED_LENS|LEAK_REASONING_METADATA|LEAK_PROVENANCE|LEAK_SOURCE_REF|LEAK_RAW_SYNTHESIS/);
@@ -452,36 +463,39 @@ test('historical legacy session without a Critical Handoff keeps its compatibili
   await openReview(page, { absent: true, marker: false });
   await expect(page.getByTestId('handoff-first-view')).toBeVisible();
   await expect(page.getByTestId('handoff-first-view').getByTestId('handoff-approach-step').getByText('LEGACY_PATH_MARKER')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Trabajarlo con Starteria' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Confirmar esta lectura' })).toHaveCount(0);
   await expect(page.getByTestId('critical-handoff-review')).toHaveCount(0);
 });
 
-test('continue action only enters identity and claim flow', async ({ page }) => {
+test('authentication action only enters identity and claim flow', async ({ page }) => {
   const requests: string[] = [];
   page.on('request', (request) => requests.push(`${request.method()} ${new URL(request.url()).pathname}`));
   await openReview(page);
-  await page.getByRole('button', { name: 'Continuar con esta lectura' }).click();
+  await page.getByRole('button', { name: /iniciar sesi.*para confirmar esta lectura/i }).click();
 
   await expect(page).toHaveURL(/\/auth$/);
   const pendingClaim = await page.evaluate(() => JSON.parse(window.sessionStorage.getItem('starteria.portfolioEntry.pendingClaim') ?? '{}'));
   expect(pendingClaim).toMatchObject({ sessionId: SESSION_ID, criticalHandoffReview: true });
   expect(pendingClaim).not.toHaveProperty('identity');
-  expect(requests.some((request) => /\/handoff\/confirmation|\/continue-portfolio|\/convert/.test(request))).toBe(false);
+  expect(requests.some((request) => /\/handoff\/confirmation|\/critical-handoff\/[^/]+\/confirmation|\/continue-portfolio|\/convert/.test(request))).toBe(false);
 });
 
-test('auth claims ownership and returns to the same review without confirming the artifact', async ({ page }) => {
+test('auth claim returns to review; stale confirmation is rejected, then explicit confirmation stays on the review', async ({ page }) => {
   await page.addInitScript(({ sessionId }) => {
     window.sessionStorage.setItem('starteria.portfolioEntry.current', JSON.stringify({ sessionId, credential: 'browser-entry-token' }));
     window.sessionStorage.setItem('starteria.portfolioEntry.criticalHandoffReviewSession', sessionId);
   }, { sessionId: SESSION_ID });
 
-  const requests: Array<{ path: string; method: string; body?: Record<string, unknown>; entryToken?: string | null }> = [];
+  const requests: Array<{ path: string; method: string; body?: Record<string, unknown>; entryToken?: string | null; idempotencyKey?: string }> = [];
+  let staleConfirmationRejected = false;
   await page.route('**/api/v1/**', async (route: Route) => {
     const request = route.request();
     const pathname = new URL(request.url()).pathname;
     let body: Record<string, unknown> | undefined;
     try { body = request.postDataJSON() as Record<string, unknown> | undefined; } catch { body = undefined; }
     const entryToken = request.headers()['x-starteria-entry-token'] ?? null;
-    requests.push({ path: pathname, method: request.method(), body, entryToken });
+    requests.push({ path: pathname, method: request.method(), body, entryToken, idempotencyKey: request.headers()['idempotency-key'] });
 
     if (pathname.endsWith('/auth/refresh') || pathname.endsWith('/auth/me')) {
       await route.fulfill({ status: 401, json: { success: false } });
@@ -500,7 +514,23 @@ test('auth claims ownership and returns to the same review without confirming th
       return;
     }
     if (pathname === `/api/v1/public/portfolio-entry/sessions/${SESSION_ID}/critical-handoff` && request.method() === 'GET') {
-      await route.fulfill({ json: { success: true, data: { state: 'current', projection: criticalProjection() } } });
+      const version = staleConfirmationRejected ? 3 : 2;
+      await route.fulfill({ json: { success: true, data: {
+        id: 'critical-artifact-1', version, sourceContextRevision: 4, state: 'current',
+        confirmationState: 'provisional', confirmedAt: null, projection: criticalProjection(),
+      } } });
+      return;
+    }
+    if (pathname === `/api/v1/public/portfolio-entry/sessions/${SESSION_ID}/critical-handoff/critical-artifact-1/confirmation` && request.method() === 'POST') {
+      if (!staleConfirmationRejected) {
+        staleConfirmationRejected = true;
+        await route.fulfill({ status: 409, json: { success: false, error: { code: 'CONFLICT', message: 'Critical Handoff is stale' } } });
+        return;
+      }
+      await route.fulfill({ json: { success: true, data: {
+        id: 'critical-artifact-1', version: 3, sourceContextRevision: 4, state: 'current',
+        confirmationState: 'confirmed', confirmedAt: '2026-10-09T12:00:00.000Z', projection: criticalProjection(),
+      } } });
       return;
     }
     await route.fulfill({ json: { success: true, data: [] } });
@@ -508,7 +538,7 @@ test('auth claims ownership and returns to the same review without confirming th
 
   await page.goto('/public/start');
   await expect(page.getByTestId('critical-handoff-review')).toBeVisible();
-  await page.getByRole('button', { name: 'Continuar con esta lectura' }).click();
+  await page.getByRole('button', { name: /iniciar sesi.*para confirmar esta lectura/i }).click();
   await expect(page).toHaveURL(/\/auth$/);
 
   await page.locator('input[type="email"]').fill('review@example.com');
@@ -518,15 +548,33 @@ test('auth claims ownership and returns to the same review without confirming th
   await expect(page).toHaveURL(/\/public\/start$/);
   await expect(page.getByTestId('critical-handoff-review')).toBeVisible();
   await expect(page.getByRole('button', { name: 'Esto no refleja suficientemente mi situación' })).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Continuar con esta lectura' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: /iniciar sesi.*para confirmar esta lectura/i })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Confirmar esta lectura' })).toBeVisible();
   expect(await page.evaluate(() => JSON.parse(window.sessionStorage.getItem('starteria.portfolioEntry.claimedSession') ?? '{}')))
     .toEqual({ sessionId: SESSION_ID });
   expect(requests.some((request) => request.path.endsWith('/claim') && request.method === 'POST')).toBe(true);
-  expect(requests.some((request) => /\/handoff\/confirmation|\/continue-portfolio|\/convert/.test(request.path))).toBe(false);
+  expect(requests.some((request) => /\/handoff\/confirmation|\/critical-handoff\/[^/]+\/confirmation|\/continue-portfolio|\/convert/.test(request.path))).toBe(false);
   const browserStorage = await page.evaluate(() => Array.from({ length: window.sessionStorage.length }, (_, index) => {
     const key = window.sessionStorage.key(index);
     return key ? `${key}=${window.sessionStorage.getItem(key)}` : '';
   }).join('\n'));
   expect(browserStorage).toContain(`criticalHandoffReviewSession=${SESSION_ID}`);
+  await page.getByRole('button', { name: 'Confirmar esta lectura' }).click();
+  await expect(page.getByTestId('critical-handoff-conflict')).toBeVisible();
+  await expect(page).toHaveURL(/\/public\/start$/);
+  await page.getByRole('button', { name: 'Intentar de nuevo' }).click();
+  await expect(page.getByRole('button', { name: 'Confirmar esta lectura' })).toBeVisible();
+  await page.getByRole('button', { name: 'Confirmar esta lectura' }).click();
+  await expect(page.getByTestId('critical-handoff-confirmed')).toContainText(/representa suficientemente tu situaci.n/i);
+  await expect(page).toHaveURL(/\/public\/start$/);
+  await expect(page.getByRole('button', { name: 'Confirmar esta lectura' })).toHaveCount(0);
+  const confirmationRequests = requests.filter((request) => request.method === 'POST' && request.path.endsWith('/critical-artifact-1/confirmation'));
+  expect(confirmationRequests).toHaveLength(2);
+  expect(confirmationRequests.map((request) => request.body)).toEqual([
+    { action: 'confirm', expectedArtifactVersion: 2, expectedContextRevision: 4 },
+    { action: 'confirm', expectedArtifactVersion: 3, expectedContextRevision: 4 },
+  ]);
+  expect(confirmationRequests.every((request) => Boolean(request.idempotencyKey))).toBe(true);
+  expect(requests.some((request) => /\/handoff\/confirmation|\/continue-portfolio|\/convert/.test(request.path))).toBe(false);
   expect(browserStorage).not.toMatch(/El comit[eé] necesita comparar|selected_lenses|reasoning_metadata|provenance|source_refs|claim_ref|raw_synthesis/i);
 });

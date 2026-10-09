@@ -3,6 +3,7 @@ import { http, HttpResponse } from 'msw';
 import { server } from '../../../../../tests/setup-jsdom';
 import {
   chooseGuidedExploration,
+  confirmPortfolioEntryCriticalHandoff,
   continuePortfolioEntryToPortfolio,
   createPortfolioEntrySession,
   getPortfolioEntryCriticalHandoff,
@@ -93,6 +94,8 @@ describe('portfolioEntryPublicService', () => {
             route_ranking: ['private-route'],
             candidate_first_movement: { raw: 'private movement object' },
             state: 'current',
+            confirmationState: 'provisional',
+            confirmedAt: null,
             projection: {
               conclusionStatus: 'bounded',
               finalReading: 'El comité necesita comparar capacidad y urgencia antes de priorizar.',
@@ -127,7 +130,12 @@ describe('portfolioEntryPublicService', () => {
     const artifact = await getPortfolioEntryCriticalHandoff('11111111-1111-4111-8111-111111111111', 'entry-token');
 
     expect(artifact).toEqual({
+      id: 'artifact-1',
+      version: 3,
+      sourceContextRevision: 7,
       state: 'current',
+      confirmationState: 'provisional',
+      confirmedAt: null,
       projection: {
         conclusionStatus: 'bounded',
         finalReading: 'El comité necesita comparar capacidad y urgencia antes de priorizar.',
@@ -143,8 +151,37 @@ describe('portfolioEntryPublicService', () => {
         },
       },
     });
-    expect(Object.keys(artifact ?? {})).toEqual(['state', 'projection']);
-    expect(JSON.stringify(artifact)).not.toMatch(/sourceTurnId|sourceContextRevision|selected_lenses|reasoning_metadata|provenance|source_refs|claim_ref|prompt_metadata|model_metadata|provider_metadata|candidate_first_movement|route_ranking|raw_synthesis|starteria_path|recommended_approach|recommended_cta/i);
+    expect(Object.keys(artifact ?? {})).toEqual(['id', 'version', 'sourceContextRevision', 'state', 'confirmationState', 'confirmedAt', 'projection']);
+    expect(JSON.stringify(artifact)).not.toMatch(/sourceTurnId|schemaVersion|selected_lenses|reasoning_metadata|provenance|source_refs|claim_ref|prompt_metadata|model_metadata|provider_metadata|candidate_first_movement|route_ranking|raw_synthesis|starteria_path|recommended_approach|recommended_cta/i);
+  });
+
+  it('posts only explicit artifact identity and currentness expectations to the dedicated confirmation endpoint', async () => {
+    const confirmedAt = '2026-10-09T12:00:00.000Z';
+    server.use(http.post('*/public/portfolio-entry/sessions/:sessionId/critical-handoff/:artifactId/confirmation', async ({ request, params }) => {
+      expect(params.sessionId).toBe('11111111-1111-4111-8111-111111111111');
+      expect(params.artifactId).toBe('artifact-1');
+      expect(request.headers.get('Idempotency-Key')).toBe('critical-confirm-key');
+      expect(request.headers.get('X-Starteria-Entry-Token')).toBeNull();
+      expect(await request.json()).toEqual({ action: 'confirm', expectedArtifactVersion: 3, expectedContextRevision: 7 });
+      return HttpResponse.json({ success: true, data: {
+        id: 'artifact-1', version: 3, sourceContextRevision: 7, state: 'current',
+        confirmationState: 'confirmed', confirmedAt,
+        projection: {
+          conclusionStatus: 'supported', finalReading: 'Lectura segura.', decisionInView: null,
+          usableNow: [], decisionChangingUnknowns: [], firstMovement: null,
+          reasoning_metadata: { private: true },
+        },
+        acceptedFields: ['private legacy structure'], provenance: [{ source: 'private' }],
+      } });
+    }));
+
+    await expect(confirmPortfolioEntryCriticalHandoff('11111111-1111-4111-8111-111111111111', {
+      artifactId: 'artifact-1', expectedArtifactVersion: 3, expectedContextRevision: 7, idempotencyKey: 'critical-confirm-key',
+    })).resolves.toMatchObject({
+      id: 'artifact-1', version: 3, sourceContextRevision: 7, state: 'current',
+      confirmationState: 'confirmed', confirmedAt,
+      projection: { finalReading: 'Lectura segura.' },
+    });
   });
 
   it('treats a missing Critical Handoff as absent without reading legacy handoff data', async () => {
@@ -164,9 +201,10 @@ describe('portfolioEntryPublicService', () => {
         data: {
           id: 'claimed-artifact',
           version: 2,
-          schemaVersion: 'critical-handoff-projection-v0.1',
           sourceContextRevision: 8,
           state: 'current',
+          confirmationState: 'confirmed',
+          confirmedAt: '2026-10-09T12:00:00.000Z',
           projection: {
             conclusionStatus: 'supported',
             finalReading: 'La lectura se conserva.',

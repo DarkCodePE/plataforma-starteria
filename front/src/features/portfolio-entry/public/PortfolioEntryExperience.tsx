@@ -20,6 +20,7 @@ import { CriticalHandoffReview, type CriticalHandoffReviewState } from './Critic
 import {
   chooseGuidedExploration,
   abandonPortfolioEntrySession,
+  confirmPortfolioEntryCriticalHandoff,
   confirmPortfolioEntryHandoff,
   continuePortfolioEntryToPortfolio,
   correctPortfolioEntryHandoff,
@@ -1850,6 +1851,33 @@ export function PortfolioEntryExperience({
     navigate('/auth');
   };
 
+  const confirmCriticalHandoff = async () => {
+    const artifact = criticalHandoffLoad.sessionId === sessionDto?.id ? criticalHandoffLoad.artifact : undefined;
+    if (!sessionDto || !artifact || artifact.confirmationState !== 'provisional'
+      || sessionDto.ownership.state !== 'CLAIMED' || pending) return;
+    setError(null);
+    setPendingRequest('confirming');
+    try {
+      const confirmed = await confirmPortfolioEntryCriticalHandoff(sessionDto.id, {
+        artifactId: artifact.id,
+        expectedArtifactVersion: artifact.version,
+        expectedContextRevision: artifact.sourceContextRevision,
+        idempotencyKey: createIdempotencyKey('portfolio-entry:critical-handoff-confirm'),
+      });
+      setCriticalHandoffLoad({ sessionId: sessionDto.id, state: confirmed.state, artifact: confirmed });
+      trackPortfolioEntryEvent('critical_handoff_confirmed', { sessionId: sessionDto.id });
+    } catch (err) {
+      const apiError = normalizePortfolioEntryApiError(err);
+      if (apiError.kind === 'conflict') {
+        setCriticalHandoffLoad({ sessionId: sessionDto.id, state: 'conflict', artifact });
+      } else {
+        await handleRequestError(err);
+      }
+    } finally {
+      setPendingRequest(null);
+    }
+  };
+
   const abandonConfirmedBrief = async () => {
     if (!sessionDto || sessionDto.lifecycleStatus !== 'CONFIRMED' || abandonmentPending) return;
     setAbandonmentPending(true);
@@ -2019,11 +2047,13 @@ export function PortfolioEntryExperience({
             correctionDraft={criticalCorrectionDraft}
             pending={pending}
             canContinue={Boolean(sessionRef) && sessionDto.ownership.state === 'ANONYMOUS'}
+            canConfirm={sessionDto.ownership.state === 'CLAIMED'}
             onCorrectionDraftChange={setCriticalCorrectionDraft}
             onBeginCorrection={beginCriticalHandoffCorrection}
             onCancelCorrection={cancelCriticalHandoffCorrection}
             onSubmitCorrection={submitCriticalHandoffCorrection}
             onContinue={continueCriticalHandoffToSignup}
+            onConfirm={confirmCriticalHandoff}
             onRetry={() => void fetchCriticalHandoff(sessionDto.id, sessionRef?.credential, true, true)}
           />
         );

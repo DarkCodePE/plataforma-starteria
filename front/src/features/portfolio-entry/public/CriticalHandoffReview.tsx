@@ -1,11 +1,11 @@
 import { useEffect } from 'react';
-import { ArrowRight, PencilLine } from 'lucide-react';
+import { ArrowRight, Check, PencilLine } from 'lucide-react';
 import { Badge } from '../../../app/components/ui/badge';
 import { Button } from '../../../app/components/ui/button';
 import { Textarea } from '../../../app/components/ui/textarea';
 import type { PortfolioEntryCriticalHandoffDto } from './types';
 
-export type CriticalHandoffReviewState = 'loading' | 'current' | 'stale' | 'absent' | 'error';
+export type CriticalHandoffReviewState = 'loading' | 'current' | 'stale' | 'conflict' | 'absent' | 'error';
 
 type CriticalHandoffReviewProps = {
   state: CriticalHandoffReviewState;
@@ -14,29 +14,37 @@ type CriticalHandoffReviewProps = {
   correctionDraft: string;
   pending: boolean;
   canContinue: boolean;
+  canConfirm: boolean;
   onCorrectionDraftChange: (value: string) => void;
   onBeginCorrection: () => void;
   onCancelCorrection: () => void;
   onSubmitCorrection: () => void;
   onContinue: () => void;
+  onConfirm: () => void;
   onRetry: () => void;
 };
 
 function ReviewAction({
   canContinue,
+  canConfirm,
   pending,
   onBeginCorrection,
   onContinue,
-}: Pick<CriticalHandoffReviewProps, 'canContinue' | 'pending' | 'onBeginCorrection' | 'onContinue'>) {
+  onConfirm,
+}: Pick<CriticalHandoffReviewProps, 'canContinue' | 'canConfirm' | 'pending' | 'onBeginCorrection' | 'onContinue' | 'onConfirm'>) {
   return (
     <section className="flex min-w-0 flex-col gap-3 border-t border-border-default pt-4 sm:flex-row sm:items-center sm:justify-between" aria-label="Acciones sobre la lectura" data-testid="critical-handoff-review-actions">
       <Button type="button" variant="outline" onClick={onBeginCorrection} disabled={pending}>
         <PencilLine size={16} />
         Esto no refleja suficientemente mi situación
       </Button>
-      {canContinue ? (
+      {canConfirm ? (
+        <Button type="button" onClick={onConfirm} disabled={pending} data-testid="critical-handoff-confirm-button">
+          {pending ? 'Confirmando lectura…' : 'Confirmar esta lectura'} <Check size={16} />
+        </Button>
+      ) : canContinue ? (
         <Button type="button" onClick={onContinue} disabled={pending}>
-          Continuar con esta lectura <ArrowRight size={16} />
+          Iniciar sesión para confirmar esta lectura <ArrowRight size={16} />
         </Button>
       ) : (
         <p className="max-w-sm text-sm leading-6 text-text-secondary" role="status">
@@ -113,17 +121,22 @@ function LoadingState() {
 
 function UnavailableState({ state, onBeginCorrection, onRetry, pending }: Pick<CriticalHandoffReviewProps, 'state' | 'onBeginCorrection' | 'onRetry' | 'pending'>) {
   const isStale = state === 'stale';
+  const isConflict = state === 'conflict';
   const isError = state === 'error';
   const title = isStale
     ? 'Esta lectura ya no está vigente'
-    : isError
-      ? 'No pudimos cargar la lectura'
-      : 'La lectura todavía no está disponible';
+    : isConflict
+      ? 'La lectura cambió antes de confirmarse'
+      : isError
+        ? 'No pudimos cargar la lectura'
+        : 'La lectura todavía no está disponible';
   const message = isStale
     ? 'Se incorporó contexto nuevo. La lectura anterior no se muestra como actual; podemos volver al ciclo de aclaración.'
-    : isError
-      ? 'Puedes intentar cargarla de nuevo o volver a aclarar tu situación.'
-      : 'No hay una lectura final disponible ahora. No usaremos una recomendación anterior como sustituto.';
+    : isConflict
+      ? 'La versión revisada ya no coincide con la actual. Carga la lectura vigente y revísala antes de confirmar.'
+      : isError
+        ? 'Puedes intentar cargarla de nuevo o volver a aclarar tu situación.'
+        : 'No hay una lectura final disponible ahora. No usaremos una recomendación anterior como sustituto.';
 
   return (
     <section className="mx-auto max-w-3xl min-w-0 space-y-4 rounded-ds-lg border border-status-feedback-warning-border bg-status-feedback-warning-surface p-5" role="status" aria-live="polite" aria-labelledby="critical-handoff-unavailable-title" data-testid={`critical-handoff-${state}`}>
@@ -132,8 +145,8 @@ function UnavailableState({ state, onBeginCorrection, onRetry, pending }: Pick<C
         <p className="text-sm leading-6 text-status-feedback-warning-text">{message}</p>
       </div>
       <div className="flex flex-col gap-2 sm:flex-row">
-        <Button type="button" onClick={onBeginCorrection} disabled={pending}>Volver a aclarar</Button>
-        {isError ? <Button type="button" variant="outline" onClick={onRetry} disabled={pending}>Intentar de nuevo</Button> : null}
+        {!isConflict ? <Button type="button" onClick={onBeginCorrection} disabled={pending}>Volver a aclarar</Button> : null}
+        {isError || isConflict ? <Button type="button" variant="outline" onClick={onRetry} disabled={pending}>Intentar de nuevo</Button> : null}
       </div>
     </section>
   );
@@ -142,8 +155,9 @@ function UnavailableState({ state, onBeginCorrection, onRetry, pending }: Pick<C
 function CriticalHandoffContent({ artifact, ...props }: Omit<CriticalHandoffReviewProps, 'state' | 'artifact' | 'onRetry'> & { artifact: PortfolioEntryCriticalHandoffDto }) {
   const { projection } = artifact;
   const insufficient = projection.conclusionStatus === 'insufficient_basis';
+  const confirmed = artifact.confirmationState === 'confirmed';
 
-  if (props.correctionOpen) {
+  if (props.correctionOpen && !confirmed) {
     return <CorrectionForm {...props} />;
   }
 
@@ -154,12 +168,22 @@ function CriticalHandoffContent({ artifact, ...props }: Omit<CriticalHandoffRevi
   return (
     <section className="mx-auto max-w-3xl min-w-0 space-y-4" aria-labelledby="critical-handoff-review-title" data-testid="critical-handoff-review">
       <header className="space-y-3">
-        <Badge variant={projection.conclusionStatus === 'bounded' ? 'warning' : 'success'}>
-          {insufficient ? 'Aún falta claridad' : projection.conclusionStatus === 'bounded' ? 'Lectura con incertidumbre' : 'Lectura final'}
+        <Badge variant={confirmed ? 'success' : projection.conclusionStatus === 'bounded' ? 'warning' : 'success'}>
+          {confirmed ? 'Lectura confirmada' : insufficient ? 'Aún falta claridad' : projection.conclusionStatus === 'bounded' ? 'Lectura con incertidumbre' : 'Lectura final'}
         </Badge>
         <h1 id="critical-handoff-review-title" className="text-2xl font-semibold tracking-tight text-text-primary">Lo que entendimos al cerrar la exploración</h1>
-        <p className="text-sm leading-6 text-text-secondary">Esta lectura sigue siendo provisional. Puedes volver a aclarar tu situación antes de continuar.</p>
+        <p className="text-sm leading-6 text-text-secondary">
+          {confirmed
+            ? 'Esta es la lectura que confirmaste como representación suficiente de tu situación para continuar.'
+            : 'Esta lectura es provisional. Al confirmarla, indicas que representa suficientemente tu situación para continuar. No significa que cada afirmación sea un hecho objetivo ni elige el camino que seguirás.'}
+        </p>
       </header>
+
+      {confirmed ? (
+        <aside className="rounded-ds-md border border-status-feedback-success-border bg-status-feedback-success-surface p-4" role="status" data-testid="critical-handoff-confirmed">
+          <p className="text-sm leading-6 text-status-feedback-success-text">Has confirmado que esta lectura representa suficientemente tu situación para continuar. No has validado cada afirmación como un hecho objetivo ni has elegido una ruta de Starteria.</p>
+        </aside>
+      ) : null}
 
       {projection.conclusionStatus === 'bounded' ? (
         <aside className="rounded-ds-md border border-status-feedback-warning-border bg-status-feedback-warning-surface p-4" role="status" data-testid="critical-handoff-bounded-notice">
@@ -232,17 +256,24 @@ function CriticalHandoffContent({ artifact, ...props }: Omit<CriticalHandoffRevi
         </section>
       ) : null}
 
-      {insufficient ? (
+      {!confirmed && insufficient ? (
         <Button type="button" onClick={props.onBeginCorrection} disabled={props.pending}>Volver a aclarar</Button>
-      ) : (
-        <ReviewAction canContinue={props.canContinue} pending={props.pending} onBeginCorrection={props.onBeginCorrection} onContinue={props.onContinue} />
-      )}
+      ) : !confirmed ? (
+        <ReviewAction
+          canContinue={props.canContinue}
+          canConfirm={props.canConfirm}
+          pending={props.pending}
+          onBeginCorrection={props.onBeginCorrection}
+          onContinue={props.onContinue}
+          onConfirm={props.onConfirm}
+        />
+      ) : null}
     </section>
   );
 }
 
 export function CriticalHandoffReview(props: CriticalHandoffReviewProps) {
-  if (props.correctionOpen) return <CorrectionForm {...props} />;
+  if (props.correctionOpen && props.artifact?.confirmationState !== 'confirmed') return <CorrectionForm {...props} />;
   if (props.state === 'loading') return <LoadingState />;
   if (props.state !== 'current' || !props.artifact) {
     return <UnavailableState {...props} />;

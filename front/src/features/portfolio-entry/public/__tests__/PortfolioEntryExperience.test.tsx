@@ -21,9 +21,11 @@ const serviceMocks = vi.hoisted(() => ({
   submitPortfolioEntryMessage: vi.fn(),
   chooseGuidedExploration: vi.fn(),
   materializePortfolioEntryHandoff: vi.fn(),
+  confirmPortfolioEntryCriticalHandoff: vi.fn(),
   correctPortfolioEntryHandoff: vi.fn(),
   confirmPortfolioEntryHandoff: vi.fn(),
   continuePortfolioEntryToPortfolio: vi.fn(),
+  convertPortfolioEntrySession: vi.fn(),
   abandonPortfolioEntrySession: vi.fn(),
   normalizePortfolioEntryApiError: vi.fn((err: { kind?: string; status?: number }) => ({
     kind: err.kind ?? 'network',
@@ -129,7 +131,12 @@ function makeSession(overrides: Partial<PortfolioEntrySessionDto> = {}): Portfol
 
 function makeCriticalHandoff(overrides: Partial<PortfolioEntryCriticalHandoffDto> = {}): PortfolioEntryCriticalHandoffDto {
   return {
+    id: 'critical-artifact-1',
+    version: 3,
+    sourceContextRevision: 7,
     state: 'current',
+    confirmationState: 'provisional',
+    confirmedAt: null,
     projection: {
       conclusionStatus: 'supported',
       finalReading: 'El comité necesita comparar capacidad y urgencia antes de priorizar.',
@@ -828,7 +835,7 @@ describe('PortfolioEntryExperience', () => {
     expect(serviceMocks.materializePortfolioEntryHandoff.mock.invocationCallOrder[0])
       .toBeLessThan(serviceMocks.getPortfolioEntryCriticalHandoff.mock.invocationCallOrder[0]);
 
-    fireEvent.click(screen.getByRole('button', { name: 'Continuar con esta lectura' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Iniciar sesión para confirmar esta lectura' }));
 
     expect(navigateSpy).toHaveBeenCalledWith('/auth');
     expect(serviceMocks.confirmPortfolioEntryHandoff).not.toHaveBeenCalled();
@@ -840,6 +847,63 @@ describe('PortfolioEntryExperience', () => {
       criticalHandoffReview: true,
     });
     expect(readPendingPortfolioEntryClaim()).not.toHaveProperty('identity');
+  });
+
+  it('explicitly confirms the reviewed current artifact after claim and stays on the confirmed review', async () => {
+    const claimed = sessionWithHandoff({
+      lifecycleStatus: 'HANDOFF_READY',
+      revision: 9,
+      nextAction: 'claim_or_close',
+      ownership: { state: 'CLAIMED', ownerUserId: 'user-1' },
+    });
+    saveClaimedPortfolioEntrySession({ sessionId: claimed.id });
+    serviceMocks.getClaimedPortfolioEntrySession.mockResolvedValue(claimed);
+    serviceMocks.getPortfolioEntryCriticalHandoff.mockResolvedValue(makeCriticalHandoff());
+    serviceMocks.confirmPortfolioEntryCriticalHandoff.mockResolvedValue(makeCriticalHandoff({
+      confirmationState: 'confirmed',
+      confirmedAt: '2026-10-09T12:00:00.000Z',
+    }));
+
+    renderExperience();
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Confirmar esta lectura' }));
+
+    await waitFor(() => expect(serviceMocks.confirmPortfolioEntryCriticalHandoff).toHaveBeenCalledWith(
+      claimed.id,
+      expect.objectContaining({
+        artifactId: 'critical-artifact-1',
+        expectedArtifactVersion: 3,
+        expectedContextRevision: 7,
+        idempotencyKey: expect.any(String),
+      }),
+    ));
+    expect(await screen.findByTestId('critical-handoff-confirmed')).toHaveTextContent(/representa suficientemente tu situaci[oó]n/i);
+    expect(screen.queryByRole('button', { name: 'Confirmar esta lectura' })).not.toBeInTheDocument();
+    expect(navigateSpy).not.toHaveBeenCalled();
+    expect(serviceMocks.continuePortfolioEntryToPortfolio).not.toHaveBeenCalled();
+    expect(serviceMocks.confirmPortfolioEntryHandoff).not.toHaveBeenCalled();
+    expect(serviceMocks.correctPortfolioEntryHandoff).not.toHaveBeenCalled();
+  });
+
+  it('shows a bounded stale conflict without navigating or selecting a continuation', async () => {
+    const claimed = sessionWithHandoff({
+      lifecycleStatus: 'HANDOFF_READY',
+      revision: 9,
+      nextAction: 'claim_or_close',
+      ownership: { state: 'CLAIMED', ownerUserId: 'user-1' },
+    });
+    saveClaimedPortfolioEntrySession({ sessionId: claimed.id });
+    serviceMocks.getClaimedPortfolioEntrySession.mockResolvedValue(claimed);
+    serviceMocks.getPortfolioEntryCriticalHandoff.mockResolvedValue(makeCriticalHandoff());
+    serviceMocks.confirmPortfolioEntryCriticalHandoff.mockRejectedValue({ kind: 'conflict', status: 409 });
+
+    renderExperience();
+    fireEvent.click(await screen.findByRole('button', { name: 'Confirmar esta lectura' }));
+
+    expect(await screen.findByTestId('critical-handoff-conflict')).toBeInTheDocument();
+    expect(navigateSpy).not.toHaveBeenCalled();
+    expect(serviceMocks.continuePortfolioEntryToPortfolio).not.toHaveBeenCalled();
+    expect(serviceMocks.convertPortfolioEntrySession).not.toHaveBeenCalled();
   });
 
   it('does not fall back to legacy review when a newly materialized Critical Handoff is absent', async () => {

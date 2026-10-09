@@ -231,9 +231,14 @@ export type CriticalHandoffProjection = {
   } | null;
 };
 
-/** Safe client projection; artifact and source identifiers stay on the backend. */
+/** Safe allowlisted projection plus the identifiers needed to confirm this exact artifact. */
 export type PortfolioEntryCriticalHandoffDto = {
+  id: string;
+  version: number;
+  sourceContextRevision: number;
   state: 'current' | 'stale';
+  confirmationState: 'provisional' | 'confirmed';
+  confirmedAt: string | null;
   projection: CriticalHandoffProjection;
 };
 

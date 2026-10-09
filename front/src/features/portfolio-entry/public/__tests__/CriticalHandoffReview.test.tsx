@@ -9,7 +9,12 @@ function makeArtifact(
   overrides: Partial<PortfolioEntryCriticalHandoffDto['projection']> = {},
 ): PortfolioEntryCriticalHandoffDto {
   return {
+    id: 'critical-handoff-1',
+    version: 1,
+    sourceContextRevision: 4,
     state: 'current',
+    confirmationState: 'provisional',
+    confirmedAt: null,
     projection: {
       conclusionStatus,
       finalReading: 'El comité necesita comparar capacidad y urgencia antes de priorizar.',
@@ -36,11 +41,13 @@ function renderReview(overrides: Partial<React.ComponentProps<typeof CriticalHan
     correctionDraft: '',
     pending: false,
     canContinue: true,
+    canConfirm: false,
     onCorrectionDraftChange: vi.fn(),
     onBeginCorrection: vi.fn(),
     onCancelCorrection: vi.fn(),
     onSubmitCorrection: vi.fn(),
     onContinue: vi.fn(),
+    onConfirm: vi.fn(),
     onRetry: vi.fn(),
     ...overrides,
   };
@@ -57,7 +64,7 @@ describe('CriticalHandoffReview', () => {
     expect(screen.getByRole('heading', { name: 'Lo que ya puedes usar' })).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'Qué podría cambiar la decisión' })).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'Un posible primer movimiento' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Continuar con esta lectura' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Iniciar sesión para confirmar esta lectura' })).toBeInTheDocument();
     expect(container.innerHTML).not.toMatch(/selected_lenses|reasoning_metadata|provenance|source_refs|claim_ref|sourceTurnId|sourceContextRevision|prompt_metadata|model_metadata|provider_metadata|epistemic_roles|conformance_metadata|candidate_first_movement|raw_synthesis|route_ranking|starteria_path|recommended_approach|recommended_cta|portfolio setup preview/i);
     const orderedSections = [
       'critical-handoff-final-reading',
@@ -72,6 +79,69 @@ describe('CriticalHandoffReview', () => {
       expect(orderedSections[index]!.compareDocumentPosition(orderedSections[index + 1]!))
         .toBe(Node.DOCUMENT_POSITION_FOLLOWING);
     }
+  });
+
+  it('offers an explicit confirmation with the bounded meaning and does not continue automatically', () => {
+    const onConfirm = vi.fn();
+    const onContinue = vi.fn();
+    renderReview({ canContinue: false, canConfirm: true, onConfirm, onContinue });
+
+    expect(screen.getByText(/representa suficientemente tu situaci[oó]n para continuar/i)).toBeInTheDocument();
+    expect(screen.getByText(/no .* cada afirmaci[oó]n .* hecho objetivo/i)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Confirmar esta lectura' }));
+
+    expect(onConfirm).toHaveBeenCalledTimes(1);
+    expect(onContinue).not.toHaveBeenCalled();
+    expect(screen.queryByText(/Starteria Path|Portfolio Setup|Ruta sugerida/i)).not.toBeInTheDocument();
+  });
+
+  it('allows confirmation when the optional first movement is absent', () => {
+    const onConfirm = vi.fn();
+    renderReview({
+      artifact: makeArtifact('supported', { firstMovement: null }),
+      canContinue: false,
+      canConfirm: true,
+      onConfirm,
+    });
+
+    expect(screen.queryByTestId('critical-handoff-first-movement')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Confirmar esta lectura' }));
+    expect(onConfirm).toHaveBeenCalledTimes(1);
+  });
+
+  it('disables duplicate confirmation while the request is loading', () => {
+    renderReview({ canContinue: false, canConfirm: true, pending: true });
+
+    expect(screen.getByRole('button', { name: /confirmando/i })).toBeDisabled();
+  });
+
+  it('shows a confirmed representation and blocks correction or path selection', () => {
+    const artifact = { ...makeArtifact(), confirmationState: 'confirmed' as const, confirmedAt: '2026-10-09T12:00:00.000Z' };
+    renderReview({ artifact, correctionOpen: true, canContinue: false, canConfirm: true });
+
+    expect(screen.getByTestId('critical-handoff-confirmed')).toHaveTextContent(/has confirmado que esta lectura representa suficientemente tu situaci[oó]n/i);
+    expect(screen.queryByRole('button', { name: 'Confirmar esta lectura' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /volver a aclarar|corregir/i })).not.toBeInTheDocument();
+    expect(screen.queryByText(/Starteria Path|Portfolio Setup|Ruta sugerida/i)).not.toBeInTheDocument();
+  });
+
+  it('shows a bounded stale-conflict state with a review retry', () => {
+    const onRetry = vi.fn();
+    renderReview({ state: 'conflict', artifact: undefined, onRetry });
+
+    expect(screen.getByTestId('critical-handoff-conflict')).toHaveTextContent(/cambi[oó] antes de confirmarse/i);
+    fireEvent.click(screen.getByRole('button', { name: 'Intentar de nuevo' }));
+    expect(onRetry).toHaveBeenCalledTimes(1);
+  });
+
+  it('requires authentication and claim before exposing the confirmation action', () => {
+    const onContinue = vi.fn();
+    const onConfirm = vi.fn();
+    renderReview({ canContinue: true, canConfirm: false, onContinue, onConfirm });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Iniciar sesión para confirmar esta lectura' }));
+    expect(onContinue).toHaveBeenCalledTimes(1);
+    expect(onConfirm).not.toHaveBeenCalled();
   });
 
   it('visibly distinguishes a bounded conclusion and preserves its reading', () => {
@@ -94,7 +164,7 @@ describe('CriticalHandoffReview', () => {
     expect(screen.queryByTestId('critical-handoff-final-reading')).not.toBeInTheDocument();
     expect(screen.queryByTestId('critical-handoff-decision')).not.toBeInTheDocument();
     expect(screen.queryByTestId('critical-handoff-first-movement')).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Continuar con esta lectura' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Confirmar esta lectura' })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Volver a aclarar' })).toBeInTheDocument();
   });
 
@@ -193,12 +263,14 @@ describe('CriticalHandoffReview', () => {
     expect(view.props.onSubmitCorrection).toHaveBeenCalled();
   });
 
-  it('keeps continue as a presentation callback and does not confirm or select anything', () => {
+  it('uses the anonymous action only to enter authentication and never confirms or selects anything', () => {
     const { props } = renderReview();
-    fireEvent.click(screen.getByRole('button', { name: 'Continuar con esta lectura' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Iniciar sesión para confirmar esta lectura' }));
 
     expect(props.onContinue).toHaveBeenCalledTimes(1);
-    expect(screen.queryByRole('button', { name: /confirmar|seleccionar ruta|portfolio setup/i })).not.toBeInTheDocument();
+    expect(props.onConfirm).not.toHaveBeenCalled();
+    expect(screen.queryByRole('button', { name: 'Confirmar esta lectura' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /seleccionar ruta|portfolio setup/i })).not.toBeInTheDocument();
   });
 
   it('provides accessible loading status and disables review actions for a claimed session', () => {
@@ -214,7 +286,7 @@ describe('CriticalHandoffReview', () => {
         canContinue={false}
       />,
     );
-    expect(screen.queryByRole('button', { name: 'Continuar con esta lectura' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /confirmar esta lectura|iniciar sesión para confirmar/i })).not.toBeInTheDocument();
     expect(screen.getByRole('status')).toHaveTextContent('Esta lectura ya está vinculada a tu cuenta.');
     expect(screen.getByRole('status')).not.toHaveTextContent(/confirmar|confirmación|siguiente paso/i);
   });
