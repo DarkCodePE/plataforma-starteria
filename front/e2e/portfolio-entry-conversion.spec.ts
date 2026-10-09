@@ -440,9 +440,11 @@ async function continueThroughAuthenticatedLegacyPortfolioEntry(
   expect(confirmedBody?.data?.lifecycleStatus, `handoff confirmation response body: ${confirmedBodyText}`).toBe('CONFIRMED');
   const confirmationPayload = confirmed.request().postDataJSON();
   expect(confirmationPayload.acceptedFields).toEqual(expect.arrayContaining([
-    'understood_need', 'desired_outcome', 'decision_to_enable', 'known_context',
-    'unresolved_context', 'evidence_or_clarity_needed', 'recommended_approach',
+    'understood_need', 'desired_outcome', 'decision_to_enable',
+    'unresolved_context', 'recommended_approach',
   ]));
+  expect(confirmationPayload.acceptedFields).not.toContain('known_context');
+  expect(confirmationPayload.acceptedFields).not.toContain('evidence_or_clarity_needed');
   expect(confirmationPayload.rejectedFields ?? []).not.toContain('recommended_approach');
 
   const continued = await continuationResponse;
