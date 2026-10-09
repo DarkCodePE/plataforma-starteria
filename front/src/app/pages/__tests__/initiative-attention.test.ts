@@ -34,3 +34,9 @@ describe('Atención de la iniciativa en el listado del Portfolio Lead', () => {
     expect(getInitiativeAttentionModel(enCurso, challenge).filter).toBe('no_response');
   });
 });
+
+describe('Iniciativa decidida (cerrada)', () => {
+  it.each(['closed', 'cerrada'])('status %s va a "Cerradas" aunque el sponsor no haya confirmado', (status) => {
+    expect(getInitiativeAttentionModel(initiative({ status, readyForDecision: false }), challenge).filter).toBe('closed');
+  });
+});

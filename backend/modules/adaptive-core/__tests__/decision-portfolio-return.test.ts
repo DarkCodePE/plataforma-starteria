@@ -16,7 +16,7 @@ const decision = (outcome: any) => ({
 function makeTx({ coverage = 'sin_cobertura', siblings = 0, withChallenge = true } = {}) {
   return {
     initiativePortfolioMeta: {
-      findFirst: vi.fn().mockResolvedValue(withChallenge ? { challenge: { id: 'c1', coverageStatus: coverage, strategicFrontId: 'f1' } } : null),
+      findFirst: vi.fn().mockResolvedValue({ challenge: withChallenge ? { id: 'c1', coverageStatus: coverage, strategicFrontId: 'f1' } : null }),
       count: vi.fn().mockResolvedValue(siblings),
       updateMany: vi.fn(),
     },
@@ -84,6 +84,23 @@ describe('propagateDecisionToPortfolioTx', () => {
     const learning = await propagateDecisionToPortfolioTx(tx, decision('implement'));
     expect(learning).toMatchObject({ challengeId: null, strategicFrontId: null, coverageBefore: null, coverageAfter: null });
     expect(tx.challenge.update).not.toHaveBeenCalled();
+  });
+
+  it.each(['scale', 'continue_experimenting', 'close_with_learning'])('decidida (%s), la iniciativa queda cerrada en el portafolio', async (outcome) => {
+    const tx = makeTx();
+    await propagateDecisionToPortfolioTx(tx, decision(outcome));
+    expect(tx.initiativePortfolioMeta.updateMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: { projectId: 'p1' },
+      data: expect.objectContaining({ status: 'closed', readyForDecision: false }),
+    }));
+  });
+
+  it('una iniciativa independiente también queda cerrada', async () => {
+    const tx = makeTx({ withChallenge: false });
+    await propagateDecisionToPortfolioTx(tx, decision('implement'));
+    expect(tx.initiativePortfolioMeta.updateMany).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ status: 'closed', readyForDecision: false }),
+    }));
   });
 
   it('sin los modelos en el cliente no propaga', async () => {

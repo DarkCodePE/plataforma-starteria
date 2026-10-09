@@ -89,9 +89,15 @@ export async function propagateDecisionToPortfolioTx(
     if (coverageAfter !== coverageBefore) {
       await tx.challenge.update({ where: { id: challenge.id }, data: { coverageStatus: coverageAfter } });
     }
+  }
+  if (meta) {
+    // Decidida, la iniciativa sale de "lista para decisión" y queda cerrada en el portafolio:
+    // lo que sigue (handoff, nuevo ciclo, pausa) lo lleva la siguiente acción y el aprendizaje.
     await tx.initiativePortfolioMeta.updateMany({
       where: { projectId: decision.projectId },
       data: {
+        status: 'closed',
+        readyForDecision: false,
         nextActionRecommended: NEXT_ACTION[decision.outcome],
         decisionNotes: decision.rationale,
         lastActivity: new Date().toISOString(),
