@@ -374,10 +374,13 @@ async function openLegacyHandoff(page: Page, fixture: LegacyHandoffFixture) {
   await page.reload();
   await expect(page.getByTestId('handoff-first-view')).toBeVisible({ timeout: 30_000 });
   await expect(page.getByTestId('handoff-understanding')).toContainText('Esto estoy entendiendo');
-  await expect(page.getByText('Comparar las iniciativas con la evidencia y la capacidad disponibles.')).toBeVisible();
-  await expect(page.getByTestId('critical-handoff-review')).toHaveCount(0);
   expect(handoffReads.some((read) => read.endsWith('/handoff'))).toBe(true);
   expect(handoffReads.some((read) => read.endsWith('/critical-handoff'))).toBe(false);
+  await expect(page.getByTestId('critical-handoff-review')).toHaveCount(0);
+  const approach = page.getByTestId('handoff-approach');
+  await expect(approach).toContainText('Cómo lo abordaría Starteria');
+  await expect(approach).toContainText('Ordenar la comparación antes de decidir.');
+  await expect(page.getByTestId('handoff-approach-step')).toHaveCount(1);
 }
 
 async function continueThroughAuthenticatedLegacyPortfolioEntry(
