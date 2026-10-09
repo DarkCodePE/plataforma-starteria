@@ -25,3 +25,9 @@ describe('Avance de la iniciativa en el listado del Portfolio Lead', () => {
     expect(getInitiativeProgress(item('Step 3', { status: 'cerrada' }))).toEqual({ completed: 5, percent: 100 });
   });
 });
+
+describe('Avance de una iniciativa decidida', () => {
+  it('closed (deletreo canónico del backend) es 100%', () => {
+    expect(getInitiativeProgress(item('Step 4', { status: 'closed' }))).toEqual({ completed: 5, percent: 100 });
+  });
+});

@@ -60,11 +60,16 @@ function InfoCard({ label, value, helper }: InfoCardProps) {
   );
 }
 
+// El backend escribe `closed` (ADR-030); `cerrada` queda como deletreo legacy de lectura.
+function isClosedInitiative(initiative: InitiativeItem): boolean {
+  return initiative.status === 'closed' || initiative.status === 'cerrada';
+}
+
 // Avance = Steps completados de 5. "Step 4" en curso es 4/5 (80%); recién cuando el Step 4
 // está confirmado (la iniciativa quedó presentada o lista para decisión) son 5/5. Antes una
 // iniciativa con Step 4 terminado mostraba "5/5 · 90%" (2026-10-08).
 export function getInitiativeProgress(initiative: InitiativeItem): { completed: number; percent: number } {
-  if (initiative.status === 'cerrada') return { completed: 5, percent: 100 };
+  if (isClosedInitiative(initiative)) return { completed: 5, percent: 100 };
   const current = Number(initiative.currentStep.match(/\d/)?.[0] ?? 0);
   const readyForDecision = initiative.progressSignal?.health === 'ready_for_decision'
     || initiative.status === 'lista_para_decision' || initiative.status === 'ready_for_decision';
@@ -413,7 +418,7 @@ function InitiativeFollowUpDrawer({
 function getInitiativeAttentionState(initiative: InitiativeItem, alerts: string[]) {
   if (initiative.status === 'bloqueada' || alerts.some(item => item.includes('Bloqueo'))) return 'Tiene bloqueos';
   if (initiative.status === 'lista_para_decision' || initiative.readyForDecision) return 'Lista para decisión';
-  if (initiative.status === 'cerrada') return 'Cerrada';
+  if (isClosedInitiative(initiative)) return 'Cerrada';
   if (alerts.length > 0 || initiative.mainAlert.trim()) return 'Requiere atención';
   return 'Seguimiento normal';
 }
@@ -527,13 +532,14 @@ function buildInitialInitiativeUiState(
   challenge: ReturnType<typeof usePortfolioLead>['challenges'][number] | null,
 ): InitiativeUiState {
   const blocked = initiative.status === 'bloqueada' || initiative.blockedDays >= 14;
-  const decisionReady = initiative.readyForDecision || initiative.currentStep === 'Step 4' || initiative.status === 'lista_para_decision';
+  const decisionReady = !isClosedInitiative(initiative)
+    && (initiative.readyForDecision || initiative.currentStep === 'Step 4' || initiative.status === 'lista_para_decision');
   return {
     status: blocked
       ? 'blocked'
       : decisionReady
         ? 'decision_ready'
-        : initiative.status === 'cerrada'
+        : isClosedInitiative(initiative)
           ? 'closed'
           : 'active',
     blockingReason: initiative.mainBlocker || initiative.mainAlert || 'Sin bloqueo visible',
@@ -605,6 +611,23 @@ export function getInitiativeAttentionModel(
   challenge: ReturnType<typeof usePortfolioLead>['challenges'][number] | null,
   uiState: InitiativeUiState | null = null,
 ): InitiativeAttentionModel {
+  // Decidida: el backend la cierra al registrar la decisión. Sale de cualquier alerta.
+  if (isClosedInitiative(initiative)) {
+    return {
+      kind: 'no_alert',
+      filter: 'closed',
+      score: 10,
+      label: 'Cerrada',
+      whatHappens: 'La iniciativa ya terminó su ciclo visible.',
+      whyItMatters: 'Sirve como referencia para reporte y lectura de cierre.',
+      suggestedAction: 'Revisar el resumen y usarla como evidencia para reporte.',
+      expectedResponsible: 'Portfolio Lead',
+      ctaLabel: 'Ver detalle',
+      tone: 'slate',
+      actionKind: 'none',
+    };
+  }
+
   if (uiState?.status === 'unblock_in_progress') {
     const lastAction = uiState.lastAction;
     return {
@@ -743,21 +766,6 @@ export function getInitiativeAttentionModel(
     return DECISION_READY_ATTENTION;
   }
 
-  if (initiative.status === 'cerrada') {
-    return {
-      kind: 'no_alert',
-      filter: 'closed',
-      score: 10,
-      label: 'Cerrada',
-      whatHappens: 'La iniciativa ya terminó su ciclo visible.',
-      whyItMatters: 'Sirve como referencia para reporte y lectura de cierre.',
-      suggestedAction: 'Revisar el resumen y usarla como evidencia para reporte.',
-      expectedResponsible: 'Portfolio Lead',
-      ctaLabel: 'Ver detalle',
-      tone: 'slate',
-      actionKind: 'none',
-    };
-  }
 
   return {
     kind: 'no_alert',
@@ -915,7 +923,7 @@ export function PortfolioLeadInitiativesPage() {
         const evidenceCount = item.deliverables.length;
         const decision = portfolioDecisions.find(decisionItem => decisionItem.initiativeId === item.id) ?? null;
         const canDecision = item.readyForDecision || item.status === 'lista_para_decision';
-        const canReport = item.status === 'cerrada' || item.currentStep === 'Step 4' || canDecision;
+        const canReport = isClosedInitiative(item) || item.currentStep === 'Step 4' || canDecision;
         const nextAction = challenge ? challengeExecutiveSummary(challenge, initiatives).nextAction : 'Mantener lectura ejecutiva del portafolio.';
 
         return {
