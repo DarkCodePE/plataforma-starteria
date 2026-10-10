@@ -17,7 +17,7 @@ import { LeaderFeedbackStatusCard } from '../components/LeaderFeedbackStatusCard
 import type { AdaptiveInitiativeCore } from '../../features/adaptive-core/domain/types';
 import { canNavigateToAdaptiveStep, latestAdaptiveStepOutput } from '../../features/adaptive-core/domain/adaptiveAuthority';
 import { AdaptiveCheckpointWorkspace } from '../../features/adaptive-core/components';
-import { confirmAdaptiveCheckpoint, confirmStep2Output, getAdaptiveCore } from '../../features/adaptive-core/services/adaptiveCoreService';
+import { confirmAdaptiveCheckpoint, explainCheckpointError, confirmStep2Output, getAdaptiveCore } from '../../features/adaptive-core/services/adaptiveCoreService';
 
 type ModuleId = 'A' | 'B' | 'C' | 'D';
 
@@ -465,7 +465,9 @@ export function Step2Page() {
       });
       setAdaptiveCore(nextCore);
     } catch (error: any) {
-      setAdaptiveAuthorityError(error?.response?.data?.error?.message ?? error?.message ?? 'No pudimos confirmar el checkpoint adaptativo.');
+      const { message, core } = await explainCheckpointError(projectId, error, 'No pudimos confirmar el checkpoint adaptativo.');
+      if (core) setAdaptiveCore(core);
+      setAdaptiveAuthorityError(message);
     } finally {
       setAdaptiveTransitionSaving(false);
     }

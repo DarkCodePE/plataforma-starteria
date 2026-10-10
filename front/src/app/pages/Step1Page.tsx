@@ -26,7 +26,7 @@ import { Step1ResearchModuleV2 } from '../components/step1-research-v2/Step1Rese
 import { buildInitialResearchV2State, buildResearchFrontSuggestions, buildResearchObjective } from '../components/step1-research-v2/researchObjectiveBuilder';
 import { ResearchModuleAContext, Step1ResearchModuleV2State } from '../components/step1-research-v2/step1ResearchV2.types';
 import { Step1CaptureLegacyRestrictions, Step1CaptureLegacySynthesis, Step1CaptureLegacyValidation, Step1ModuleId } from '../components/step1-architecture/step1Architecture.types';
-import { confirmAdaptiveCheckpoint, confirmStep1Output, getAdaptiveCore } from '../../features/adaptive-core/services/adaptiveCoreService';
+import { confirmAdaptiveCheckpoint, explainCheckpointError, confirmStep1Output, getAdaptiveCore } from '../../features/adaptive-core/services/adaptiveCoreService';
 import { canNavigateToAdaptiveStep, latestAdaptiveStepOutput } from '../../features/adaptive-core/domain/adaptiveAuthority';
 import type { AdaptiveInitiativeCore } from '../../features/adaptive-core/domain/types';
 import { AdaptiveCheckpointWorkspace } from '../../features/adaptive-core/components';
@@ -587,7 +587,9 @@ export function Step1Page() {
       });
       setAdaptiveCore(nextCore);
     } catch (error: any) {
-      setAdaptiveStep1Error(error?.response?.data?.error?.message ?? error?.message ?? 'No pudimos confirmar el checkpoint adaptativo.');
+      const { message, core } = await explainCheckpointError(projectId, error, 'No pudimos confirmar el checkpoint adaptativo.');
+      if (core) setAdaptiveCore(core);
+      setAdaptiveStep1Error(message);
     } finally {
       setAdaptiveStep1Saving(false);
     }

@@ -35,7 +35,7 @@ import * as stepService from '../services/stepService';
 import { getById } from '../services/projectService';
 import { LeaderFeedbackStatusCard } from '../components/LeaderFeedbackStatusCard';
 import { AdaptiveCheckpointWorkspace } from '../../features/adaptive-core/components';
-import { confirmAdaptiveCheckpoint, confirmStep4Output, getAdaptiveCore } from '../../features/adaptive-core/services/adaptiveCoreService';
+import { confirmAdaptiveCheckpoint, explainCheckpointError, confirmStep4Output, getAdaptiveCore } from '../../features/adaptive-core/services/adaptiveCoreService';
 import { canNavigateToAdaptiveStep } from '../../features/adaptive-core/domain/adaptiveAuthority';
 
 type ModuleId = 'overview' | 'A' | 'B' | 'C';
@@ -1283,7 +1283,8 @@ ${meetingOwner} / ${meetingRole}
       setAdaptiveCore(nextCore);
       toast.success('Checkpoint adaptativo confirmado.');
     } catch (error: any) {
-      const message = error?.response?.data?.message ?? 'No pudimos confirmar el checkpoint adaptativo.';
+      const { message, core } = await explainCheckpointError(projectId, error, 'No pudimos confirmar el checkpoint adaptativo.');
+      if (core) setAdaptiveCore(core);
       setAdaptiveOutputError(message);
       toast.error(message);
     } finally {

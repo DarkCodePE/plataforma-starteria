@@ -153,3 +153,29 @@ export async function getCopilotMode(projectId: string, mode: CopilotIntentMode)
   const { data } = await api.get<ApiResponse<CopilotModeResponse>>(`/projects/${projectId}/copilot-mode/${mode}`);
   return data.data;
 }
+
+export const CHECKPOINT_TAKEN_MESSAGE =
+  'Otra persona del equipo ya confirmó este checkpoint mientras lo editabas. Cargamos lo que quedó guardado: revisa si falta algo de lo tuyo.';
+
+/**
+ * Error de confirmar un checkpoint, en palabras de la persona. Si otro miembro del equipo ya lo
+ * confirmó (409 CHECKPOINT_NOT_ACTIVE), trae el estado vigente para que la pantalla lo muestre en vez
+ * de quedarse con un checkpoint que ya no existe. Lo encontró el swarm de roles (2026-10-10).
+ */
+export async function explainCheckpointError(
+  projectId: string,
+  error: any,
+  fallback: string,
+): Promise<{ message: string; core: AdaptiveInitiativeCore | null }> {
+  const code = error?.response?.data?.error?.code ?? error?.code;
+  if (code === 'CHECKPOINT_NOT_ACTIVE') {
+    let core: AdaptiveInitiativeCore | null = null;
+    try {
+      core = await getAdaptiveCore(projectId);
+    } catch {
+      // Sin el estado vigente igual vale explicar el conflicto.
+    }
+    return { message: CHECKPOINT_TAKEN_MESSAGE, core };
+  }
+  return { message: error?.response?.data?.error?.message ?? error?.response?.data?.message ?? error?.message ?? fallback, core: null };
+}
