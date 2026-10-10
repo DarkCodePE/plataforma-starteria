@@ -598,7 +598,50 @@ function InitialReviewArtifactDrawer({
   );
 }
 
+// Una invitación sin aceptar se resuelve antes de montar la iniciativa: así, al aceptarla, la
+// página se monta de cero y no cambia la cantidad de hooks de ProjectHomeContent.
 export function ProjectHomePage() {
+  const { projectId } = useParams();
+  const { projects, user, getProjectMember, acceptTeamInvitation } = useApp();
+  const navigate = useNavigate();
+  const [acceptError, setAcceptError] = useState(false);
+  const project = projects.find(p => p.id === projectId);
+  const projectMember = project ? getProjectMember(project.id, user?.email) : null;
+
+  if (project && projectMember && user?.role !== 'sponsor' && projectMember.status === 'Pendiente') {
+    return (
+      <div className="p-6 max-w-2xl mx-auto">
+        <div className="rounded-2xl border border-indigo-200 bg-indigo-50 p-5">
+          <p className="text-sm text-indigo-900" style={{ fontWeight: 700 }}>Te invitaron a esta iniciativa</p>
+          <p className="text-sm text-indigo-700 mt-1">
+            Te sumaron al equipo de <span style={{ fontWeight: 600 }}>{project.name}</span> como {projectMember.role}. Acepta la invitación para empezar a trabajar en ella.
+          </p>
+          {acceptError && (
+            <p role="alert" className="text-sm text-red-700 mt-2">No pudimos aceptar la invitación. Intenta de nuevo.</p>
+          )}
+          <div className="mt-4 flex gap-2">
+            <button
+              onClick={() => {
+                setAcceptError(false);
+                acceptTeamInvitation(project.id).catch(() => setAcceptError(true));
+              }}
+              className="rounded-xl bg-indigo-600 px-4 py-2 text-sm text-white hover:bg-indigo-700 transition-colors"
+            >
+              Aceptar invitación
+            </button>
+            <button onClick={() => navigate('/dashboard')} className="rounded-xl border border-indigo-200 px-4 py-2 text-sm text-indigo-700 hover:bg-indigo-100 transition-colors">
+              Volver al dashboard
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return <ProjectHomeContent />;
+}
+
+function ProjectHomeContent() {
   const { projectId } = useParams();
   const { projects, setCurrentProject, user, updateProject, getProjectMember, canAccessProject, markSponsorInvitationSent, acceptSponsorInvitation, updateSponsorTouchpoint, addSponsorComment } = useApp();
   const { challenges, strategicFronts } = usePortfolioLead();

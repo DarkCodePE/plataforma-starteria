@@ -19,10 +19,12 @@ const WRITE_ROLES = new Set(['OWNER', 'EDITOR']);
 export function assertProjectTeamAccess(input: {
   platformRole: string;
   teamRole: string | null;
+  /** TeamMember.status: una invitación PENDING lee, pero no escribe hasta aceptarla. */
+  teamStatus?: string | null;
   isAssignedPortfolioLead: boolean;
   need: ProjectTeamNeed;
 }): void {
-  const { platformRole, teamRole, isAssignedPortfolioLead, need } = input;
+  const { platformRole, teamRole, teamStatus, isAssignedPortfolioLead, need } = input;
   if (platformRole === 'admin') return;
   if (platformRole === 'mentor' && need !== 'manage') return;
 
@@ -30,6 +32,11 @@ export function assertProjectTeamAccess(input: {
     if (!isAssignedPortfolioLead) throw AppError.forbidden('No tienes acceso a este proyecto.', 'PROJECT_ACCESS_DENIED');
     if (need !== 'read') throw AppError.forbidden('Sólo el equipo de la iniciativa puede avanzar sus Steps.', 'PROJECT_TEAM_ACCESS_REQUIRED');
     return;
+  }
+  if (need !== 'read' && teamStatus === 'PENDING') {
+    throw AppError.forbidden('Tu invitación a esta iniciativa está pendiente.', 'TEAM_INVITATION_PENDING', {
+      hint: 'Acepta la invitación desde la iniciativa para empezar a trabajar en ella.',
+    });
   }
   if (need === 'write' && !WRITE_ROLES.has(teamRole)) {
     throw AppError.forbidden('Tu rol en el equipo es de sólo lectura.', 'PROJECT_TEAM_ROLE_REQUIRED', {
@@ -53,11 +60,17 @@ export function requireProjectTeamAccess(
       const resolvedNeed = typeof need === 'function' ? need(req) : need;
       if (role === 'admin' || (role === 'mentor' && resolvedNeed !== 'manage')) return next();
 
-      const member = await prisma.teamMember.findFirst({ where: { projectId, userId }, select: { role: true } });
+      const member = await prisma.teamMember.findFirst({ where: { projectId, userId }, select: { role: true, status: true } });
       const isAssignedPortfolioLead = !member && Boolean(
         (await (prisma as any).initiativeGovernance.findUnique({ where: { projectId } }))?.portfolioLeadUserId === userId,
       );
-      assertProjectTeamAccess({ platformRole: role, teamRole: member?.role ?? null, isAssignedPortfolioLead, need: resolvedNeed });
+      assertProjectTeamAccess({
+        platformRole: role,
+        teamRole: member?.role ?? null,
+        teamStatus: member?.status ?? null,
+        isAssignedPortfolioLead,
+        need: resolvedNeed,
+      });
       next();
     } catch (err) {
       next(err);

@@ -334,6 +334,8 @@ interface AppContextType {
   canAccessProject: (projectId: string, accessLevel?: 'overview' | 'step' | 'evidence') => boolean;
   markSponsorInvitationSent: (projectId: string, sponsorEmail: string) => void;
   acceptSponsorInvitation: (projectId: string) => void;
+  /** Acepta la invitación propia al equipo (PENDING → ACTIVE en el backend) y la marca Activo. */
+  acceptTeamInvitation: (projectId: string) => Promise<void>;
   updateSponsorTouchpoint: (
     projectId: string,
     touchpointId: SponsorTouchpointId,
@@ -749,6 +751,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
     updateSponsorData(projectId, data).catch(err => console.error('[sponsor] no se pudo guardar', err));
   };
 
+  const acceptTeamInvitation = async (projectId: string) => {
+    if (!user) return;
+    await projectService.acceptTeamInvitation(projectId);
+    const project = projects.find(item => item.id === projectId);
+    if (!project) return;
+    updateProject(projectId, {
+      team: project.team.map(member => (isSameTeamMember(member, user) ? { ...member, status: 'Activo' } : member)),
+    });
+  };
+
   const acceptSponsorInvitation = (projectId: string) => {
     if (!user || user.role !== 'sponsor') return;
     const project = projects.find(item => item.id === projectId);
@@ -942,7 +954,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <AppContext.Provider value={{ user, isAuthenticated, authLoading, projects, projectsLoading, currentProject, login, register, googleSignIn, logout, setCurrentProject, updateProject, createProject, createProjectFromPublicDraft, hydrateProjectStep0FromPrefill, setUserRole, updateStep0, getProjectMember, canAccessProject, markSponsorInvitationSent, acceptSponsorInvitation, updateSponsorTouchpoint, addSponsorComment }}>
+    <AppContext.Provider value={{ user, isAuthenticated, authLoading, projects, projectsLoading, currentProject, login, register, googleSignIn, logout, setCurrentProject, updateProject, createProject, createProjectFromPublicDraft, hydrateProjectStep0FromPrefill, setUserRole, updateStep0, getProjectMember, canAccessProject, markSponsorInvitationSent, acceptSponsorInvitation, acceptTeamInvitation, updateSponsorTouchpoint, addSponsorComment }}>
       {children}
     </AppContext.Provider>
   );
