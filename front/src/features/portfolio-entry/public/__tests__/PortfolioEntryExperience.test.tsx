@@ -5,6 +5,7 @@ import { MemoryRouter } from 'react-router';
 import { PortfolioEntryExperience } from '../PortfolioEntryExperience';
 import { serializeConfirmedBriefMarkdown } from '../portfolioEntryBriefExport';
 import type { PortfolioEntryCriticalHandoffDto, PortfolioEntryHandoff, PortfolioEntrySessionDto } from '../types';
+import type { StarteriaPathSupportedDto } from '../starteriaPath.types';
 import {
   readPendingPortfolioEntryClaim,
   readClaimedPortfolioEntryBriefIdentity,
@@ -18,6 +19,7 @@ const serviceMocks = vi.hoisted(() => ({
   createPortfolioEntrySession: vi.fn(),
   getPortfolioEntrySession: vi.fn(),
   getPortfolioEntryCriticalHandoff: vi.fn(),
+  getPortfolioEntryStarteriaPath: vi.fn(),
   getPortfolioEntryHandoff: vi.fn(),
   getClaimedPortfolioEntrySession: vi.fn(),
   submitPortfolioEntryMessage: vi.fn(),
@@ -158,6 +160,45 @@ function makeCriticalHandoff(overrides: Partial<PortfolioEntryCriticalHandoffDto
   };
 }
 
+function makeSupportedStarteriaPath(): StarteriaPathSupportedDto {
+  return {
+    experienceState: 'SUPPORTED',
+    starteriaPathStatus: 'SUPPORTED',
+    valueBridge: {
+      currentState: 'La decisión aún requiere comparar capacidad y urgencia.',
+      starteriaContribution: [{
+        statement: 'Starteria podría ordenar la información ya compartida.',
+        capabilityClass: 'CAN_SUPPORT',
+        availabilityState: 'REQUIRES_IMPLEMENTATION',
+      }],
+      tangibleOutcome: {
+        statement: 'Una lectura estructurada que se pueda revisar.',
+        observableArtifact: 'Vista con evidencia y dudas visibles.',
+      },
+      remainingDependency: [],
+    },
+    capabilityPath: [],
+    dependencies: [],
+    firstSupportedMovement: null,
+    boundaryStatement: 'La organización conserva la decisión.',
+    sourceBinding: {
+      criticalHandoffId: 'critical-artifact-1',
+      criticalHandoffVersion: 3,
+      sourceContextRevision: 7,
+      current: true,
+      confirmed: true,
+      projectionVersion: 'starteria-path-projection-v0.1',
+      businessCapabilityBoundaryVersion: 'business-capability-boundary-v0.1',
+      pathSchemaVersion: 'starteria-path-dto-v0.1',
+    },
+    versions: {
+      pathSchemaVersion: 'starteria-path-dto-v0.1',
+      projectionVersion: 'starteria-path-projection-v0.1',
+      businessCapabilityBoundaryVersion: 'business-capability-boundary-v0.1',
+    },
+  };
+}
+
 function withLiveUnderstanding(session: PortfolioEntrySessionDto, liveUnderstanding: unknown): PortfolioEntrySessionDto {
   return { ...session, liveUnderstanding } as unknown as PortfolioEntrySessionDto;
 }
@@ -239,6 +280,7 @@ describe('PortfolioEntryExperience', () => {
     serviceMocks.authState.authLoading = false;
     serviceMocks.getPortfolioEntryCriticalHandoff.mockReset();
     serviceMocks.getPortfolioEntryCriticalHandoff.mockResolvedValue(null);
+    serviceMocks.getPortfolioEntryStarteriaPath.mockReset();
     serviceMocks.getPortfolioEntryHandoff.mockReset();
     serviceMocks.getPortfolioEntryHandoff.mockImplementation(async (sessionId: string) =>
       explicitLegacyHandoffSession({ id: sessionId }));
@@ -889,6 +931,7 @@ describe('PortfolioEntryExperience', () => {
       confirmationState: 'confirmed',
       confirmedAt: '2026-10-09T12:00:00.000Z',
     }));
+    serviceMocks.getPortfolioEntryStarteriaPath.mockResolvedValue(makeSupportedStarteriaPath());
 
     renderExperience();
 
@@ -904,11 +947,48 @@ describe('PortfolioEntryExperience', () => {
       }),
     ));
     expect(await screen.findByTestId('critical-handoff-confirmed')).toHaveTextContent(/representa suficientemente tu situaci[oó]n/i);
+    expect(await screen.findByRole('heading', { name: 'Así puede ayudarte Starteria' })).toBeInTheDocument();
+    expect(serviceMocks.getPortfolioEntryStarteriaPath).toHaveBeenCalledWith(claimed.id);
+    expect(screen.getByText('Una lectura estructurada que se pueda revisar.')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Confirmar esta lectura' })).not.toBeInTheDocument();
     expect(navigateSpy).not.toHaveBeenCalled();
     expect(serviceMocks.continuePortfolioEntryToPortfolio).not.toHaveBeenCalled();
     expect(serviceMocks.confirmPortfolioEntryHandoff).not.toHaveBeenCalled();
     expect(serviceMocks.correctPortfolioEntryHandoff).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    { status: 401, kind: 'unauthorized', requestState: 'error', message: 'No pudimos verificar el acceso a esta lectura.' },
+    { status: 404, kind: 'not_found', requestState: 'missing', message: 'No hay una lectura confirmada disponible para mostrar esta experiencia.' },
+    { status: 503, kind: 'unavailable', requestState: 'error', message: 'No pudimos cargar esta experiencia. Puedes intentarlo de nuevo.' },
+  ])('handles Starteria Path API $status without presenting supported content', async ({ status, kind, requestState, message }) => {
+    const claimed = sessionWithHandoff({
+      lifecycleStatus: 'HANDOFF_READY',
+      revision: 9,
+      nextAction: 'claim_or_close',
+      ownership: { state: 'CLAIMED', ownerUserId: 'user-1' },
+      handoffExperience: 'critical',
+    });
+    saveClaimedPortfolioEntrySession({ sessionId: claimed.id });
+    serviceMocks.getClaimedPortfolioEntrySession.mockResolvedValue(claimed);
+    serviceMocks.getPortfolioEntryCriticalHandoff.mockResolvedValue(makeCriticalHandoff({ confirmationState: 'confirmed' }));
+    serviceMocks.getPortfolioEntryStarteriaPath.mockRejectedValue({ status, kind });
+
+    renderExperience();
+
+    expect(await screen.findByTestId(`starteria-path-${requestState}`)).toHaveTextContent(message);
+    expect(screen.queryByRole('heading', { name: 'Así puede ayudarte Starteria' })).not.toBeInTheDocument();
+    expect(serviceMocks.getPortfolioEntryStarteriaPath).toHaveBeenCalledWith(claimed.id);
+    expect(navigateSpy).not.toHaveBeenCalled();
+
+    if (status === 401 || status === 404) {
+      expect(screen.queryByRole('button', { name: 'Intentar de nuevo' })).not.toBeInTheDocument();
+    } else {
+      serviceMocks.getPortfolioEntryStarteriaPath.mockResolvedValueOnce(makeSupportedStarteriaPath());
+      fireEvent.click(screen.getByRole('button', { name: 'Intentar de nuevo' }));
+      expect(await screen.findByRole('heading', { name: 'Así puede ayudarte Starteria' })).toBeInTheDocument();
+      expect(serviceMocks.getPortfolioEntryStarteriaPath).toHaveBeenCalledTimes(2);
+    }
   });
 
   it('shows a bounded stale conflict without navigating or selecting a continuation', async () => {
