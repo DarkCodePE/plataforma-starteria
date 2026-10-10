@@ -12,6 +12,12 @@ export function toTeamRole(role: string): TeamRole {
   throw AppError.badRequest(`Rol de equipo desconocido: ${role}`, 'INVALID_TEAM_ROLE');
 }
 
+/**
+ * Lo que el front necesita de cada persona del equipo. `role`/`roles` dejan reconocer al sponsor:
+ * no hay rol de equipo SPONSOR, quien patrocina es una fila VIEWER de un usuario sponsor.
+ */
+export const TEAM_MEMBER_USER_SELECT = { id: true, name: true, email: true, initials: true, role: true, roles: true } as const;
+
 export class UserService {
   constructor(private prisma: PrismaClient) {}
 
@@ -148,13 +154,19 @@ export class UserService {
   async getTeam(projectId: string) {
     const members = await this.prisma.teamMember.findMany({
       where: { projectId },
-      include: { user: { select: { id: true, name: true, email: true, initials: true } } },
+      include: { user: { select: TEAM_MEMBER_USER_SELECT } },
     });
 
     return members;
   }
 
+  /**
+   * Invita por correo. Con rol `Sponsor` la fila queda VIEWER pendiente (el sponsor lee y comenta,
+   * no edita) y, si el correo no tiene cuenta, la cuenta nace con rol de plataforma sponsor. A una
+   * cuenta existente no se le cambia el rol de plataforma: eso es de users:assign-roles.
+   */
   async inviteMember(projectId: string, data: InviteMemberInput) {
+    const asSponsor = data.role === 'Sponsor';
     const existing = await this.prisma.teamMember.findFirst({
       where: { projectId, user: { email: data.email } },
     });
@@ -180,8 +192,8 @@ export class UserService {
           name: data.name || data.email.split('@')[0],
           initials,
           // ADR-029: las dos columnas de la fase 1, para que ninguna fila nazca sin `roles`.
-          role: 'participante',
-          roles: ['participante'],
+          role: asSponsor ? 'sponsor' : 'participante',
+          roles: [asSponsor ? 'sponsor' : 'participante'],
           skills: [],
         },
       });
@@ -191,9 +203,10 @@ export class UserService {
       data: {
         projectId,
         userId: user.id,
-        role: toTeamRole(data.role),
+        role: asSponsor ? TeamRole.VIEWER : toTeamRole(data.role),
         status: TeamMemberStatus.PENDING,
       },
+      include: { user: { select: TEAM_MEMBER_USER_SELECT } },
     });
 
     return member;

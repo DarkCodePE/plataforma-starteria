@@ -11,6 +11,7 @@ import { validateTransition } from './state-machine';
 import { syncInitiativeProgress } from '../portfolio/initiative-progress';
 import { CreateProjectInput, UpdateProjectInput, UpdateSponsorDataInput } from './project.schemas';
 import { calculateContextScore } from '../companies/context-score';
+import { TEAM_MEMBER_USER_SELECT } from '../users/user.service';
 import { ensureChallengeGovernanceTx } from '../adaptive-core/initiative-governance';
 
 export const DEFAULT_STEPS = [
@@ -70,7 +71,9 @@ export class ProjectService {
 
   private projectInclude = {
     steps: { include: { modules: true } },
-    teamMembers: true,
+    // Con la persona: el front reconoce al sponsor (fila VIEWER de un usuario sponsor) y muestra
+    // nombre y correo de cada miembro.
+    teamMembers: { include: { user: { select: TEAM_MEMBER_USER_SELECT } } },
     evidence: true,
     portfolioMeta: {
       include: {
