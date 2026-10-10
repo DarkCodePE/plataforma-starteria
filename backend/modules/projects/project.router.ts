@@ -13,6 +13,7 @@ import { checkpointResponseSchema, confirmBriefSchema, confirmCriticalChangeTran
 import { authenticate } from '../auth/auth.middleware';
 import type { AuthenticatedRequest } from '../../shared/types/auth.types';
 import { requireEntitlement } from '../billing/entitlement.middleware';
+import { requireProjectTeamAccess } from './project-team-access';
 const service = new ProjectService(prisma);
 const controller = new ProjectController(service);
 const adaptiveCoreService = new AdaptiveCoreService(prisma);
@@ -20,6 +21,9 @@ const adaptiveCoreController = new AdaptiveCoreController(adaptiveCoreService);
 const missionReview = new MissionReviewReadService(prisma);
 
 export const projectRouter = Router();
+// Escribir la iniciativa es del OWNER o EDITOR; archivarla, del OWNER (project-team-access.ts).
+const canWrite = requireProjectTeamAccess(prisma, 'write');
+const canManage = requireProjectTeamAccess(prisma, 'manage');
 
 projectRouter.use(authenticate);
 
@@ -36,10 +40,10 @@ projectRouter.post(
   controller.create,
 );
 projectRouter.get('/:id', controller.getById);
-projectRouter.patch('/:id', validate(updateProjectSchema), controller.update);
-projectRouter.delete('/:id', controller.archive);
+projectRouter.patch('/:id', canWrite, validate(updateProjectSchema), controller.update);
+projectRouter.delete('/:id', canManage, controller.archive);
 projectRouter.get('/:id/step0', controller.getStep0);
-projectRouter.patch('/:id/step0', validate(updateStep0Schema), controller.updateStep0);
+projectRouter.patch('/:id/step0', canWrite, validate(updateStep0Schema), controller.updateStep0);
 projectRouter.get('/:id/adaptive-core', adaptiveCoreController.get);
 // Modos del Copilot por intención (E2E Job-Driven §20): lectura del estado persistido, igual en
 // todos los canales.
@@ -73,18 +77,18 @@ projectRouter.get('/:id/adaptive-core/completion-routing', adaptiveCoreControlle
 projectRouter.get('/:id/adaptive-core/history', adaptiveCoreController.getHistory);
 projectRouter.get('/:id/adaptive-core/decision-requests', adaptiveCoreController.listDecisionRequests);
 projectRouter.get('/:id/adaptive-core/decision-requests/:requestId', adaptiveCoreController.getDecisionRequest);
-projectRouter.post('/:id/adaptive-core/decision-requests', validate(decisionRequestCreateSchema), adaptiveCoreController.createDecisionRequest);
+projectRouter.post('/:id/adaptive-core/decision-requests', canWrite, validate(decisionRequestCreateSchema), adaptiveCoreController.createDecisionRequest);
 projectRouter.post('/:id/adaptive-core/decision-requests/:requestId/decide', validate(organizationalDecisionSchema), adaptiveCoreController.decideDecisionRequest);
 projectRouter.get('/:id/adaptive-core/decisions', adaptiveCoreController.listDecisions);
 projectRouter.get('/:id/adaptive-core/decisions/:decisionId', adaptiveCoreController.getDecision);
 projectRouter.get('/:id/adaptive-core/continuation-routes', adaptiveCoreController.listContinuationRoutes);
-projectRouter.post('/:id/adaptive-core/checkpoints/confirm', validate(checkpointResponseSchema), adaptiveCoreController.confirmCheckpoint);
-projectRouter.post('/:id/adaptive-core/critical-change', validate(criticalChangeSchema), adaptiveCoreController.registerCriticalChange);
-projectRouter.post('/:id/adaptive-core/critical-change/:criticalChangeId/transition/confirm', validate(confirmCriticalChangeTransitionSchema), adaptiveCoreController.confirmCriticalChangeTransition);
-projectRouter.post('/:id/adaptive-core/step0/brief/confirm', validate(confirmBriefSchema), adaptiveCoreController.confirmStep0Brief);
-projectRouter.post('/:id/adaptive-core/step1/output/confirm', validate(confirmBriefSchema), adaptiveCoreController.confirmStep1Output);
-projectRouter.post('/:id/adaptive-core/step2/output/confirm', validate(confirmBriefSchema), adaptiveCoreController.confirmStep2Output);
-projectRouter.post('/:id/adaptive-core/step3/output/confirm', validate(confirmBriefSchema), adaptiveCoreController.confirmStep3Output);
-projectRouter.post('/:id/adaptive-core/step4/output/confirm', validate(confirmBriefSchema), adaptiveCoreController.confirmStep4Output);
+projectRouter.post('/:id/adaptive-core/checkpoints/confirm', canWrite, validate(checkpointResponseSchema), adaptiveCoreController.confirmCheckpoint);
+projectRouter.post('/:id/adaptive-core/critical-change', canWrite, validate(criticalChangeSchema), adaptiveCoreController.registerCriticalChange);
+projectRouter.post('/:id/adaptive-core/critical-change/:criticalChangeId/transition/confirm', canWrite, validate(confirmCriticalChangeTransitionSchema), adaptiveCoreController.confirmCriticalChangeTransition);
+projectRouter.post('/:id/adaptive-core/step0/brief/confirm', canWrite, validate(confirmBriefSchema), adaptiveCoreController.confirmStep0Brief);
+projectRouter.post('/:id/adaptive-core/step1/output/confirm', canWrite, validate(confirmBriefSchema), adaptiveCoreController.confirmStep1Output);
+projectRouter.post('/:id/adaptive-core/step2/output/confirm', canWrite, validate(confirmBriefSchema), adaptiveCoreController.confirmStep2Output);
+projectRouter.post('/:id/adaptive-core/step3/output/confirm', canWrite, validate(confirmBriefSchema), adaptiveCoreController.confirmStep3Output);
+projectRouter.post('/:id/adaptive-core/step4/output/confirm', canWrite, validate(confirmBriefSchema), adaptiveCoreController.confirmStep4Output);
 projectRouter.patch('/:id/position', controller.updatePosition);
 projectRouter.patch('/:id/sponsor-data', validate(updateSponsorDataSchema), controller.updateSponsorData);
