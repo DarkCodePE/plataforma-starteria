@@ -1,9 +1,10 @@
 # Starteria Business Capability Boundary v0.1
 
-**Status:** `PROPOSED_FOR_114E_SHAPING`
-**Slice:** KAN-122 / future Portfolio Entry 114E
+**Status:** `ACCEPTED_FOR_114E`
+**Slice:** KAN-122 / Portfolio Entry 114E
 **Semantic owner:** Starteria V2 product semantics
-**Authority state:** Proposal only; not active authority
+**Authority state:** Accepted only for 114E capability/claim semantics; not global product-marketing authority, proof of capability availability, or authority for 114F, Core, or Steps
+**Adoption record:** KAN-126 scoped adoption; originated as the KAN-122 proposal
 **Baseline reviewed:** `origin/main` at `c756309407ac6b372d2e8317852c3552877bd671`
 
 ## 1. Status and purpose
@@ -18,7 +19,7 @@ It is intended to constrain future:
 - public Landing capability and value claims;
 - Copilot explanations of Starteria's value.
 
-This draft is a semantic design input. It does not authorize runtime, route, Core, Step, Prisma, test, CI/CD, Landing-copy, Early Access, Demo, 114E, or 114F implementation. It does not promote itself to active authority. Human approval and the normal authority update are still required before implementation or reuse as an active contract.
+This document originated as a KAN-122 semantic proposal and is accepted by KAN-126 only to govern 114E capability and claim semantics. It is not global product-marketing authority and does not establish that any capability or destination is available. This acceptance does not by itself authorize runtime work; KAN-125A and the bounded KAN-125B authorization are recorded separately. It does not authorize Landing-copy, Copilot, Early Access, Demo, 114F, Core, Steps, or other runtime work outside those explicit slices.
 
 ## 2. Authority relationship and verified preconditions
 
@@ -30,13 +31,14 @@ This contract is subordinate to the authority order in [`docs/STARTERIA_AUTHORIT
 4. The accepted [KAN-114 semantic record](../ai-harness/portfolio-entry/KAN-114_CRITICAL_SITUATION_SYNTHESIS_SEMANTIC_ACCEPTANCE_v0.1.md) remains the sole business-reasoning source. Its accepted result is `PASS_WITH_NON_BLOCKING_GAPS`; it does not certify production deployment.
 5. [KAN-119 closure](../implementation/portfolio-entry/KAN-119_CRITICAL_HANDOFF_V01_IMPLEMENTATION_CLOSURE.md) records 114D as `IMPLEMENTED_VERIFIED` and integrated in the governed baseline. It defines the current Critical Handoff as a durable, revision-bound artifact that requires explicit representativeness confirmation.
 6. Jira KAN-120 provides the parent scope and frozen D1-D14 inputs. In particular: 114E uses no new LLM; starts only from a current, confirmed 114D handoff; is a capability/value projection; ends at `continuation_intent`; legacy `starteria_path` is not 114E; and value is an observable user change, not a business-result guarantee.
-7. [KAN-121 audit](../implementation/portfolio-entry/KAN-121_STARTERIA_PATH_RUNTIME_AND_CONVERSION_AUDIT_v0.1.md)'s result is `AUDIT_RESULT: READY_WITH_BLOCKERS`. It enables contract shaping, not implementation. It confirms that 114D is integrated, 114E is not implemented, and 114F is not authorized here.
+7. [KAN-121 audit](../implementation/portfolio-entry/KAN-121_STARTERIA_PATH_RUNTIME_AND_CONVERSION_AUDIT_v0.1.md)'s result is `AUDIT_RESULT: READY_WITH_BLOCKERS`. At audit time it enabled contract shaping, not implementation, and recorded 114D as integrated with no 114E runtime yet. 114F remains unauthorized here.
 
-Verified boundaries carried into this proposal:
+Verified boundaries carried into this accepted 114E scope:
 
 - KAN-114 remains the sole business-reasoning source. 114E must not imply another reasoning model or a second LLM.
-- 114D is integrated. Its current path ends at a confirmed Critical Handoff; there is no current 114E output or post-confirmation product-continuation CTA.
-- 114E is not implemented. This document does not make its candidate capabilities available in the product.
+- 114D is integrated. Its current path ends at a confirmed Critical Handoff; KAN-125A adds only a deterministic projector, with no 114E API or UI yet.
+- 114E remains a partial implementation. Acceptance of this boundary does not establish capability availability to users.
+- This boundary is accepted only for 114E capability/claim semantics; its review of Landing and other surface claims does not make it global marketing authority.
 - 114F, Portfolio Setup continuity, Core creation, and Steps are outside this authority.
 - Legacy `PortfolioEntryHandoff.starteria_path`, `recommended_approach`, `recommended_cta`, and `suggestedRoute` are compatibility evidence only, not sources of 114E semantics.
 - Public conversion intent is not product continuation. A Demo URL is not proof that booking works; no first-party Early Access flow is currently evidenced by KAN-121.
@@ -44,7 +46,7 @@ Verified boundaries carried into this proposal:
 
 ### Open authority and runtime conflicts
 
-These are recorded, not resolved by this proposal.
+These are recorded and remain unresolved; the KAN-126 scoped adoption does not resolve them.
 
 ```text
 CONFLICT
@@ -95,11 +97,11 @@ Examples:
 
 ## 4. Capability taxonomy
 
-The five class names below are exact and normative for this proposal. A claim belongs to a class based on what it says Starteria does, not on the verb alone. A claim may have a capability class and separately name one or more dependencies.
+The five class names below are exact and normative for this boundary within 114E. A claim belongs to a class based on what it says Starteria does, not on the verb alone. A claim may have a capability class and separately name one or more dependencies.
 
 | Class | Semantic meaning | Eligibility rule | Allowed verbs | Disallowed verbs | Evidence/source required | 114E | Public Landing | CTA |
 |---|---|---|---|---|---|---|---|---|
-| `CAN_DO` | Starteria directly transforms or presents supplied, supported information into a visible structure or artifact. The product action is within Starteria's control. | A governed capability exists for the named surface; the input is available and source-bound; result is inspectable; no organizational or external outcome must become true. | `ordenar`, `estructurar`, `hacer visible`, `conectar` (non-causal), `preparar` (a frame), `seguir` (only an implemented state). | `garantizar`, `decidir`, `aprobar`, `validar` external reality, `ejecutar` organizational work, or any result verb without evidence. | Approved contract plus product/runtime evidence for the exact surface; source/provenance for material claims. A design or legacy UI alone is insufficient. | Yes, after this boundary is approved, only with capability mapping and current 114D source binding. | Yes only for a current, demonstrated capability; this proposal alone is insufficient. | Only to name the supported next interaction, with a verified destination. |
+| `CAN_DO` | Starteria directly transforms or presents supplied, supported information into a visible structure or artifact. The product action is within Starteria's control. | A governed capability exists for the named surface; the input is available and source-bound; result is inspectable; no organizational or external outcome must become true. | `ordenar`, `estructurar`, `hacer visible`, `conectar` (non-causal), `preparar` (a frame), `seguir` (only an implemented state). | `garantizar`, `decidir`, `aprobar`, `validar` external reality, `ejecutar` organizational work, or any result verb without evidence. | Approved contract plus product/runtime evidence for the exact surface; source/provenance for material claims. A design or legacy UI alone is insufficient. | Yes, after this boundary is adopted for 114E, only with capability mapping and current 114D source binding. | Yes only for a current, demonstrated capability; this 114E-scoped boundary does not establish Landing authority. | Only to name the supported next interaction, with a verified destination. |
 | `CAN_SUPPORT` | Starteria can help a person prepare, compare, clarify, or track decision conditions; the organization retains the decision and action. | State the human/organizational owner and expose the evidence, criteria, or input dependency. The claim must not make Starteria the decision maker. | `ayudar a preparar`, `aclarar`, `comparar` (with criteria), `apoyar`, `hacer seguimiento` (when implemented), `proponer` (provisional and grounded). | `priorizar` or `recomendar` as an unqualified authority; `asignar`, `aprobar`, `decidir`, `garantizar`, `optimizar` without objective and evidence. | Governed support semantics; named dependency; source/evidence for the compared items and criteria; human decision authority. | Yes, conditionally, with dependency and proposal status visible. | Yes only when the support capability exists and the dependency is clear. | Yes when it states a supported next step or asks for an input; it cannot imply result or access. |
 | `REQUIRES_ORGANIZATIONAL_INPUT` | A fact, authority, constraint, or decision belongs to the organization and cannot be inferred into truth by Starteria. | The claim depends on information or a decision that only an authorized person/system in the organization can provide or confirm. | `necesitar`, `aportar`, `confirmar`, `declarar`, `documentar`, `aclarar`. | `inventar`, `asignar`, `aprobar`, `decidir por`, `dar por confirmado`, `inferir como hecho`. | Identified organizational owner or authorized source; record whether it is declared, documented, inferred, or confirmed. | Yes, as an explicit dependency or unresolved input. | Only when the dependency materially qualifies a capability claim. | Yes, to request a real input or intent without suggesting it is already available. |
 | `REQUIRES_EXTERNAL_EVIDENCE` | A fact about users, markets, product behavior, technical/delivery feasibility, operations, or business impact that reasoning alone cannot establish. | The claim is about external reality or an outcome; cite direct evidence with scope and limits, or preserve it as unknown. | `observar`, `medir`, `contrastar`, `registrar`, `rastrear`, `validar con evidencia externa`. | `demostrar`, `confirmar`, `validar el mercado`, `atribuir`, `predecir`, or `asegurar` by reasoning alone. | A traceable source, method, population/scope, date, metric definition, and limitations appropriate to the claim. | Yes, to expose what evidence exists or is missing; no as a substitute for evidence. | Only as a dependency or as a narrowly evidenced past observation; not as a generic result claim. | Yes, to explain what must be observed or supplied; not to imply the evidence already exists. |
@@ -107,7 +109,7 @@ The five class names below are exact and normative for this proposal. A claim be
 
 ### 4.1 Surface rule
 
-The surface column describes eligibility after human adoption and after the capability is evidenced on that surface. Because this document is only `PROPOSED_FOR_114E_SHAPING`, it does not itself authorize any claim in live 114E, Landing, Copilot, or a commercial CTA.
+The surface column describes eligibility after scoped human adoption and after the capability is evidenced on that surface. This boundary governs capability/claim semantics only within 114E; it is not global product-marketing authority and does not prove capability or destination availability. It does not adopt Landing or Copilot claims or activate a commercial CTA; any 114E CTA remains subject to the verified-destination and accurate-next-interaction rules.
 
 ### 4.2 Capability availability
 
@@ -118,7 +120,7 @@ The surface column describes eligibility after human adoption and after the capa
 | Availability state | Meaning and eligibility | Public claim rule |
 |---|---|---|
 | `CURRENTLY_EVIDENCED` | The exact capability is supported by active authority and current product/runtime evidence on the named surface for the named audience. A concept, test-only adapter, link, mockup, or implementation in another surface is insufficient. | Present-tense capability wording is allowed when bounded to the evidenced surface, input, and result. |
-| `GOVERNED_NOT_YET_AVAILABLE` | The capability is explicitly governed or approved as a product target, but is not currently available to the public audience. This proposal alone does not grant this state until adopted. | Use only future, conditional, or transparent Early Access/Demo wording. State that it is not current public access. |
+| `GOVERNED_NOT_YET_AVAILABLE` | The capability is explicitly governed or approved as a product target, but is not currently available to the public audience. This scoped adoption does not establish availability on any surface. | Use only future, conditional, or transparent Early Access/Demo wording. State that it is not current public access. |
 | `REQUIRES_IMPLEMENTATION` | The capability may be semantically allowed, but the required runtime, route, data source, consent flow, or product operation is not implemented or verified. | Must not be marketed as currently available. Keep it in shaping/roadmap language; public future wording also requires an authorized, transparent conversion path. |
 | `ASPIRATIONAL_UNVALIDATED` | The statement is a product aspiration or hypothesis without approved capability semantics or adequate supporting evidence. | Must not be stated as a product capability. If mentioned as an aspiration, label it explicitly and do not attach it to an available CTA as an expected result. |
 | `PROHIBITED` | A higher authority or this boundary disallows the claim or capability, regardless of implementation. | Never allowed as a product or public claim. Do not promote through copy, implementation, or a different availability state. |
@@ -491,7 +493,7 @@ The `Classification` column in this source register describes wording type. Norm
 | “Escalar / scale” | Search of scoped current Landing source and audited Landing copy | No matching current scale claim found | Not applicable | No current public claim was identified; scaling remains conditional and cannot mean guaranteed growth. | Do not add a generic scaling promise. Apply §10 if a future bounded process claim is proposed. |
 | “Priorizar / prioritize” | Current Landing scan: none; legacy handoff wording is recorded in KAN-121 audit §12 | Legacy-only claim in audited material | No as 114E claim | Current 114D does not make a definitive priority decision; legacy wording is not authority. | Use only support framing with explicit criteria and organizational decision owner. |
 
-This register classifies wording; it does not change, approve, deprecate, or rewrite the cited copy. No current copy is made safe merely by adding this proposal to the repository.
+This register classifies wording; it does not change, approve, deprecate, or rewrite the cited copy. No current copy is made safe merely by adopting this 114E-scoped boundary.
 
 ### 15.3 Current public claim dispositions
 
@@ -542,7 +544,7 @@ The search terms “acelerar / accelerate” and “escalar / scale” produced 
 
 ## 17. Known gaps and unresolved items
 
-1. **Status adoption:** this is a proposal and not an active authority. Approval and indexing are outside this task.
+1. **Scope adoption:** KAN-126 accepts this boundary only for 114E capability/claim semantics. That acceptance does not make any capability available or authorize global marketing claims, 114F, Core, or Steps.
 2. **Commercial destination:** KAN-120's conceptual Early Access/Demo framing conflicts with the pending/unverified runtime status. KAN-123 needs a fact-checked destination before describing a CTA as operational.
 3. **Context consent:** current commercial forms do not establish consent to share Portfolio Entry context. The exact scope, purpose, recipient, and decline path need separate definition before any transfer.
 4. **Legacy sidecar seam:** KAN-121 found legacy handoff data can be read for a current-critical session through compatibility APIs. This contract forbids using it as 114E semantics; runtime quarantine is a separate task.
@@ -571,7 +573,7 @@ The search terms “acelerar / accelerate” and “escalar / scale” produced 
 - [x] The value delta model maps to KAN-123 `value_bridge` without prescribing strategy or execution.
 - [x] CTA copy may be contextual only when the destination and next interaction are verified; conversion intent is not product continuation.
 - [x] The audit records representative current claims without rewriting Landing copy.
-- [ ] Human approval promotes or rejects this proposal before it is treated as active authority.
+- [x] KAN-126 records scoped acceptance for 114E capability/claim semantics; the acceptance does not establish capability availability or global marketing authority.
 
 ## 19. Revision rule
 

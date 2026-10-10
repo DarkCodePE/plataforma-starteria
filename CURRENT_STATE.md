@@ -339,13 +339,60 @@ reconciled before Portfolio Setup Continuity.
 
 No generalized post-confirmation reopen/correction feature is part of v0.1; the
 confirmed artifact remains immutable. The broader future policy remains open.
-114E is not started; the ADR-003 discrepancy remains open before any Portfolio
-Setup Continuity work.
+At the time of the KAN-119 closure, 114E had not started. Its later bounded
+adoption and partial implementation are recorded below. The ADR-003
+discrepancy remains open before any Portfolio Setup Continuity work.
 
 This closure does not alter the unresolved ADR-003 status recorded above.
 ADR-003 remains `PROPOSED` in `CURRENT_STATE.md` and its discrepancy remains
 `OPEN / DEFERRED`; it is still to be reconciled before Portfolio Setup
 Continuity.
+
+### KAN-120 / KAN-126 — Starteria Path (114E), bounded adoption
+
+KAN-121 audit is complete. KAN-122's Business Capability Boundary is accepted
+only for 114E capability/claim semantics. KAN-123's Starteria Path Experience
+Contract is accepted/frozen for 114E implementation. KAN-124's Option C
+architecture is accepted as the KAN-125 implementation baseline. This
+slice-specific adoption does not change the global authority hierarchy.
+
+KAN-114 remains the sole business-reasoning source, and the KAN-119 Critical
+Handoff remains the governed 114D baseline. KAN-125A's deterministic projector
+was implemented and merged in [PR #180](https://github.com/DarkCodePE/plataforma-starteria/pull/180)
+at merge SHA adb810475fffbedf3015820babceecaa1cd30e35.
+
+114E IMPLEMENTATION_STATUS: PARTIAL_IMPLEMENTATION
+
+125A evidence: deterministic projector; 23 focused tests; backend typecheck
+PASS; no I/O, persistence, API, or UI; no legacy semantics; no 114F, Core, or
+Steps leakage. This is evidence for 125A only and does not claim 114E runtime
+completion.
+
+The accepted KAN-124 architecture is Option C: semantic Path DERIVED;
+conversion intent PERSISTED_ON_ACCEPTED_SUBMISSION; consent SUBMISSION_ONLY;
+Path view authorization SESSION_OWNERSHIP. These choices do not make Early
+Access or Demo destinations available.
+
+Current 114E boundaries:
+
+- no UI or API yet;
+- no persistence of the semantic Path;
+- no conversion runtime;
+- no verified Early Access or Demo destination;
+- no 114F, Core, or Steps;
+- legacy consumers remain KEEP_COMPAT, with no legacy semantic reuse.
+
+After KAN-126 merges, 125B is authorized only to implement the read boundary/API,
+SESSION_OWNERSHIP, the current-and-confirmed source gate, source
+binding/currentness, DTO allowlist, fail-closed stale/unconfirmed/invalid
+states, and legacy isolation. 125B is not authorized to implement UI,
+conversion, Early Access, Demo, consent persistence, 114F, Core, or Steps.
+
+The adoption does not promote Portfolio Setup continuity, resolve ADR-003,
+promote legacy starteria_path, recommended_approach, or recommended_cta,
+establish Early Access/Demo availability, authorize Landing claims beyond the
+adopted boundary, or open product access. ADR-003 remains OPEN / DEFERRED
+before 114F.
 
 ## ADRs
 

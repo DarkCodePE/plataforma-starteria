@@ -1,10 +1,11 @@
 # Portfolio Entry — Starteria Path Experience Contract v0.1
 
-- **Status:** PROPOSED_FOR_IMPLEMENTATION_PLANNING
+- **Status:** ACCEPTED / FROZEN FOR IMPLEMENTATION (114E scoped)
 - **Slice:** Portfolio Entry 114E — Starteria Path
 - **Semantic owner:** Starteria V2 / Portfolio Entry
 - **Baseline reviewed:** origin/main at 2691ee22e29cdc929ba66dc60437505a919f4810
-**Authority state:** Proposal; not active and not implementation authorization
+**Authority state:** Accepted only for 114E; subordinate to the adopted authority chain and does not authorize 114F, Core, or Steps
+**Adoption record:** KAN-126 scoped adoption; originated as the KAN-123 proposal
 
 ## 1. Purpose
 
@@ -24,27 +25,27 @@ The experience translates:
 
 ## 2. Authority relationship and verified preconditions
 
-This proposal is subordinate to the authority order in [STARTERIA_AUTHORITY.md](../../STARTERIA_AUTHORITY.md), the factual Core v0.2 contract at [CONTRATO_LOGICA_CORE_STARTERIA_MVP_v0.2_ES(1).md](../../../doc/CONTRATO_LOGICA_CORE_STARTERIA_MVP_v0.2_ES%281%29.md), accepted product ADRs, and the active [Portfolio Entry Logic Contract v0.1](../../../doc/experience/portfolio-entry/PORTFOLIO_ENTRY_LOGIC_CONTRACT_v0.1.md). The [Critical Reasoning Experience Contract v0.1](PORTFOLIO_ENTRY_CRITICAL_REASONING_EXPERIENCE_CONTRACT_v0.1.md) is accepted/frozen for its scoped implementation planning and remains subordinate to Core v0.2 and accepted ADRs.
+This accepted contract is subordinate to the authority order in [STARTERIA_AUTHORITY.md](../../STARTERIA_AUTHORITY.md), factual Core v0.2, accepted product ADRs, the active [Portfolio Entry Logic Contract v0.1](../../../doc/experience/portfolio-entry/PORTFOLIO_ENTRY_LOGIC_CONTRACT_v0.1.md), the accepted/frozen [Critical Reasoning Experience Contract v0.1](PORTFOLIO_ENTRY_CRITICAL_REASONING_EXPERIENCE_CONTRACT_v0.1.md), KAN-114 accepted reasoning semantics, and the KAN-119 governed Critical Handoff baseline. The Business Capability Boundary is adopted only for 114E. The KAN-124 technical architecture is the subordinate KAN-125 implementation baseline.
 
-The authority and evidence reviewed for this proposal are:
+The authority and evidence reviewed for this contract and its scoped adoption are:
 
 - [KAN-114 semantic acceptance](../../ai-harness/portfolio-entry/KAN-114_CRITICAL_SITUATION_SYNTHESIS_SEMANTIC_ACCEPTANCE_v0.1.md): reasoning gate ACCEPTED, evaluation PASS_WITH_NON_BLOCKING_GAPS. KAN-114 remains the only business-reasoning source.
 - [KAN-119 Critical Handoff closure](../../implementation/portfolio-entry/KAN-119_CRITICAL_HANDOFF_V01_IMPLEMENTATION_CLOSURE.md): 114D is IMPLEMENTED_VERIFIED and integrated in the governed baseline. Its durable artifact is revision-bound and requires explicit representativeness confirmation.
-- [KAN-121 runtime and conversion audit](../../implementation/portfolio-entry/KAN-121_STARTERIA_PATH_RUNTIME_AND_CONVERSION_AUDIT_v0.1.md): audit permits 114E contract shaping, not implementation. It identifies legacy seams and unverified public conversion destinations.
-- [Starteria Business Capability Boundary v0.1](../../contracts/STARTERIA_BUSINESS_CAPABILITY_BOUNDARY_v0.1.md): PROPOSED_FOR_114E_SHAPING only; it is a semantic design input, not active authority.
-- [CURRENT_STATE.md](../../../CURRENT_STATE.md) and [STARTERIA_V2_MANIFEST.md](../../../STARTERIA_V2_MANIFEST.md): 114D is the current governed baseline; 114E is not started; 114F remains outside this slice.
-- Jira KAN-120 supplies the parent scope and frozen experience decisions. Jira KAN-123 asks for this contract before a technical implementation HU.
+- [KAN-121 runtime and conversion audit](../../implementation/portfolio-entry/KAN-121_STARTERIA_PATH_RUNTIME_AND_CONVERSION_AUDIT_v0.1.md): at audit time, it permitted contract shaping only and identified legacy seams and unverified public conversion destinations.
+- [Starteria Business Capability Boundary v0.1](../../contracts/STARTERIA_BUSINESS_CAPABILITY_BOUNDARY_v0.1.md): accepted only for 114E capability/claim semantics; it is not global marketing authority or proof of availability.
+- [CURRENT_STATE.md](../../../CURRENT_STATE.md) and [STARTERIA_V2_MANIFEST.md](../../../STARTERIA_V2_MANIFEST.md): 114D remains the governed baseline; 114E has a partial KAN-125A projector and no API/UI yet; 114F remains outside this slice.
+- Jira KAN-120 supplies the parent scope and frozen experience decisions. KAN-126 records scoped adoption; KAN-125 is the implementation HU and KAN-124 is its accepted technical baseline.
 - The product ADR index is [ADR-INDEX.md](../../../doc/product-adr/ADR-INDEX.md). Accepted [ADR-005](../../../doc/product-adr/ADR-005-portfolio-handoff-assignment-persistence-and-legacy-route-boundary.md) preserves the bounded handoff and legacy-route boundary; [ADR-006](../../../doc/product-adr/ADR-006-landing-and-portfolio-entry-separation.md) keeps Landing, Portfolio Entry, and commercial conversion distinct. ADR-003 has a recorded status discrepancy and is not resolved here.
 
 Verified preconditions carried into this contract:
 
-- 114D is the current governed baseline; 114E is not implemented.
+- 114D remains the current governed reasoning baseline; KAN-125A is a deterministic projector only, with no API/UI yet.
 - KAN-114 is the sole business-reasoning source.
 - 114E may start only from a current, explicitly confirmed Critical Handoff.
 - Legacy PortfolioEntryHandoff starteria_path and related legacy recommendation or route fields are not 114E authority.
 - Conversion intent is not product continuation.
 - 114F, Portfolio Setup, Core, and Steps are outside scope.
-- The Business Capability Boundary is proposed, not active authority.
+- The Business Capability Boundary is accepted only for 114E capability/claim semantics and does not prove availability.
 - Early Access and Demo availability are not established by the reviewed evidence.
 
 The factual Core v0.2 contract remains the authority even though it is marked “Base fundacional revisada / Por validar.” This proposal does not promote it, alter its invariants, or treat a candidate Core contract as approved.
@@ -135,7 +136,7 @@ The required semantic structure is:
 Field rules:
 
 - **current_state** is taken from the confirmed Critical Handoff: its supported reading, decision in view, usable context, and decision-changing unknowns as needed. Preserve whether input is a user statement, supported interpretation, or unknown when that distinction is present. Do not add a diagnosis.
-- **starteria_contribution** maps to one or more allowed capability nodes in the proposed Business Capability Boundary. Each contribution carries its capability class and surface-specific availability state. It describes a bounded product contribution, not a business result.
+- **starteria_contribution** maps to one or more allowed capability nodes in the accepted, 114E-scoped Business Capability Boundary. Each contribution carries its capability class and surface-specific availability state. It describes a bounded product contribution, not a business result.
 - **tangible_outcome** names an inspectable artifact or state change a person could review, such as a structured decision view or a visible evidence-and-unknowns map. It states how the outcome would be observed. It is not a KPI, target, business result, or guarantee.
 - **remaining_dependency** names dependencies that remain outside Starteria or depend on an unavailable product surface. It identifies what is missing, why it matters, who or what must provide it, and what Starteria could do with it once available. If no dependency is identified in the source, say that none was identified; do not imply that none exists.
 - **immediate_next_action** is one contextual, bounded action taken from the 114D first movement when it exists. If 114D has no first movement, this field remains absent; a conversion CTA may still describe its verified commercial request, but it is not a substitute movement. It must not become a list, plan, experiment, KPI, threshold, timeline, budget, or ownership assignment.
@@ -217,7 +218,7 @@ Do not turn dependencies into recommendations automatically or use them to rank 
 
 **Value promise** and **current availability** are separate facts. Every public value or capability statement in 114E is bound to both a capability_class and an availability_state. User-facing wording need not expose enum labels, but it must tell the truth those labels represent.
 
-The availability definitions and public wording rules are the ones in the proposed Business Capability Boundary. In particular:
+The availability definitions and public wording rules are the ones in the accepted, 114E-scoped Business Capability Boundary. In particular:
 
 - CURRENTLY_EVIDENCED supports bounded present tense only for the exact evidenced audience and surface.
 - GOVERNED_NOT_YET_AVAILABLE requires future or conditional language and a truthful disclosure of what the available next interaction is.
@@ -225,7 +226,7 @@ The availability definitions and public wording rules are the ones in the propos
 - ASPIRATIONAL_UNVALIDATED cannot be described as a product capability.
 - PROHIBITED is never presented affirmatively.
 
-Because 114E is not implemented and the boundary is not active authority, this proposal makes no present-tense claim that 114E capabilities are available. Adoption and later runtime evidence are separate gates.
+KAN-125A provides only a deterministic projector; 114E has no API or UI yet. Boundary adoption does not establish capability availability, so this contract makes no present-tense claim that 114E capabilities are available.
 
 ## 11. Conversion model
 
@@ -274,7 +275,7 @@ If Early Access is verified, the experience says access is limited or early and 
 
 If Demo is verified, the experience clearly says that the action requests a demo or meeting and accurately describes what happens next.
 
-If neither destination is verified, render neither CTA and do not ask for an email as a substitute for showing value. Do not infer availability from an external link, a Landing label, a proposed contract, or an intended commercial strategy.
+If neither destination is verified, render neither CTA and do not ask for an email as a substitute for showing value. Do not infer availability from an external link, a Landing label, an accepted contract, or an intended commercial strategy.
 
 ## 14. Context sharing consent
 
@@ -440,29 +441,21 @@ For the reviewed current baseline, use **NO_VERIFIED_DESTINATION**: KAN-121 did 
 
 ## 22. Open questions
 
-1. Human approval or rejection of the KAN-122 Business Capability Boundary proposal.
-2. Human approval or revision of this KAN-123 contract.
+1. [RESOLVED BY KAN-126] Scoped acceptance of the KAN-122 Business Capability Boundary for 114E capability/claim semantics only.
+2. [RESOLVED BY KAN-126] Scoped acceptance/freeze of this KAN-123 contract for 114E only.
 3. The verified commercial destination strategy: whether Early Access, Demo, both, or neither will be operational; the actual next interaction; and the hierarchy if both are available.
 4. The disposition and technical quarantine, if any, of the legacy sidecar/API seam identified by KAN-121.
-5. The source-binding architecture for artifact identity/version, context revision, projector version, boundary version, and latest-path currentness.
+5. [RESOLVED BY KAN-124 / KAN-126] The accepted source-binding architecture covers artifact identity/version, context revision, projector version, boundary version, and latest-path currentness.
 6. The consent architecture if conversion context sharing is enabled, including how the user reviews, declines, and revokes consent before submission.
 7. The authorized behavior for starting a fresh 114D reasoning flow when an already-confirmed source has insufficient basis; current 114D semantics do not authorize mutating that artifact.
 8. ADR-003 remains OPEN / DEFERRED for its separate reconciliation before 114F.
 
 ## 23. Implementation gate
 
-Completing this contract does not authorize implementation. Before any 114E runtime work begins, require:
+This contract is accepted/frozen for 114E only. KAN-125A is implemented as a deterministic projector. After KAN-126 merges, KAN-125B is authorized only for the read boundary/API, session ownership, current-and-confirmed source gate, source binding/currentness, DTO allowlist, fail-closed stale/unconfirmed/invalid cases, and legacy isolation. It does not authorize UI, conversion runtime, Early Access, Demo, consent persistence, 114F, Core, or Steps.
 
-- human approval of the KAN-122 Business Capability Boundary;
-- human approval of this KAN-123 contract;
-- a verified commercial destination strategy and verified destination behavior;
-- a recorded disposition for the legacy sidecar seam;
-- a separate technical implementation HU with explicit scope and acceptance criteria;
-- an approved source-binding architecture for currentness and deterministic projection; and
-- an approved consent architecture if context sharing is enabled.
-
-The implementation must preserve the explicit 114E exclusions in this contract. A technical HU cannot silently resolve the open conflicts or expand into Landing, Early Access, Demo, 114F, Core, or Steps.
+Verified commercial destinations and approved retention/purpose remain gates for any later conversion write. The implementation must preserve all other 114E exclusions in this contract and may not silently resolve the open conflicts or expand into Landing, 114F, Core, or Steps.
 
 ## 24. Implementation planning readiness
 
-This proposal is complete enough for human review and implementation planning after its approval gates are satisfied. Its status remains PROPOSED_FOR_IMPLEMENTATION_PLANNING. It is not ACTIVE and does not authorize runtime, routes, APIs, persistence, Prisma, Landing changes, Early Access, Demo, Core, Steps, or ADR-003 resolution.
+This contract is ACCEPTED / FROZEN FOR IMPLEMENTATION within bounded 114E semantics. The adoption originated from the KAN-123 proposal and does not make 114E runtime complete. Only the separately scoped KAN-125 slices are authorized; KAN-125B takes effect after KAN-126 merges. No authority is granted for 114F, Core, Steps, Landing claims beyond the adopted boundary, or ADR-003 resolution.

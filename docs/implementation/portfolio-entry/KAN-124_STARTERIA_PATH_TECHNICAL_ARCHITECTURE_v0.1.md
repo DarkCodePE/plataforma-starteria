@@ -1,17 +1,18 @@
 # KAN-124 — Starteria Path Technical Architecture & Implementation Shaping v0.1
 
-**Status:** `PROPOSED_FOR_IMPLEMENTATION`  
-**Type:** Technical architecture and source audit only  
+**Status:** `ACCEPTED_IMPLEMENTATION_BASELINE_FOR_KAN_125`
+**Type:** Technical architecture and source audit
 **Baseline:** `origin/main` = `faebf5cd554c0fac6fd6141e53dfd1eea04a06c6`  
 **Branch:** `audit/KAN-124-starteria-path-technical-architecture`  
-**Runtime change authorized by this document:** No  
-**Architecture is active authority:** No
+**Runtime change authorized by this document:** KAN-125 scope only; 125B read boundary/API takes effect after KAN-126 merges
+**Architecture is active authority:** Yes, as the bounded KAN-125 implementation baseline
+**Adoption trace:** KAN-126; originated as the KAN-124 proposal
 
-This proposal shapes a future 114E implementation. It does not implement 114E, alter runtime behavior, create a route or migration, change UI or Landing, change Core or Steps, resolve ADR-003, or authorize 114F.
+This architecture originated as a proposal and is accepted only as the bounded KAN-125 implementation baseline for 114E. It accepts Option C and does not authorize UI, conversion runtime, Early Access, Demo, 114F, Core, Steps, or ADR-003 resolution.
 
 ## 1. Status
 
-This is a technical proposal for human review. It is subordinate to Core v0.2, accepted product ADRs, and the active Portfolio Entry Logic Contract. KAN-122 and KAN-123 are proposal inputs; neither is promoted to runtime authority here. An implementation task still needs its own accepted scope, guardrail check, tests, and closure evidence.
+This is the accepted technical baseline for KAN-125, subordinate to Core v0.2, accepted product ADRs, the active Portfolio Entry Logic Contract, the accepted/frozen Critical Reasoning Experience Contract, KAN-114 accepted semantics, and the KAN-119 114D baseline. KAN-126 adopts KAN-122 and KAN-123 only for bounded 114E semantics. KAN-125 implementation still follows its explicit slice scope, guardrail checks, and closure evidence.
 
 ## 2. Authority and inputs
 
@@ -25,20 +26,20 @@ The requested authority order was checked against the repository and Jira:
 6. [`docs/ai-harness/portfolio-entry/KAN-114_CRITICAL_SITUATION_SYNTHESIS_SEMANTIC_ACCEPTANCE_v0.1.md`](../../ai-harness/portfolio-entry/KAN-114_CRITICAL_SITUATION_SYNTHESIS_SEMANTIC_ACCEPTANCE_v0.1.md) records `ACCEPTED` with `PASS_WITH_NON_BLOCKING_GAPS`. It does not claim product deployment.
 7. [`docs/implementation/portfolio-entry/KAN-119_CRITICAL_HANDOFF_V01_IMPLEMENTATION_CLOSURE.md`](KAN-119_CRITICAL_HANDOFF_V01_IMPLEMENTATION_CLOSURE.md) records 114D as `IMPLEMENTED_VERIFIED` and integrated in the governed baseline. It excludes 114E, 114F, and ADR-003 reconciliation.
 8. [`docs/implementation/portfolio-entry/KAN-121_STARTERIA_PATH_RUNTIME_AND_CONVERSION_AUDIT_v0.1.md`](KAN-121_STARTERIA_PATH_RUNTIME_AND_CONVERSION_AUDIT_v0.1.md) records the current runtime seams, legacy sidecar, and unverified commercial destination facts.
-9. [`docs/contracts/STARTERIA_BUSINESS_CAPABILITY_BOUNDARY_v0.1.md`](../../contracts/STARTERIA_BUSINESS_CAPABILITY_BOUNDARY_v0.1.md) is `PROPOSED_FOR_114E_SHAPING`; it is proposal input, not active runtime authority.
-10. [`docs/experience/portfolio-entry/PORTFOLIO_ENTRY_STARTERIA_PATH_EXPERIENCE_CONTRACT_v0.1.md`](../../experience/portfolio-entry/PORTFOLIO_ENTRY_STARTERIA_PATH_EXPERIENCE_CONTRACT_v0.1.md) is a proposal for implementation planning, not an active runtime contract.
-11. [`CURRENT_STATE.md`](../../../CURRENT_STATE.md) records 114D integrated, 114E not started, 114F out of scope, commercial destinations pending, and ADR-003 open/deferred.
-12. [`STARTERIA_V2_MANIFEST.md`](../../../STARTERIA_V2_MANIFEST.md) records 114D as the integrated baseline, legacy handoff consumers as `KEEP_COMPAT`, and 114E as `NOT_STARTED` pending its own scope.
-13. Jira KAN-120 and KAN-124 were read. KAN-120 freezes D1–D14. KAN-124 asks for this architecture, explicitly excludes implementation, and gates an implementation ticket on preserving the 114D source gate, determinism, conversion boundary, consent, legacy isolation, and no Core/Steps leakage.
+9. [`docs/contracts/STARTERIA_BUSINESS_CAPABILITY_BOUNDARY_v0.1.md`](../../contracts/STARTERIA_BUSINESS_CAPABILITY_BOUNDARY_v0.1.md) is `ACCEPTED_FOR_114E` only for 114E capability/claim semantics; it is not global marketing authority or proof of availability.
+10. [`docs/experience/portfolio-entry/PORTFOLIO_ENTRY_STARTERIA_PATH_EXPERIENCE_CONTRACT_v0.1.md`](../../experience/portfolio-entry/PORTFOLIO_ENTRY_STARTERIA_PATH_EXPERIENCE_CONTRACT_v0.1.md) is accepted/frozen for implementation within 114E only.
+11. [`CURRENT_STATE.md`](../../../CURRENT_STATE.md) records 114D integrated, a partial 114E projector, no 114E API/UI, 114F out of scope, commercial destinations pending, and ADR-003 open/deferred.
+12. [`STARTERIA_V2_MANIFEST.md`](../../../STARTERIA_V2_MANIFEST.md) records 114D as the integrated baseline and 114E as `PARTIAL_IMPLEMENTATION`; legacy consumers remain `KEEP_COMPAT`.
+13. Jira KAN-120 and KAN-124 were read. KAN-120 freezes D1–D14. KAN-124 requested this architecture and excluded implementation at that stage; KAN-125 is the implementation HU, and KAN-126 adopts the scoped authority needed before 125B.
 
 ### Authority confirmations
 
 - KAN-114 remains the sole business reasoning source. 114E adds no LLM and performs only a bounded deterministic projection.
 - 114D is the current governed baseline: a current, source-bound Critical Handoff with explicit representativeness confirmation.
-- 114E is not implemented. 114F is out of scope and unauthorized by this task.
+- KAN-125A has implemented a deterministic projector only; 114E has no API/UI, Path persistence, or conversion runtime yet. 114F is out of scope and unauthorized.
 - Legacy `PortfolioEntryHandoff.starteria_path`, `recommended_approach`, `recommended_cta`, `alternative_approaches`, and `suggestedRoute` are not 114E authority.
 - `conversion != product continuation`. 114E ends at public conversion intent; it does not create or enter Portfolio Setup, Core, or Steps.
-- KAN-122 Business Capability Boundary is proposal input, not active runtime authority. KAN-123 Experience Contract is a proposal for implementation planning.
+- KAN-122 Business Capability Boundary is accepted only for 114E capability/claim semantics; KAN-123 Experience Contract is accepted/frozen for 114E only. KAN-126 does not establish availability or global marketing authority.
 - Early Access and Demo availability is a product/configuration fact. It must never be selected or inferred by reasoning output.
 
 ### Preserved conflict — ADR-003
@@ -429,6 +430,8 @@ Normal CI uses deterministic KAN-114 fixtures/adapters and does not call a live 
 
 These are proposed implementation successors, not Jira tickets created by this audit. Each vertical slice carries its own unit/API/browser regression evidence; E2E is not postponed into a test-only final phase.
 
+This table preserves KAN-124's original shaping proposal. KAN-126 and the KAN-125 implementation HU define the current authorization: 125A is the deterministic projector; after KAN-126 merges, 125B is limited to the read boundary/API and source-boundary items stated in section 25. The table does not authorize the proposed UI or conversion slices.
+
 | Proposed slice | Scope / layers | Dependency and gate | Migration / rollback |
 |---|---|---|---|
 | `124A` — derived 114E read vertical slice | Dedicated source adapter/repository read, strict typed projector and DTO, GET boundary, and user-facing value Path with `NO_VERIFIED_DESTINATION`. | Requires human adoption of KAN-122/KAN-123, accepted source/version architecture, and recorded disposition of KAN-121 sidecar seam. Gate on 114D current+confirmed, no legacy fields, no 114F/Core/Steps. | No migration. Disable the 114E route/feature flag to roll back; no semantic data to backfill. |
@@ -441,8 +444,8 @@ Use the existing event adapter for the allowlisted analytics catalog as the rele
 
 | Candidate | Classification | Treatment |
 |---|---|---|
-| Human approval of proposed KAN-122 boundary and KAN-123 Experience Contract | `BLOCKING` for runtime implementation | Both documents remain proposals. Architecture cannot promote them. |
-| Separate implementation HU and implementation guardrail | `BLOCKING` for code | KAN-124 is architecture/audit only. |
+| KAN-126 scoped adoption | `BLOCKING` until KAN-126 merges | It accepts KAN-122 and KAN-123 only for 114E semantics; it does not prove availability or authorize global marketing. |
+| KAN-125 implementation HU and per-slice guardrail | 125A merged; 125B authorized only after KAN-126 merges | Guardrail and closure evidence still apply to each authorized slice. |
 | Demo destination verification | `BLOCKING` for a Demo CTA; `NON_BLOCKING` for derived Path | Keep `NO_VERIFIED_DESTINATION` and render no CTA until behavior is verified. A URL alone is insufficient. |
 | Early Access destination design/verification | `BLOCKING` for an Early Access CTA; `NON_BLOCKING` for derived Path | No first-party Early Access flow is currently evidenced. Do not invent one here. |
 | Consent architecture | `BLOCKING` for sharing context; `NON_BLOCKING` for Path and conversion without context | Use `NO_ENTRY_CONTEXT_SHARED` by default; no context goes to a destination without explicit scoped consent. |
@@ -456,8 +459,8 @@ An unverified commercial destination does not block the read-only Path slice if 
 
 ## 23. Risks
 
-- The active Logic Contract has an existing delegation conflict with candidate Clarification/Handoff semantics. The projector must use only the accepted Critical Handoff projection and KAN-122/123 claims after approval.
-- `CURRENT_STATE.md` and ADR-003 disagree with the accepted ADR index/document. This proposal leaves the conflict open.
+- The active Logic Contract has an existing delegation conflict with candidate Clarification/Handoff semantics. The projector must use only the accepted Critical Handoff projection and KAN-122/123 claims within their scoped adoption.
+- `CURRENT_STATE.md` and ADR-003 disagree with the accepted ADR index/document. The adopted architecture leaves the conflict open.
 - Current 114D materialization writes the legacy sidecar first. A generic handoff reader or mapper could leak legacy semantics unless the new source type, endpoint, and negative tests remain separate.
 - A configured Demo URL can look verified even when the booking flow is unavailable. The server config must require an explicit destination fact check.
 - A deterministic projector can still make an unsupported claim if the mapping table is too broad. Each node needs an allowed capability class, source basis, and explicit dependency.
@@ -476,9 +479,9 @@ An unverified commercial destination does not block the read-only Path slice if 
 
 ## 25. Architecture decision summary and implementation gate
 
-This proposal selects a derived Path read model and a separate conversion submission record. It preserves 114D as the only semantic source, avoids a duplicated Path artifact, makes destination availability server-owned and keeps context sharing off unless a person explicitly opts in at submission. The choice is reversible for the read model and contains commercial write failures outside 114D.
+The accepted Option C baseline selects a derived Path read model and a separate conversion submission record. It preserves 114D as the only semantic source, avoids a duplicated Path artifact, makes destination availability server-owned, and keeps context sharing off unless a person explicitly opts in at submission. The choice is reversible for the read model and contains commercial write failures outside 114D.
 
-Before runtime implementation, require human approval of KAN-122 and KAN-123; an implementation HU with scope and acceptance criteria; acceptance of the 114E typed source boundary and KAN-121 sidecar disposition; server-owned verified conversion facts for every enabled CTA; approved purpose/scope and retention ownership for durable conversion/consent data; implementation-level guardrail checks; and the unit, integration, E2E, and legacy-compat evidence listed above. The no-destination read Path may proceed without commercial destinations once its contract and source-boundary gates are accepted.
+After KAN-126 merges, KAN-125B is authorized only for the read boundary/API, SESSION_OWNERSHIP, the current-and-confirmed source gate, source binding/currentness, DTO allowlist, fail-closed stale/unconfirmed/invalid cases, and legacy isolation. It may return `NO_VERIFIED_DESTINATION` and omit all CTAs. This does not authorize UI or conversion runtime. Any later commercial write still requires server-owned verified destination facts and approved purpose/scope and retention ownership, along with its own authorized scope and verification.
 
 ```text
 RECOMMENDED_ARCHITECTURE: OPTION_C
@@ -495,6 +498,6 @@ Keep consent transient and revocable until submit; atomically persist its exact 
 AUTH_FOR_PATH_VIEW: SESSION_OWNERSHIP
 Only the claimed session owner may view a Path derived from the confirmed source. This uses the existing 114D ownership boundary without adding a general product-access grant.
 
-IMPLEMENTATION_READY: YES_WITH_BLOCKERS
-The architecture is ready for human review and implementation shaping. Runtime code remains blocked on proposal adoption, a separate implementation HU, accepted legacy isolation, and destination/retention gates for any commercial write. A read-only Path can use NO_VERIFIED_DESTINATION and omit all CTAs.
+IMPLEMENTATION_READY: AUTHORIZED_FOR_KAN_125B_READ_BOUNDARY_AFTER_KAN_126_MERGE
+KAN-125B is limited to the read boundary/API and source-boundary items stated above. Destination and retention gates remain for any commercial write. A read-only Path can use NO_VERIFIED_DESTINATION and omit all CTAs.
 ```
