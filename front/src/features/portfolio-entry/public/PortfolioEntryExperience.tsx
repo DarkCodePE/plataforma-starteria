@@ -29,11 +29,14 @@ import {
   getPortfolioEntryCriticalHandoff,
   getPortfolioEntryHandoff,
   getPortfolioEntrySession,
+  getPortfolioEntryStarteriaPath,
   materializePortfolioEntryCriticalHandoff,
   materializePortfolioEntryHandoff,
   normalizePortfolioEntryApiError,
   submitPortfolioEntryMessage,
 } from './portfolioEntryPublicService';
+import { StarteriaPathExperience, type StarteriaPathRequestState } from './StarteriaPathExperience';
+import { StarteriaPathInvalidResponseError, type StarteriaPathDto } from './starteriaPath.types';
 import { createIdempotencyKey } from './idempotency';
 import { trackPortfolioEntryEvent } from './analytics';
 import { portfolioEntryBriefIdentityFromSession } from './continuationIdentity';
@@ -94,6 +97,13 @@ type CriticalHandoffLoad = {
   sessionId: string | null;
   state: CriticalHandoffReviewState | 'idle';
   artifact?: PortfolioEntryCriticalHandoffDto;
+};
+
+type StarteriaPathLoad = {
+  sessionId: string | null;
+  requestState: StarteriaPathRequestState | 'idle';
+  errorRecovery?: 'reauthenticate' | 'retry';
+  path?: StarteriaPathDto;
 };
 
 type LegacyHandoffLoad = {
@@ -1350,6 +1360,7 @@ export function PortfolioEntryExperience({
   const [sessionRef, setSessionRef] = useState<StoredPortfolioEntrySession | null>(null);
   const [sessionDto, setSessionDto] = useState<PortfolioEntrySessionDto | null>(null);
   const [criticalHandoffLoad, setCriticalHandoffLoad] = useState<CriticalHandoffLoad>({ sessionId: null, state: 'idle' });
+  const [starteriaPathLoad, setStarteriaPathLoad] = useState<StarteriaPathLoad>({ sessionId: null, requestState: 'idle' });
   const [legacyHandoffLoad, setLegacyHandoffLoad] = useState<LegacyHandoffLoad>({ sessionId: null, state: 'idle' });
   const [criticalCorrectionOpen, setCriticalCorrectionOpen] = useState(false);
   const [criticalCorrectionDraft, setCriticalCorrectionDraft] = useState('');
@@ -1370,6 +1381,7 @@ export function PortfolioEntryExperience({
   const [handoffRetryRevision, setHandoffRetryRevision] = useState<number | null>(null);
   const statusRef = useRef<HTMLDivElement>(null);
   const criticalHandoffRequestRef = useRef<{ sessionId: string | null; sequence: number }>({ sessionId: null, sequence: 0 });
+  const starteriaPathRequestRef = useRef<{ sessionId: string | null; sequence: number }>({ sessionId: null, sequence: 0 });
   const legacyHandoffRequestRef = useRef<{ sessionId: string | null; sequence: number }>({ sessionId: null, sequence: 0 });
   const materializedRevisionRef = useRef<number | null>(null);
   const trackedClarificationRef = useRef<number | null>(null);
@@ -1389,6 +1401,30 @@ export function PortfolioEntryExperience({
     ? { ...sessionDto, handoff: legacyHandoff }
     : undefined;
 
+  const fetchStarteriaPath = React.useCallback(async (sessionId: string, force = false) => {
+    if (!force && starteriaPathRequestRef.current.sessionId === sessionId) return;
+    const sequence = starteriaPathRequestRef.current.sequence + 1;
+    starteriaPathRequestRef.current = { sessionId, sequence };
+    setStarteriaPathLoad({ sessionId, requestState: 'loading' });
+    try {
+      const path = await getPortfolioEntryStarteriaPath(sessionId);
+      if (starteriaPathRequestRef.current.sequence !== sequence) return;
+      setStarteriaPathLoad(path
+        ? { sessionId, requestState: 'ready', path }
+        : { sessionId, requestState: 'invalid' });
+    } catch (err) {
+      if (starteriaPathRequestRef.current.sequence !== sequence) return;
+      const apiError = normalizePortfolioEntryApiError(err);
+      const requestState = err instanceof StarteriaPathInvalidResponseError
+        ? 'invalid'
+        : apiError.kind === 'not_found'
+          ? 'missing'
+          : 'error';
+      const errorRecovery = apiError.kind === 'unauthorized' ? 'reauthenticate' : 'retry';
+      setStarteriaPathLoad({ sessionId, requestState, errorRecovery });
+    }
+  }, []);
+
   const fetchCriticalHandoff = React.useCallback(async (
     sessionId: string,
     credential: string | undefined,
@@ -1404,14 +1440,20 @@ export function PortfolioEntryExperience({
       if (artifact) {
         markCriticalHandoffReviewSession(sessionId);
         setCriticalHandoffLoad({ sessionId, state: artifact.state, artifact });
+        if (artifact.state === 'current' && artifact.confirmationState === 'confirmed') {
+          void fetchStarteriaPath(sessionId, force);
+        } else {
+          setStarteriaPathLoad({ sessionId, requestState: 'idle' });
+        }
         return;
       }
       setCriticalHandoffLoad({ sessionId, state: 'absent' });
+      setStarteriaPathLoad({ sessionId, requestState: 'idle' });
     } catch {
       if (criticalHandoffRequestRef.current.sequence !== sequence) return;
       setCriticalHandoffLoad({ sessionId, state: 'error' });
     }
-  }, []);
+  }, [fetchStarteriaPath]);
 
   const fetchLegacyHandoff = React.useCallback(async (
     sessionId: string,
@@ -1935,6 +1977,9 @@ export function PortfolioEntryExperience({
         idempotencyKey: createIdempotencyKey('portfolio-entry:critical-handoff-confirm'),
       });
       setCriticalHandoffLoad({ sessionId: sessionDto.id, state: confirmed.state, artifact: confirmed });
+      if (confirmed.state === 'current' && confirmed.confirmationState === 'confirmed') {
+        void fetchStarteriaPath(sessionDto.id, true);
+      }
       trackPortfolioEntryEvent('critical_handoff_confirmed', { sessionId: sessionDto.id });
     } catch (err) {
       const apiError = normalizePortfolioEntryApiError(err);
@@ -2109,23 +2154,38 @@ export function PortfolioEntryExperience({
     if (sessionDto.nextAction === 'review_handoff' || sessionDto.nextAction === 'claim_or_close') {
       if (sessionDto.handoffExperience === 'critical') {
         const loadState = criticalHandoffLoad.sessionId === sessionDto.id ? criticalHandoffLoad.state : 'idle';
+        const criticalArtifact = criticalHandoffLoad.sessionId === sessionDto.id ? criticalHandoffLoad.artifact : undefined;
+        const showStarteriaPath = criticalHandoffLoad.state === 'current'
+          && criticalHandoffLoad.sessionId === sessionDto.id
+          && criticalArtifact?.confirmationState === 'confirmed';
+        const pathLoad = starteriaPathLoad.sessionId === sessionDto.id ? starteriaPathLoad : undefined;
         return (
-          <CriticalHandoffReview
-            state={loadState === 'idle' ? 'loading' : loadState}
-            artifact={criticalHandoffLoad.sessionId === sessionDto.id ? criticalHandoffLoad.artifact : undefined}
-            correctionOpen={criticalCorrectionOpen}
-            correctionDraft={criticalCorrectionDraft}
-            pending={pending}
-            canContinue={Boolean(sessionRef) && sessionDto.ownership.state === 'ANONYMOUS'}
-            canConfirm={sessionDto.ownership.state === 'CLAIMED'}
-            onCorrectionDraftChange={setCriticalCorrectionDraft}
-            onBeginCorrection={beginCriticalHandoffCorrection}
-            onCancelCorrection={cancelCriticalHandoffCorrection}
-            onSubmitCorrection={submitCriticalHandoffCorrection}
-            onContinue={continueCriticalHandoffToSignup}
-            onConfirm={confirmCriticalHandoff}
-            onRetry={() => void fetchCriticalHandoff(sessionDto.id, sessionRef?.credential, true)}
-          />
+          <>
+            <CriticalHandoffReview
+              state={loadState === 'idle' ? 'loading' : loadState}
+              artifact={criticalArtifact}
+              correctionOpen={criticalCorrectionOpen}
+              correctionDraft={criticalCorrectionDraft}
+              pending={pending}
+              canContinue={Boolean(sessionRef) && sessionDto.ownership.state === 'ANONYMOUS'}
+              canConfirm={sessionDto.ownership.state === 'CLAIMED'}
+              onCorrectionDraftChange={setCriticalCorrectionDraft}
+              onBeginCorrection={beginCriticalHandoffCorrection}
+              onCancelCorrection={cancelCriticalHandoffCorrection}
+              onSubmitCorrection={submitCriticalHandoffCorrection}
+              onContinue={continueCriticalHandoffToSignup}
+              onConfirm={confirmCriticalHandoff}
+              onRetry={() => void fetchCriticalHandoff(sessionDto.id, sessionRef?.credential, true)}
+            />
+            {showStarteriaPath ? (
+              <StarteriaPathExperience
+                requestState={pathLoad?.requestState === 'idle' || !pathLoad ? 'loading' : pathLoad.requestState}
+                errorRecovery={pathLoad?.errorRecovery}
+                path={pathLoad?.path}
+                onRetry={() => void fetchStarteriaPath(sessionDto.id, true)}
+              />
+            ) : null}
+          </>
         );
       }
 

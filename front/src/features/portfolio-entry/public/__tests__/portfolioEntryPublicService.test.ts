@@ -7,12 +7,15 @@ import {
   continuePortfolioEntryToPortfolio,
   createPortfolioEntrySession,
   getPortfolioEntryCriticalHandoff,
+  getPortfolioEntryStarteriaPath,
   getPortfolioEntryHandoff,
   getPortfolioEntrySession,
   materializePortfolioEntryCriticalHandoff,
   normalizePortfolioEntryApiError,
   submitPortfolioEntryMessage,
 } from '../portfolioEntryPublicService';
+import type { StarteriaPathSupportedDto } from '../starteriaPath.types';
+import { StarteriaPathInvalidResponseError } from '../starteriaPath.types';
 import type { PortfolioEntryLiveUnderstanding, PortfolioEntrySessionDto } from '../types';
 import { createIdempotencyKey } from '../idempotency';
 
@@ -42,6 +45,94 @@ function makeSession(overrides: Partial<PortfolioEntrySessionDto> = {}): Portfol
 }
 
 describe('portfolioEntryPublicService', () => {
+  it('reads Starteria Path only from its dedicated session endpoint and returns its DTO', async () => {
+    const expected: StarteriaPathSupportedDto = {
+      experienceState: 'SUPPORTED',
+      starteriaPathStatus: 'SUPPORTED',
+      valueBridge: {
+        currentState: 'La decisión aún requiere comparar capacidad y urgencia.',
+        starteriaContribution: [{
+          statement: 'Starteria podría ordenar la información compartida.',
+          capabilityClass: 'CAN_SUPPORT',
+          availabilityState: 'REQUIRES_IMPLEMENTATION',
+        }],
+        tangibleOutcome: {
+          statement: 'Una lectura estructurada.',
+          observableArtifact: 'Vista con evidencia visible.',
+        },
+        remainingDependency: [],
+      },
+      capabilityPath: [],
+      dependencies: [],
+      firstSupportedMovement: null,
+      boundaryStatement: 'La organización conserva la decisión.',
+      sourceBinding: {
+        criticalHandoffId: 'handoff-1',
+        criticalHandoffVersion: 3,
+        sourceContextRevision: 7,
+        current: true,
+        confirmed: true,
+        projectionVersion: 'starteria-path-projection-v0.1',
+        businessCapabilityBoundaryVersion: 'business-capability-boundary-v0.1',
+        pathSchemaVersion: 'starteria-path-dto-v0.1',
+      },
+      versions: {
+        pathSchemaVersion: 'starteria-path-dto-v0.1',
+        projectionVersion: 'starteria-path-projection-v0.1',
+        businessCapabilityBoundaryVersion: 'business-capability-boundary-v0.1',
+      },
+    };
+    server.use(http.get('*/public/portfolio-entry/sessions/:sessionId/starteria-path', ({ request, params }) => {
+      expect(params.sessionId).toBe('11111111-1111-4111-8111-111111111111');
+      expect(new URL(request.url).pathname).toBe('/api/v1/public/portfolio-entry/sessions/11111111-1111-4111-8111-111111111111/starteria-path');
+      expect(new URL(request.url).search).not.toContain('entry-token');
+      return HttpResponse.json({ success: true, data: expected });
+    }));
+
+    await expect(getPortfolioEntryStarteriaPath('11111111-1111-4111-8111-111111111111')).resolves.toEqual(expected);
+  });
+
+  it('rejects unexpected legacy semantic fields instead of allowing them into the Path UI', async () => {
+    server.use(http.get('*/public/portfolio-entry/sessions/:sessionId/starteria-path', () =>
+      HttpResponse.json({
+        success: true,
+        data: {
+          experienceState: 'SUPPORTED',
+          starteriaPathStatus: 'SUPPORTED',
+          valueBridge: {
+            currentState: 'Current state',
+            starteriaContribution: [],
+            tangibleOutcome: { statement: 'Outcome', observableArtifact: 'Artifact' },
+            remainingDependency: [],
+          },
+          capabilityPath: [],
+          dependencies: [],
+          firstSupportedMovement: null,
+          boundaryStatement: 'Boundary',
+          sourceBinding: {
+            criticalHandoffId: 'handoff-1',
+            criticalHandoffVersion: 1,
+            sourceContextRevision: 0,
+            current: true,
+            confirmed: true,
+            projectionVersion: 'starteria-path-projection-v0.1',
+            businessCapabilityBoundaryVersion: 'business-capability-boundary-v0.1',
+            pathSchemaVersion: 'starteria-path-dto-v0.1',
+          },
+          versions: {
+            pathSchemaVersion: 'starteria-path-dto-v0.1',
+            projectionVersion: 'starteria-path-projection-v0.1',
+            businessCapabilityBoundaryVersion: 'business-capability-boundary-v0.1',
+          },
+          starteria_path: ['legacy recommendation'],
+        },
+      }),
+    ));
+
+    await expect(getPortfolioEntryStarteriaPath('11111111-1111-4111-8111-111111111111'))
+      .rejects.toBeInstanceOf(StarteriaPathInvalidResponseError);
+  });
+
   beforeEach(() => {
     vi.restoreAllMocks();
   });
