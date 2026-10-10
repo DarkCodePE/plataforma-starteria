@@ -8,6 +8,11 @@ import type {
   PortfolioEntryCriticalHandoffMaterializationDto,
   PortfolioEntrySessionDto,
 } from './types';
+import {
+  parseStarteriaPathDto,
+  StarteriaPathInvalidResponseError,
+  type StarteriaPathDto,
+} from './starteriaPath.types';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || '/api/v1';
 const ENTRY_TOKEN_HEADER = 'X-Starteria-Entry-Token';
@@ -265,6 +270,17 @@ export async function getPortfolioEntryCriticalHandoff(
     if (normalizePortfolioEntryApiError(err).kind === 'not_found') return null;
     throw err;
   }
+}
+
+/** Reads the allowlisted, source-bound Starteria Path DTO for the authenticated session owner. */
+export async function getPortfolioEntryStarteriaPath(sessionId: string): Promise<StarteriaPathDto> {
+  const { default: api } = await import('../../../app/services/api');
+  const response = await api.get<PortfolioEntryApiEnvelope<unknown>>(
+    `/public/portfolio-entry/sessions/${encodeURIComponent(sessionId)}/starteria-path`,
+  );
+  const dto = parseStarteriaPathDto(unwrap(response));
+  if (!dto) throw new StarteriaPathInvalidResponseError();
+  return dto;
 }
 
 export async function confirmPortfolioEntryCriticalHandoff(
