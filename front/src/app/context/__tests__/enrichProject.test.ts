@@ -11,7 +11,7 @@ describe('enrichProject — equipo', () => {
         { id: 't2', userId: 'u2', role: 'VIEWER', status: 'PENDING' },
       ],
     }, null);
-    expect(project.team.map(member => [member.role, member.status])).toEqual([['Owner', 'Activo'], ['Viewer', 'Pendiente']]);
+    expect(project.team.map(member => [member.userId, member.role, member.status])).toEqual([['u1', 'Owner', 'Activo'], ['u2', 'Viewer', 'Pendiente']]);
   });
 
   it('`team` local sigue teniendo prioridad', () => {

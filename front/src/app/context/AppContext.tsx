@@ -162,6 +162,8 @@ export type TeamMemberStatus = 'Pendiente' | 'Enviado' | 'Activo';
 
 export interface TeamMember {
   id: string;
+  /** Usuario de la fila TeamMember del backend; la lista de proyectos no trae su email. */
+  userId?: string;
   name: string;
   email: string;
   role: TeamMemberRole;
@@ -431,6 +433,7 @@ export function enrichProject(raw: any, currentUser: User | null): Project {
   let team: TeamMember[] = rawTeam
     ? rawTeam.map((m: any) => ({
         id: m.id ?? `m${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        userId: m.userId ?? m.user?.id,
         name: m.name ?? m.user?.name ?? m.email?.split('@')[0] ?? '',
         email: m.email ?? m.user?.email ?? '',
         role: capitalize(m.role ?? 'editor') as TeamMemberRole,

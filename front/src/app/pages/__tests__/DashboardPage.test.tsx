@@ -102,3 +102,19 @@ describe('DashboardPage — tarjeta de una iniciativa adaptativa', () => {
     expect(screen.getByText('Bloqueo: Falta acceso a datos')).toBeInTheDocument();
   });
 });
+
+describe('DashboardPage — miembro reconocido por userId', () => {
+  it('un participante ve la iniciativa aunque el equipo venga sin email (lista de /projects)', () => {
+    role = 'owner';
+    projects = [{ ...decidedInitiative({ status: 'en_step_0', currentStep: 'Step 0' }), team: [{ id: 't1', userId: 'u1', email: '', role: 'Editor', status: 'Activo' }] }];
+    render(<DashboardPage />);
+    expect(screen.getAllByText('[E2E-PROD] Iniciativa').length).toBeGreaterThan(0);
+  });
+
+  it('no muestra iniciativas de las que no es miembro', () => {
+    role = 'owner';
+    projects = [{ ...decidedInitiative({ status: 'en_step_0' }), team: [{ id: 't1', userId: 'otro', email: '', role: 'Owner', status: 'Activo' }] }];
+    render(<DashboardPage />);
+    expect(screen.queryByText('[E2E-PROD] Iniciativa')).not.toBeInTheDocument();
+  });
+});
