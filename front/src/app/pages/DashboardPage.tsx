@@ -2,7 +2,8 @@ import React, { useState } from 'react';
 import { useNavigate } from 'react-router';
 import { Plus, Clock, Users, AlertTriangle, ChevronRight, Search, Folder, BellRing, MessageSquare, FolderOpen, Layers3, UploadCloud } from 'lucide-react';
 import { useApp } from '../context/AppContext';
-import type { Project, SponsorTouchpoint } from '../context/AppContext';
+import { isSameTeamMember } from '../context/AppContext';
+import type { Project, SponsorTouchpoint, TeamMember } from '../context/AppContext';
 import { StatusChip } from '../components/StatusChip';
 import { ProgressBar } from '../components/ProgressBar';
 import { usePortfolioLead } from '../portfolio/PortfolioLeadContext';
@@ -97,13 +98,14 @@ export function DashboardPage() {
     project.description?.toLowerCase().includes(search.toLowerCase())
   );
 
+  const isMe = (member: TeamMember) => !!user && isSameTeamMember(member, user);
   const visibleProjects = isOwner
-    ? filtered.filter(project => project.team.some(member => member.email === user?.email))
+    ? filtered.filter(project => project.team.some(isMe))
     : isSponsor
       ? filtered.filter(project =>
           project.team.some(
             member =>
-              member.email === user?.email &&
+              isMe(member) &&
               member.role === 'Sponsor' &&
               member.status !== 'Pendiente'
           )

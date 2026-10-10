@@ -162,11 +162,22 @@ export type TeamMemberStatus = 'Pendiente' | 'Enviado' | 'Activo';
 
 export interface TeamMember {
   id: string;
+  /** Usuario de la fila TeamMember del backend; la lista de proyectos no trae su email. */
+  userId?: string;
   name: string;
   email: string;
   role: TeamMemberRole;
   status: TeamMemberStatus;
   initials: string;
+}
+
+/**
+ * ¿Esta fila del equipo es la persona? El equipo que manda el backend trae userId y no email;
+ * el que arma el front (borradores, invitaciones) trae email.
+ */
+export function isSameTeamMember(member: Pick<TeamMember, 'userId' | 'email'>, person: { id?: string; email?: string }): boolean {
+  if (person.id && member.userId === person.id) return true;
+  return !!person.email && !!member.email && member.email.toLowerCase() === person.email.toLowerCase();
 }
 
 export interface Evidence {
@@ -431,6 +442,7 @@ export function enrichProject(raw: any, currentUser: User | null): Project {
   let team: TeamMember[] = rawTeam
     ? rawTeam.map((m: any) => ({
         id: m.id ?? `m${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        userId: m.userId ?? m.user?.id,
         name: m.name ?? m.user?.name ?? m.email?.split('@')[0] ?? '',
         email: m.email ?? m.user?.email ?? '',
         role: capitalize(m.role ?? 'editor') as TeamMemberRole,
@@ -671,7 +683,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const getProjectMember = (projectId: string, email = user?.email ?? ''): TeamMember | null => {
     const project = projects.find(item => item.id === projectId);
     if (!project || !email) return null;
-    return project.team.find(member => member.email.toLowerCase() === email.toLowerCase()) ?? null;
+    // Para el usuario actual también vale su userId (el equipo del backend viene sin email).
+    const isCurrentUser = !!user && email.toLowerCase() === user.email.toLowerCase();
+    return project.team.find(member => isSameTeamMember(member, { id: isCurrentUser ? user.id : undefined, email })) ?? null;
   };
 
   const canAccessProject = (

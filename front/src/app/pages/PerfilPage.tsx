@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { User, Star, TrendingUp, Copy, Download, ChevronRight, Edit3, CheckCircle2, AlertTriangle } from 'lucide-react';
-import { useApp } from '../context/AppContext';
+import { isSameTeamMember, useApp } from '../context/AppContext';
 import { ProgressBar } from '../components/ProgressBar';
 import { StatusChip } from '../components/StatusChip';
 
@@ -41,7 +41,7 @@ export function PerfilPage() {
   const [bio, setBio] = useState('Trabajo en transformación digital y procesos operativos. Me especializo en conectar problemas complejos con soluciones accionables.');
   const [copied, setCopied] = useState(false);
 
-  const myProjects = projects.filter(p => p.team.some(m => m.email === user?.email));
+  const myProjects = user ? projects.filter(p => p.team.some(m => isSameTeamMember(m, user))) : [];
   const completedSteps = myProjects.reduce((acc, p) => acc + p.steps.filter(s => s.status === 'Aprobado').length, 0);
   const totalEvidence = myProjects.reduce((acc, p) => acc + p.evidence.filter(e => e.owner === user?.name).length, 0);
 
