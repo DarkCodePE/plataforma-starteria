@@ -171,6 +171,15 @@ export interface TeamMember {
   initials: string;
 }
 
+/**
+ * ¿Esta fila del equipo es la persona? El equipo que manda el backend trae userId y no email;
+ * el que arma el front (borradores, invitaciones) trae email.
+ */
+export function isSameTeamMember(member: Pick<TeamMember, 'userId' | 'email'>, person: { id?: string; email?: string }): boolean {
+  if (person.id && member.userId === person.id) return true;
+  return !!person.email && !!member.email && member.email.toLowerCase() === person.email.toLowerCase();
+}
+
 export interface Evidence {
   id: string;
   name: string;
@@ -674,7 +683,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const getProjectMember = (projectId: string, email = user?.email ?? ''): TeamMember | null => {
     const project = projects.find(item => item.id === projectId);
     if (!project || !email) return null;
-    return project.team.find(member => member.email.toLowerCase() === email.toLowerCase()) ?? null;
+    // Para el usuario actual también vale su userId (el equipo del backend viene sin email).
+    const isCurrentUser = !!user && email.toLowerCase() === user.email.toLowerCase();
+    return project.team.find(member => isSameTeamMember(member, { id: isCurrentUser ? user.id : undefined, email })) ?? null;
   };
 
   const canAccessProject = (

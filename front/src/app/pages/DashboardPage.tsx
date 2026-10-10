@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useNavigate } from 'react-router';
 import { Plus, Clock, Users, AlertTriangle, ChevronRight, Search, Folder, BellRing, MessageSquare, FolderOpen, Layers3, UploadCloud } from 'lucide-react';
 import { useApp } from '../context/AppContext';
+import { isSameTeamMember } from '../context/AppContext';
 import type { Project, SponsorTouchpoint, TeamMember } from '../context/AppContext';
 import { StatusChip } from '../components/StatusChip';
 import { ProgressBar } from '../components/ProgressBar';
@@ -97,9 +98,7 @@ export function DashboardPage() {
     project.description?.toLowerCase().includes(search.toLowerCase())
   );
 
-  // El backend manda el equipo sin email (sólo userId): se reconoce a la persona por cualquiera de los dos.
-  const isMe = (member: TeamMember) =>
-    (!!user?.id && member.userId === user.id) || (!!user?.email && member.email === user.email);
+  const isMe = (member: TeamMember) => !!user && isSameTeamMember(member, user);
   const visibleProjects = isOwner
     ? filtered.filter(project => project.team.some(isMe))
     : isSponsor

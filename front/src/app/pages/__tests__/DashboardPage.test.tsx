@@ -14,7 +14,8 @@ vi.mock('react-router', () => ({ useNavigate: () => navigate }));
 
 let role = 'portfolio_lead';
 let projects: unknown[] = [];
-vi.mock('../../context/AppContext', () => ({
+vi.mock('../../context/AppContext', async (importOriginal) => ({
+  isSameTeamMember: (await importOriginal<typeof import('../../context/AppContext')>()).isSameTeamMember,
   useApp: () => ({
     projects,
     projectsLoading: false,
