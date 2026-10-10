@@ -3,6 +3,18 @@ import type { CriticalHandoffProjection } from '../../portfolio-entry/presentati
 
 export const PORTFOLIO_ENTRY_CRITICAL_HANDOFF_SCHEMA_VERSION = 'critical-handoff-projection-v0.1' as const;
 
+export type PortfolioEntryCriticalHandoffValidationCode =
+  | 'UNSUPPORTED_SCHEMA_VERSION'
+  | 'INVALID_PAYLOAD'
+  | 'INVALID_CONFIRMATION_EVIDENCE';
+
+export class PortfolioEntryCriticalHandoffValidationError extends Error {
+  constructor(readonly code: PortfolioEntryCriticalHandoffValidationCode, message: string) {
+    super(message);
+    this.name = 'PortfolioEntryCriticalHandoffValidationError';
+  }
+}
+
 const criticalHandoffPayloadV01Schema = z.object({
   conclusionStatus: z.enum(['supported', 'bounded', 'insufficient_basis']),
   finalReading: z.string().nullable(),
@@ -88,12 +100,18 @@ export type PortfolioEntryCriticalHandoffLatestSnapshot = {
 
 export function parseCriticalHandoffPayload(schemaVersion: string, payload: unknown): CriticalHandoffPayload {
   if (schemaVersion !== PORTFOLIO_ENTRY_CRITICAL_HANDOFF_SCHEMA_VERSION) {
-    throw new Error(`Unsupported persisted Critical Handoff schemaVersion: ${schemaVersion}`);
+    throw new PortfolioEntryCriticalHandoffValidationError(
+      'UNSUPPORTED_SCHEMA_VERSION',
+      `Unsupported persisted Critical Handoff schemaVersion: ${schemaVersion}`,
+    );
   }
 
   const parsed = criticalHandoffPayloadV01Schema.safeParse(payload);
   if (!parsed.success) {
-    throw new Error(`Invalid persisted Critical Handoff payload: ${parsed.error.message}`);
+    throw new PortfolioEntryCriticalHandoffValidationError(
+      'INVALID_PAYLOAD',
+      `Invalid persisted Critical Handoff payload: ${parsed.error.message}`,
+    );
   }
 
   // The runtime schema checks the complete strict object; this assertion restores
@@ -118,7 +136,10 @@ export function parseCriticalHandoffLifecycle(
       && confirmedByUserId.trim().length > 0;
 
   if (!evidenceIsValid) {
-    throw new Error('Invalid persisted Critical Handoff confirmation evidence.');
+    throw new PortfolioEntryCriticalHandoffValidationError(
+      'INVALID_CONFIRMATION_EVIDENCE',
+      'Invalid persisted Critical Handoff confirmation evidence.',
+    );
   }
 
   return { confirmationState, confirmedAt, confirmedByUserId };

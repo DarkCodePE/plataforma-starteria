@@ -6,6 +6,7 @@ import { prisma } from '../../shared/db/prisma';
 import { authenticate } from '../auth/auth.middleware';
 import { PrismaPortfolioEntrySessionRepository } from '../portfolio-entry-sessions/infrastructure/prisma-portfolio-entry-session.repository';
 import { PortfolioEntrySessionService } from '../portfolio-entry-sessions/application/portfolio-entry-session.service';
+import { PortfolioEntrySessionError } from '../portfolio-entry-sessions/application/portfolio-entry-session-errors';
 import type { PortfolioEntrySessionRepository } from '../portfolio-entry-sessions/application/portfolio-entry-session.repository';
 import {
   DeterministicPortfolioEntryAgentAdapter,
@@ -35,6 +36,8 @@ import { PortfolioEntryConversionService } from '../portfolio-entry-conversion/p
 import { PortfolioEntryContinuationController } from '../portfolio-entry-continuation/portfolio-entry-continuation.controller';
 import { PortfolioEntryContinuationService } from '../portfolio-entry-continuation/portfolio-entry-continuation.service';
 import type { CriticalHandoffProjection } from './presentation/critical-handoff-projection';
+import { StarteriaPathService, type StarteriaPathProjector } from '../portfolio-entry-starteria-path/application/starteria-path.service';
+import { StarteriaPathController } from '../portfolio-entry-starteria-path/starteria-path.controller';
 
 const versioning = {
   contractVersion: 'portfolio-entry-contract-v0.1',
@@ -56,6 +59,7 @@ export interface PortfolioEntryRouterDeps {
   agentAdapter?: PortfolioEntryAgentAdapterV2;
   liveUnderstandingSynthesizer?: PortfolioEntryLiveUnderstandingSynthesizer;
   criticalHandoffProjector?: (source: unknown) => CriticalHandoffProjection;
+  starteriaPathProjector?: StarteriaPathProjector;
   handoffMaterializer?: PortfolioEntryHandoffMaterializer;
   authenticate?: RequestHandler;
   optionalAuthenticate?: RequestHandler;
@@ -93,6 +97,18 @@ export function buildPortfolioEntryRouter(
     deps.criticalHandoffProjector,
   );
   const controller = new PortfolioEntryController(appService);
+  const starteriaPathService = new StarteriaPathService({
+    getOwnedSessionContext: async (sessionId, ownerUserId) => {
+      const session = await sessionService.getForOwner(sessionId, ownerUserId);
+      if (session.ownershipState !== 'CLAIMED' || session.ownerUserId !== ownerUserId) {
+        throw PortfolioEntrySessionError.unauthorized();
+      }
+      return { id: session.id, contextRevision: session.contextRevision };
+    },
+    getLatestCriticalHandoff: (sessionId) => sessionService.getLatestCriticalHandoff(sessionId),
+    ...(deps.starteriaPathProjector ? { projector: deps.starteriaPathProjector } : {}),
+  });
+  const starteriaPathController = new StarteriaPathController(starteriaPathService);
   const conversionController = new PortfolioEntryConversionController(
     deps.conversionService ?? new PortfolioEntryConversionService(prisma, idempotencyRepository),
   );
@@ -133,6 +149,7 @@ export function buildPortfolioEntryRouter(
   router.get('/sessions/:sessionId/handoff', optionalAuth, submitLimiter, controller.readHandoff);
   router.post('/sessions/:sessionId/critical-handoff', optionalAuth, handoffLimiter, controller.materializeCriticalHandoff);
   router.get('/sessions/:sessionId/critical-handoff', optionalAuth, submitLimiter, controller.readCriticalHandoff);
+  router.get('/sessions/:sessionId/starteria-path', auth, submitLimiter, starteriaPathController.read);
   router.post('/sessions/:sessionId/critical-handoff/:artifactId/confirmation', auth, handoffLimiter, controller.confirmCriticalHandoff);
   router.post('/sessions/:sessionId/handoff/confirmation', auth, handoffLimiter, controller.confirmOrCorrectHandoff);
   router.post('/sessions/:sessionId/claim', auth, handoffLimiter, controller.claim);

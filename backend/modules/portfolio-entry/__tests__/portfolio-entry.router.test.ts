@@ -15,9 +15,14 @@ import {
   type CriticalSituationSynthesis,
 } from '../../portfolio-entry-runtime/domain/critical-situation-synthesis.schema';
 import { LiveModelExecutionError } from '../../portfolio-entry-runtime/model/live-model-error';
-import { hashPublicAccessToken } from '../../portfolio-entry-sessions/application/portfolio-entry-session.service';
+import {
+  hashPublicAccessToken,
+  PortfolioEntrySessionService,
+} from '../../portfolio-entry-sessions/application/portfolio-entry-session.service';
+import type { CriticalHandoffProjection } from '../presentation/critical-handoff-projection';
 import type { PortfolioEntryModelExecutionRecord } from '../../portfolio-entry-sessions/observability/portfolio-entry-execution-metadata';
 import { InMemoryPortfolioEntrySessionRepository } from '../../portfolio-entry-sessions/infrastructure/in-memory-portfolio-entry-session.repository';
+import type { StarteriaPathProjector } from '../../portfolio-entry-starteria-path/application/starteria-path.service';
 import { InMemoryPortfolioEntryIdempotencyRepository } from '../infrastructure/in-memory-portfolio-entry-idempotency.repository';
 import type { PortfolioEntryIdempotencyRepository } from '../application/portfolio-entry-idempotency.repository';
 import { buildPortfolioEntryRouter } from '../portfolio-entry.router';
@@ -26,6 +31,109 @@ const base = '/api/v1/public/portfolio-entry';
 const legacyCompatibilityRepositories = new WeakMap<express.Express, InMemoryPortfolioEntrySessionRepository>();
 
 describe('Portfolio Entry Experimental Session API', () => {
+  it('GET Starteria Path requires its owned, current, confirmed Critical Handoff and never serializes the legacy sidecar', async () => {
+    const { app, repository } = makeApp();
+    const ready = await legacyHandoffReadySession(app);
+    const legacy = await request(app).post(`${base}/sessions/${ready.sessionId}/handoff`)
+      .set('X-Starteria-Entry-Token', ready.token).set('Idempotency-Key', `legacy-${ready.sessionId}`)
+      .send({ expectedRevision: ready.revision }).expect(200);
+    const claimed = await request(app).post(`${base}/sessions/${ready.sessionId}/claim`)
+      .set('Authorization', 'Bearer user-1').set('X-Starteria-Entry-Token', ready.token)
+      .set('Idempotency-Key', `claim-path-${ready.sessionId}`)
+      .send({ expectedRevision: legacy.body.data.revision }).expect(200);
+    const stored = await repository.findSessionById(ready.sessionId);
+    if (!stored) throw new Error('Starteria Path fixture session was not stored.');
+    const sessionService = new PortfolioEntrySessionService(repository, {
+      ttlMs: 60 * 60_000,
+      versioning: stored.versioning,
+    });
+    const artifact = await sessionService.createCriticalHandoff({
+      sessionId: ready.sessionId,
+      expectedSessionRevision: claimed.body.data.revision,
+      sourceContextRevision: stored.contextRevision,
+      payload: supportedCriticalHandoffPayload(),
+    });
+    await sessionService.confirmCriticalHandoff({
+      sessionId: ready.sessionId,
+      artifactId: artifact.id,
+      expectedArtifactVersion: artifact.artifactVersion,
+      expectedContextRevision: stored.contextRevision,
+      confirmingActorId: 'user-1',
+    });
+    const before = await repository.findSessionById(ready.sessionId);
+
+    const response = await request(app).get(`${base}/sessions/${ready.sessionId}/starteria-path`)
+      .set('Authorization', 'Bearer user-1').expect(200);
+    const serialized = JSON.stringify(response.body.data);
+
+    expect(response.body.success).toBe(true);
+    expect(response.body.data.experienceState).toBe('SUPPORTED');
+    expect(response.body.data.sourceBinding).toMatchObject({
+      criticalHandoffId: artifact.id,
+      criticalHandoffVersion: artifact.artifactVersion,
+      sourceContextRevision: stored.contextRevision,
+      current: true,
+      confirmed: true,
+    });
+    expect(response.body.data).not.toHaveProperty('conversion');
+    expect(response.body.data).not.toHaveProperty('href');
+    expect(serialized).not.toMatch(/starteria_path|recommended_approach|recommended_cta|alternative_approaches|suggestedRoute/i);
+    expect(serialized).not.toMatch(/selected_lenses|reasoning_metadata|provider|model|sourceTurnId|confirmedByUserId/i);
+    expect(serialized).not.toMatch(/consent|conversion|continue-portfolio/i);
+    expect(await repository.findSessionById(ready.sessionId)).toEqual(before);
+  });
+
+  it('GET Starteria Path rejects anonymous access, unclaimed sessions, and mismatched owners', async () => {
+    const { app, repository } = makeApp();
+    const created = await createSession(app);
+    const path = `${base}/sessions/${created.sessionId}/starteria-path`;
+
+    await request(app).get(path).set('X-Starteria-Entry-Token', created.token).expect(401);
+    await request(app).get(path).set('Authorization', 'Bearer user-1').expect(404);
+    const claimed = await request(app).post(`${base}/sessions/${created.sessionId}/claim`)
+      .set('Authorization', 'Bearer user-1').set('X-Starteria-Entry-Token', created.token)
+      .set('Idempotency-Key', `claim-path-owner-${created.sessionId}`)
+      .send({ expectedRevision: 0 }).expect(200);
+    expect(await repository.findSessionById(created.sessionId)).toMatchObject({
+      ownershipState: 'CLAIMED',
+      ownerUserId: 'user-1',
+    });
+
+    await request(app).get(path).set('X-Starteria-Entry-Token', created.token).expect(401);
+    const foreign = await request(app).get(path).set('Authorization', 'Bearer user-2').expect(404);
+    const missing = await request(app).get(`${base}/sessions/missing-session/starteria-path`)
+      .set('Authorization', 'Bearer user-1').expect(404);
+    expect(foreign.body.error.code).toBe(missing.body.error.code);
+    expect(JSON.stringify(foreign.body)).not.toContain(created.sessionId);
+  });
+
+  it('GET Starteria Path returns a deterministic missing-source API error', async () => {
+    const { app } = makeApp();
+    const created = await createSession(app);
+    await request(app).post(`${base}/sessions/${created.sessionId}/claim`)
+      .set('Authorization', 'Bearer user-1').set('X-Starteria-Entry-Token', created.token)
+      .set('Idempotency-Key', `claim-missing-path-${created.sessionId}`)
+      .send({ expectedRevision: 0 }).expect(200);
+
+    const response = await request(app).get(`${base}/sessions/${created.sessionId}/starteria-path`)
+      .set('Authorization', 'Bearer user-1').expect(404);
+
+    expect(response.body.error.code).toBe('CRITICAL_HANDOFF_NOT_FOUND');
+  });
+
+  it('GET Starteria Path maps projector failures to a generic 503 response', async () => {
+    const { app, repository } = makeApp({
+      starteriaPathProjector: () => { throw new Error('private provider detail'); },
+    });
+    const fixture = await createOwnedConfirmedCriticalHandoff(repository);
+
+    const response = await request(app).get(`${base}/sessions/${fixture.sessionId}/starteria-path`)
+      .set('Authorization', 'Bearer user-1').expect(503);
+
+    expect(response.body.error.code).toBe('PATH_PROJECTION_FAILED');
+    expect(JSON.stringify(response.body)).not.toContain('private provider detail');
+  });
+
   it('D1 resolves the exact owner-confirmed Brief with provenance and no session writes', async () => {
     const { app, repository } = makeApp();
     const fixture = await confirmedBriefFixture(app);
@@ -997,6 +1105,7 @@ function makeApp(input: {
   useDefaultAdapter?: boolean;
   repository?: InMemoryPortfolioEntrySessionRepository;
   idempotencyRepository?: PortfolioEntryIdempotencyRepository;
+  starteriaPathProjector?: StarteriaPathProjector;
   options?: Parameters<typeof buildPortfolioEntryRouter>[0];
 } = {}) {
   const app = express();
@@ -1022,9 +1131,60 @@ function makeApp(input: {
     optionalAuthenticate: fakeOptionalAuthenticate,
     sessionTtlMs: 60 * 60_000,
     idempotencyTtlMs: 60 * 60_000,
+    ...(input.starteriaPathProjector ? { starteriaPathProjector: input.starteriaPathProjector } : {}),
   }));
   app.use(errorHandler);
   return { app, repository };
+}
+
+async function createOwnedConfirmedCriticalHandoff(repository: InMemoryPortfolioEntrySessionRepository): Promise<{ sessionId: string }> {
+  const sessionService = new PortfolioEntrySessionService(repository, {
+    ttlMs: 60 * 60_000,
+    versioning: {
+      contractVersion: 'portfolio-entry-contract-v0.1',
+      runtimeVersion: 'portfolio-entry-runtime-v0.2',
+      schemaVersion: 'portfolio-entry-schema-v0.2',
+      promptManifestId: 'portfolio-entry-prompts-v0.2',
+    },
+  });
+  const { session } = await sessionService.createAnonymousSession({ entryOrigin: 'public_start' });
+  const ownedSession = await sessionService.claimOwnership(session.id, 'user-1');
+  const artifact = await sessionService.createCriticalHandoff({
+    sessionId: session.id,
+    expectedSessionRevision: ownedSession.revision,
+    sourceContextRevision: ownedSession.contextRevision,
+    payload: supportedCriticalHandoffPayload(),
+  });
+  await sessionService.confirmCriticalHandoff({
+    sessionId: session.id,
+    artifactId: artifact.id,
+    expectedArtifactVersion: artifact.artifactVersion,
+    expectedContextRevision: ownedSession.contextRevision,
+    confirmingActorId: 'user-1',
+  });
+  return { sessionId: session.id };
+}
+
+function supportedCriticalHandoffPayload(): CriticalHandoffProjection {
+  return {
+    conclusionStatus: 'supported',
+    finalReading: 'La revisión llega después del checkpoint de decisión.',
+    decisionInView: 'Ajustar el siguiente checkpoint de revisión.',
+    usableNow: [{
+      item: 'El calendario de revisión actual.',
+      howItCanHelp: 'Ofrece un punto de comparación para ordenar la secuencia.',
+    }],
+    decisionChangingUnknowns: [{
+      uncertainty: 'Si la evidencia puede prepararse antes.',
+      whyItMatters: 'Podría cambiar el momento de la próxima revisión.',
+    }],
+    firstMovement: {
+      movement: 'Comparar la fecha de llegada de evidencia y revisión.',
+      whyNow: 'Las fechas permiten ver la secuencia observada.',
+      whatItMayClarify: 'Si el checkpoint puede usar la evidencia.',
+      boundary: 'La comparación no decide el resultado del negocio.',
+    },
+  };
 }
 
 function routerTestSynthesis(): CriticalSituationSynthesis {
