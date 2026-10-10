@@ -32,3 +32,23 @@ describe('isSameTeamMember', () => {
     expect(isSameTeamMember({ userId: 'u2', email: '' }, { id: 'u1', email: 'a@x.com' })).toBe(false);
   });
 });
+
+describe('enrichProject — sponsor', () => {
+  const sponsor = { id: 's1', email: 's@x.com', role: 'sponsor' } as any;
+
+  it('la fila propia del sponsor (VIEWER en el backend) es su patrocinio; pendiente = invitada', () => {
+    const project = enrichProject({
+      id: 'p1',
+      teamMembers: [
+        { id: 't1', userId: 'o1', role: 'OWNER', status: 'ACTIVE' },
+        { id: 't2', userId: 's1', role: 'VIEWER', status: 'PENDING' },
+      ],
+    }, sponsor);
+    expect(project.team.map(member => [member.role, member.status])).toEqual([['Owner', 'Activo'], ['Sponsor', 'Enviado']]);
+  });
+
+  it('para otro rol de plataforma, VIEWER sigue siendo Viewer', () => {
+    const project = enrichProject({ id: 'p1', teamMembers: [{ id: 't2', userId: 's1', role: 'VIEWER', status: 'ACTIVE' }] }, { ...sponsor, role: 'owner' });
+    expect(project.team[0].role).toBe('Viewer');
+  });
+});
