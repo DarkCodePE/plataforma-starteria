@@ -22,7 +22,8 @@ const confirmStep2Output = vi.fn();
 const confirmStep3Output = vi.fn();
 const confirmStep4Output = vi.fn();
 const getById = vi.fn();
-vi.mock('../../../features/adaptive-core/services/adaptiveCoreService', () => ({
+vi.mock('../../../features/adaptive-core/services/adaptiveCoreService', async (importOriginal) => ({
+  explainCheckpointError: (await importOriginal<typeof import('../../../features/adaptive-core/services/adaptiveCoreService')>()).explainCheckpointError,
   getAdaptiveCore: (id: string) => getAdaptiveCore(id),
   confirmAdaptiveCheckpoint: (...args: any[]) => confirmAdaptiveCheckpoint(...args),
   confirmStep0Brief: (...args: any[]) => confirmStep0Brief(...args),

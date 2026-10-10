@@ -37,7 +37,7 @@ import {
   projectCheckpointResponsesToFields,
 } from '../../features/adaptive-core/domain/checkpointResponses';
 import { canNavigateToAdaptiveStep } from '../../features/adaptive-core/domain/adaptiveAuthority';
-import { confirmAdaptiveCheckpoint, confirmStep0Brief, getAdaptiveCore } from '../../features/adaptive-core/services/adaptiveCoreService';
+import { confirmAdaptiveCheckpoint, explainCheckpointError, confirmStep0Brief, getAdaptiveCore } from '../../features/adaptive-core/services/adaptiveCoreService';
 import { AutofillField } from '../components/autofill/AutofillField';
 import { CHALLENGE_TYPE_LABELS, type ChallengeType, type InitialReviewArtifact } from '../../features/initial-review/domain/types';
 import { getById } from '../services/projectService';
@@ -1004,7 +1004,9 @@ const draftStep0Brief = (adaptiveCore?.stepOutputs ?? []).find(
       setServerAdaptiveCore(core);
       setAdaptiveCoreStatus('loaded');
     } catch (err: any) {
-      setCheckpointError(err?.response?.data?.error?.message ?? err?.message ?? 'No pudimos confirmar el checkpoint.');
+      const { message, core } = await explainCheckpointError(projectId, err, 'No pudimos confirmar el checkpoint.');
+      if (core) setServerAdaptiveCore(core);
+      setCheckpointError(message);
     } finally {
       setCheckpointSaving(false);
     }
