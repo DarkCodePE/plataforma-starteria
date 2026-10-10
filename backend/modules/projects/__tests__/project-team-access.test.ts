@@ -31,6 +31,20 @@ describe('assertProjectTeamAccess', () => {
     expect(check('participante', null, 'read')).toBe('PROJECT_ACCESS_DENIED');
   });
 
+  it('una invitación pendiente lee, pero no escribe ni gestiona hasta aceptarla', () => {
+    const pending = (teamRole: string, need: ProjectTeamNeed) => {
+      try {
+        assertProjectTeamAccess({ platformRole: 'participante', teamRole, teamStatus: 'PENDING', isAssignedPortfolioLead: false, need });
+        return 'ok';
+      } catch (err) {
+        return (err as { code: string }).code;
+      }
+    };
+    expect(pending('EDITOR', 'read')).toBe('ok');
+    expect(pending('EDITOR', 'write')).toBe('TEAM_INVITATION_PENDING');
+    expect(pending('OWNER', 'manage')).toBe('TEAM_INVITATION_PENDING');
+  });
+
   it('admin pasa siempre; mentor lee y escribe pero no gestiona el equipo', () => {
     expect(check('admin', null, 'manage')).toBe('ok');
     expect(check('mentor', null, 'write')).toBe('ok');
@@ -52,7 +66,7 @@ describe('requireProjectTeamAccess', () => {
   it('lee el rol del equipo del proyecto del parámetro indicado', async () => {
     const db = prisma('EDITOR');
     expect(await run(db, 'write', 'projectId')).toBeUndefined();
-    expect(db.teamMember.findFirst).toHaveBeenCalledWith({ where: { projectId: 'p1', userId: 'u1' }, select: { role: true } });
+    expect(db.teamMember.findFirst).toHaveBeenCalledWith({ where: { projectId: 'p1', userId: 'u1' }, select: { role: true, status: true } });
   });
 
   it('pasa el error a next en vez de lanzar', async () => {

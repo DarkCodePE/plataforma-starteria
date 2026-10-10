@@ -94,6 +94,7 @@ const appState = {
   canAccessProject: vi.fn(() => true),
   markSponsorInvitationSent: vi.fn(),
   acceptSponsorInvitation: vi.fn(),
+  acceptTeamInvitation: vi.fn(),
   updateSponsorTouchpoint: vi.fn(),
   addSponsorComment: vi.fn(),
   user: { name: 'Ana', email: 'ana@example.com', role: 'owner' },
@@ -695,5 +696,31 @@ describe('Adaptive authority in pages', () => {
     expect(await screen.findByText(/Step 3 bloqueado/i)).toBeInTheDocument();
     expect(screen.getByText(/El backend Adaptive Core todavia no habilita Step 3/i)).toBeInTheDocument();
     expect(navigate).not.toHaveBeenCalledWith('/projects/p1/step/4');
+  });
+
+  it('ProjectHome muestra "Aceptar invitación" a un invitado pendiente y la acepta', async () => {
+    const pending = { id: 'm1', userId: 'u1', email: '', name: 'Col', role: 'Editor', status: 'Pendiente', initials: 'CO' };
+    appState.getProjectMember.mockReturnValue(pending as any);
+    appState.acceptTeamInvitation.mockResolvedValueOnce(undefined);
+
+    render(<ProjectHomePage />);
+
+    expect(screen.getByText(/Te invitaron a esta iniciativa/i)).toBeInTheDocument();
+    expect(screen.queryByText(/Step activo:/i)).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /Aceptar invitación/i }));
+    expect(appState.acceptTeamInvitation).toHaveBeenCalledWith('p1');
+    appState.getProjectMember.mockReturnValue(null);
+  });
+
+  it('ProjectHome avisa si no se pudo aceptar la invitación', async () => {
+    const pending = { id: 'm1', userId: 'u1', email: '', name: 'Col', role: 'Viewer', status: 'Pendiente', initials: 'CO' };
+    appState.getProjectMember.mockReturnValue(pending as any);
+    appState.acceptTeamInvitation.mockImplementationOnce(() => Promise.reject(new Error('down')));
+
+    render(<ProjectHomePage />);
+    fireEvent.click(screen.getByRole('button', { name: /Aceptar invitación/i }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(/No pudimos aceptar la invitación/i);
+    appState.getProjectMember.mockReturnValue(null);
   });
 });
