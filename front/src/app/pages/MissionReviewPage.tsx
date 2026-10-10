@@ -9,6 +9,9 @@ import React, { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router';
 import { getMissionReview, type MissionReview } from '../../features/adaptive-core/services/adaptiveCoreService';
 import { STEP_PROGRESS_QUESTION } from '../../features/adaptive-core/domain/adaptiveCore';
+import { useOptionalApp } from '../context/AppContext';
+import { getProjectAccess } from '../authz/projectAccess';
+import { ReadOnlyNotice } from '../components/ReadOnlyNotice';
 
 const UNDEFINED_COPY = 'Sin definir';
 
@@ -85,6 +88,7 @@ function inheritedLines(review: MissionReview): string[] {
 export function MissionReviewPage() {
   const { projectId } = useParams();
   const navigate = useNavigate();
+  const app = useOptionalApp();
   const [review, setReview] = useState<MissionReview | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -103,6 +107,10 @@ export function MissionReviewPage() {
   if (!review) return <div role="status" className="p-8 text-slate-500">Cargando tu misión…</div>;
 
   const inherited = inheritedLines(review);
+  // Quien sólo lee (Viewer, Sponsor, Portfolio Lead) no "asume" la misión: la revisa.
+  const { canEdit, readOnlyReason } = app
+    ? getProjectAccess(app.user, app.projects.find(item => item.id === projectId) ?? { team: [] })
+    : { canEdit: true, readOnlyReason: null };
 
   return (
     <div className="mx-auto max-w-3xl p-6 md:p-8">
@@ -118,6 +126,8 @@ export function MissionReviewPage() {
           antes o durante el primer paso.
         </p>
       </header>
+
+      <ReadOnlyNotice reason={readOnlyReason} className="mt-6" />
 
       <dl className="mt-6 grid gap-3 md:grid-cols-2">
         <Field label="Qué quiere mover" value={review.whatToMove} />
@@ -149,9 +159,9 @@ export function MissionReviewPage() {
           onClick={() => navigate(`/projects/${projectId}/step/0`)}
           className="rounded-lg bg-emerald-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-emerald-700"
         >
-          Asumir y empezar Step 0
+          {canEdit ? 'Asumir y empezar Step 0' : 'Ver Step 0'}
         </button>
-        <span className="text-sm text-slate-500">{STEP_PROGRESS_QUESTION[0]}</span>
+        {canEdit && <span className="text-sm text-slate-500">{STEP_PROGRESS_QUESTION[0]}</span>}
         <button
           type="button"
           onClick={() => navigate(`/initiatives/${projectId}/overview`)}

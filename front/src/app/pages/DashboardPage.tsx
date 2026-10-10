@@ -90,6 +90,10 @@ export function DashboardPage() {
   const loading = projectsLoading;
 
   const isOwner = user?.role === 'owner';
+  // El rol de plataforma `viewer` también entra como `owner` (lo ve todo el dashboard de
+  // participante), pero no se le ofrece crear ni importar iniciativas. Hoy el backend se lo
+  // permite: si debe o no es una decisión de producto, no de esta pantalla.
+  const canCreateInitiatives = isOwner && user?.platformRole !== 'viewer';
   const isSponsor = user?.role === 'sponsor';
   // El Portfolio Lead no es del equipo de las iniciativas que sigue: las ve en Portafolio.
   const isPortfolioLead = user?.role === 'portfolio_lead';
@@ -168,7 +172,7 @@ export function DashboardPage() {
             </p>
           )}
         </div>
-        {user?.role === 'owner' && (
+        {canCreateInitiatives && (
           <button
             onClick={() => navigate(CREATE_INITIATIVE_PATH)}
             className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2.5 rounded-xl text-sm transition-colors shadow-sm"
@@ -179,7 +183,7 @@ export function DashboardPage() {
         )}
       </div>
 
-      {user?.role === 'owner' && <DashboardPdfDropzone />}
+      {canCreateInitiatives && <DashboardPdfDropzone />}
 
       {isSponsor && (
         <div className="mb-6 rounded-2xl border border-indigo-100 bg-indigo-50 p-4">
@@ -266,7 +270,7 @@ export function DashboardPage() {
           {[1, 2, 3].map(index => <SkeletonCard key={index} />)}
         </div>
       ) : visibleProjects.length === 0 && !search && user?.role === 'owner' ? (
-        <DashboardEmptyState firstChallengeId={publishedChallenges[0]?.id} userName={user?.name} />
+        <DashboardEmptyState firstChallengeId={publishedChallenges[0]?.id} userName={user?.name} canCreate={canCreateInitiatives} />
       ) : visibleProjects.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-20 text-center">
           <div className="w-14 h-14 rounded-2xl bg-indigo-50 flex items-center justify-center mb-4">
@@ -299,7 +303,7 @@ export function DashboardPage() {
               <Layers3 size={16} /> Ver iniciativas del portafolio
             </button>
           )}
-          {!search && user?.role === 'owner' && (
+          {!search && canCreateInitiatives && (
             <button
               onClick={() => navigate(CREATE_INITIATIVE_PATH)}
               className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2.5 rounded-xl text-sm transition-colors"
@@ -680,24 +684,39 @@ function getWelcomeCopy(name?: string) {
   return `${feminine ? 'Bienvenida' : 'Bienvenido'}, ${displayName}`;
 }
 
-function DashboardEmptyState({ firstChallengeId, userName }: { firstChallengeId?: string; userName?: string }) {
+function DashboardEmptyState({ firstChallengeId, userName, canCreate = true }: { firstChallengeId?: string; userName?: string; canCreate?: boolean }) {
   const navigate = useNavigate();
   return (
     <section className="rounded-[28px] border border-slate-200 bg-white p-7 shadow-sm">
       <div className="max-w-2xl">
         <p className="text-xs uppercase text-indigo-600" style={{ fontWeight: 800, letterSpacing: '0.08em' }}>{getWelcomeCopy(userName)}</p>
-        <h2 className="mt-3 text-3xl text-slate-950" style={{ fontWeight: 800, letterSpacing: '-0.03em' }}>
-          Empieza ordenando tu primera iniciativa
-        </h2>
-        <p className="mt-3 text-sm leading-6 text-slate-600">
-          Describe una idea, problema u oportunidad. Starteria te ayudará a convertirla en un borrador claro desde Step 0.
-        </p>
-        <p className="mt-2 text-xs text-slate-500">
-          Tu iniciativa empieza como borrador privado. Podrás editarla antes de compartirla.
-        </p>
+        {canCreate ? (
+          <>
+            <h2 className="mt-3 text-3xl text-slate-950" style={{ fontWeight: 800, letterSpacing: '-0.03em' }}>
+              Empieza ordenando tu primera iniciativa
+            </h2>
+            <p className="mt-3 text-sm leading-6 text-slate-600">
+              Describe una idea, problema u oportunidad. Starteria te ayudará a convertirla en un borrador claro desde Step 0.
+            </p>
+            <p className="mt-2 text-xs text-slate-500">
+              Tu iniciativa empieza como borrador privado. Podrás editarla antes de compartirla.
+            </p>
+          </>
+        ) : (
+          <>
+            <h2 className="mt-3 text-3xl text-slate-950" style={{ fontWeight: 800, letterSpacing: '-0.03em' }}>
+              Todavía no te sumaron a ninguna iniciativa
+            </h2>
+            <p className="mt-3 text-sm leading-6 text-slate-600">
+              Con tu perfil de lector ves las iniciativas a las que te invitan. Cuando alguien te sume a su equipo, aparecerán aquí.
+            </p>
+          </>
+        )}
       </div>
 
       <div className="mt-7 flex flex-wrap gap-3">
+        {canCreate && (
+        <>
         <button
           type="button"
           onClick={() => navigate(CREATE_INITIATIVE_PATH)}
@@ -714,6 +733,8 @@ function DashboardEmptyState({ firstChallengeId, userName }: { firstChallengeId?
         >
           <UploadCloud size={16} /> Importar iniciativa existente
         </button>
+        </>
+        )}
         {firstChallengeId ? (
           <button
             type="button"

@@ -8,17 +8,11 @@ import { WorkspaceSwitcher } from './WorkspaceSwitcher';
 import { useApp } from '../context/AppContext';
 import { isDemoDataEnabled } from '../featureFlags';
 import { can } from '../authz/permissions';
+import { ROLE_LABELS, userRoleLabel } from './roleLabels';
 import { AutofillHydrator } from '../components/autofill/AutofillHydrator';
 import * as portfolioService from '../services/portfolioService';
 import type { InitiativeMeta } from '../services/portfolioService';
 
-const ROLE_LABELS: Record<string, string> = {
-  owner: 'Participante',
-  mentor: 'Mentor',
-  admin: 'Administrador',
-  sponsor: 'Sponsor',
-  portfolio_lead: 'Portfolio Lead',
-};
 
 
 export function AppLayout() {
@@ -340,7 +334,7 @@ const links = [
           </div>
           <div className="flex-1 text-left min-w-0">
             <p className="text-sm text-slate-800 truncate" style={{ fontWeight: 500 }}>{user?.name}</p>
-            <p className="text-xs text-slate-400">{ROLE_LABELS[user?.role ?? 'owner']}</p>
+            <p className="text-xs text-slate-400">{userRoleLabel(user)}</p>
           </div>
         </button>
         <button onClick={logout} className="w-full flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors">

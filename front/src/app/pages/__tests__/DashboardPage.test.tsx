@@ -13,6 +13,7 @@ const navigate = vi.fn();
 vi.mock('react-router', () => ({ useNavigate: () => navigate }));
 
 let role = 'portfolio_lead';
+let platformRole: string | undefined;
 let projects: unknown[] = [];
 vi.mock('../../context/AppContext', async (importOriginal) => ({
   isSameTeamMember: (await importOriginal<typeof import('../../context/AppContext')>()).isSameTeamMember,
@@ -20,7 +21,7 @@ vi.mock('../../context/AppContext', async (importOriginal) => ({
     projects,
     projectsLoading: false,
     setCurrentProject: vi.fn(),
-    user: { id: 'u1', email: 'lead@test', role },
+    user: { id: 'u1', email: 'lead@test', role, platformRole },
     getProjectMember: () => null,
     acceptSponsorInvitation: vi.fn(),
   }),
@@ -126,5 +127,31 @@ describe('DashboardPage — sponsor', () => {
     projects = [{ ...decidedInitiative({ status: 'en_step_1', currentStep: 'Step 1' }), team: [{ id: 't1', userId: 'u1', email: '', role: 'Sponsor', status: 'Activo' }] }];
     render(<DashboardPage />);
     expect(screen.getAllByText('[E2E-PROD] Iniciativa').length).toBeGreaterThan(0);
+  });
+});
+
+// El rol de plataforma `viewer` entra como `owner`, pero no se le ofrece crear ni importar.
+// El backend hoy sí se lo permite (POST /projects 201): eso es decisión de producto.
+describe('DashboardPage — rol de plataforma viewer', () => {
+  beforeEach(() => {
+    role = 'owner';
+    projects = [];
+  });
+
+  it('el viewer no ve "Crear iniciativa" ni "Crear mi primera iniciativa" ni importar', () => {
+    platformRole = 'viewer';
+    render(<DashboardPage />);
+    expect(screen.queryByRole('button', { name: /Crear iniciativa/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Crear mi primera iniciativa/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Importar iniciativa existente/ })).not.toBeInTheDocument();
+    expect(screen.getByText('Todavía no te sumaron a ninguna iniciativa')).toBeInTheDocument();
+    platformRole = undefined;
+  });
+
+  it('el participante sigue viendo cómo crear su primera iniciativa', () => {
+    platformRole = 'participante';
+    render(<DashboardPage />);
+    expect(screen.getByRole('button', { name: /Crear mi primera iniciativa/ })).toBeInTheDocument();
+    platformRole = undefined;
   });
 });

@@ -27,6 +27,8 @@ import {
   Video,
 } from 'lucide-react';
 import { enrichProject, type Project, useApp } from '../context/AppContext';
+import { getProjectAccess } from '../authz/projectAccess';
+import { ReadOnlyNotice } from '../components/ReadOnlyNotice';
 import { StatusChip } from '../components/StatusChip';
 import { AutosaveIndicator, useAutosave } from '../components/AutosaveIndicator';
 import { ApprovalGateBanner } from '../components/autofill/ApprovalGateBanner';
@@ -495,6 +497,8 @@ export function Step4Page() {
   const [projectFetching, setProjectFetching] = useState(false);
   const [projectFetchError, setProjectFetchError] = useState(false);
   const project = contextProject ?? fetchedProject;
+  // Viewer, Sponsor o Portfolio Lead que revisa: ven el Step, no lo confirman (el backend responde 403).
+  const { canEdit, readOnlyReason } = getProjectAccess(user, project);
 
   const [activeModule, setActiveModule] = useState<ModuleId>('overview');
   const [audience, setAudience] = useState<Audiencia>('Sponsor');
@@ -1377,6 +1381,8 @@ ${meetingOwner} / ${meetingRole}
 
           {mobileTabs}
 
+          <ReadOnlyNotice reason={readOnlyReason} className="mb-5" />
+
           <div className="mb-5">
             <LeaderFeedbackStatusCard project={project} updateProject={updateProject} variant="step4" compact stronger />
           </div>
@@ -1398,6 +1404,7 @@ ${meetingOwner} / ${meetingRole}
 
           {adaptiveCore && (
             <AdaptiveCheckpointWorkspace
+              readOnly={!canEdit}
               core={adaptiveCore}
               step={4}
               checkpoint={adaptiveActiveCheckpoint}
@@ -1554,6 +1561,8 @@ ${meetingOwner} / ${meetingRole}
             </div>
           </div>
 
+          {/* Sólo lectura: los módulos se ven pero sus controles quedan deshabilitados. */}
+          <fieldset disabled={!canEdit} className="m-0 min-w-0 border-0 p-0">
           {activeModule === 'overview' ? (
             <div className="space-y-5">
               <div className="border border-slate-200 rounded-2xl p-5 bg-white">
@@ -3254,6 +3263,7 @@ ${meetingOwner} / ${meetingRole}
               ) : null}
             </div>
           ) : null}
+          </fieldset>
         </div>
       </div>
     </div>

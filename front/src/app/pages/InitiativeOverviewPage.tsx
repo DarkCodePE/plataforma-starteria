@@ -13,6 +13,10 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router';
 import { getById } from '../services/projectService';
+import { enrichProject, useOptionalApp } from '../context/AppContext';
+import { getProjectAccess } from '../authz/projectAccess';
+import { ReadOnlyNotice } from '../components/ReadOnlyNotice';
+import { depthLevelLabel, outputLabel, routeTypeLabel } from '../../features/adaptive-core/domain/adaptiveLabels';
 import { trackInitialReviewEvent } from '../../features/initiative-review/services/initialReviewTelemetry';
 import { getActiveStepConfiguration } from '../../features/adaptive-core/domain/adaptiveCore';
 import type { AdaptiveInitiativeCore } from '../../features/adaptive-core/domain/types';
@@ -34,9 +38,18 @@ const CHALLENGE_TYPE_LABEL: Record<string, string> = {
 
 type AdaptiveCoreLoadState = 'loading' | 'loaded' | 'error';
 
+const CHECKPOINT_STATUS_LABEL: Record<string, string> = {
+  locked: 'Bloqueado',
+  ready: 'Disponible',
+  in_progress: 'En curso',
+  completed: 'Completado',
+  blocked: 'Detenido',
+};
+
 export function InitiativeOverviewPage() {
   const { projectId } = useParams();
   const navigate = useNavigate();
+  const app = useOptionalApp();
   const [project, setProject] = useState<any | null>(null);
   const [serverAdaptiveCore, setServerAdaptiveCore] = useState<AdaptiveInitiativeCore | null>(null);
   const [adaptiveCoreStatus, setAdaptiveCoreStatus] = useState<AdaptiveCoreLoadState>('loading');
@@ -122,6 +135,10 @@ export function InitiativeOverviewPage() {
   const readyForDecision = progressSignal?.health === 'ready_for_decision';
   const started = currentStep > 0 || readyForDecision;
   const statusLabel = readyForDecision ? 'Lista para decisión' : started ? `En curso · Step ${currentStep}` : 'Draft';
+  // Sin sesión en contexto no hay con qué decidir: se pinta como antes y el backend autoriza.
+  const { canEdit, readOnlyReason } = app
+    ? getProjectAccess(app.user, enrichProject(project, app.user))
+    : { canEdit: true, readOnlyReason: null };
   const stepState = (n: number) => (n < currentStep || readyForDecision ? 'done' : n === currentStep ? 'active' : 'locked');
 
   return (
@@ -136,7 +153,8 @@ export function InitiativeOverviewPage() {
             Estado: {statusLabel}
           </span>
         </p>
-        {!started && (
+        <ReadOnlyNotice reason={readOnlyReason} className="mt-4" />
+        {!started && canEdit && (
           <p className="mt-3 max-w-prose text-sm text-slate-500">
             Starteria ya revisó tu propuesta y preparó una ruta inicial. El siguiente paso es completar el
             Step 0 para aterrizar contexto, alcance, actores y condiciones reales.
@@ -173,11 +191,11 @@ export function InitiativeOverviewPage() {
         </p>
       </section>
 
-      <section aria-label="Configuracion adaptativa" className="mt-6 rounded-lg border border-slate-200 bg-white p-5">
-        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Configuracion adaptativa</p>
+      <section aria-label="Configuración adaptativa" className="mt-6 rounded-lg border border-slate-200 bg-white p-5">
+        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Configuración adaptativa</p>
         {adaptiveCoreStatus === 'loading' && (
           <div role="status" className="mt-3 rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-600">
-            Cargando estado adaptativo persistido...
+            Cargando la ruta de tu iniciativa...
           </div>
         )}
         {adaptiveCoreStatus === 'error' && (
@@ -202,15 +220,15 @@ export function InitiativeOverviewPage() {
             <div className="mt-4 grid gap-3 md:grid-cols-3">
               <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
                 <p className="text-xs font-semibold text-slate-500">Ruta</p>
-                <p className="mt-1 text-sm font-medium text-slate-900">{adaptiveCore.masterContext.routeType.replaceAll('_', ' ')}</p>
+                <p className="mt-1 text-sm font-medium text-slate-900">{routeTypeLabel(adaptiveCore.masterContext.routeType)}</p>
               </div>
               <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
                 <p className="text-xs font-semibold text-slate-500">Profundidad</p>
-                <p className="mt-1 text-sm font-medium text-slate-900">{adaptiveCore.masterContext.depthLevel}</p>
+                <p className="mt-1 text-sm font-medium text-slate-900">{depthLevelLabel(adaptiveCore.masterContext.depthLevel)}</p>
               </div>
               <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
-                <p className="text-xs font-semibold text-slate-500">Output esperado</p>
-                <p className="mt-1 text-sm font-medium text-slate-900">{activeConfiguration.expectedOutput}</p>
+                <p className="text-xs font-semibold text-slate-500">Resultado esperado</p>
+                <p className="mt-1 text-sm font-medium text-slate-900">{outputLabel(activeConfiguration.expectedOutput)}</p>
               </div>
             </div>
             <ol className="mt-4 grid gap-2">
@@ -218,16 +236,16 @@ export function InitiativeOverviewPage() {
                 <li key={checkpoint.id} className="rounded-lg border border-slate-200 bg-slate-50 p-3">
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <p className="text-sm font-semibold text-slate-900">{checkpoint.code} - {checkpoint.title}</p>
-                    <span className="rounded-full bg-white px-2 py-0.5 text-xs font-semibold text-slate-600">{checkpoint.status}</span>
+                    <span className="rounded-full bg-white px-2 py-0.5 text-xs font-semibold text-slate-600">{CHECKPOINT_STATUS_LABEL[checkpoint.status] ?? checkpoint.status}</span>
                   </div>
                   <p className="mt-1 text-sm text-slate-600">{checkpoint.purpose}</p>
                 </li>
               ))}
             </ol>
             <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-3">
-              <p className="text-xs font-semibold uppercase tracking-wide text-amber-700">Senal ejecutiva inicial</p>
+              <p className="text-xs font-semibold uppercase tracking-wide text-amber-700">Señal ejecutiva inicial</p>
               <p className="mt-2 text-sm text-amber-900">
-                {progressSignal.checkpointCode}: {progressSignal.checkpointTitle}. Siguiente accion: {progressSignal.nextAction}
+                {progressSignal.checkpointCode}: {progressSignal.checkpointTitle}. Siguiente acción: {progressSignal.nextAction}
               </p>
             </div>
           </>
@@ -296,7 +314,7 @@ export function InitiativeOverviewPage() {
             onClick={() => navigate(`/projects/${projectId}/step/${currentStep}`)}
             className="rounded-lg bg-emerald-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-emerald-700"
           >
-            {readyForDecision ? `Ver Step ${currentStep}` : `Continuar en Step ${currentStep}`}
+            {readyForDecision || !canEdit ? `Ver Step ${currentStep}` : `Continuar en Step ${currentStep}`}
           </button>
         ) : (
         <button
@@ -311,7 +329,7 @@ export function InitiativeOverviewPage() {
           }}
           className="rounded-lg bg-emerald-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-emerald-700"
         >
-          Revisar mi misión y empezar
+          {canEdit ? 'Revisar mi misión y empezar' : 'Ver la misión'}
         </button>
         )}
       </div>

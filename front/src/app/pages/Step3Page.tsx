@@ -8,6 +8,8 @@ import {
   TrendingUp, Users, MapPin, Zap, ChevronDown, ChevronUp,
 } from 'lucide-react';
 import { enrichProject, type Project, useApp } from '../context/AppContext';
+import { getProjectAccess } from '../authz/projectAccess';
+import { ReadOnlyNotice } from '../components/ReadOnlyNotice';
 import { StatusChip } from '../components/StatusChip';
 import { FeedbackIAPanel } from '../components/FeedbackIAPanel';
 import { AutosaveIndicator, useAutosave } from '../components/AutosaveIndicator';
@@ -361,6 +363,8 @@ export function Step3Page() {
   const [projectFetching, setProjectFetching] = useState(false);
   const [projectFetchError, setProjectFetchError] = useState(false);
   const project = contextProject ?? fetchedProject;
+  // Viewer, Sponsor o Portfolio Lead que revisa: ven el Step, no lo confirman (el backend responde 403).
+  const { canEdit, readOnlyReason } = getProjectAccess(user, project);
 
   const { data: step2Raw } = useStepData<any>(projectId ?? '', 2);
   const testcard = useMemo(() => ({
@@ -842,7 +846,9 @@ export function Step3Page() {
     <main className="min-h-full overflow-y-auto bg-slate-50 p-4 md:p-8">
       <div className="mx-auto max-w-6xl">
         <button type="button" onClick={() => navigate(`/projects/${projectId}`)} className="mb-5 text-sm text-slate-500 hover:text-slate-800">Volver al proyecto</button>
+        <ReadOnlyNotice reason={readOnlyReason} className="mb-5" />
         <AdaptiveCheckpointWorkspace
+          readOnly={!canEdit}
           core={adaptiveCore!}
           step={3}
           checkpoint={adaptiveStep3Checkpoint}

@@ -199,7 +199,7 @@ describe('InitiativeOverviewPage (IR-F2)', () => {
 
     expect(await screen.findByText('Estado adaptativo no disponible')).toBeInTheDocument();
     expect(screen.queryByText(/CP-0\.1/)).not.toBeInTheDocument();
-    expect(screen.queryByText(/Siguiente accion:/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Siguiente acción:/i)).not.toBeInTheDocument();
   });
 
   it('permite reintentar y vuelve a usar el core server como autoridad', async () => {

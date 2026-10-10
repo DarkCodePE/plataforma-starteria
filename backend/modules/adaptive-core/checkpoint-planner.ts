@@ -53,26 +53,26 @@ export const CHECKPOINT_VARIABLES: Record<string, CheckpointVariableSpec[]> = {
   'CP-0.1': [
     {
       variable: 'initiativeTitle',
-      prompt: 'Como se llama esta iniciativa?',
-      reason: 'Un nombre simple para poder referirse a ella; se puede ajustar despues.',
+      prompt: '¿Cómo se llama esta iniciativa?',
+      reason: 'Un nombre simple para poder referirse a ella; se puede ajustar después.',
       priority: 'should',
     },
     {
       variable: 'initiativeFrame',
-      prompt: 'Como quieres enmarcarla hoy: corregir una friccion, capturar una oportunidad, explorar una apuesta o mejorar un proceso?',
-      reason: 'El encuadre orienta que tipo de hipotesis tiene sentido construir.',
+      prompt: '¿Cómo quieres enmarcarla hoy: corregir una fricción, capturar una oportunidad, explorar una apuesta o mejorar un proceso?',
+      reason: 'El encuadre orienta qué tipo de hipótesis tiene sentido construir.',
       answerType: 'single_choice',
       priority: 'should',
     },
     {
       variable: 'objective',
-      prompt: 'Que resultado o cambio debe quedar entendible para un lider?',
-      reason: 'Step 0 no puede cerrar sin un proposito que un tercero entienda.',
+      prompt: '¿Qué resultado o cambio debe quedar entendible para un líder?',
+      reason: 'Step 0 no puede cerrar sin un propósito que un tercero entienda.',
       allowsUnknown: false,
     },
     {
       variable: 'challengeType',
-      prompt: 'Que tipo de reto describe mejor la iniciativa hoy?',
+      prompt: '¿Qué tipo de reto describe mejor la iniciativa hoy?',
       reason: 'El tipo de reto ajusta profundidad y preguntas posteriores.',
       answerType: 'single_choice',
       // `should`: se pregunta, pero el unico hard gate de CP-0.1 sigue siendo `objective`.
@@ -81,15 +81,15 @@ export const CHECKPOINT_VARIABLES: Record<string, CheckpointVariableSpec[]> = {
     },
     {
       variable: 'primaryObjective',
-      prompt: 'Sobre {{objective}}, que objetivo de negocio ayudaria a moverlo?',
+      prompt: 'Sobre {{objective}}, ¿qué objetivo de negocio ayudaría a moverlo?',
       reason: 'Sin objetivo de negocio el brief no conecta con una prioridad.',
       answerType: 'single_choice',
       priority: 'should',
     },
     {
       variable: 'challengeContribution.subproblem',
-      prompt: 'Que parte del reto padre aborda esta iniciativa?',
-      reason: 'La iniciativa vinculada debe reportar contribucion al reto.',
+      prompt: '¿Qué parte del reto padre aborda esta iniciativa?',
+      reason: 'La iniciativa vinculada debe reportar su contribución al reto.',
       priority: 'should',
       requiresChallenge: true,
       source: 'challenge_context',
@@ -98,31 +98,31 @@ export const CHECKPOINT_VARIABLES: Record<string, CheckpointVariableSpec[]> = {
   'CP-0.2': [
     {
       variable: 'scope',
-      prompt: 'Dijiste que buscas {{objective}}. Cual es el alcance inicial de eso y que queda fuera por ahora?',
+      prompt: 'Dijiste que buscas {{objective}}. ¿Cuál es el alcance inicial de eso y qué queda fuera por ahora?',
       reason: 'El cierre de Step 0 requiere un alcance inicial delimitado.',
     },
     {
       variable: 'owner_and_actor_required',
-      prompt: 'Quien es el owner operativo y que actor debe confirmar condiciones?',
-      reason: 'Sin owner hay hard gate de Step 0.',
+      prompt: '¿Quién es el owner operativo y qué actor debe confirmar condiciones?',
+      reason: 'Sin owner, Step 0 no puede cerrarse.',
       answerType: 'owner',
       allowsUnknown: false,
     },
     {
       variable: 'outcome',
-      prompt: 'A quien impacta {{objective}} y como lo notaria esa persona?',
-      reason: 'El brief necesita a quien afecta, no solo que se quiere mover.',
+      prompt: '¿A quién impacta {{objective}} y cómo lo notaría esa persona?',
+      reason: 'El brief necesita a quién afecta, no solo qué se quiere mover.',
       priority: 'should',
     },
     {
       variable: 'whyNow',
-      prompt: 'Por que conviene moverlo ahora y no mas adelante?',
-      reason: 'La urgencia es lo que un lider usa para priorizar.',
+      prompt: '¿Por qué conviene moverlo ahora y no más adelante?',
+      reason: 'La urgencia es lo que un líder usa para priorizar.',
       priority: 'should',
     },
     {
       variable: 'company_constraints',
-      prompt: 'Que restriccion de empresa podria afectar evidencia, datos o aprobaciones?',
+      prompt: '¿Qué restricción de la empresa podría afectar evidencia, datos o aprobaciones?',
       reason: 'El contexto empresarial sugiere revisar restricciones antes de avanzar.',
       requiresCompanyContext: true,
       source: 'company_context',
@@ -132,20 +132,20 @@ export const CHECKPOINT_VARIABLES: Record<string, CheckpointVariableSpec[]> = {
   'CP-0.3': [
     {
       variable: 'priorityHypothesis',
-      prompt: 'Con {{scope}} en manos de {{owner_and_actor_required}}, cual es la hipotesis prioritaria que debe validarse?',
-      reason: 'Step 0 cierra con una hipotesis a validar; es lo que recibe Step 1.',
+      prompt: 'Con {{scope}} en manos de {{owner_and_actor_required}}, ¿cuál es la hipótesis prioritaria que debe validarse?',
+      reason: 'Step 0 cierra con una hipótesis a validar; es lo que recibe Step 1.',
       allowsUnknown: false,
     },
     {
       variable: 'availableEvidence',
-      prompt: 'Que senales o evidencia tienes hoy sobre esa hipotesis?',
+      prompt: '¿Qué señales o evidencia tienes hoy sobre esa hipótesis?',
       reason: 'Distinguir lo que ya se sabe de lo que hay que ir a buscar en Step 1.',
       priority: 'should',
     },
     {
       variable: 'decisionCriteria',
-      prompt: 'Que evidencia o criterio permitiria tomar la siguiente decision?',
-      reason: 'El criterio de decision se deriva de las respuestas previas y los faltantes.',
+      prompt: '¿Qué evidencia o criterio permitiría tomar la siguiente decisión?',
+      reason: 'El criterio de decisión se deriva de las respuestas previas y lo que falta.',
       source: 'previous_answer',
     },
   ],
@@ -228,6 +228,14 @@ export function resolveKnownValues(
   return known;
 }
 
+/** Cómo se lee en pantalla la procedencia de un dato ya conocido (la clave sigue en `prefilledFrom`). */
+const KNOWN_FROM_LABELS: Record<string, string> = {
+  checkpoint_previo: 'un checkpoint anterior',
+  contexto_empresa: 'el contexto de la empresa',
+  reto_padre: 'el reto padre',
+  revision_inicial: 'tu revisión inicial',
+};
+
 /** Sustituye {{variable}} por lo ya conocido; si no se sabe, deja un texto neutro. */
 function interpolate(prompt: string, known: Record<string, KnownValue>): string {
   return prompt.replace(/\{\{(.*?)\}\}/g, (_match, rawVariable: string) => {
@@ -288,9 +296,9 @@ export function planCheckpointQuestions(input: PlanCheckpointInput): Materialize
       clarifiesVariable: spec.variable,
       answerType: spec.answerType ?? 'free_text',
       reason: derivedFromWeakCompanyContext
-        ? 'La cobertura de contexto es baja; se presenta como hipotesis a confirmar, no como hard gate.'
+        ? 'El contexto de la empresa todavía es parcial: tómalo como una hipótesis a confirmar, no como un requisito.'
         : alreadyKnown
-          ? `Ya lo tenemos desde ${alreadyKnown.from.replace(/_/g, ' ')}. Confirma o ajusta.`
+          ? `Ya lo tenemos de ${KNOWN_FROM_LABELS[alreadyKnown.from] ?? alreadyKnown.from.replace(/_/g, ' ')}. Confirma o ajusta.`
           : spec.reason,
       // La procedencia la declara el spec (de donde NACE la pregunta). Solo cuando no la
       // declara y el valor viene de un checkpoint previo se marca como `previous_answer`.

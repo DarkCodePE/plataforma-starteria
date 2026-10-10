@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useEffect, useState, ReactNode } from 'react';
 import { authService, AuthUser } from '../services/auth.service';
 import { PERMISSIONS, type Permission } from '../authz/permissions';
+import { getProjectAccess, isSameTeamMember } from '../authz/projectAccess';
 import { initAuth, getAccessToken, parseApiError, AuthError } from '../services/api';
 import * as projectService from '../services/projectService';
 import { updateSponsorData } from '../services/portfolioService';
@@ -172,14 +173,9 @@ export interface TeamMember {
   initials: string;
 }
 
-/**
- * ¿Esta fila del equipo es la persona? El equipo que manda el backend trae userId y no email;
- * el que arma el front (borradores, invitaciones) trae email.
- */
-export function isSameTeamMember(member: Pick<TeamMember, 'userId' | 'email'>, person: { id?: string; email?: string }): boolean {
-  if (person.id && member.userId === person.id) return true;
-  return !!person.email && !!member.email && member.email.toLowerCase() === person.email.toLowerCase();
-}
+// Vive en authz/projectAccess junto con la regla de edición por rol en el equipo; se reexporta
+// para no mover a quienes ya lo importaban desde aquí.
+export { isSameTeamMember };
 
 export interface Evidence {
   id: string;
@@ -300,6 +296,12 @@ export interface User {
    * zona entra es justo el bug que ADR-029 arregla.
    */
   role: Role;
+  /**
+   * Rol de plataforma tal como lo manda el backend (`participante`, `colaborador`, `viewer`...).
+   * `role` colapsa los tres primeros en `owner`; esto sólo sirve para mostrar la etiqueta
+   * correcta y para no ofrecer lo que ese rol no puede hacer. No decide acceso.
+   */
+  platformRole?: string;
   /** ADR-029: permisos derivados en el servidor. La base de toda decisión de acceso. */
   permissions: Permission[];
   initials: string;
@@ -332,6 +334,8 @@ interface AppContextType {
   updateStep0: (projectId: string, data: Partial<Step0Data>, status: Step0Status) => void;
   getProjectMember: (projectId: string, email?: string) => TeamMember | null;
   canAccessProject: (projectId: string, accessLevel?: 'overview' | 'step' | 'evidence') => boolean;
+  /** ¿Puede escribir en la iniciativa? admin/mentor, u Owner/Editor activo del equipo. */
+  canEditProject: (projectId: string) => boolean;
   markSponsorInvitationSent: (projectId: string, sponsorEmail: string) => void;
   acceptSponsorInvitation: (projectId: string) => void;
   /** Acepta la invitación propia al equipo (PENDING → ACTIVE en el backend) y la marca Activo. */
@@ -555,6 +559,7 @@ export function mapBackendUser(raw: AuthUser): User {
     name: raw.name,
     email: raw.email,
     role,
+    platformRole: raw.role,
     // ADR-029: se filtran a los permisos conocidos por este cliente. Un permiso que
     // el backend conozca y el front no simplemente no se usa — falla cerrado.
     permissions: ((raw.permissions ?? []) as Permission[]).filter((p) =>
@@ -720,6 +725,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
     return member.status === 'Activo';
   };
+
+  const canEditProject = (projectId: string) =>
+    getProjectAccess(user, projects.find(item => item.id === projectId) ?? null).canEdit;
 
   const updateStep0 = (projectId: string, data: Partial<Step0Data>, status: Step0Status) => {
     updateProject(projectId, { step0Data: data, step0Status: status });
@@ -954,7 +962,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <AppContext.Provider value={{ user, isAuthenticated, authLoading, projects, projectsLoading, currentProject, login, register, googleSignIn, logout, setCurrentProject, updateProject, createProject, createProjectFromPublicDraft, hydrateProjectStep0FromPrefill, setUserRole, updateStep0, getProjectMember, canAccessProject, markSponsorInvitationSent, acceptSponsorInvitation, acceptTeamInvitation, updateSponsorTouchpoint, addSponsorComment }}>
+    <AppContext.Provider value={{ user, isAuthenticated, authLoading, projects, projectsLoading, currentProject, login, register, googleSignIn, logout, setCurrentProject, updateProject, createProject, createProjectFromPublicDraft, hydrateProjectStep0FromPrefill, setUserRole, updateStep0, getProjectMember, canAccessProject, canEditProject, markSponsorInvitationSent, acceptSponsorInvitation, acceptTeamInvitation, updateSponsorTouchpoint, addSponsorComment }}>
       {children}
     </AppContext.Provider>
   );
@@ -964,4 +972,9 @@ export function useApp() {
   const ctx = useContext(AppContext);
   if (!ctx) throw new Error('useApp must be used within AppProvider');
   return ctx;
+}
+
+/** Como `useApp`, pero sin provider devuelve null: páginas que sólo leen la sesión para pintar. */
+export function useOptionalApp() {
+  return useContext(AppContext);
 }
