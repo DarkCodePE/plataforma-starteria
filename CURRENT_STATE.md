@@ -300,9 +300,17 @@ semantics. KAN-116 only adds chronological `turn_index` ordering at the
 synthesis input assembly boundary for persisted user messages and corrections.
 ### KAN-117 / KAN-119 - Critical Handoff (114D), post-CI PR #161
 
-KAN-119 Critical Handoff v0.1 is `IMPLEMENTED_VERIFIED_ON_PR` on [PR #161](https://github.com/DarkCodePE/plataforma-starteria/pull/161) at
-HEAD `b16dc03e04b8f3c419bfa5df565914b6613b7112`; it is open and not merged. KAN-114
-remains the sole reasoning source. The implementation stores a dedicated durable
+KAN-119 Critical Handoff v0.1 is `IMPLEMENTED_VERIFIED`; Critical Handoff 114D is
+`INTEGRATED_IN_GOVERNED_BASELINE`. [PR #161](https://github.com/DarkCodePE/plataforma-starteria/pull/161)
+merged into `main` at merge SHA `82ab8710b6e5a8e35514c70529ef8b5621e4c4eb`.
+The final feature HEAD was `f1bf4223b7aa14e9abcd91978ea9ecb0070e987a`. Pre-merge
+CI #220 ([run 37995220187](https://github.com/DarkCodePE/plataforma-starteria/actions/runs/37995220187))
+completed successfully on run HEAD `b16dc03e04b8f3c419bfa5df565914b6613b7112`,
+distinct from the final feature HEAD. Post-merge CD #96
+([run 38000189145](https://github.com/DarkCodePE/plataforma-starteria/actions/runs/38000189145))
+completed successfully on the merge SHA. This confirms the governed main workflow
+completed; it does not certify production runtime, live provider behavior, or all
+Portfolio Entry. KAN-114 remains the sole reasoning source. The implementation stores a dedicated durable
 Portfolio Entry Critical Handoff artifact bound to its source `contextRevision`.
 Currentness is invalidated when the reasoning context advances, and a
 pre-confirmation correction returns through the existing clarification/reasoning

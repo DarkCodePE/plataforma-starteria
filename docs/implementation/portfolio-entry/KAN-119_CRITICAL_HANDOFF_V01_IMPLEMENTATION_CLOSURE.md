@@ -1,10 +1,11 @@
 # KAN-119 Critical Handoff v0.1 - Implementation Closure
 
-- **Closure status:** `IMPLEMENTED_VERIFIED_PENDING_MERGE`
+- **Closure status:** `IMPLEMENTED_VERIFIED`
 - **HU:** KAN-117 semantic acceptance / KAN-119 implementation and closure
-- **PR:** [#161](https://github.com/DarkCodePE/plataforma-starteria/pull/161), open and not merged
-- **Verified HEAD:** `b16dc03e04b8f3c419bfa5df565914b6613b7112`
-- **CI evidence:** completed [GitHub CI run #220](https://github.com/DarkCodePE/plataforma-starteria/actions/runs/37995220187)
+- **PR:** [#161](https://github.com/DarkCodePE/plataforma-starteria/pull/161), merged into `main`
+- **Merge SHA:** `82ab8710b6e5a8e35514c70529ef8b5621e4c4eb`
+- **Final feature HEAD:** `f1bf4223b7aa14e9abcd91978ea9ecb0070e987a`
+- **Pre-merge CI evidence:** successful [GitHub CI run #220](https://github.com/DarkCodePE/plataforma-starteria/actions/runs/37995220187), run HEAD `b16dc03e04b8f3c419bfa5df565914b6613b7112`
 
 ## 1. Authority
 
@@ -12,7 +13,7 @@
 - The accepted/frozen Critical Reasoning Experience Contract v0.1 is a scoped supplement subordinate to Core v0.2 and accepted ADRs. It does not authorize or define changes to Core, Steps, or Portfolio Setup.
 - `docs/ai-harness/portfolio-entry/KAN-114_CRITICAL_SITUATION_SYNTHESIS_SEMANTIC_ACCEPTANCE_v0.1.md` records the accepted KAN-114 reasoning gate as `PASS_WITH_NON_BLOCKING_GAPS`.
 - KAN-114 remains the sole reasoning source. KAN-117/KAN-119 authority is limited to the Critical Handoff projection, persistence, currentness, review, confirmation, and regression closure described here.
-- PR #161 is verified on its feature branch. This report does not claim merge or integration into `main`.
+- PR #161 merged at `82ab8710b6e5a8e35514c70529ef8b5621e4c4eb`; integration into the governed `main` baseline is confirmed.
 
 ## 2. Scope
 
@@ -27,7 +28,7 @@ KAN-119 closes the six bounded slices for Critical Handoff 114D:
 | 119E confirmation | Explicit representativeness confirmation bound to the claimed owner |
 | 119F regression/E2E/closure | Separate current 114D and legacy compatibility coverage; CI evidence recorded below |
 
-Classification: `IMPLEMENTED_VERIFIED` on PR #161, pending merge. The result is scoped to Critical Handoff 114D v0.1 and does not certify the whole Portfolio Entry experience.
+Classification: `IMPLEMENTED_VERIFIED` and `INTEGRATED_IN_GOVERNED_BASELINE`. The result is scoped to Critical Handoff 114D v0.1 and does not certify the whole Portfolio Entry experience.
 
 ## 3. Implemented architecture
 
@@ -69,7 +70,7 @@ The Critical Handoff DTO is an allowlisted presentation projection. It omits raw
 
 ## 11. CI and E2E evidence
 
-Evidence is from the completed [GitHub CI run #220](https://github.com/DarkCodePE/plataforma-starteria/actions/runs/37995220187) for PR #161 at HEAD `b16dc03e04b8f3c419bfa5df565914b6613b7112`; local evidence is not substituted.
+Evidence is from the completed [GitHub CI run #220](https://github.com/DarkCodePE/plataforma-starteria/actions/runs/37995220187) for PR #161 at run HEAD `b16dc03e04b8f3c419bfa5df565914b6613b7112`. The final feature HEAD was `f1bf4223b7aa14e9abcd91978ea9ecb0070e987a`; these are recorded separately because they differ. Local evidence is not substituted.
 
 | Check | Result |
 |---|---:|
@@ -83,10 +84,21 @@ Evidence is from the completed [GitHub CI run #220](https://github.com/DarkCodeP
 | Lint/build | PASS |
 | Python | PASS |
 
+## Post-merge integration evidence
+
+PR #161 merged at:
+`82ab8710b6e5a8e35514c70529ef8b5621e4c4eb`
+
+Pre-merge CI #220: **SUCCESS** ([run 37995220187](https://github.com/DarkCodePE/plataforma-starteria/actions/runs/37995220187)).
+
+Post-merge CD #96: **SUCCESS** ([run 38000189145](https://github.com/DarkCodePE/plataforma-starteria/actions/runs/38000189145)).
+
+CD success confirms the governed main workflow completed successfully. It does not by itself certify production runtime, live provider behavior, or all Portfolio Entry.
+
 ## 12. Known non-blocking limitations
 
 - Post-confirmation reopen/correction policy is not generalized as a future reopen feature; the confirmed artifact remains immutable under current v0.1 semantics. This records the current boundary and does not add a product requirement.
-- PR #161 has not merged. No deployment or production certification is claimed.
+- PR #161 merged at `82ab8710b6e5a8e35514c70529ef8b5621e4c4eb`; main integration is confirmed. No production runtime certification is claimed.
 - The completed CI evidence verifies this bounded slice only.
 
 ## 13. Explicit exclusions
@@ -112,8 +124,9 @@ This closure does not implement Starteria Path 114E, Portfolio Setup continuity 
 | `CI_COMPLETE` | PASS |
 
 ```text
-CLOSURE_RESULT: IMPLEMENTED_VERIFIED_PENDING_MERGE
-INTEGRATION_STATUS: PENDING_MERGE
+CLOSURE_RESULT: IMPLEMENTED_VERIFIED
+INTEGRATION_STATUS: INTEGRATED_IN_GOVERNED_BASELINE
+MERGE_SHA: 82ab8710b6e5a8e35514c70529ef8b5621e4c4eb
 ```
 
-No merge SHA, Jira resolution, or main integration is recorded.
+Jira resolution was not modified by this documentation closure.
