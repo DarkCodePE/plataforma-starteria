@@ -11,6 +11,7 @@ import {
   adaptChallenge,
   adaptInitiative,
   adaptTeamMembers,
+  adaptInitiativeTeam,
   toBackendStrategicFront,
   toBackendChallenge,
   toBackendInitiativeMeta,
@@ -293,5 +294,29 @@ describe('adaptTeamMembers (meta.teamMembers derivado, ADR-023/024)', () => {
   it('no es array: lista vacía', () => {
     expect(adaptTeamMembers(undefined)).toEqual([]);
     expect(adaptTeamMembers({})).toEqual([]);
+  });
+});
+
+describe('adaptInitiativeTeam', () => {
+  it('aplana el roster de GET /initiatives/:projectId/team', () => {
+    const team = adaptInitiativeTeam({
+      owner: 'u1',
+      label: 'Equipo de 2 (1 heredado)',
+      members: [
+        { userId: 'u1', role: 'OWNER', status: 'ACTIVE', inheritedFromChallenge: false, user: { name: 'Ana', email: 'ana@acme.io' } },
+        { userId: 'u2', role: 'RARO', status: 'PENDING', inheritedFromChallenge: true, user: { name: null, email: 'beto@acme.io' } },
+        { role: 'EDITOR' },
+      ],
+    });
+    expect(team.ownerUserId).toBe('u1');
+    expect(team.label).toBe('Equipo de 2 (1 heredado)');
+    expect(team.members).toEqual([
+      { userId: 'u1', name: 'Ana', email: 'ana@acme.io', role: 'OWNER', status: 'ACTIVE', inherited: false },
+      { userId: 'u2', name: 'beto@acme.io', email: 'beto@acme.io', role: 'VIEWER', status: 'PENDING', inherited: true },
+    ]);
+  });
+
+  it('basura: equipo vacío sin owner', () => {
+    expect(adaptInitiativeTeam(null)).toEqual({ members: [], ownerUserId: null, label: '' });
   });
 });

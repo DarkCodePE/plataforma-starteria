@@ -953,3 +953,12 @@ export function useApp() {
   if (!ctx) throw new Error('useApp must be used within AppProvider');
   return ctx;
 }
+
+/**
+ * Como `useApp`, pero devuelve `null` fuera del provider en vez de lanzar. Para piezas
+ * embebidas (p.ej. el panel de equipo del portafolio) que sólo leen permisos: sin sesión,
+ * `can()` da `false` y la pieza queda en sólo lectura (fallo cerrado, ADR-029).
+ */
+export function useOptionalApp() {
+  return useContext(AppContext);
+}

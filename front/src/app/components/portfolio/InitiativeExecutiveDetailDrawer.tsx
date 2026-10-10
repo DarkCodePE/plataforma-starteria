@@ -8,6 +8,7 @@ import {
   InfoCard,
   InitiativeStatusBadge,
 } from './InitiativeExecutiveComponents';
+import { InitiativeTeamPanel } from '../../../features/portfolio-lead/components/cards/InitiativeTeamPanel';
 
 type Props = {
   initiative: Initiative | null;
@@ -86,6 +87,10 @@ export function InitiativeExecutiveDetailDrawer({
               <InfoCard label="Última actividad" value={initiative.lastActivity} />
             </div>
           </section>
+
+          {/* El roster real (TeamMember) con gestión para quien tiene portfolio:write; la tarjeta
+              "Equipo" de arriba es el cache de nombres de meta y puede ir atrasada. */}
+          <InitiativeTeamPanel projectId={initiative.projectId} challengeId={initiative.challengeId} initiativeName={initiative.name} />
 
           <section className="rounded-3xl border border-slate-200 bg-white p-5">
             <p className="text-xs text-slate-500" style={{ fontWeight: 700 }}>CONTEXTO DE PORTAFOLIO</p>

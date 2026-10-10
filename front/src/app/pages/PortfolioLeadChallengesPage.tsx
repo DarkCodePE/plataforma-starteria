@@ -972,6 +972,7 @@ function ChallengeAccordionDetail({
           challenge={challenge}
           front={front}
           recommendation={recommendation}
+          initiatives={initiatives}
           onCreateInitiative={onCreateInitiative}
           onEdit={onEdit}
         />
@@ -1059,7 +1060,10 @@ function ChallengeInitiativesPreview({
                       <p className="font-semibold text-slate-950">{initiative.name}</p>
                       <p className="mt-1 text-xs text-slate-500">{initiative.signalSummary}</p>
                     </div>
-                    <div className="pr-3">{initiative.teamOwner}</div>
+                    <div className="pr-3">
+                      {initiative.teamOwner}
+                      {initiative.teamMembers.length > 0 ? <p className="mt-1 text-xs text-slate-500">Equipo de {initiative.teamMembers.length}</p> : null}
+                    </div>
                     <div className="pr-3">{initiative.currentStep}</div>
                     <div className="pr-3">
                       <div className="flex items-center gap-2">
@@ -1093,7 +1097,7 @@ function ChallengeInitiativesPreview({
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
                       <p className="font-semibold text-slate-950">{initiative.name}</p>
-                      <p className="mt-1 text-xs text-slate-500">Owner: {initiative.teamOwner}</p>
+                      <p className="mt-1 text-xs text-slate-500">Owner: {initiative.teamOwner}{initiative.teamMembers.length > 0 ? ` · Equipo de ${initiative.teamMembers.length}` : ''}</p>
                     </div>
                     <button type="button" onClick={() => onExploreInitiative(initiative.id)} className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700">Ver más</button>
                   </div>
@@ -1160,6 +1164,7 @@ function ActivationInvitationHandoffPanel({
   challenge,
   front,
   recommendation,
+  initiatives,
   onCreateInitiative,
   onEdit,
 }: {
@@ -1167,10 +1172,12 @@ function ActivationInvitationHandoffPanel({
   challenge: Challenge;
   front: StrategicFront | null;
   recommendation: ReturnType<typeof getChallengeActivationRecommendation> | null;
+  initiatives: ReturnType<typeof getInitiativesByChallengeId>;
   onCreateInitiative: () => void;
   onEdit: () => void;
 }) {
   const invitationCounts = summarizeInvitations(challenge.selectedPeople);
+  const initiativeTeam = summarizeInitiativeTeams(initiatives);
   const readinessStatus = activationStateStatus(card.activationState);
   const publicationStatus: DomainStatus = challenge.visibleToParticipants ? 'active' : 'draft';
 
@@ -1206,8 +1213,10 @@ function ActivationInvitationHandoffPanel({
         />
 
         <div className="space-y-4">
+          {/* Estas dos listas son la activación DEL RETO (selectedPeople / assignedSquad), no el equipo
+              de sus iniciativas: un reto con "0" acá puede tener iniciativas con equipo completo. */}
           <PeopleHandoffList
-            title="Personas invitadas"
+            title="Personas invitadas al reto"
             emptyLabel="No hay personas seleccionadas para invitacion."
             items={challenge.selectedPeople.map(person => ({
               id: person.id,
@@ -1216,10 +1225,15 @@ function ActivationInvitationHandoffPanel({
             }))}
           />
           <SquadHandoffList
-            title="Squad asignado"
-            emptyLabel="No hay squad asignado."
+            title="Squad asignado al reto"
+            emptyLabel="No hay squad asignado al reto."
             items={challenge.assignedSquad}
           />
+          {initiativeTeam.initiativesWithTeam > 0 ? (
+            <p className="text-sm text-text-secondary" data-testid="challenge-initiative-teams-summary">
+              Las iniciativas de este reto tienen su propio equipo: {initiativeTeam.people} persona{initiativeTeam.people === 1 ? '' : 's'} en {initiativeTeam.initiativesWithTeam} iniciativa{initiativeTeam.initiativesWithTeam === 1 ? '' : 's'}. Abre una iniciativa con "Ver más" para ver y gestionar su equipo.
+            </p>
+          ) : null}
         </div>
       </div>
 
@@ -1334,6 +1348,19 @@ function SquadHandoffList({
       )}
     </section>
   );
+}
+
+// Personas únicas en los equipos de las iniciativas del reto (cache meta.teamMembers). Sirve para que
+// el handoff no sugiera "sin equipo" cuando el reto no tiene squad propio pero sus iniciativas sí.
+function summarizeInitiativeTeams(initiatives: ReturnType<typeof getInitiativesByChallengeId>) {
+  const people = new Set<string>();
+  let initiativesWithTeam = 0;
+  initiatives.forEach(initiative => {
+    const members = initiative.teamMembers.map(member => member.trim()).filter(Boolean);
+    if (members.length > 0) initiativesWithTeam += 1;
+    members.forEach(member => people.add(member));
+  });
+  return { people: people.size, initiativesWithTeam };
 }
 
 function MiniMetric({ label, value }: { label: string; value: string }) {
