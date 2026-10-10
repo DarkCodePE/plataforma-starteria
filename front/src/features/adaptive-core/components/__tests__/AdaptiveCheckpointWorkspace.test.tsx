@@ -213,3 +213,47 @@ describe('AdaptiveCheckpointWorkspace', () => {
     expect(onConfirmCheckpoint).not.toHaveBeenCalled();
   });
 });
+
+// Producción, 2026-10-10: un Step ya completado se veía vacío ("Aún no hay checkpoint activo",
+// "0 preguntas" y "Este Step queda bloqueado…") en vez de mostrar lo que se confirmó.
+describe('AdaptiveCheckpointWorkspace — Step completado', () => {
+  const doneCore: AdaptiveInitiativeCore = {
+    ...core,
+    activeCheckpoint: null as any,
+    checkpointInstances: [
+      {
+        id: 'i2', step: 0, checkpointKey: 'CP-0.2', title: 'Aterrizar condiciones', status: 'completed', sequence: 2,
+        questions: [{ ...question, id: 'q-scope', prompt: '¿Cuál es el alcance?', clarifiesVariable: 'scope' }],
+        responses: { scope: 'Equipo comercial' },
+      },
+      {
+        id: 'i1', step: 0, checkpointKey: 'CP-0.1', title: 'Validar punto de partida', status: 'completed', sequence: 1,
+        questions: [question, { ...question, id: 'q-ev', prompt: '¿Qué evidencia hay?', clarifiesVariable: 'evidenceItems' }],
+        responses: { owner_and_actor_required: 'Owner comercial', evidenceItems: [{ summary: '8 de 10 casos con retrabajo' }, { summary: 'Métrica base' }] },
+      },
+      { id: 'i9', step: 1, checkpointKey: 'CP-1.1', title: 'Otro step', status: 'completed', sequence: 1, questions: [], responses: {} },
+    ],
+  };
+
+  it('muestra cada checkpoint confirmado con sus respuestas, en orden', () => {
+    render(<AdaptiveCheckpointWorkspace core={doneCore} step={0} checkpoint={null} questions={[]} outputConfirmed />);
+
+    expect(screen.getByRole('heading', { name: 'Step 0 completado' })).toBeInTheDocument();
+    expect(screen.getByText('Este Step está completo y su resultado quedó confirmado')).toBeInTheDocument();
+    const titles = screen.getAllByText(/^CP-0\.\d · /).map(node => node.textContent);
+    expect(titles).toEqual(['CP-0.1 · Validar punto de partida', 'CP-0.2 · Aterrizar condiciones']);
+    expect(screen.getByText('Owner comercial')).toBeInTheDocument();
+    expect(screen.getByText('8 de 10 casos con retrabajo · Métrica base')).toBeInTheDocument();
+    expect(screen.getByText('Equipo comercial')).toBeInTheDocument();
+    expect(screen.queryByText('CP-1.1 · Otro step')).not.toBeInTheDocument();
+    expect(screen.queryByText(/Aún no hay checkpoint activo/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/todavía no tiene preguntas/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/queda bloqueado/)).not.toBeInTheDocument();
+  });
+
+  it('un Step sin checkpoints confirmados sigue mostrándose bloqueado', () => {
+    render(<AdaptiveCheckpointWorkspace core={{ ...doneCore, checkpointInstances: [] }} step={2} checkpoint={null} questions={[]} />);
+    expect(screen.getByText(/queda bloqueado/)).toBeInTheDocument();
+    expect(screen.queryByText(/completado/)).not.toBeInTheDocument();
+  });
+});
