@@ -119,3 +119,12 @@ describe('DashboardPage — miembro reconocido por userId', () => {
     expect(screen.queryByText('[E2E-PROD] Iniciativa')).not.toBeInTheDocument();
   });
 });
+
+describe('DashboardPage — sponsor', () => {
+  it('ve la iniciativa que patrocina (fila propia marcada como Sponsor por enrichProject)', () => {
+    role = 'sponsor';
+    projects = [{ ...decidedInitiative({ status: 'en_step_1', currentStep: 'Step 1' }), team: [{ id: 't1', userId: 'u1', email: '', role: 'Sponsor', status: 'Activo' }] }];
+    render(<DashboardPage />);
+    expect(screen.getAllByText('[E2E-PROD] Iniciativa').length).toBeGreaterThan(0);
+  });
+});

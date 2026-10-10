@@ -61,6 +61,15 @@ export class UserController {
     }
   };
 
+  acceptInvitation = async (req: AuthenticatedRequest, res: Response<ApiResponse>, next: NextFunction) => {
+    try {
+      const member = await this.service.acceptInvitation(req.params.projectId, req.user!.id);
+      res.json({ success: true, data: member });
+    } catch (err) {
+      next(err);
+    }
+  };
+
   inviteMember = async (req: AuthenticatedRequest, res: Response<ApiResponse>, next: NextFunction) => {
     try {
       const member = await this.service.inviteMember(req.params.projectId, req.body);

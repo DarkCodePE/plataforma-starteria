@@ -208,6 +208,22 @@ export class UserService {
     return updated;
   }
 
+  /**
+   * La persona invitada acepta su lugar en el equipo (PENDING → ACTIVE). Sólo sobre su propia fila:
+   * no hay forma de aceptar por otro. Idempotente si ya estaba activa.
+   */
+  async acceptInvitation(projectId: string, userId: string) {
+    const member = await this.prisma.teamMember.findFirst({ where: { projectId, userId } });
+    if (!member) {
+      throw AppError.notFound('Invitación', 'TEAM_INVITATION_NOT_FOUND', { hint: 'No tienes una invitación a esta iniciativa.' });
+    }
+    if (member.status === TeamMemberStatus.ACTIVE) return member;
+    return this.prisma.teamMember.update({
+      where: { id: member.id },
+      data: { status: TeamMemberStatus.ACTIVE, joinedAt: new Date() },
+    });
+  }
+
   async removeMember(projectId: string, memberId: string) {
     const member = await this.prisma.teamMember.findFirst({
       where: { id: memberId, projectId },

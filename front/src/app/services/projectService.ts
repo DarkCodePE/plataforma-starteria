@@ -95,3 +95,8 @@ export async function updatePosition(
   );
   return adaptProject(data.data);
 }
+
+/** La persona invitada acepta su lugar en el equipo (PENDING → ACTIVE). */
+export async function acceptTeamInvitation(projectId: string): Promise<void> {
+  await api.post(`/projects/${projectId}/team/accept`, {});
+}

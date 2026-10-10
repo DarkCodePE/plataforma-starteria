@@ -60,3 +60,6 @@ teamRouter.patch(
   controller.updateMemberRole
 );
 teamRouter.delete('/:projectId/team/:memberId', controller.removeMember);
+
+// La persona invitada acepta su propia invitación (el servicio sólo toca su fila).
+teamRouter.post('/:projectId/team/accept', controller.acceptInvitation);

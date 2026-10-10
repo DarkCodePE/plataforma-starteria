@@ -3,6 +3,7 @@ import { authService, AuthUser } from '../services/auth.service';
 import { PERMISSIONS, type Permission } from '../authz/permissions';
 import { initAuth, getAccessToken, parseApiError, AuthError } from '../services/api';
 import * as projectService from '../services/projectService';
+import { updateSponsorData } from '../services/portfolioService';
 import { mapPublicDraftToStep0Data } from '../../features/public-start/domain/mappers';
 import {
   getPublicDraft,
@@ -452,6 +453,16 @@ export function enrichProject(raw: any, currentUser: User | null): Project {
       }))
     : [];
 
+  // El backend no tiene rol de equipo "Sponsor": quien patrocina entra al equipo como VIEWER. Para
+  // la persona con rol de plataforma sponsor, su propia fila es su patrocinio; pendiente = invitada.
+  if (currentUser?.role === 'sponsor') {
+    team = team.map(member =>
+      isSameTeamMember(member, currentUser)
+        ? { ...member, role: 'Sponsor', status: member.status === 'Pendiente' ? 'Enviado' : member.status }
+        : member
+    );
+  }
+
   if (team.length === 0 && raw.ownerId && currentUser && raw.ownerId === currentUser.id) {
     team = [
       {
@@ -733,6 +744,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
     });
   };
 
+  // Lo que hace el sponsor se guarda en el servidor; antes quedaba sólo en este navegador.
+  const persistSponsorData = (projectId: string, data: Pick<Project, 'sponsorTouchpoints' | 'sponsorComments'>) => {
+    updateSponsorData(projectId, data).catch(err => console.error('[sponsor] no se pudo guardar', err));
+  };
+
   const acceptSponsorInvitation = (projectId: string) => {
     if (!user || user.role !== 'sponsor') return;
     const project = projects.find(item => item.id === projectId);
@@ -740,11 +756,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
     updateProject(projectId, {
       team: project.team.map(member =>
-        member.role === 'Sponsor' && member.email.toLowerCase() === user.email.toLowerCase()
+        member.role === 'Sponsor' && isSameTeamMember(member, user)
           ? { ...member, status: 'Activo' }
           : member
       ),
     });
+    projectService.acceptTeamInvitation(projectId).catch(err => console.error('[sponsor] no se pudo aceptar la invitación', err));
   };
 
   const updateSponsorTouchpoint = (
@@ -755,11 +772,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const project = projects.find(item => item.id === projectId);
     if (!project) return;
 
-    updateProject(projectId, {
-      sponsorTouchpoints: (project.sponsorTouchpoints ?? DEFAULT_SPONSOR_TOUCHPOINTS).map(item =>
-        item.id === touchpointId ? { ...item, ...updates } : item
-      ),
-    });
+    const sponsorTouchpoints = (project.sponsorTouchpoints ?? DEFAULT_SPONSOR_TOUCHPOINTS).map(item =>
+      item.id === touchpointId ? { ...item, ...updates } : item
+    );
+    updateProject(projectId, { sponsorTouchpoints });
+    persistSponsorData(projectId, { sponsorTouchpoints });
   };
 
   const addSponsorComment = (projectId: string, touchpointId: SponsorTouchpointId, message: string) => {
@@ -776,12 +793,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
       createdAt: new Date().toISOString().split('T')[0],
     };
 
-    updateProject(projectId, {
+    const sponsorData = {
       sponsorComments: [...(project.sponsorComments ?? []), newComment],
       sponsorTouchpoints: (project.sponsorTouchpoints ?? DEFAULT_SPONSOR_TOUCHPOINTS).map(item =>
-        item.id === touchpointId ? { ...item, status: 'Comentario enviado' } : item
+        item.id === touchpointId ? { ...item, status: 'Comentario enviado' as const } : item
       ),
-    });
+    };
+    updateProject(projectId, sponsorData);
+    persistSponsorData(projectId, sponsorData);
   };
 
   const createProject = async (
