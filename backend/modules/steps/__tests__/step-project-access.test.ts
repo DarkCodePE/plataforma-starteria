@@ -6,9 +6,9 @@
 import { describe, expect, it, vi } from 'vitest';
 import { requireStepProjectAccess } from '../step.access';
 
-function makePrisma({ member = false, leadUserId = null as string | null } = {}) {
+function makePrisma({ member = false, teamRole = 'EDITOR', leadUserId = null as string | null } = {}) {
   return {
-    teamMember: { findFirst: vi.fn().mockResolvedValue(member ? { id: 'tm-1' } : null) },
+    teamMember: { findFirst: vi.fn().mockResolvedValue(member ? { role: teamRole } : null) },
     initiativeGovernance: { findUnique: vi.fn().mockResolvedValue(leadUserId ? { portfolioLeadUserId: leadUserId } : null) },
   } as any;
 }
@@ -23,6 +23,13 @@ describe('requireStepProjectAccess', () => {
   it('un miembro del equipo lee y escribe', async () => {
     expect(await run(makePrisma({ member: true }), 'GET', { id: 'u1', role: 'participante' })).toBeUndefined();
     expect(await run(makePrisma({ member: true }), 'PUT', { id: 'u1', role: 'participante' })).toBeUndefined();
+  });
+
+  // Swarm de roles en producción (2026-10-10): un VIEWER guardaba Steps.
+  it('un VIEWER del equipo lee pero no escribe', async () => {
+    const prisma = makePrisma({ member: true, teamRole: 'VIEWER' });
+    expect(await run(prisma, 'GET', { id: 'u1', role: 'sponsor' })).toBeUndefined();
+    expect(await run(prisma, 'PUT', { id: 'u1', role: 'sponsor' })).toMatchObject({ code: 'PROJECT_TEAM_ROLE_REQUIRED' });
   });
 
   it('un usuario ajeno no lee ni escribe', async () => {

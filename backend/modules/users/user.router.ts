@@ -12,6 +12,7 @@ import {
 
 import { authenticate, requirePermission } from '../auth/auth.middleware';
 import { requireEntitlement } from '../billing/entitlement.middleware';
+import { requireProjectTeamAccess } from '../projects/project-team-access';
 const service = new UserService(prisma);
 const controller = new UserController(service);
 
@@ -41,12 +42,16 @@ userRouter.patch(
 export const teamRouter = Router();
 
 teamRouter.use(authenticate);
+// Ver el equipo es de sus miembros (y del Portfolio Lead asignado); cambiarlo, del OWNER.
+const canReadTeam = requireProjectTeamAccess(prisma, 'read', 'projectId');
+const canManageTeam = requireProjectTeamAccess(prisma, 'manage', 'projectId');
 
-teamRouter.get('/:projectId/team', controller.getTeam);
+teamRouter.get('/:projectId/team', canReadTeam, controller.getTeam);
 // PRD-005 / ADR-022: gate collaborator invites on the plan's `seats` limit
 // (resource count = current team members of this project). Shadow mode by default.
 teamRouter.post(
   '/:projectId/team/invite',
+  canManageTeam,
   requireEntitlement('seats', {
     resourceCount: (req) =>
       prisma.teamMember.count({ where: { projectId: req.params.projectId } }),
@@ -56,7 +61,8 @@ teamRouter.post(
 );
 teamRouter.patch(
   '/:projectId/team/:memberId',
+  canManageTeam,
   validate(updateMemberRoleSchema),
   controller.updateMemberRole
 );
-teamRouter.delete('/:projectId/team/:memberId', controller.removeMember);
+teamRouter.delete('/:projectId/team/:memberId', canManageTeam, controller.removeMember);
