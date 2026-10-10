@@ -535,13 +535,17 @@ correction: returns through the existing reasoning/clarification cycle
 confirmation: explicit representativeness confirmation; claim != confirmation; it does not certify each claim as objective fact
 exclusions: Starteria Path 114E; Portfolio Setup continuity 114F; ADR-003 reconciliation; Core; Steps; scoring; experiment design; distinct alternative ranking
 legacy_treatment: KEEP_COMPAT for explicitly historical legacy sessions
-evidence: PR #161 (https://github.com/DarkCodePE/plataforma-starteria/pull/161); GitHub CI run #220 / 37995220187 (https://github.com/DarkCodePE/plataforma-starteria/actions/runs/37995220187) at HEAD b16dc03e04b8f3c419bfa5df565914b6613b7112; PostgreSQL repository integration 26/26; CURRENT_114D 6/6; LEGACY_COMPAT 7/7; Live Understanding full-stack E2E 1/1; Node coverage, Prisma schema/migrations, lint/build, Python and CI summary PASS
-integration_status: PENDING_MERGE
+feature_head: f1bf4223b7aa14e9abcd91978ea9ecb0070e987a
+evidence: PR #161 (https://github.com/DarkCodePE/plataforma-starteria/pull/161); GitHub CI run #220 / 37995220187 (https://github.com/DarkCodePE/plataforma-starteria/actions/runs/37995220187) SUCCESS at run HEAD b16dc03e04b8f3c419bfa5df565914b6613b7112; PostgreSQL repository integration 26/26; CURRENT_114D 6/6; LEGACY_COMPAT 7/7; Live Understanding full-stack E2E 1/1; Node coverage, Prisma schema/migrations, lint/build, Python and CI summary PASS
+integration_status: INTEGRATED_IN_GOVERNED_BASELINE
+merge_evidence: PR #161 merged; merge_commit 82ab8710b6e5a8e35514c70529ef8b5621e4c4eb
+pre_merge_ci: #220 / 37995220187 / SUCCESS
+post_merge_cd: #96 / 38000189145 / SUCCESS on merge_commit 82ab8710b6e5a8e35514c70529ef8b5621e4c4eb
 known_non_blocking_limitation: post-confirmation reopen/correction policy is not generalized as a future reopen feature; confirmed artifact remains immutable under current v0.1 semantics
 next_authorized_slice: 114E — NOT_STARTED; requires its own authorized scope
 ```
 
-PR #161 is not yet integrated into the governed baseline. CI run #220 verifies this bounded 114D implementation on the feature PR; it does not certify all Portfolio Entry or reconcile ADR-003.
+PR #161 is integrated into the governed baseline at merge commit `82ab8710b6e5a8e35514c70529ef8b5621e4c4eb`. CI run #220 verifies the bounded 114D implementation; its run HEAD is recorded above. CD run #96 confirms the governed main workflow completed successfully, but does not certify production runtime or all Portfolio Entry, and does not reconcile ADR-003.
 
 # 6. V2 E2E slice map
 
@@ -553,7 +557,7 @@ PR #161 is not yet integrated into the governed baseline. CI run #220 verifies t
 | Public Landing - L1 Product Framing & Hero (KAN-64) | ACTIVE_V2_BASELINE (ADR-006) | IMPLEMENTED_VERIFIED; KAN-64 RESUELTO | V2_PILOT | LOCAL_REGRESSION_PASS (KAN-102 revalidation) | KEEP; Early Access/Demo runtime excluded |
 | Public Landing L2 + Portfolio Entry Convergence (KAN-102) | ACTIVE_V2_BASELINE (ADR-006) | IMPLEMENTED_VERIFIED (local) | V2_PILOT | VERIFIED (frontend + focused Chromium) | KEEP; commercial destinations pending authority |
 | Landing V4 | ACTIVE_V2_BASELINE visual spec | VERIFY_IN_REPO | V2_TARGET_DEFINED | SUPPORTED | RECONCILE |
-| Portfolio Entry logic | ACTIVE_V2_BASELINE | PARTIAL_IMPLEMENTATION; KAN-114 + 114C integrated; 114D IMPLEMENTED_VERIFIED_ON_PR #161 | V2_PILOT | VERIFIED for 114C and 114D scoped CI | KEEP bounded slices; PR #161 pending merge |
+| Portfolio Entry logic | ACTIVE_V2_BASELINE | PARTIAL_IMPLEMENTATION; KAN-114 + 114C integrated; 114D IMPLEMENTED_VERIFIED | V2_PILOT | VERIFIED for 114C and 114D scoped CI | KEEP bounded slices; PR #161 integrated in governed baseline |
 | Clarification | CANDIDATE + hypotheses | EXPERIMENTAL / VERIFY | V2_PILOT | TESTING | TEST |
 | Handoff / Value Handoff Cognition | CANDIDATE + hypotheses | EXPERIMENTAL / VERIFY | V2_PILOT | TESTING | TEST |
 | Registration / continuation | CANDIDATE | IMPLEMENTED_UNVERIFIED | MIXED | TESTING | VERIFY grant and full E2E |
