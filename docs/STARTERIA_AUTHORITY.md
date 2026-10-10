@@ -265,6 +265,51 @@ Portfolio Setup Continuity / KAN-114F.
 
 Nota de estado: implementado no equivale a aprobado ni a probado end-to-end. El Experience Contract v0.1 sigue siendo el contrato activo aprobado para Pantalla 1. Los documentos Agent/Skill conservan su estado propio hasta ratificacion explicita.
 
+#### KAN-126 — 114E Starteria Path scoped authority adoption
+
+This slice-specific authority chain sits under the global hierarchy above and
+does not change it. KAN-126 adopts the following order only for bounded 114E
+semantics and KAN-125 implementation:
+
+1. Core v0.2
+2. Accepted product ADRs
+3. Portfolio Entry Logic Contract v0.1
+4. Critical Reasoning Experience Contract v0.1
+5. KAN-114 accepted reasoning semantics
+6. KAN-119 Critical Handoff governed baseline
+7. Business Capability Boundary v0.1 — 114E scoped
+8. Starteria Path Experience Contract v0.1 — 114E scoped
+9. KAN-124 Technical Architecture — KAN-125 implementation baseline
+
+Scoped adoption:
+
+- docs/contracts/STARTERIA_BUSINESS_CAPABILITY_BOUNDARY_v0.1.md is
+  ACCEPTED_FOR_114E, only for 114E capability/claim semantics. It is not
+  global product-marketing authority and does not prove capability or
+  destination availability.
+- docs/experience/portfolio-entry/PORTFOLIO_ENTRY_STARTERIA_PATH_EXPERIENCE_CONTRACT_v0.1.md
+  is ACCEPTED / FROZEN FOR IMPLEMENTATION for 114E only.
+- docs/implementation/portfolio-entry/KAN-124_STARTERIA_PATH_TECHNICAL_ARCHITECTURE_v0.1.md
+  is ACCEPTED_IMPLEMENTATION_BASELINE_FOR_KAN_125. Option C is accepted:
+  semantic Path is DERIVED; conversion intent is
+  PERSISTED_ON_ACCEPTED_SUBMISSION; consent is SUBMISSION_ONLY; Path view
+  authorization is SESSION_OWNERSHIP. No destination availability is
+  implied.
+
+KAN-114 remains the sole business-reasoning source. 114D remains the governed
+baseline. The 125A deterministic projector is partial implementation evidence;
+it does not complete 114E. After this KAN-126 adoption merges, KAN-125B is
+authorized only for the read boundary/API, SESSION_OWNERSHIP, current and
+confirmed source gate, source binding/currentness, DTO allowlist, fail-closed
+stale/unconfirmed/invalid cases, and legacy isolation.
+
+This adoption does not promote 114F or Portfolio Setup continuity; resolve
+ADR-003; authorize Core or Steps; promote legacy starteria_path,
+recommended_approach, or recommended_cta; establish Early Access or Demo
+availability; authorize Landing claims beyond the adopted boundary; or open
+product access. Candidate Clarification/Handoff v0.2.1 and legacy documents
+remain unpromoted. Legacy consumers remain KEEP_COMPAT.
+
 ### Portfolio Lead / Activation-Handoff
 
 - `docs/portfolio-lead/04-channel-independence/PORTFOLIO_GOVERNANCE_INTERACTION_CONTRACT_v0.1.md` - contrato de interaccion/canal; debajo de Core.

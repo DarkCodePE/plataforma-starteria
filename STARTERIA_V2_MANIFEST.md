@@ -542,10 +542,43 @@ merge_evidence: PR #161 merged; merge_commit 82ab8710b6e5a8e35514c70529ef8b5621e
 pre_merge_ci: #220 / 37995220187 / SUCCESS
 post_merge_cd: #96 / 38000189145 / SUCCESS on merge_commit 82ab8710b6e5a8e35514c70529ef8b5621e4c4eb
 known_non_blocking_limitation: post-confirmation reopen/correction policy is not generalized as a future reopen feature; confirmed artifact remains immutable under current v0.1 semantics
-next_authorized_slice: 114E — NOT_STARTED; requires its own authorized scope
+next_authorized_slice_at_114D_closure: 114E — NOT_STARTED; required its own authorized scope (historical closure snapshot)
 ```
 
 PR #161 is integrated into the governed baseline at merge commit `82ab8710b6e5a8e35514c70529ef8b5621e4c4eb`. CI run #220 verifies the bounded 114D implementation; its run HEAD is recorded above. CD run #96 confirms the governed main workflow completed successfully, but does not certify production runtime or all Portfolio Entry, and does not reconcile ADR-003.
+
+## KAN-120 / KAN-126 — Starteria Path (114E), scoped adoption
+
+```text
+slice_id: PORTFOLIO_ENTRY_STARTERIA_PATH_114E
+HU: KAN-120 parent scope; KAN-121 audit; KAN-122 boundary; KAN-123 experience contract; KAN-124 architecture; KAN-125 implementation; KAN-126 scoped adoption
+logic_status: ACTIVE_V2_BASELINE (bounded 114E semantics only)
+implementation_status: PARTIAL_IMPLEMENTATION
+visual_status: NOT_IMPLEMENTED
+evidence_status: SUPPORTED (125A evidence only; no full 114E runtime verification)
+semantic_owner: Portfolio Entry V2 for 114E; KAN-114 remains the sole business-reasoning source
+authority: factual Core v0.2; accepted product ADRs; active Portfolio Entry Logic Contract v0.1; accepted/frozen Critical Reasoning Experience Contract v0.1; KAN-114 semantic acceptance; KAN-119 governed 114D baseline; KAN-122 Business Capability Boundary (114E scoped); KAN-123 Starteria Path Experience Contract (114E scoped); KAN-124 architecture; KAN-120/KAN-125/KAN-126 scoped authority
+source_gate: latest current, explicitly confirmed 114D Critical Handoff
+architecture: OPTION_C
+semantic_path: DERIVED
+conversion_intent: PERSISTED_ON_ACCEPTED_SUBMISSION
+consent: SUBMISSION_ONLY
+path_view_auth: SESSION_OWNERSHIP
+completed_slice: 125A
+completed_artifact: deterministic projector
+125A_evidence: PR #180 merged at adb810475fffbedf3015820babceecaa1cd30e35; 23 focused tests; backend typecheck PASS; no I/O; no persistence; no API/UI; no legacy semantics; no 114F/Core/Steps leakage
+next_authorized_slice: 125B read boundary/API, effective after KAN-126 merges
+125B_scope: SESSION_OWNERSHIP; current-and-confirmed source gate; source binding/currentness; DTO allowlist; stale/unconfirmed/invalid fail closed; legacy isolation
+125B_exclusions: UI; conversion; Early Access; Demo; consent persistence; 114F; Core; Steps
+current_boundaries: no UI; no API; no semantic Path persistence; no conversion runtime; no verified Early Access/Demo destination
+legacy_treatment: KEEP_COMPAT; legacy starteria_path, recommended_approach, and recommended_cta are not 114E semantic authority
+exclusions: 114F; Portfolio Setup continuity; ADR-003 reconciliation; Core; Steps; legacy semantic reuse; Early Access/Demo activation or destination availability; open product access; Landing claims beyond adopted boundary; UI; API; semantic Path persistence; conversion runtime
+non_promoted: 114F; Portfolio Setup continuity; ADR-003 resolution; Core; Steps; legacy starteria_path/recommended_approach/recommended_cta; Early Access destination availability; Demo destination availability; Landing claims beyond the adopted boundary; open product access
+```
+
+This adoption does not declare IMPLEMENTED_VERIFIED or V2_MIGRATED.
+KAN-126 authority becomes part of the governed baseline when merged; only then
+may 125B begin within the scope above.
 
 # 6. V2 E2E slice map
 
