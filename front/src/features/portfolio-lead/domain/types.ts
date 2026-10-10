@@ -690,8 +690,13 @@ export interface PortfolioLeadState {
 export interface PortfolioLeadSummary {
   fronts: number;
   activeFronts: number;
+  /** Frentes con al menos una iniciativa en curso, esté o no el frente en estado activo. */
+  frontsWithActiveInitiatives: number;
   challenges: number;
+  /** Retos publicados (visibles para participantes); no mira si tienen iniciativas. */
   activeChallenges: number;
+  /** Retos con al menos una iniciativa en curso, publicados o no. */
+  challengesWithActiveInitiatives: number;
   challengesReadyToActivate: number;
   initiatives: number;
   activeInitiatives: number;

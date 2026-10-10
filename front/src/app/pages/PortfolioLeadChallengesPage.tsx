@@ -16,11 +16,11 @@ import {
   activationLabel,
   challengeStatusLabel,
   challengeTypeLabel,
-  coverageLabel,
   getChallengeActivationReadiness,
   getChallengeActivationRecommendation,
   getChallengeCards,
   getInitiativesByChallengeId,
+  getInitiativeStepProgress,
   initiativeStatusLabel,
   usePortfolioLead,
 } from '../../features/portfolio-lead';
@@ -909,7 +909,9 @@ function ChallengeAccordionDetail({
     challengeStatusLabel(challenge.status),
     challengeTypeLabel(challenge.challengeType),
     activationLabel(challenge.activationMode),
-    coverageLabel(challenge.coverageStatus),
+    // La cobertura efectiva de la tarjeta (deriveChallengeCoverageStatus), no el valor
+    // persistido: si no, el detalle decía "Sin cobertura" con iniciativas en curso.
+    card.coverageLabel,
   ];
   const metric = getChallengeMetricSnapshot(challenge, front);
   const urgency = labelUrgency(challenge.activationInputs.urgency);
@@ -931,7 +933,7 @@ function ChallengeAccordionDetail({
                 ['Tipo de reto', challengeTypeLabel(challenge.challengeType)],
                 ['Frente estratégico padre', front?.name ?? 'Sin frente visible'],
                 ['Modalidad de activación', activationLabel(challenge.activationMode)],
-                ['Estado de cobertura', coverageLabel(challenge.coverageStatus)],
+                ['Estado de cobertura', card.coverageLabel],
                 ['KPI o señal principal', challenge.successCriteria || challenge.objective || 'Sin señal visible'],
                 ['Urgencia', urgency],
                 ['Sponsor', sponsor || 'Sin definir'],
@@ -1355,16 +1357,9 @@ function getChallengeActiveInitiativesCount(initiatives: ReturnType<typeof getIn
   return initiatives.filter(initiative => !['bloqueada', 'cerrada'].includes(initiative.status)).length;
 }
 
+// Mismo criterio que /portfolio/iniciativas y "Mis iniciativas" (getInitiativeStepProgress).
 function getInitiativeProgressPercent(initiative: ReturnType<typeof getInitiativesByChallengeId>[number]) {
-  if (initiative.status === 'cerrada') return 100;
-  switch (initiative.currentStep) {
-    case 'Step 0': return 15;
-    case 'Step 1': return 35;
-    case 'Step 2': return 55;
-    case 'Step 3': return 75;
-    case 'Step 4': return 90;
-    default: return 0;
-  }
+  return getInitiativeStepProgress(initiative).percent;
 }
 
 function getChallengeMetricSnapshot(challenge: Challenge, front: StrategicFront | null) {

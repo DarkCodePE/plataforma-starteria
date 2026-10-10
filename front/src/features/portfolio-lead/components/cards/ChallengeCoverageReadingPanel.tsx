@@ -6,6 +6,7 @@
 import React, { useEffect, useState } from 'react';
 import { getChallengeCoverageReading, type ChallengeCoverageReading } from '../../../../app/services/portfolioService';
 import { DECISION_OUTCOME_LABEL } from './PortfolioLearningsPanel';
+import { coverageLabel } from '../../domain/copy';
 
 function Row({ question, answer, tone = 'slate' }: { question: string; answer: React.ReactNode; tone?: 'slate' | 'amber' | 'emerald' }) {
   const color = tone === 'amber' ? 'text-amber-800' : tone === 'emerald' ? 'text-emerald-800' : 'text-slate-800';
@@ -15,6 +16,19 @@ function Row({ question, answer, tone = 'slate' }: { question: string; answer: R
       <dd className={`text-sm ${color}`}>{answer}</dd>
     </div>
   );
+}
+
+const COVERAGE_ENOUGH = new Set(['cobertura_suficiente', 'resuelto', 'cerrar']);
+
+/**
+ * Qué sigue sin respuesta. Que el reto tenga iniciativas no quiere decir que esté cubierto:
+ * con cobertura parcial no se afirma "todo cubierto" (antes convivía con "Sin cobertura").
+ */
+export function uncoveredAnswer(reading: Pick<ChallengeCoverageReading, 'uncovered' | 'coverageStatus'>): string {
+  if (reading.uncovered) return reading.uncovered;
+  if (COVERAGE_ENOUGH.has(reading.coverageStatus)) return 'Nada visible: la cobertura del reto es suficiente.';
+  if (reading.coverageStatus === 'reformular') return 'El reto necesita reformularse antes de leer su cobertura.';
+  return 'El reto ya tiene iniciativas, pero ninguna resolvió todavía su parte central.';
 }
 
 export function ChallengeCoverageReadingPanel({ challengeId }: { challengeId: string }) {
@@ -43,7 +57,16 @@ export function ChallengeCoverageReadingPanel({ challengeId }: { challengeId: st
             answer={reading.hasWork ? `Sí, ${reading.initiatives.length} iniciativa(s).` : 'No, ninguna iniciativa todavía.'}
             tone={reading.hasWork ? 'slate' : 'amber'}
           />
-          <Row question="¿Qué sigue sin respuesta?" answer={reading.uncovered ?? 'Todo el reto tiene al menos una iniciativa.'} tone={reading.uncovered ? 'amber' : 'slate'} />
+          <Row
+            question="¿Cómo está la cobertura?"
+            answer={coverageLabel(reading.coverageStatus as Parameters<typeof coverageLabel>[0])}
+            tone={COVERAGE_ENOUGH.has(reading.coverageStatus) ? 'emerald' : 'amber'}
+          />
+          <Row
+            question="¿Qué sigue sin respuesta?"
+            answer={uncoveredAnswer(reading)}
+            tone={reading.uncovered || !COVERAGE_ENOUGH.has(reading.coverageStatus) ? 'amber' : 'slate'}
+          />
           <Row
             question="¿Varias iniciativas sobre lo mismo?"
             answer={reading.overlaps.length === 0 ? 'Sin solapamientos registrados.' : reading.overlaps.map((overlap) => `${overlap.level} → ${overlap.recommendation}`).join(' · ')}

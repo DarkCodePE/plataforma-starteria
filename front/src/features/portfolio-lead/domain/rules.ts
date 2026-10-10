@@ -270,6 +270,26 @@ export function canChallengeReceiveInitiatives(challenge: Pick<Challenge, 'statu
   return status === 'active' || status === 'receiving_initiatives' || status === 'in_tracking';
 }
 
+/**
+ * Avance de una iniciativa: un criterio para todo el portafolio (tarjeta y detalle del reto,
+ * /portfolio/iniciativas) y el mismo que "Mis iniciativas" (getAdaptiveProgress en
+ * app/pages/dashboard-initiative-state.ts). Cada Step completo suma 20%: "Step 2" en curso es
+ * 2/5 (40%); lista para decisión o cerrada es 5/5. Antes el reto usaba una escala propia
+ * (Step 0 = 15%) y la misma iniciativa salía 15% en el reto y 0% en el listado (2026-10-10).
+ */
+export function getInitiativeStepProgress(
+  initiative: Pick<Initiative, 'status' | 'currentStep' | 'readyForDecision' | 'progressSignal'>,
+): { completed: number; percent: number } {
+  const status = normalizeInitiativeStatus(initiative.status);
+  if (status === 'closed') return { completed: 5, percent: 100 };
+  const readyForDecision = Boolean(initiative.readyForDecision)
+    || status === 'ready_for_decision'
+    || initiative.progressSignal?.health === 'ready_for_decision';
+  const current = Number(String(initiative.currentStep ?? '').match(/\d/)?.[0] ?? 0);
+  const completed = readyForDecision ? 5 : Math.min(4, Math.max(0, current));
+  return { completed, percent: completed * 20 };
+}
+
 export function isInitiativeReadyForDecision(initiative: Pick<Initiative, 'status' | 'currentStep' | 'readyForDecision'> | null | undefined) {
   if (!initiative) return false;
   const status = normalizeInitiativeStatus(initiative.status);

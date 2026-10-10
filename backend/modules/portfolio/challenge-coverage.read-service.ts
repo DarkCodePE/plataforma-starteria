@@ -5,7 +5,9 @@
  * cubierto y qué no?, ¿hay solapamientos?, ¿dependencia común?, ¿qué evidencia tenemos como
  * conjunto?, ¿hace falta más capacidad?, ¿estamos listos para decidir?
  *
- * Sólo lectura; no recalcula coverageStatus (eso lo escribe Step 4).
+ * Sólo lectura: no persiste coverageStatus (eso lo escriben Step 4 y la decisión). Lo que
+ * devuelve es la cobertura efectiva de deriveChallengeCoverage, el mismo criterio que usa el
+ * front (deriveChallengeCoverageStatus) en la tarjeta y el detalle del reto.
  */
 import type { PrismaClient } from '@prisma/client';
 import { AppError } from '../../shared/errors/AppError';
@@ -13,6 +15,43 @@ import { AppError } from '../../shared/errors/AppError';
 const ACTIVE = new Set(['en_step_0', 'en_step_1', 'en_step_2', 'en_step_3', 'en_step_4', 'esperando_revision', 'lista_para_decision']);
 const CLOSED = new Set(['closed', 'cerrada', 'implementation_approved', 'scaling_approved']);
 const normalize = (value: string) => value.toLowerCase().trim();
+
+// Decisiones explícitas sobre el Reto: las iniciativas no las pisan.
+const EXPLICIT_COVERAGE = new Set(['reformular', 'resuelto', 'cerrar']);
+const COVERAGE_RANK: Record<string, number> = { sin_cobertura: 0, cobertura_parcial: 1, cobertura_suficiente: 2 };
+
+interface CoverageInitiativeLike {
+  status: string;
+  currentStep?: string | null;
+  readyForDecision?: boolean | null;
+  resolvedCorePart?: boolean | null;
+}
+
+/**
+ * Cobertura efectiva del Reto. El valor persistido arranca en `sin_cobertura` y sólo lo mueven
+ * Step 4 y la decisión, así que un reto con iniciativas en curso quedaba "Sin cobertura"
+ * mientras la tarjeta decía "Cobertura parcial" (2026-10-10). Criterio único:
+ * - `reformular`, `resuelto` y `cerrar` son decisiones explícitas y se respetan.
+ * - Sin iniciativas no hay cobertura, diga lo que diga el valor persistido.
+ * - Con iniciativas: parcial; suficiente si alguna llegó a decisión y resolvió la parte central.
+ * - Nunca queda por debajo de lo que ya se persistió (Step 4 / decisión pueden declarar más).
+ * Espejo de deriveChallengeCoverageStatus (front/src/features/portfolio-lead/domain/actions.ts).
+ */
+export function deriveChallengeCoverage(persisted: string | null | undefined, initiatives: CoverageInitiativeLike[]): string {
+  const current = String(persisted ?? 'sin_cobertura');
+  if (EXPLICIT_COVERAGE.has(current)) return current;
+  if (initiatives.length === 0) return 'sin_cobertura';
+  const sufficient = initiatives.some(
+    (initiative) =>
+      Boolean(initiative.resolvedCorePart)
+      && (Boolean(initiative.readyForDecision)
+        || initiative.status === 'lista_para_decision'
+        || initiative.status === 'en_step_4'
+        || initiative.currentStep === 'Step 4'),
+  );
+  const derived = sufficient ? 'cobertura_suficiente' : 'cobertura_parcial';
+  return (COVERAGE_RANK[current] ?? 0) > COVERAGE_RANK[derived] ? current : derived;
+}
 
 export interface ChallengeCoverageReading {
   challengeId: string;
@@ -94,7 +133,8 @@ export class ChallengeCoverageReadService {
     if (metas.some((meta) => meta.requiresExternalCapability)) capacityReasons.push('Hay iniciativas que requieren capacidad externa.');
 
     const ready = initiatives.filter((initiative) => initiative.readyForDecision);
-    const coverageEnough = ['cobertura_suficiente', 'resuelto'].includes(String(challenge.coverageStatus));
+    const coverageStatus = deriveChallengeCoverage(String(challenge.coverageStatus), metas.map((meta) => ({ ...meta, status: String(meta.status) })));
+    const coverageEnough = ['cobertura_suficiente', 'resuelto'].includes(coverageStatus);
     const readyReasons: string[] = [];
     if (ready.length > 0) readyReasons.push(`${ready.length} iniciativa(s) lista(s) para decisión.`);
     if (coverageEnough) readyReasons.push('La cobertura del reto ya es suficiente.');
@@ -102,7 +142,7 @@ export class ChallengeCoverageReadService {
 
     return {
       challengeId: challenge.id,
-      coverageStatus: String(challenge.coverageStatus),
+      coverageStatus,
       hasWork: initiatives.length > 0,
       initiatives,
       overlaps: challenge.overlaps.map((overlap) => ({

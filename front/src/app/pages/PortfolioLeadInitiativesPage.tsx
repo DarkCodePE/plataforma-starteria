@@ -15,6 +15,7 @@ import {
   PortfolioLeadEmptyState,
 } from '../components/portfolio/PortfolioLeadPageElements';
 import type { ChallengeStatus } from '../../features/portfolio-lead';
+import { getInitiativeStepProgress } from '../../features/portfolio-lead/domain/rules';
 
 type InitiativeItem = ReturnType<typeof usePortfolioLead>['initiatives'][number];
 
@@ -67,14 +68,10 @@ function isClosedInitiative(initiative: InitiativeItem): boolean {
 
 // Avance = Steps completados de 5. "Step 4" en curso es 4/5 (80%); recién cuando el Step 4
 // está confirmado (la iniciativa quedó presentada o lista para decisión) son 5/5. Antes una
-// iniciativa con Step 4 terminado mostraba "5/5 · 90%" (2026-10-08).
+// iniciativa con Step 4 terminado mostraba "5/5 · 90%" (2026-10-08). El criterio vive en
+// getInitiativeStepProgress para que el reto y este listado no se contradigan (2026-10-10).
 export function getInitiativeProgress(initiative: InitiativeItem): { completed: number; percent: number } {
-  if (isClosedInitiative(initiative)) return { completed: 5, percent: 100 };
-  const current = Number(initiative.currentStep.match(/\d/)?.[0] ?? 0);
-  const readyForDecision = initiative.progressSignal?.health === 'ready_for_decision'
-    || initiative.status === 'lista_para_decision' || initiative.status === 'ready_for_decision';
-  const completed = readyForDecision ? 5 : current;
-  return { completed, percent: completed * 20 };
+  return getInitiativeStepProgress(initiative);
 }
 
 function InitiativeActionDrawer({
