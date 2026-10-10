@@ -6,6 +6,7 @@ import { StatusChip } from '../components/StatusChip';
 import { EvidenceUploader } from '../components/EvidenceUploader';
 import { BannerPorDefinir } from '../components/BannerPorDefinir';
 import type { Evidence, EvidenceStatus, Project } from '../context/AppContext';
+import * as evidenceService from '../services/evidenceService';
 
 const TYPE_ICONS: Record<string, React.ReactNode> = {
   PDF: <FileText size={16} className="text-red-500" />,
@@ -42,7 +43,7 @@ function getEvidenceDate(evidence: Evidence & { createdAt?: string }) {
 
 function getEvidenceOwner(project: Project, evidence: Evidence & { ownerId?: string }) {
   if (evidence.owner) return evidence.owner;
-  const teamMember = project.team?.find(member => member.id === evidence.ownerId || member.email === evidence.ownerId);
+  const teamMember = project.team?.find(member => (member as { userId?: string }).userId === evidence.ownerId || member.id === evidence.ownerId || member.email === evidence.ownerId);
   return teamMember?.name ?? project.step0Data?.nombreParticipante ?? 'Responsable pendiente';
 }
 
@@ -110,22 +111,32 @@ export function EvidenciasPage() {
     return true;
   });
 
-  const handleUpload = (file: { name: string; type: string; size?: string; url?: string }) => {
+  const [uploadError, setUploadError] = useState<string | null>(null);
+
+  // La evidencia se registra en el servidor; antes sólo quedaba en este navegador y se perdía al recargar.
+  const handleUpload = async (file: { name: string; type: string; size?: string; url?: string }) => {
     const targetProject = uploadableProjects.find(item => item.id === uploadProjectId);
     if (!targetProject) return;
 
-    const newEvidence: Evidence = {
-      id: `e${Date.now()}`,
-      name: file.name,
-      type: normalizeEvidenceType(file.type),
-      size: file.size,
-      url: file.url,
-      stepRef: 1,
-      owner: user?.name ?? 'Participante',
-      date: new Date().toISOString().split('T')[0],
-      status: 'Subida',
-    };
-    updateProject(targetProject.id, { evidence: [...targetProject.evidence, newEvidence] });
+    setUploadError(null);
+    const type = normalizeEvidenceType(file.type);
+    try {
+      const created = await evidenceService.create(targetProject.id, { name: file.name, type, size: file.size, url: file.url, stepRef: 1 });
+      const newEvidence: Evidence = {
+        id: created.id,
+        name: file.name,
+        type,
+        size: file.size,
+        url: file.url,
+        stepRef: 1,
+        owner: user?.name ?? 'Participante',
+        date: new Date().toISOString().split('T')[0],
+        status: 'Subida',
+      };
+      updateProject(targetProject.id, { evidence: [...targetProject.evidence, newEvidence] });
+    } catch (err) {
+      setUploadError(err instanceof Error && err.message ? err.message : 'No pudimos guardar la evidencia.');
+    }
   };
 
   const AUDIT_LOG: Record<string, { action: string; user: string; time: string }[]> = {
@@ -198,6 +209,7 @@ export function EvidenciasPage() {
             )}
           </div>
           <EvidenceUploader onUpload={handleUpload} />
+          {uploadError && <p role="alert" className="mt-2 text-xs text-red-600">{uploadError}</p>}
           <div className="grid grid-cols-2 gap-3 mt-3">
             <div>
               <label className="block text-xs text-slate-600 mb-1" style={{ fontWeight: 500 }}>Step relacionado</label>

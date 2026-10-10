@@ -18,7 +18,8 @@ export class EvidenceController {
   create = async (req: AuthenticatedRequest, res: Response<ApiResponse>, next: NextFunction) => {
     try {
       const user = req.user!;
-      const evidence = await this.service.createEvidence(req.params.projectId, user.name, req.body);
+      // ownerId es el id del usuario (FK a User); pasar el nombre daba 500.
+      const evidence = await this.service.createEvidence(req.params.projectId, user.id, req.body);
       res.status(201).json({ success: true, data: evidence });
     } catch (err) {
       next(err);
