@@ -93,5 +93,7 @@ describe('cobertura efectiva: el mismo criterio que la tarjeta del reto', () => 
     expect(deriveChallengeCoverage('cobertura_suficiente', [{ status: 'en_step_1' }])).toBe('cobertura_suficiente');
     expect(deriveChallengeCoverage('reformular', [{ status: 'en_step_1' }])).toBe('reformular');
     expect(deriveChallengeCoverage('resuelto', [])).toBe('resuelto');
+    // Decidida con "seguir experimentando": la decisión dejó parcial y la iniciativa cerrada no la pisa.
+    expect(deriveChallengeCoverage('cobertura_parcial', [{ status: 'closed', currentStep: 'Step 4', resolvedCorePart: true }])).toBe('cobertura_parcial');
   });
 });

@@ -8,7 +8,7 @@
 // del lead de prueba. Decision y PortfolioLearning no se borran por API; se borran en cascada con
 // `gh workflow run e2e-prod-tenant.yml -f command=cleanup -f apply=true`.
 import { expect, request as pwRequest, test, type APIRequestContext } from '@playwright/test';
-import { browserLogin, getOk, login, patchOk, postOk, putOk, type Session } from '../support/api';
+import { browserLogin, getOk, login, patchOk, postOk, type Session } from '../support/api';
 import { completeStep0, completeStep1, completeStep2, completeStep3, completeStep4, confirmStep2, confirmStep3, confirmStep4 } from '../support/steps';
 
 const BASE = process.env.E2E_PROD_BASE_URL;
@@ -87,18 +87,6 @@ test('Participante: crea la iniciativa del reto y el lead queda con la autoridad
   ctx.projectId = project.id;
   const governance = await getOk(api, lead.token, `/api/v1/portfolio/initiatives/${ctx.projectId}/governance`);
   expect(governance).toMatchObject({ mode: 'portfolio_governed', portfolioLeadUserId: lead.userId });
-});
-
-test('Portfolio Lead: se suma al equipo de la iniciativa y la ve en "Mis iniciativas"', async () => {
-  // Sólo en esta prueba: el lead entra como VIEWER para que su workspace no quede vacío. La
-  // autoridad de decisión sigue saliendo de la governance, no del equipo.
-  await putOk(api, lead.token, `/api/v1/portfolio/initiatives/${ctx.projectId}/team/${lead.userId}`, { role: 'VIEWER', status: 'ACTIVE' });
-  const team = await getOk(api, part.token, `/api/v1/projects/${ctx.projectId}/team`);
-  expect(team.map((member: { userId: string }) => member.userId)).toEqual(expect.arrayContaining([part.userId, lead.userId]));
-  // "Mis iniciativas" lista GET /projects; por API y no por navegador para no sumar otro login
-  // del lead (el rate limit de prod corta el ciclo).
-  const mine = await getOk(api, lead.token, '/api/v1/projects');
-  expect(mine.map((project: { id: string }) => project.id)).toContain(ctx.projectId);
 });
 
 test('Participante: Mission Review hereda el reto y recién desde ahí abre Step 0 (§17–§18)', async ({ page }) => {

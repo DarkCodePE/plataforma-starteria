@@ -265,7 +265,9 @@ export function deriveChallengeCoverageStatus(
 
   // Antes un bloqueo contaba como "llegó a decisión" (DECISION_RELEVANT_INITIATIVE_STATUSES):
   // una iniciativa bloqueada no puede dejar el reto con cobertura suficiente.
-  const sufficient = related.some(item => item.resolvedCorePart && isInitiativeReadyForDecision(item));
+  // Una iniciativa ya decidida no cuenta: su cobertura la escribió la decisión (§23).
+  const sufficient = related.some(item =>
+    normalizeInitiativeStatus(item.status) !== 'closed' && item.resolvedCorePart && isInitiativeReadyForDecision(item));
   const derived: ChallengeCoverageStatus = sufficient ? 'cobertura_suficiente' : 'cobertura_parcial';
   const persisted: ChallengeCoverageStatus = normalizedCoverage === 'sufficient'
     ? 'cobertura_suficiente'

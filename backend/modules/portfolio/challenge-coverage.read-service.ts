@@ -34,6 +34,8 @@ interface CoverageInitiativeLike {
  * - `reformular`, `resuelto` y `cerrar` son decisiones explícitas y se respetan.
  * - Sin iniciativas no hay cobertura, diga lo que diga el valor persistido.
  * - Con iniciativas: parcial; suficiente si alguna llegó a decisión y resolvió la parte central.
+ *   Una iniciativa ya decidida (cerrada) no cuenta: su cobertura la escribió la decisión (§23),
+ *   y sin esto "seguir experimentando" volvía a leerse como suficiente.
  * - Nunca queda por debajo de lo que ya se persistió (Step 4 / decisión pueden declarar más).
  * Espejo de deriveChallengeCoverageStatus (front/src/features/portfolio-lead/domain/actions.ts).
  */
@@ -43,7 +45,8 @@ export function deriveChallengeCoverage(persisted: string | null | undefined, in
   if (initiatives.length === 0) return 'sin_cobertura';
   const sufficient = initiatives.some(
     (initiative) =>
-      Boolean(initiative.resolvedCorePart)
+      !CLOSED.has(normalize(initiative.status))
+      && Boolean(initiative.resolvedCorePart)
       && (Boolean(initiative.readyForDecision)
         || initiative.status === 'lista_para_decision'
         || initiative.status === 'en_step_4'
