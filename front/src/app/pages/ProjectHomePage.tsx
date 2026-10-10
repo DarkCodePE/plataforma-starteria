@@ -5,7 +5,8 @@ import {
   FileText, Clock, History, X, ChevronDown, UserPlus,
   Sparkles, Calendar, MessageSquare, ClipboardList,
 } from 'lucide-react';
-import { createTeamMember, useApp } from '../context/AppContext';
+import { adaptTeamMember, useApp } from '../context/AppContext';
+import * as projectService from '../services/projectService';
 import { StatusChip } from '../components/StatusChip';
 import { ProgressBar } from '../components/ProgressBar';
 import { MentorSupportModal } from '../components/MentorSupportModal';
@@ -650,6 +651,8 @@ function ProjectHomeContent() {
   const navigate = useNavigate();
   const [showTeamModal, setShowTeamModal] = useState(false);
   const [inviteEmail, setInviteEmail] = useState('');
+  const [inviteError, setInviteError] = useState<string | null>(null);
+  const [inviting, setInviting] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
   const [showMentorModal, setShowMentorModal] = useState(false);
   const [mentorModalContext, setMentorModalContext] = useState('');
@@ -657,6 +660,7 @@ function ProjectHomeContent() {
   const [iaPanelContext, setIaPanelContext] = useState('');
   const [sponsorEmail, setSponsorEmail] = useState('');
   const [sponsorError, setSponsorError] = useState<string | null>(null);
+  const [addingSponsor, setAddingSponsor] = useState(false);
   const [commentDrafts, setCommentDrafts] = useState<Record<string, string>>({});
   const [alignmentCopied, setAlignmentCopied] = useState(false);
   const [stepPreview, setStepPreview] = useState<StepPreviewState>({ selectedStepId: null, isOpen: true, source: 'auto' });
@@ -1158,7 +1162,8 @@ function ProjectHomeContent() {
     setCurrentProject(project);
     navigate(`/projects/${project.id}/step/${stepNumber}`);
   };
-  const addSponsor = () => {
+  const addSponsor = async () => {
+    if (addingSponsor) return;
     const email = sponsorEmail.trim().toLowerCase();
     if (!email) return;
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
@@ -1174,9 +1179,46 @@ function ProjectHomeContent() {
       return;
     }
 
-    updateProject(project.id, { team: [...project.team, createTeamMember(email, 'Sponsor', 'Pendiente')] });
-    setSponsorEmail('');
+    // La invitación se guarda en el servidor: antes sólo quedaba en este navegador y el sponsor
+    // nunca entraba al equipo.
+    setAddingSponsor(true);
     setSponsorError(null);
+    try {
+      const member = adaptTeamMember(await projectService.inviteTeamMember(project.id, { email, role: 'Sponsor' }));
+      updateProject(project.id, { team: [...project.team, { ...member, email: member.email || email }] });
+      setSponsorEmail('');
+      if (member.role !== 'Sponsor') {
+        setSponsorError('Ese correo ya tiene una cuenta sin perfil sponsor: quedó invitado al equipo con acceso de lectura.');
+      }
+    } catch (err) {
+      const message = (err as { response?: { data?: { error?: { message?: string } } } })?.response?.data?.error?.message;
+      setSponsorError(message || 'No pudimos enviar la invitación al sponsor. Intenta de nuevo.');
+    } finally {
+      setAddingSponsor(false);
+    }
+  };
+
+  // El botón de invitar del modal de equipo no hacía nada. Invita como Editor (pendiente): la
+  // persona acepta desde la iniciativa.
+  const inviteToTeam = async () => {
+    const email = inviteEmail.trim().toLowerCase();
+    if (!email || inviting) return;
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      setInviteError('Ingresa un correo válido.');
+      return;
+    }
+    setInviting(true);
+    setInviteError(null);
+    try {
+      const member = adaptTeamMember(await projectService.inviteTeamMember(project.id, { email, role: 'Editor' }));
+      updateProject(project.id, { team: [...project.team, { ...member, email: member.email || email }] });
+      setInviteEmail('');
+    } catch (err) {
+      const message = (err as { response?: { data?: { error?: { message?: string } } } })?.response?.data?.error?.message;
+      setInviteError(message || 'No pudimos enviar la invitación. Intenta de nuevo.');
+    } finally {
+      setInviting(false);
+    }
   };
 
   const openStep0 = () => {
@@ -1529,7 +1571,7 @@ function ProjectHomeContent() {
                   placeholder="sponsor@empresa.com"
                   className="min-w-0 flex-1 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500"
                 />
-                <button onClick={addSponsor} className="rounded-xl bg-indigo-600 px-3 py-2 text-xs text-white hover:bg-indigo-700" style={{ fontWeight: 700 }}>
+                <button onClick={addSponsor} disabled={addingSponsor} className="rounded-xl bg-indigo-600 px-3 py-2 text-xs text-white hover:bg-indigo-700" style={{ fontWeight: 700 }}>
                   Agregar
                 </button>
               </div>
@@ -2047,7 +2089,7 @@ function ProjectHomeContent() {
                         />
                         <button
                           onClick={addSponsor}
-                          disabled={sponsorSlotsLeft === 0}
+                          disabled={sponsorSlotsLeft === 0 || addingSponsor}
                           className="bg-indigo-600 text-white rounded-xl px-3 py-2 hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                         >
                           <UserPlus size={15} />
@@ -2510,14 +2552,22 @@ function ProjectHomeContent() {
                     <input
                       type="email"
                       value={inviteEmail}
-                      onChange={e => setInviteEmail(e.target.value)}
+                      onChange={e => { setInviteEmail(e.target.value); setInviteError(null); }}
+                      onKeyDown={e => e.key === 'Enter' && inviteToTeam()}
                       placeholder="Invitar por correo…"
+                      aria-label="Correo de la persona a invitar"
                       className="flex-1 border border-slate-200 rounded-xl px-3 py-2 text-sm bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500"
                     />
-                    <button className="bg-indigo-600 text-white rounded-xl px-3 py-2 hover:bg-indigo-700 transition-colors">
+                    <button
+                      onClick={inviteToTeam}
+                      disabled={inviting}
+                      aria-label="Invitar al equipo"
+                      className="bg-indigo-600 text-white rounded-xl px-3 py-2 hover:bg-indigo-700 transition-colors disabled:opacity-60"
+                    >
                       <UserPlus size={15} />
                     </button>
                   </div>
+                  {inviteError && <p role="alert" className="mt-2 text-xs text-red-700">{inviteError}</p>}
                 </div>
               )}
               <div className="bg-amber-50 border border-amber-100 rounded-xl p-3 text-xs text-amber-700">

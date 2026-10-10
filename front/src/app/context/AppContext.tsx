@@ -418,6 +418,36 @@ function writeSessionJson(key: string, value: unknown) {
   window.sessionStorage.setItem(key, JSON.stringify(value));
 }
 
+const MEMBER_STATUS: Record<string, TeamMemberStatus> = { ACTIVE: 'Activo', PENDING: 'Pendiente' };
+
+const capitalizeRole = (r: string) =>
+  r ? r.charAt(0).toUpperCase() + r.slice(1).toLowerCase() : 'Editor';
+
+/**
+ * Una fila de equipo del backend (TeamMember, con `user`) o de la forma local. El backend no tiene
+ * rol de equipo Sponsor: una fila VIEWER de un usuario con rol de plataforma sponsor es un
+ * patrocinio, y pendiente quiere decir que la invitación ya se envió.
+ */
+export function adaptTeamMember(m: any): TeamMember {
+  const userRoles: string[] = [
+    ...(Array.isArray(m.user?.roles) ? m.user.roles : []),
+    ...(m.user?.role ? [m.user.role] : []),
+  ];
+  const sponsor = String(m.role ?? '').toUpperCase() === 'VIEWER' && userRoles.includes('sponsor');
+  const status = (MEMBER_STATUS[m.status] ?? m.status ?? 'Activo') as TeamMemberStatus;
+  const email = m.email ?? m.user?.email ?? '';
+  return {
+    id: m.id ?? `m${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    userId: m.userId ?? m.user?.id,
+    name: m.name ?? m.user?.name ?? email.split('@')[0] ?? '',
+    email,
+    role: sponsor ? 'Sponsor' : (capitalizeRole(m.role ?? 'editor') as TeamMemberRole),
+    status: sponsor && status === 'Pendiente' ? 'Enviado' : status,
+    initials:
+      m.initials ?? m.user?.initials ?? (m.name ?? m.user?.name ?? email).toString().slice(0, 2).toUpperCase(),
+  };
+}
+
 export function enrichProject(raw: any, currentUser: User | null): Project {
   const normalizeStep0Status = (status: unknown): Step0Status => {
     if (status === 'NOT_STARTED' || status === 'not_started' || status === 'No iniciado') return 'No iniciado';
@@ -439,25 +469,10 @@ export function enrichProject(raw: any, currentUser: User | null): Project {
       }))
     : [];
 
-  const capitalize = (r: string) =>
-    r ? r.charAt(0).toUpperCase() + r.slice(1).toLowerCase() : 'Editor';
-
-  const MEMBER_STATUS: Record<string, TeamMemberStatus> = { ACTIVE: 'Activo', PENDING: 'Pendiente' };
   // El backend devuelve el equipo como `teamMembers` (filas TeamMember); `team` es la forma local.
   const rawTeam = Array.isArray(raw.team) ? raw.team : Array.isArray(raw.teamMembers) ? raw.teamMembers : null;
 
-  let team: TeamMember[] = rawTeam
-    ? rawTeam.map((m: any) => ({
-        id: m.id ?? `m${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-        userId: m.userId ?? m.user?.id,
-        name: m.name ?? m.user?.name ?? m.email?.split('@')[0] ?? '',
-        email: m.email ?? m.user?.email ?? '',
-        role: capitalize(m.role ?? 'editor') as TeamMemberRole,
-        status: (MEMBER_STATUS[m.status] ?? m.status ?? 'Activo') as TeamMemberStatus,
-        initials:
-          m.initials ?? (m.name ?? m.email ?? '').toString().slice(0, 2).toUpperCase(),
-      }))
-    : [];
+  let team: TeamMember[] = rawTeam ? rawTeam.map(adaptTeamMember) : [];
 
   // El backend no tiene rol de equipo "Sponsor": quien patrocina entra al equipo como VIEWER. Para
   // la persona con rol de plataforma sponsor, su propia fila es su patrocinio; pendiente = invitada.

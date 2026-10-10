@@ -9,7 +9,8 @@ export const updateProfileSchema = z.object({
 
 export const inviteMemberSchema = z.object({
   email: z.string().email(),
-  role: z.enum(['Owner', 'Editor', 'Viewer']).default('Editor'),
+  // Sponsor no es un rol de equipo: entra como VIEWER (ver UserService.inviteMember).
+  role: z.enum(['Owner', 'Editor', 'Viewer', 'Sponsor']).default('Editor'),
   name: z.string().min(2).max(100).optional(),
 });
 

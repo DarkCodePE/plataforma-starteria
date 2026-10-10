@@ -100,3 +100,16 @@ export async function updatePosition(
 export async function acceptTeamInvitation(projectId: string): Promise<void> {
   await api.post(`/projects/${projectId}/team/accept`, {});
 }
+
+/**
+ * Invita a alguien al equipo por correo (POST /projects/:id/team/invite, sólo el Owner). `Sponsor`
+ * no es un rol de equipo en el backend: queda como fila Viewer pendiente de un usuario sponsor.
+ * Devuelve la fila TeamMember creada, con su `user`.
+ */
+export async function inviteTeamMember(
+  projectId: string,
+  input: { email: string; role: 'Editor' | 'Viewer' | 'Sponsor'; name?: string },
+): Promise<Record<string, unknown>> {
+  const { data } = await api.post<{ data: Record<string, unknown> }>(`/projects/${projectId}/team/invite`, input);
+  return data.data;
+}

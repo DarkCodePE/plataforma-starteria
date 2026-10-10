@@ -70,8 +70,10 @@ vi.mock('../../services/featureFlags', () => ({
   isPdfAutofillEnabled: () => false,
 }));
 
+const inviteTeamMember = vi.fn();
 vi.mock('../../services/projectService', () => ({
   getById: (...args: any[]) => getById(...args),
+  inviteTeamMember: (...args: any[]) => inviteTeamMember(...args),
 }));
 
 vi.mock('../../step0/step0Config', async () => {
@@ -103,7 +105,7 @@ const appState = {
 vi.mock('../../context/AppContext', () => ({
   useApp: () => appState,
   enrichProject: (raw: any) => raw,
-  createTeamMember: (email: string) => ({ id: email, email, name: email, role: 'Sponsor', status: 'Pendiente', initials: 'SP' }),
+  adaptTeamMember: (row: any) => ({ id: row.id, userId: row.userId, email: row.user?.email ?? '', name: 'Sofía', role: row.user?.roles?.includes('sponsor') ? 'Sponsor' : 'Viewer', status: 'Enviado', initials: 'SO' }),
 }));
 
 vi.mock('../../portfolio/PortfolioLeadContext', () => ({
@@ -308,6 +310,34 @@ describe('Adaptive authority in pages', () => {
     confirmAdaptiveCheckpoint.mockReset();
     getById.mockReset();
     getById.mockResolvedValue(project);
+  });
+
+  it('agregar sponsor guarda la invitación en el servidor (antes quedaba sólo en el navegador)', async () => {
+    getAdaptiveCore.mockResolvedValue(serverCore);
+    inviteTeamMember.mockResolvedValueOnce({ id: 't9', userId: 's1', role: 'VIEWER', status: 'PENDING', user: { email: 'sofia@x.com', roles: ['sponsor'] } });
+
+    render(<ProjectHomePage />);
+    const input = (await screen.findAllByPlaceholderText('sponsor@empresa.com'))[0];
+    fireEvent.change(input, { target: { value: 'Sofia@X.com' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Agregar' }));
+
+    await waitFor(() => expect(inviteTeamMember).toHaveBeenCalledWith('p1', { email: 'sofia@x.com', role: 'Sponsor' }));
+    await waitFor(() => expect(appState.updateProject).toHaveBeenCalledWith('p1', {
+      team: [expect.objectContaining({ userId: 's1', role: 'Sponsor', status: 'Enviado' })],
+    }));
+  });
+
+  it('si el servidor rechaza la invitación de sponsor, se muestra el motivo y no se agrega', async () => {
+    getAdaptiveCore.mockResolvedValue(serverCore);
+    inviteTeamMember.mockRejectedValueOnce({ response: { data: { error: { message: 'Este usuario ya es miembro del equipo.' } } } });
+
+    render(<ProjectHomePage />);
+    const input = (await screen.findAllByPlaceholderText('sponsor@empresa.com'))[0];
+    fireEvent.change(input, { target: { value: 'ya@x.com' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Agregar' }));
+
+    expect(await screen.findByText('Este usuario ya es miembro del equipo.')).toBeInTheDocument();
+    expect(appState.updateProject).not.toHaveBeenCalled();
   });
 
   it('ProjectHome blocks operational Adaptive journey when backend core fails', async () => {
