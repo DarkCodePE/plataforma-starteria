@@ -1,10 +1,11 @@
 import { z } from 'zod';
+import { conversionPresentationSchema } from './conversion-presentation.dto';
 import {
   BUSINESS_CAPABILITY_BOUNDARY_VERSION,
   STARTERIA_PATH_PROJECTION_VERSION,
 } from '../../portfolio-entry/domain/starteria-path.types';
 
-export const STARTERIA_PATH_DTO_SCHEMA_VERSION = 'starteria-path-dto-v0.1' as const;
+export const STARTERIA_PATH_DTO_SCHEMA_VERSION = 'starteria-path-dto-v0.2' as const;
 
 export const STARTERIA_PATH_PUBLIC_VERSIONS = {
   pathSchemaVersion: STARTERIA_PATH_DTO_SCHEMA_VERSION,
@@ -66,6 +67,7 @@ const dependenciesSchema = z.array(z.object({
 }).strict());
 
 const supportedDtoSchema = z.object({
+  conversionPresentation: conversionPresentationSchema,
   experienceState: z.enum(['SUPPORTED', 'BOUNDED']),
   starteriaPathStatus: z.enum(['SUPPORTED', 'BOUNDED']),
   valueBridge: valueBridgeSchema,

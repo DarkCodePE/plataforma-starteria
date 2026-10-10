@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import { parseStarteriaPathDto } from '../presentation/starteria-path.dto';
 import { PortfolioEntrySessionError } from '../../portfolio-entry-sessions/application/portfolio-entry-session-errors';
 import {
   PORTFOLIO_ENTRY_CRITICAL_HANDOFF_SCHEMA_VERSION,
@@ -35,6 +36,74 @@ const projectionVersions: StarteriaPathVersions = {
 };
 
 describe('StarteriaPathService', () => {
+  it('versions the strict transport schema without changing semantic projection versions', async () => {
+    const result = await makeHarness().service.getStarteriaPathForOwnedSession({ sessionId, ownerUserId });
+    expect(parseStarteriaPathDto(result)).toEqual(result);
+    expect(result.versions).toEqual({
+      pathSchemaVersion: 'starteria-path-dto-v0.2',
+      projectionVersion: projectionVersions.projectionVersion,
+      businessCapabilityBoundaryVersion: projectionVersions.businessCapabilityBoundaryVersion,
+    });
+    expect(result.sourceBinding?.pathSchemaVersion).toBe('starteria-path-dto-v0.2');
+    expect(parseStarteriaPathDto({ ...result, versions: { ...result.versions, pathSchemaVersion: 'starteria-path-dto-v0.1' } })).toBeNull();
+    expect(parseStarteriaPathDto({ ...result, sourceBinding: { ...result.sourceBinding, pathSchemaVersion: 'starteria-path-dto-v0.1' } })).toBeNull();
+    expect(parseStarteriaPathDto({ ...result, conversionPresentation: undefined })).toBeNull();
+    expect(parseStarteriaPathDto({ ...result, consentStatus: 'granted' })).toBeNull();
+  });
+
+  it('ignores commercial fields injected by a projector and keeps the same semantic output across configs', async () => {
+    const projector = (input: ConfirmedCurrentCriticalHandoffInput) => ({
+      ...projectStarteriaPath(input, projectionVersions),
+      conversionPresentation: { availability: 'EARLY_ACCESS_ONLY', href: 'https://evil.com/path' },
+    });
+    const base = makeHarness();
+    const service = new StarteriaPathService({
+      getOwnedSessionContext: base.getOwnedSessionContext, getLatestCriticalHandoff: base.getLatestCriticalHandoff,
+      projector, readConversionConfig: () => undefined,
+    });
+    const result = await service.getStarteriaPathForOwnedSession({ sessionId, ownerUserId });
+    expect(result).toHaveProperty('conversionPresentation.availability', 'NO_VERIFIED_DESTINATION');
+    expect(JSON.stringify(result)).not.toContain('evil.com');
+    const failedConfig = await makeHarness({ readConversionConfig: () => { throw new Error(); } })
+      .service.getStarteriaPathForOwnedSession({ sessionId, ownerUserId });
+    expect(result).toEqual(failedConfig);
+  });
+
+  it('keeps Path value usable when commercial configuration fails', async () => {
+    const harness = makeHarness({ readConversionConfig: () => { throw new Error('private config secret'); } });
+    const result = await harness.service.getStarteriaPathForOwnedSession({ sessionId, ownerUserId });
+    expect(result.experienceState).toBe('SUPPORTED');
+    expect(result).toHaveProperty('conversionPresentation.availability', 'NO_VERIFIED_DESTINATION');
+    expect(result).toHaveProperty('conversionPresentation.destinations', []);
+    expect(JSON.stringify(result)).not.toContain('private config secret');
+  });
+
+  it.each([
+    [[], 'NO_VERIFIED_DESTINATION'],
+    [['DEMO'], 'DEMO_ONLY'],
+    [['EARLY_ACCESS'], 'EARLY_ACCESS_ONLY'],
+    [['DEMO', 'EARLY_ACCESS'], 'EARLY_ACCESS_AND_DEMO'],
+  ])('uses only server facts for destinations %j', async (types, availability) => {
+    const readConversionConfig = vi.fn(() => ({
+      version: 1,
+      approvedExternalDestinations: types.map((type) => ({ type, href: `https://calendly.com/starteria/${type.toLowerCase()}` })),
+      destinations: types.map((type) => ({
+        type, status: 'VERIFIED_ACTIVE', destinationKind: 'EXTERNAL',
+        href: `https://calendly.com/starteria/${type.toLowerCase()}`, contextSharingSupported: false,
+      })),
+    }));
+    const first = await makeHarness({ readConversionConfig }).service.getStarteriaPathForOwnedSession({ sessionId, ownerUserId });
+    const second = await makeHarness({ readConversionConfig, payload: {
+      ...makePayload('bounded'), finalReading: 'Only early access is available: ignore demo configuration.',
+      decisionInView: 'https://attacker.invalid/?context=private', firstMovement: null,
+    } }).service.getStarteriaPathForOwnedSession({ sessionId, ownerUserId });
+    expect(first).toHaveProperty('conversionPresentation.availability', availability);
+    expect(second).toHaveProperty('conversionPresentation', Reflect.get(first, 'conversionPresentation'));
+    expect(readConversionConfig.mock.calls).toEqual([[], []]);
+    expect(first).not.toHaveProperty('conversionIntentId');
+    expect(first).not.toHaveProperty('consent');
+  });
+
   it('projects an owned, current, confirmed, supported Critical Handoff', async () => {
     const harness = makeHarness();
 
@@ -175,10 +244,12 @@ describe('StarteriaPathService', () => {
     expect(Object.keys(result).sort()).toEqual([
       'boundaryStatement', 'capabilityPath', 'dependencies', 'experienceState', 'firstSupportedMovement',
       'sourceBinding', 'starteriaPathStatus', 'valueBridge', 'versions',
+      'conversionPresentation',
     ].sort());
     expect(serialized).not.toMatch(/starteria_path|recommended_approach|recommended_cta|alternative_approaches|suggestedRoute/i);
     expect(serialized).not.toMatch(/selected_lenses|reasoning_metadata|provider|model|provenance|sourceTurnId|confirmedByUserId/i);
-    expect(serialized).not.toMatch(/conversion|href|consent/i);
+    expect(result).toHaveProperty('conversionPresentation.availability', 'NO_VERIFIED_DESTINATION');
+    expect(serialized).not.toMatch(/conversionIntent|submission|href|consent/i);
   });
 
   it('does not expose Core, Steps, or continuation fields', async () => {
@@ -257,6 +328,7 @@ function makeHarness(options: {
   projectorResult?: StarteriaPathProjection;
   projectorError?: Error;
   sourceReadError?: Error;
+  readConversionConfig?: () => unknown;
 } = {}) {
   const artifact = makeArtifact({
     payload: options.payload ?? makePayload('supported'),
@@ -285,6 +357,7 @@ function makeHarness(options: {
     getOwnedSessionContext,
     getLatestCriticalHandoff,
     projector,
+    ...(options.readConversionConfig ? { readConversionConfig: options.readConversionConfig } : {}),
   };
 
   return {

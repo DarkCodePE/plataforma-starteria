@@ -1,6 +1,7 @@
 import {
   PortfolioEntrySessionError,
 } from '../../portfolio-entry-sessions/application/portfolio-entry-session-errors';
+import { readConversionPresentation, type ConversionConfigReader } from './conversion-presentation.service';
 import {
   parseCriticalHandoffPayload,
   PortfolioEntryCriticalHandoffValidationError,
@@ -37,6 +38,7 @@ export type StarteriaPathServiceDependencies = Readonly<{
   getOwnedSessionContext: (sessionId: string, ownerUserId: string) => Promise<StarteriaPathOwnedSessionContext>;
   getLatestCriticalHandoff: (sessionId: string) => Promise<PortfolioEntryCriticalHandoffCurrentness | null>;
   projector?: StarteriaPathProjector;
+  readConversionConfig?: ConversionConfigReader;
 }>;
 
 export class StarteriaPathError extends Error {
@@ -191,6 +193,7 @@ export class StarteriaPathService {
     const available = projection;
     const pathStatus = available.pathStatus === 'supported' ? 'SUPPORTED' : 'BOUNDED';
     const result = {
+      conversionPresentation: readConversionPresentation(this.dependencies.readConversionConfig),
       experienceState: pathStatus,
       starteriaPathStatus: pathStatus,
       valueBridge: {

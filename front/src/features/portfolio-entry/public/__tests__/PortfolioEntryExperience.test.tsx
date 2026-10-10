@@ -162,6 +162,7 @@ function makeCriticalHandoff(overrides: Partial<PortfolioEntryCriticalHandoffDto
 
 function makeSupportedStarteriaPath(): StarteriaPathSupportedDto {
   return {
+    conversionPresentation: { availability: 'NO_VERIFIED_DESTINATION', conversionConfigVersion: 1, destinations: [] },
     experienceState: 'SUPPORTED',
     starteriaPathStatus: 'SUPPORTED',
     valueBridge: {
@@ -189,10 +190,10 @@ function makeSupportedStarteriaPath(): StarteriaPathSupportedDto {
       confirmed: true,
       projectionVersion: 'starteria-path-projection-v0.1',
       businessCapabilityBoundaryVersion: 'business-capability-boundary-v0.1',
-      pathSchemaVersion: 'starteria-path-dto-v0.1',
+      pathSchemaVersion: 'starteria-path-dto-v0.2',
     },
     versions: {
-      pathSchemaVersion: 'starteria-path-dto-v0.1',
+      pathSchemaVersion: 'starteria-path-dto-v0.2',
       projectionVersion: 'starteria-path-projection-v0.1',
       businessCapabilityBoundaryVersion: 'business-capability-boundary-v0.1',
     },
