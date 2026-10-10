@@ -251,14 +251,63 @@ export function adaptTeamMembers(value: unknown): string[] {
   return value
     .map((member) => {
       if (typeof member === 'string') return member;
-      if (member && typeof member === 'object') {
-        const m = member as Record<string, unknown>;
-        const label = m.name ?? m.email ?? m.userId;
-        return typeof label === 'string' ? label : '';
-      }
+      if (member && typeof member === 'object') return memberLabel(member as Record<string, unknown>);
       return '';
     })
     .filter((label) => label.trim().length > 0);
+}
+
+/** Nombre visible de un miembro: name → email → userId (mismo orden que el cache de meta). */
+function memberLabel(m: Record<string, unknown>): string {
+  const label = m.name ?? m.email ?? m.userId;
+  return typeof label === 'string' ? label : '';
+}
+
+// ── roster de la iniciativa (GET /portfolio/initiatives/:projectId/team) ─────
+// A diferencia de meta.teamMembers (cache de nombres), esto es la fuente: filas TeamMember con
+// su usuario. El servicio del front lo devuelve como `unknown`; acá se valida y se aplana.
+export type InitiativeTeamRole = 'OWNER' | 'EDITOR' | 'VIEWER';
+export type InitiativeTeamStatus = 'ACTIVE' | 'PENDING';
+
+export interface InitiativeTeamMemberView {
+  userId: string;
+  name: string;
+  email: string;
+  role: InitiativeTeamRole;
+  status: InitiativeTeamStatus;
+  inherited: boolean;
+}
+
+export interface InitiativeTeamView {
+  members: InitiativeTeamMemberView[];
+  ownerUserId: string | null;
+  label: string;
+}
+
+const TEAM_ROLES = new Set<InitiativeTeamRole>(['OWNER', 'EDITOR', 'VIEWER']);
+
+export function adaptInitiativeTeam(value: unknown): InitiativeTeamView {
+  const raw = (value && typeof value === 'object' ? value : {}) as Raw;
+  const members: InitiativeTeamMemberView[] = Array.isArray(raw.members)
+    ? raw.members
+      .filter((m: unknown): m is Raw => !!m && typeof m === 'object' && typeof (m as Raw).userId === 'string')
+      .map((m: Raw) => {
+        const user = (m.user && typeof m.user === 'object' ? m.user : {}) as Raw;
+        return {
+          userId: m.userId,
+          name: memberLabel({ name: user.name, email: user.email, userId: m.userId }),
+          email: typeof user.email === 'string' ? user.email : '',
+          role: TEAM_ROLES.has(m.role) ? m.role : 'VIEWER',
+          status: m.status === 'PENDING' ? 'PENDING' : 'ACTIVE',
+          inherited: m.inheritedFromChallenge === true,
+        };
+      })
+    : [];
+  return {
+    members,
+    ownerUserId: typeof raw.owner === 'string' ? raw.owner : members.find((m) => m.role === 'OWNER')?.userId ?? null,
+    label: typeof raw.label === 'string' ? raw.label : '',
+  };
 }
 
 export function adaptInitiative(raw: Raw): Initiative {

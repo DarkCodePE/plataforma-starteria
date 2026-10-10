@@ -260,8 +260,10 @@ export function PortfolioLeadHomePage() {
               'Este panel solo orienta y explica; no decide por el Portfolio Lead.',
             ]}
           >
+            {/* Copilot sólo se nombra si está encendido: con el flag apagado (prod) el backend
+                responde 403 COPILOT_DISABLED y mencionarlo promete algo que no hay. */}
             {commandCenter.alerts.length > 0
-              ? 'Empieza por los elementos de atención visibles en el workspace. Los bloqueos y decisiones no dependen de abrir Copilot.'
+              ? `Empieza por los elementos de atención visibles en el workspace.${showPortfolioCopilot ? ' Los bloqueos y decisiones no dependen de abrir Copilot.' : ''}`
               : 'No hay señales críticas visibles ahora. Mantén seguimiento sobre cobertura, decisiones y frentes activos.'}
           </InlineInsight>
 

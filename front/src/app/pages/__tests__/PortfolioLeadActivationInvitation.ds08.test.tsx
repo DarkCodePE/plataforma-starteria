@@ -74,7 +74,7 @@ describe('DS-08 Challenge activation and invitation handoff pilot', () => {
     );
 
     expect(screen.getByRole('heading', { name: 'Handoff del reto antes de crear iniciativas' })).toBeInTheDocument();
-    expect(screen.getByText('Personas invitadas')).toBeInTheDocument();
+    expect(screen.getByText('Personas invitadas al reto')).toBeInTheDocument();
     expect(screen.getByText('participante@starteria.io')).toBeInTheDocument();
     expect(screen.getByText('sofia@empresa.com')).toBeInTheDocument();
     expect(screen.getAllByText('Notificado').length).toBeGreaterThan(0);
@@ -82,6 +82,27 @@ describe('DS-08 Challenge activation and invitation handoff pilot', () => {
     expect(screen.getByText('Visible solo para las personas invitadas.')).toBeInTheDocument();
     expect(screen.getByText('Starteria recomienda una ruta de activacion')).toBeInTheDocument();
     expect(screen.getAllByText('Personas seleccionadas').length).toBeGreaterThan(0);
+  });
+
+  it('aclara que el squad es del reto y resume el equipo de sus iniciativas', () => {
+    const base = DEFAULT_INITIATIVES[0];
+    usePortfolioLeadMock.mockReturnValue({
+      ...portfolioLeadContext(),
+      initiatives: [
+        ...DEFAULT_INITIATIVES.filter(item => item.challengeId !== 'challenge-invite'),
+        { ...base, id: 'ini-team-a', challengeId: 'challenge-invite', teamMembers: ['Ana', 'Beto', 'Caro'] },
+        { ...base, id: 'ini-team-b', challengeId: 'challenge-invite', teamMembers: ['Caro', 'Dani', 'Eva', 'Fito'] },
+      ],
+    });
+
+    render(
+      <MemoryRouter initialEntries={['/portfolio/retos?challengeId=challenge-invite']}>
+        <PortfolioLeadChallengesPage />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByText('Squad asignado al reto')).toBeInTheDocument();
+    expect(screen.getByTestId('challenge-initiative-teams-summary')).toHaveTextContent('6 personas en 2 iniciativas');
   });
 
   it('keeps handoff CTA navigation and activation edit action wired to existing handlers', async () => {
