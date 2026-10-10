@@ -4,6 +4,14 @@ import { AppError } from '../../shared/errors/AppError';
 import { User, Role } from '../../shared/types';
 import { UpdateProfileInput, InviteMemberInput } from './user.schemas';
 
+// La API recibe 'Owner' | 'Editor' | 'Viewer' (user.schemas.ts); el enum de Prisma es OWNER | EDITOR | VIEWER.
+// Pasarlo crudo daba 500 al invitar o cambiar de rol.
+export function toTeamRole(role: string): TeamRole {
+  const upper = role.toUpperCase();
+  if (upper === TeamRole.OWNER || upper === TeamRole.EDITOR || upper === TeamRole.VIEWER) return upper as TeamRole;
+  throw AppError.badRequest(`Rol de equipo desconocido: ${role}`, 'INVALID_TEAM_ROLE');
+}
+
 export class UserService {
   constructor(private prisma: PrismaClient) {}
 
@@ -183,7 +191,7 @@ export class UserService {
       data: {
         projectId,
         userId: user.id,
-        role: data.role as TeamRole,
+        role: toTeamRole(data.role),
         status: TeamMemberStatus.PENDING,
       },
     });
@@ -200,9 +208,14 @@ export class UserService {
       throw AppError.notFound('Miembro del equipo', 'TEAM_MEMBER_NOT_FOUND', { hint: 'Verifica que el usuario sea parte del equipo.' });
     }
 
+    const role = toTeamRole(newRole);
+    if (member.role === TeamRole.OWNER && role !== TeamRole.OWNER) {
+      throw AppError.badRequest('No se puede quitar el rol de owner.', 'CANNOT_DEMOTE_OWNER', { hint: 'Transfiere primero el ownership a otro miembro.' });
+    }
+
     const updated = await this.prisma.teamMember.update({
       where: { id: memberId },
-      data: { role: newRole as TeamRole },
+      data: { role },
     });
 
     return updated;

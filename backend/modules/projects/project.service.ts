@@ -454,6 +454,8 @@ export class ProjectService {
     data: UpdateProjectInput
   ): Promise<Project> {
     const existing = await this.getProject(projectId, userId, role);
+    // ADR-030: cerrada o pausada es de sólo lectura también para los datos del proyecto.
+    await this.assertInitiativeAcceptsStepWrites(projectId);
 
     if (data.status && data.status !== existing.status) {
       validateTransition('project', existing.status, data.status);
