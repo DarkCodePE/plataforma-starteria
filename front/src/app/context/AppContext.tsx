@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useEffect, useState, ReactNode } from 'react';
 import { authService, AuthUser } from '../services/auth.service';
 import { PERMISSIONS, type Permission } from '../authz/permissions';
-import { getProjectAccess, isSameTeamMember } from '../authz/projectAccess';
+import { canOpenProject, getProjectAccess, isSameTeamMember } from '../authz/projectAccess';
 import { initAuth, getAccessToken, parseApiError, AuthError } from '../services/api';
 import * as projectService from '../services/projectService';
 import { updateSponsorData } from '../services/portfolioService';
@@ -709,22 +709,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const canAccessProject = (
     projectId: string,
     accessLevel: 'overview' | 'step' | 'evidence' = 'overview'
-  ) => {
-    if (!user) return false;
-    if (user.role === 'admin' || user.role === 'mentor') return true;
-    if (user.role === 'portfolio_lead') return false;
-
-    const member = getProjectMember(projectId, user.email);
-    if (!member) return false;
-
-    if (user.role === 'sponsor') {
-      if (member.role !== 'Sponsor') return false;
-      if (accessLevel === 'overview') return member.status === 'Enviado' || member.status === 'Activo';
-      return false;
-    }
-
-    return member.status === 'Activo';
-  };
+  ) => canOpenProject(user, projects.find(item => item.id === projectId) ?? null, accessLevel);
 
   const canEditProject = (projectId: string) =>
     getProjectAccess(user, projects.find(item => item.id === projectId) ?? null).canEdit;
