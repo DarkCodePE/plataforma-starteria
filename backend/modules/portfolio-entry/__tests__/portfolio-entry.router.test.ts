@@ -31,6 +31,37 @@ const base = '/api/v1/public/portfolio-entry';
 const legacyCompatibilityRepositories = new WeakMap<express.Express, InMemoryPortfolioEntrySessionRepository>();
 
 describe('Portfolio Entry Experimental Session API', () => {
+  it.each([
+    [[], 'NO_VERIFIED_DESTINATION'], [['DEMO'], 'DEMO_ONLY'],
+    [['EARLY_ACCESS'], 'EARLY_ACCESS_ONLY'], [['DEMO', 'EARLY_ACCESS'], 'EARLY_ACCESS_AND_DEMO'],
+  ])('GET Path applies server configuration %j without session or source writes', async (types, availability) => {
+    const { app, repository } = makeApp({ starteriaPathConversionConfig: () => ({
+      version: 5,
+      approvedExternalDestinations: types.map((type) => ({ type, href: `https://calendly.com/starteria/${type.toLowerCase()}` })),
+      destinations: types.map((type) => ({ type, status: 'VERIFIED_ACTIVE', destinationKind: 'EXTERNAL',
+        href: `https://calendly.com/starteria/${type.toLowerCase()}`, contextSharingSupported: false })),
+    }) });
+    const { sessionId } = await createOwnedConfirmedCriticalHandoff(repository);
+    const before = await repository.findSessionById(sessionId);
+    const response = await request(app).get(`${base}/sessions/${sessionId}/starteria-path?demoUrl=https://evil.com/path`)
+      .set('Authorization', 'Bearer user-1').expect(200);
+    expect(response.body.data.conversionPresentation.availability).toBe(availability);
+    expect(response.body.data.versions.pathSchemaVersion).toBe('starteria-path-dto-v0.2');
+    expect(JSON.stringify(response.body)).not.toMatch(/evil.com|consentStatus|conversionIntentId|pilot-leads|continue-portfolio/);
+    expect(await repository.findSessionById(sessionId)).toEqual(before);
+    await request(app).post(`${base}/sessions/${sessionId}/starteria-path`).set('Authorization', 'Bearer user-1').send({}).expect(404);
+  });
+
+  it('GET Path remains supported with no CTA when configuration throws', async () => {
+    const { app, repository } = makeApp({ starteriaPathConversionConfig: () => { throw new Error('private secret'); } });
+    const { sessionId } = await createOwnedConfirmedCriticalHandoff(repository);
+    const response = await request(app).get(`${base}/sessions/${sessionId}/starteria-path`)
+      .set('Authorization', 'Bearer user-1').expect(200);
+    expect(response.body.data.experienceState).toBe('SUPPORTED');
+    expect(response.body.data.conversionPresentation).toEqual({ availability: 'NO_VERIFIED_DESTINATION', conversionConfigVersion: null, destinations: [] });
+    expect(JSON.stringify(response.body)).not.toContain('private secret');
+  });
+
   it('GET Starteria Path requires its owned, current, confirmed Critical Handoff and never serializes the legacy sidecar', async () => {
     const { app, repository } = makeApp();
     const ready = await legacyHandoffReadySession(app);
@@ -79,7 +110,10 @@ describe('Portfolio Entry Experimental Session API', () => {
     expect(response.body.data).not.toHaveProperty('href');
     expect(serialized).not.toMatch(/starteria_path|recommended_approach|recommended_cta|alternative_approaches|suggestedRoute/i);
     expect(serialized).not.toMatch(/selected_lenses|reasoning_metadata|provider|model|sourceTurnId|confirmedByUserId/i);
-    expect(serialized).not.toMatch(/consent|conversion|continue-portfolio/i);
+    expect(response.body.data.conversionPresentation).toEqual({
+      availability: 'NO_VERIFIED_DESTINATION', conversionConfigVersion: 1, destinations: [],
+    });
+    expect(serialized).not.toMatch(/consent|conversionIntent|submission|continue-portfolio/i);
     expect(await repository.findSessionById(ready.sessionId)).toEqual(before);
   });
 
@@ -1106,6 +1140,7 @@ function makeApp(input: {
   repository?: InMemoryPortfolioEntrySessionRepository;
   idempotencyRepository?: PortfolioEntryIdempotencyRepository;
   starteriaPathProjector?: StarteriaPathProjector;
+  starteriaPathConversionConfig?: () => unknown;
   options?: Parameters<typeof buildPortfolioEntryRouter>[0];
 } = {}) {
   const app = express();
@@ -1132,6 +1167,7 @@ function makeApp(input: {
     sessionTtlMs: 60 * 60_000,
     idempotencyTtlMs: 60 * 60_000,
     ...(input.starteriaPathProjector ? { starteriaPathProjector: input.starteriaPathProjector } : {}),
+    ...(input.starteriaPathConversionConfig ? { starteriaPathConversionConfig: input.starteriaPathConversionConfig } : {}),
   }));
   app.use(errorHandler);
   return { app, repository };

@@ -1,18 +1,22 @@
 import React from 'react';
+import axios from 'axios';
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import { StarteriaPathExperience } from '../StarteriaPathExperience';
 import type { StarteriaPathDto, StarteriaPathSupportedDto } from '../starteriaPath.types';
+import { parseStarteriaPathDto } from '../starteriaPath.types';
+import { CONVERSION_COPY } from '../conversionPresentation.types';
 
 const versions = {
-  pathSchemaVersion: 'starteria-path-dto-v0.1',
+  pathSchemaVersion: 'starteria-path-dto-v0.2',
   projectionVersion: 'starteria-path-projection-v0.1',
   businessCapabilityBoundaryVersion: 'business-capability-boundary-v0.1',
 } as const;
 
 function makeSupportedPath(overrides: Partial<StarteriaPathSupportedDto> = {}): StarteriaPathSupportedDto {
   return {
+    conversionPresentation: { availability: 'NO_VERIFIED_DESTINATION', conversionConfigVersion: 1, destinations: [] },
     experienceState: 'SUPPORTED',
     starteriaPathStatus: 'SUPPORTED',
     valueBridge: {
@@ -56,7 +60,7 @@ function makeSupportedPath(overrides: Partial<StarteriaPathSupportedDto> = {}): 
       confirmed: true,
       projectionVersion: 'starteria-path-projection-v0.1',
       businessCapabilityBoundaryVersion: 'business-capability-boundary-v0.1',
-      pathSchemaVersion: 'starteria-path-dto-v0.1',
+      pathSchemaVersion: 'starteria-path-dto-v0.2',
     },
     versions,
     ...overrides,
@@ -68,6 +72,65 @@ function renderPath(path: StarteriaPathDto, onRetry = vi.fn()) {
 }
 
 describe('StarteriaPathExperience', () => {
+  it('clicks only navigate and never submit or persist Entry context or consent', async () => {
+    const post = vi.spyOn(axios.Axios.prototype, 'post');
+    const xhr = vi.spyOn(XMLHttpRequest.prototype, 'send');
+    const storage = vi.spyOn(Storage.prototype, 'setItem');
+    const fetchSpy = vi.spyOn(globalThis, 'fetch');
+    try {
+      renderPath(makeSupportedPath({ conversionPresentation: {
+        availability: 'DEMO_ONLY', conversionConfigVersion: 1,
+        destinations: [{ type: 'DEMO', status: 'VERIFIED_ACTIVE', destinationKind: 'EXTERNAL',
+          href: 'https://calendly.com/starteria/demo', contextSharingSupported: false, ...CONVERSION_COPY.DEMO }],
+      } }));
+      const link = screen.getByRole('link', { name: 'Solicitar una demo' });
+      // jsdom cannot navigate; prevent only the browser default, leaving handlers observable.
+      link.addEventListener('click', (event) => event.preventDefault());
+      await userEvent.click(link);
+      expect(post).not.toHaveBeenCalled();
+      expect(xhr).not.toHaveBeenCalled();
+      expect(fetchSpy).not.toHaveBeenCalled();
+      expect(storage).not.toHaveBeenCalled();
+      expect(screen.queryByRole('checkbox')).not.toBeInTheDocument();
+      expect(screen.queryByText(/reserva confirmada|solicitud enviada/i)).not.toBeInTheDocument();
+    } finally {
+      post.mockRestore(); xhr.mockRestore(); storage.mockRestore(); fetchSpy.mockRestore();
+    }
+  });
+
+  it.each([
+    ['NO_VERIFIED_DESTINATION', []],
+    ['DEMO_ONLY', ['DEMO']],
+    ['EARLY_ACCESS_ONLY', ['EARLY_ACCESS']],
+    ['EARLY_ACCESS_AND_DEMO', ['DEMO', 'EARLY_ACCESS']],
+  ])('presents only verified actions after all value for %s', (availability, types) => {
+    const destinations = types.map((type) => ({
+      type, status: 'VERIFIED_ACTIVE', destinationKind: 'EXTERNAL',
+      label: type === 'DEMO' ? 'Solicitar una demo' : 'Solicitar acceso anticipado',
+      href: `https://calendly.com/starteria/${type.toLowerCase()}`,
+      contextSharingSupported: false,
+      availabilityDisclosure: CONVERSION_COPY[type as keyof typeof CONVERSION_COPY].availabilityDisclosure,
+    }));
+    const path = makeSupportedPath({ conversionPresentation: {
+      availability, conversionConfigVersion: 1, destinations,
+    } } as unknown as Partial<StarteriaPathSupportedDto>);
+    expect(parseStarteriaPathDto(path)).toEqual(path);
+    const { container } = renderPath(path);
+    expect(screen.queryAllByRole('link')).toHaveLength(types.length);
+    for (const destination of destinations) {
+      const link = screen.getByRole('link', { name: destination.label });
+      expect(link).toHaveAttribute('href', destination.href);
+      expect(link).toHaveAttribute('target', '_blank');
+      expect(link).toHaveAttribute('rel', 'noopener noreferrer');
+      expect(link).toHaveAttribute('referrerpolicy', 'no-referrer');
+      for (const id of ['value-bridge', 'tangible-outcome', 'dependencies', 'first-movement', 'boundary']) {
+        expect(screen.getByTestId(`starteria-path-${id}`).compareDocumentPosition(link) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+      }
+    }
+    expect(container.querySelector('form, input, button')).toBeNull();
+    expect(container.innerHTML).not.toMatch(/\/portfolio\/setup|continue-portfolio|pilot-leads|Entrar a Starteria|Ir al producto/);
+  });
+
   it('renders a supported Path as a contextual sequence after the confirmed reading', () => {
     renderPath(makeSupportedPath());
 

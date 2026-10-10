@@ -38,6 +38,7 @@ import { PortfolioEntryContinuationService } from '../portfolio-entry-continuati
 import type { CriticalHandoffProjection } from './presentation/critical-handoff-projection';
 import { StarteriaPathService, type StarteriaPathProjector } from '../portfolio-entry-starteria-path/application/starteria-path.service';
 import { StarteriaPathController } from '../portfolio-entry-starteria-path/starteria-path.controller';
+import type { ConversionConfigReader } from '../portfolio-entry-starteria-path/application/conversion-presentation.service';
 
 const versioning = {
   contractVersion: 'portfolio-entry-contract-v0.1',
@@ -60,6 +61,7 @@ export interface PortfolioEntryRouterDeps {
   liveUnderstandingSynthesizer?: PortfolioEntryLiveUnderstandingSynthesizer;
   criticalHandoffProjector?: (source: unknown) => CriticalHandoffProjection;
   starteriaPathProjector?: StarteriaPathProjector;
+  starteriaPathConversionConfig?: ConversionConfigReader;
   handoffMaterializer?: PortfolioEntryHandoffMaterializer;
   authenticate?: RequestHandler;
   optionalAuthenticate?: RequestHandler;
@@ -98,6 +100,7 @@ export function buildPortfolioEntryRouter(
   );
   const controller = new PortfolioEntryController(appService);
   const starteriaPathService = new StarteriaPathService({
+    readConversionConfig: deps.starteriaPathConversionConfig ?? (() => config.starteriaPathConversion),
     getOwnedSessionContext: async (sessionId, ownerUserId) => {
       const session = await sessionService.getForOwner(sessionId, ownerUserId);
       if (session.ownershipState !== 'CLAIMED' || session.ownerUserId !== ownerUserId) {

@@ -47,6 +47,7 @@ function makeSession(overrides: Partial<PortfolioEntrySessionDto> = {}): Portfol
 describe('portfolioEntryPublicService', () => {
   it('reads Starteria Path only from its dedicated session endpoint and returns its DTO', async () => {
     const expected: StarteriaPathSupportedDto = {
+      conversionPresentation: { availability: 'NO_VERIFIED_DESTINATION', conversionConfigVersion: 1, destinations: [] },
       experienceState: 'SUPPORTED',
       starteriaPathStatus: 'SUPPORTED',
       valueBridge: {
@@ -74,10 +75,10 @@ describe('portfolioEntryPublicService', () => {
         confirmed: true,
         projectionVersion: 'starteria-path-projection-v0.1',
         businessCapabilityBoundaryVersion: 'business-capability-boundary-v0.1',
-        pathSchemaVersion: 'starteria-path-dto-v0.1',
+        pathSchemaVersion: 'starteria-path-dto-v0.2',
       },
       versions: {
-        pathSchemaVersion: 'starteria-path-dto-v0.1',
+        pathSchemaVersion: 'starteria-path-dto-v0.2',
         projectionVersion: 'starteria-path-projection-v0.1',
         businessCapabilityBoundaryVersion: 'business-capability-boundary-v0.1',
       },
@@ -97,6 +98,7 @@ describe('portfolioEntryPublicService', () => {
       HttpResponse.json({
         success: true,
         data: {
+          conversionPresentation: { availability: 'NO_VERIFIED_DESTINATION', conversionConfigVersion: 1, destinations: [] },
           experienceState: 'SUPPORTED',
           starteriaPathStatus: 'SUPPORTED',
           valueBridge: {
@@ -117,10 +119,10 @@ describe('portfolioEntryPublicService', () => {
             confirmed: true,
             projectionVersion: 'starteria-path-projection-v0.1',
             businessCapabilityBoundaryVersion: 'business-capability-boundary-v0.1',
-            pathSchemaVersion: 'starteria-path-dto-v0.1',
+            pathSchemaVersion: 'starteria-path-dto-v0.2',
           },
           versions: {
-            pathSchemaVersion: 'starteria-path-dto-v0.1',
+            pathSchemaVersion: 'starteria-path-dto-v0.2',
             projectionVersion: 'starteria-path-projection-v0.1',
             businessCapabilityBoundaryVersion: 'business-capability-boundary-v0.1',
           },

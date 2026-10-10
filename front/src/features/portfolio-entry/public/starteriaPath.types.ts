@@ -1,7 +1,8 @@
 import { z } from 'zod';
+import { conversionPresentationSchema } from './conversionPresentation.types';
 
 const versionsSchema = z.object({
-  pathSchemaVersion: z.literal('starteria-path-dto-v0.1'),
+  pathSchemaVersion: z.literal('starteria-path-dto-v0.2'),
   projectionVersion: z.literal('starteria-path-projection-v0.1'),
   businessCapabilityBoundaryVersion: z.literal('business-capability-boundary-v0.1'),
 }).strict();
@@ -14,7 +15,7 @@ const sourceBindingSchema = z.object({
   confirmed: z.literal(true),
   projectionVersion: z.literal('starteria-path-projection-v0.1'),
   businessCapabilityBoundaryVersion: z.literal('business-capability-boundary-v0.1'),
-  pathSchemaVersion: z.literal('starteria-path-dto-v0.1'),
+  pathSchemaVersion: z.literal('starteria-path-dto-v0.2'),
 }).strict();
 
 const firstMovementSchema = z.object({
@@ -54,6 +55,7 @@ const dependenciesSchema = z.array(z.object({
 }).strict());
 
 const supportedDtoSchema = z.object({
+  conversionPresentation: conversionPresentationSchema,
   experienceState: z.enum(['SUPPORTED', 'BOUNDED']),
   starteriaPathStatus: z.enum(['SUPPORTED', 'BOUNDED']),
   valueBridge: valueBridgeSchema,

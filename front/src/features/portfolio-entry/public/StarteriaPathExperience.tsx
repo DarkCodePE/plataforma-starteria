@@ -222,6 +222,28 @@ function SupportedPath({ path }: { path: StarteriaPathSupportedDto }) {
           <p className="mt-2 whitespace-pre-wrap break-words text-sm leading-6 text-status-feedback-warning-text">{path.boundaryStatement}</p>
         </aside>
       ) : null}
+      {path.conversionPresentation.availability !== 'NO_VERIFIED_DESTINATION' ? (
+        <section className="space-y-4 border-t border-border-default pt-4" aria-labelledby="starteria-path-conversion-title">
+          <h3 id="starteria-path-conversion-title" className="text-base font-semibold text-text-primary">
+            Sobre esta posibilidad de ayuda
+          </h3>
+          <ul className="space-y-4">
+            {path.conversionPresentation.destinations.map((destination) => (
+              <li key={destination.type} className="space-y-2">
+                <p id={`conversion-disclosure-${destination.type}`} className="text-sm leading-6 text-text-secondary">
+                  {destination.availabilityDisclosure}
+                </p>
+                <Button asChild variant="outline">
+                  <a href={destination.href} target="_blank" rel="noopener noreferrer" referrerPolicy="no-referrer"
+                    aria-describedby={`conversion-disclosure-${destination.type}`}>
+                    {destination.label}
+                  </a>
+                </Button>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
     </section>
   );
 }

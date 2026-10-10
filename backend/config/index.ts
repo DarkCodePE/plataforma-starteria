@@ -1,5 +1,6 @@
 import path from 'path';
 import dotenv from 'dotenv';
+import { starteriaPathConversionConfig } from './starteria-path-conversion';
 
 dotenv.config();
 dotenv.config({ path: path.resolve(process.cwd(), '../.env'), override: false });
@@ -44,6 +45,7 @@ if (!databaseUrl) {
 }
 
 export const config = {
+  starteriaPathConversion: starteriaPathConversionConfig,
   port: parseInt(process.env.PORT || '3001', 10),
   nodeEnv,
   logLevel: process.env.LOG_LEVEL || 'info',
