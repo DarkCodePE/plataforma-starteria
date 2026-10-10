@@ -721,7 +721,9 @@ function ProjectHomeContent() {
         <div className="rounded-2xl border border-amber-200 bg-amber-50 p-5">
           <p className="text-sm text-amber-900" style={{ fontWeight: 700 }}>Acceso no habilitado</p>
           <p className="text-sm text-amber-700 mt-1">
-            Esta iniciativa aún no está habilitada para tu perfil sponsor. Pide que envíen la invitación o vuelve cuando tu acceso sea aceptado.
+            {isSponsorViewer
+              ? 'Esta iniciativa aún no está habilitada para tu perfil sponsor. Pide que envíen la invitación o vuelve cuando tu acceso sea aceptado.'
+              : 'Todavía no tienes acceso a esta iniciativa. Pide al owner que te sume al equipo o acepta la invitación si ya te la enviaron.'}
           </p>
           <button onClick={() => navigate('/dashboard')} className="mt-4 rounded-xl bg-amber-600 px-4 py-2 text-sm text-white hover:bg-amber-700 transition-colors">
             Volver al dashboard

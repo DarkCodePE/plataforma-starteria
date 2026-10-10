@@ -6,7 +6,7 @@
  * edición de Step 0–4 y el backend les respondía 403.
  */
 import { describe, it, expect } from 'vitest';
-import { getProjectAccess } from '../projectAccess';
+import { canOpenProject, getProjectAccess } from '../projectAccess';
 import type { TeamMember } from '../../context/AppContext';
 
 const persona = (role: string) => ({ id: 'u1', email: 'ana@x.com', role: role as never });
@@ -63,5 +63,26 @@ describe('getProjectAccess', () => {
   it('reconoce a la persona por email cuando la fila no trae userId', () => {
     const access = getProjectAccess(persona('owner'), conEquipo({ ...fila('Viewer'), userId: undefined, email: 'ANA@x.com' }));
     expect(access.canEdit).toBe(false);
+  });
+});
+
+describe('canOpenProject', () => {
+  it('el Portfolio Lead abre la iniciativa que le devolvió el backend aunque no esté en el equipo', () => {
+    // Producción, 2026-10-10: el lead veía "Acceso no habilitado… tu perfil sponsor".
+    expect(canOpenProject(persona('portfolio_lead'), conEquipo())).toBe(true);
+    expect(canOpenProject(persona('portfolio_lead'), conEquipo(fila('Viewer')), 'step')).toBe(true);
+    expect(canOpenProject(persona('portfolio_lead'), null)).toBe(false);
+  });
+
+  it('el sponsor sólo abre la portada, con la invitación enviada o activa', () => {
+    expect(canOpenProject(persona('sponsor'), conEquipo(fila('Sponsor', 'Enviado')))).toBe(true);
+    expect(canOpenProject(persona('sponsor'), conEquipo(fila('Sponsor', 'Activo')), 'step')).toBe(false);
+    expect(canOpenProject(persona('sponsor'), conEquipo())).toBe(false);
+  });
+
+  it('un miembro del equipo abre con la invitación activa', () => {
+    expect(canOpenProject(persona('owner'), conEquipo(fila('Editor')))).toBe(true);
+    expect(canOpenProject(persona('owner'), conEquipo(fila('Editor', 'Pendiente')))).toBe(false);
+    expect(canOpenProject(persona('owner'), conEquipo())).toBe(false);
   });
 });

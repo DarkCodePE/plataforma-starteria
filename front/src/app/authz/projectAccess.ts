@@ -76,3 +76,33 @@ export function getProjectAccess(
         : 'Sólo lectura: tu rol en el equipo es Viewer. Para editar, pide al owner de la iniciativa que te dé rol de editor.',
   };
 }
+
+/**
+ * ¿Puede abrir la iniciativa (portada, Steps o evidencias)? Distinto de getProjectAccess, que
+ * decide si edita. El proyecto llega de la lista que devolvió el backend.
+ * - admin y mentor, siempre.
+ * - Portfolio Lead: si el backend se la devolvió, tiene lectura (asignado en InitiativeGovernance
+ *   o en el equipo). Antes quedaba siempre fuera, con el aviso "tu perfil sponsor".
+ * - sponsor: sólo la portada, con su invitación enviada o activa.
+ * - el resto: miembro activo del equipo (la invitación pendiente la resuelve ProjectHomePage).
+ */
+export function canOpenProject(
+  user: Pick<User, 'id' | 'email' | 'role'> | null | undefined,
+  project: Pick<Project, 'team'> | null | undefined,
+  accessLevel: 'overview' | 'step' | 'evidence' = 'overview',
+): boolean {
+  if (!user) return false;
+  if (user.role === 'admin' || user.role === 'mentor') return true;
+  if (!project) return false;
+  if (user.role === 'portfolio_lead') return true;
+
+  const member = (Array.isArray(project.team) ? project.team : []).find(item => isSameTeamMember(item, user));
+  if (!member) return false;
+
+  if (user.role === 'sponsor') {
+    if (member.role !== 'Sponsor') return false;
+    return accessLevel === 'overview' && (member.status === 'Enviado' || member.status === 'Activo');
+  }
+
+  return member.status === 'Activo';
+}
