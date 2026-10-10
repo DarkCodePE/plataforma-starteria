@@ -5,12 +5,14 @@
  * En producción el registro va a waitlist y no hay API para crear organizaciones, así que el tenant
  * de prueba se crea con este script, que corre quien tiene acceso a la base. Crea (idempotente):
  *   - la organización `org-e2e-prod` ("Starteria E2E (prueba)");
- *   - un Portfolio Lead y un participante dedicados en esa organización, activos y fuera de waitlist.
+ *   - un Portfolio Lead y un participante dedicados en esa organización, activos y fuera de waitlist;
+ *   - cuatro miembros más, uno por rol de plataforma, para el swarm de roles
+ *     (docs/e2e-job-driven/prod-role-swarm.md). Comparten la contraseña E2E_PROD_MEMBER_PASSWORD.
  * Con `cleanup` borra TODO lo que esos usuarios crearon (frentes con sus retos, proyectos y
  * aprendizajes en cascada). Nunca toca datos de otras organizaciones ni de otros usuarios.
  *
  * Seco por defecto; `--apply` escribe. Contraseñas por env, nunca en el repo:
- *   E2E_PROD_LEAD_PASSWORD, E2E_PROD_PARTICIPANT_PASSWORD
+ *   E2E_PROD_LEAD_PASSWORD, E2E_PROD_PARTICIPANT_PASSWORD, E2E_PROD_MEMBER_PASSWORD
  *
  * Uso (desde front/, con DATABASE_URL de producción):
  *   npx tsx ../backend/scripts/e2e-prod-tenant.ts setup            # ver qué haría
@@ -28,6 +30,14 @@ const apply = process.argv.includes('--apply');
 export const E2E_PROD_ORG_ID = 'org-e2e-prod';
 export const E2E_PROD_LEAD_EMAIL = process.env.E2E_PROD_LEAD_EMAIL ?? 'e2e-lead@starteria.test';
 export const E2E_PROD_PARTICIPANT_EMAIL = process.env.E2E_PROD_PARTICIPANT_EMAIL ?? 'e2e-participante@starteria.test';
+// Un miembro por rol de plataforma: en el equipo de una iniciativa cada uno entra como EDITOR o VIEWER.
+export const E2E_PROD_MEMBERS = [
+  { email: 'e2e-participante-2@starteria.test', name: 'E2E Participante 2', role: 'participante' as const },
+  { email: 'e2e-colaborador@starteria.test', name: 'E2E Colaborador', role: 'colaborador' as const },
+  { email: 'e2e-viewer@starteria.test', name: 'E2E Viewer', role: 'viewer' as const },
+  { email: 'e2e-sponsor@starteria.test', name: 'E2E Sponsor', role: 'sponsor' as const },
+];
+const SEAT_LIMIT = 2 + E2E_PROD_MEMBERS.length;
 
 function requirePassword(name: string): string {
   const value = process.env[name];
@@ -39,11 +49,16 @@ async function setup() {
   const org = await prisma.organization.findUnique({ where: { id: E2E_PROD_ORG_ID } });
   console.log(`${org ? 'existe' : apply ? 'crear' : 'crearía'} organización ${E2E_PROD_ORG_ID}`);
   if (apply && !org) {
-    await prisma.organization.create({ data: { id: E2E_PROD_ORG_ID, name: 'Starteria E2E (prueba)', slug: 'starteria-e2e-prueba', seatLimit: 5 } });
+    await prisma.organization.create({ data: { id: E2E_PROD_ORG_ID, name: 'Starteria E2E (prueba)', slug: 'starteria-e2e-prueba', seatLimit: SEAT_LIMIT } });
+  }
+  if (org && org.seatLimit < SEAT_LIMIT) {
+    console.log(`${apply ? 'subir' : 'subiría'} seatLimit de ${org.seatLimit} a ${SEAT_LIMIT}`);
+    if (apply) await prisma.organization.update({ where: { id: E2E_PROD_ORG_ID }, data: { seatLimit: SEAT_LIMIT } });
   }
   const users = [
     { email: E2E_PROD_LEAD_EMAIL, name: 'E2E Portfolio Lead', role: 'portfolio_lead' as const, passwordEnv: 'E2E_PROD_LEAD_PASSWORD', member: 'admin' },
     { email: E2E_PROD_PARTICIPANT_EMAIL, name: 'E2E Participante', role: 'participante' as const, passwordEnv: 'E2E_PROD_PARTICIPANT_PASSWORD', member: 'member' },
+    ...E2E_PROD_MEMBERS.map((m) => ({ ...m, passwordEnv: 'E2E_PROD_MEMBER_PASSWORD', member: 'member' })),
   ];
   for (const u of users) {
     const existing = await prisma.user.findUnique({ where: { email: u.email } });
@@ -61,7 +76,7 @@ async function setup() {
 }
 
 async function cleanup() {
-  const users = await prisma.user.findMany({ where: { email: { in: [E2E_PROD_LEAD_EMAIL, E2E_PROD_PARTICIPANT_EMAIL] } }, select: { id: true } });
+  const users = await prisma.user.findMany({ where: { email: { in: [E2E_PROD_LEAD_EMAIL, E2E_PROD_PARTICIPANT_EMAIL, ...E2E_PROD_MEMBERS.map((m) => m.email)] } }, select: { id: true } });
   const ids = users.map((u) => u.id);
   // Sólo lo que está en la organización de prueba o pertenece a los usuarios de prueba.
   const fronts = await prisma.strategicFront.findMany({ where: { OR: [{ organizationId: E2E_PROD_ORG_ID }, { ownerId: { in: ids } }] }, select: { id: true, name: true, organizationId: true } });
