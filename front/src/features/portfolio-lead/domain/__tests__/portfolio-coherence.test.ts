@@ -41,6 +41,11 @@ describe('cobertura del reto: un solo criterio', () => {
     expect(deriveChallengeCoverageStatus(challenge({ coverageStatus: 'cobertura_suficiente' }), [initiative()])).toBe('cobertura_suficiente');
   });
 
+  it('una iniciativa ya decidida no vuelve a subir el reto a suficiente', () => {
+    const decided = initiative({ status: 'closed', currentStep: 'Step 4', resolvedCorePart: true });
+    expect(deriveChallengeCoverageStatus(challenge({ coverageStatus: 'cobertura_parcial' }), [decided])).toBe('cobertura_parcial');
+  });
+
   it('respeta las decisiones explícitas sobre el reto', () => {
     expect(deriveChallengeCoverageStatus(challenge({ coverageStatus: 'reformular' }), [initiative()])).toBe('reformular');
     expect(deriveChallengeCoverageStatus(challenge({ coverageStatus: 'resuelto' }), [])).toBe('resuelto');
