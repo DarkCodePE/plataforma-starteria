@@ -81,6 +81,41 @@ function normalizeInitialResponses(questions: AdaptiveQuestion[], initialRespons
   }, {});
 }
 
+type CompletedCheckpoint = {
+  key: string;
+  title: string;
+  questions: AdaptiveQuestion[];
+  responses: Record<string, unknown>;
+};
+
+/** Checkpoints ya confirmados de este Step, en orden, con lo que se respondió en cada uno. */
+function completedCheckpointsFor(core: AdaptiveInitiativeCore, step: number): CompletedCheckpoint[] {
+  return (core.checkpointInstances ?? [])
+    .filter(instance => instance.step === step && instance.status === 'completed')
+    .sort((a, b) => Number(a.sequence ?? 0) - Number(b.sequence ?? 0))
+    .map(instance => ({
+      key: String(instance.checkpointKey ?? instance.id ?? ''),
+      title: String(instance.title ?? instance.checkpointKey ?? ''),
+      questions: Array.isArray(instance.questions) ? (instance.questions as AdaptiveQuestion[]) : [],
+      responses: (instance.responses && typeof instance.responses === 'object' ? instance.responses : {}) as Record<string, unknown>,
+    }));
+}
+
+/** Una respuesta guardada (texto, lista u objeto) como texto legible, sin JSON crudo. */
+export function formatResponse(value: unknown): string {
+  if (value == null) return '';
+  if (typeof value === 'string') return value.trim();
+  if (typeof value === 'number' || typeof value === 'boolean') return String(value);
+  if (Array.isArray(value)) return value.map(formatResponse).filter(Boolean).join(' · ');
+  if (typeof value === 'object') {
+    const item = value as Record<string, unknown>;
+    const main = item.summary ?? item.name ?? item.title ?? item.statement ?? item.label ?? item.description;
+    if (main != null) return formatResponse(main);
+    return Object.values(item).map(formatResponse).filter(Boolean).join(' · ');
+  }
+  return '';
+}
+
 function unansweredRequired(questions: AdaptiveQuestion[], responses: Record<string, string>, unknowns: Record<string, boolean>) {
   return questions.filter(question => {
     if (question.optional || question.priority === 'could') return false;
@@ -159,9 +194,11 @@ export function AdaptiveCheckpointWorkspace({
   const canConfirm = canConfirmCheckpoint && bindingValid;
 
   const configuredCheckpoints = config?.checkpoints ?? [];
-  const completedCheckpoints = (core.checkpointInstances ?? []).filter(instance =>
-    instance.step === step && instance.status === 'completed',
-  ).length;
+  const completedList = completedCheckpointsFor(core, step);
+  const completedCheckpoints = completedList.length;
+  // Sin checkpoint activo en este Step y con checkpoints confirmados: el Step ya se hizo. Se
+  // muestra lo que se respondió en vez de "Aún no hay checkpoint activo" / "0 preguntas".
+  const stepDone = !checkpoint && completedCheckpoints > 0;
 
   const payload = () => questions.reduce<Record<string, unknown>>((acc, question) => {
     const key = responseKey(question);
@@ -180,8 +217,8 @@ export function AdaptiveCheckpointWorkspace({
             <div className="flex flex-wrap items-center gap-2">
               {/* Embebido, el codigo ya lo declara la cabecera de la seccion. */}
               {!embedded && (
-                <span className="rounded-full bg-indigo-600 px-3 py-1 text-xs text-white" style={{ fontWeight: 800 }}>
-                  {code}
+                <span className={`rounded-full px-3 py-1 text-xs text-white ${stepDone ? 'bg-emerald-600' : 'bg-indigo-600'}`} style={{ fontWeight: 800 }}>
+                  {stepDone ? 'Step completado' : code}
                 </span>
               )}
               <span className="rounded-full bg-white px-3 py-1 text-xs text-indigo-700 ring-1 ring-indigo-100" style={{ fontWeight: 700 }}>
@@ -193,7 +230,7 @@ export function AdaptiveCheckpointWorkspace({
             </div>
             {!embedded && (
               <h2 className="mt-3 text-xl text-slate-950" style={{ fontWeight: 850 }}>
-                {checkpointTitle(checkpoint, configuredCheckpoint?.title)}
+                {stepDone ? `Step ${step} completado` : checkpointTitle(checkpoint, configuredCheckpoint?.title)}
               </h2>
             )}
             <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-700">{purpose}</p>
@@ -223,7 +260,9 @@ export function AdaptiveCheckpointWorkspace({
 
       <div className="grid gap-0 lg:grid-cols-[minmax(0,1fr)_340px]">
         <div className="p-5">
-          {resolvedByContext ? (
+          {stepDone ? (
+            <CompletedStepReview checkpoints={completedList} outputConfirmed={Boolean(outputConfirmed)} />
+          ) : resolvedByContext ? (
             <div className="mb-4 rounded-xl border border-emerald-200 bg-emerald-50 p-4">
               <p className="text-sm text-emerald-900" style={{ fontWeight: 800 }}>
                 Este checkpoint ya queda resuelto con la información que subiste
@@ -244,7 +283,7 @@ export function AdaptiveCheckpointWorkspace({
             </div>
           )}
 
-          {questions.length > 0 ? (
+          {stepDone ? null : questions.length > 0 ? (
             <div className="space-y-3">
               {questions.map((question, index) => {
                 const key = responseKey(question);
@@ -414,7 +453,7 @@ export function AdaptiveCheckpointWorkspace({
                 </pre>
               </div>
             )}
-            {!checkpoint && (
+            {!checkpoint && !stepDone && (
               <div className="flex items-start gap-2 rounded-xl border border-slate-200 bg-white p-3 text-sm text-slate-600">
                 <Lock size={15} className="mt-0.5 shrink-0" />
                 <span>Este Step queda bloqueado hasta confirmar el resultado del Step anterior.</span>
@@ -428,5 +467,45 @@ export function AdaptiveCheckpointWorkspace({
         </aside>
       </div>
     </section>
+  );
+}
+
+function CompletedStepReview({ checkpoints, outputConfirmed }: { checkpoints: CompletedCheckpoint[]; outputConfirmed: boolean }) {
+  return (
+    <div aria-label="Lo que se confirmó en este Step">
+      <div className="mb-4 rounded-xl border border-emerald-200 bg-emerald-50 p-4">
+        <p className="text-sm text-emerald-900" style={{ fontWeight: 800 }}>
+          {outputConfirmed ? 'Este Step está completo y su resultado quedó confirmado' : 'Todos los checkpoints de este Step están confirmados'}
+        </p>
+        <p className="mt-1 text-xs text-emerald-800">Abajo está lo que se respondió en cada checkpoint.</p>
+      </div>
+      <div className="space-y-3">
+        {checkpoints.map(item => {
+          const answered = item.questions
+            .map(question => ({ question, answer: formatResponse(item.responses[responseKey(question)] ?? item.responses[question.id]) }))
+            .filter(row => row.answer);
+          return (
+            <details key={item.key} open className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+              <summary className="flex cursor-pointer list-none items-center gap-2 text-sm text-slate-950" style={{ fontWeight: 800 }}>
+                <CheckCircle2 size={15} className="shrink-0 text-emerald-600" />
+                {item.key} · {item.title}
+              </summary>
+              {answered.length > 0 ? (
+                <dl className="mt-3 space-y-3">
+                  {answered.map(({ question, answer }) => (
+                    <div key={question.id}>
+                      <dt className="text-xs text-slate-500" style={{ fontWeight: 700 }}>{question.prompt}</dt>
+                      <dd className="mt-1 whitespace-pre-wrap text-sm text-slate-800">{answer}</dd>
+                    </div>
+                  ))}
+                </dl>
+              ) : (
+                <p className="mt-2 text-xs text-slate-500">Confirmado sin respuestas escritas.</p>
+              )}
+            </details>
+          );
+        })}
+      </div>
+    </div>
   );
 }
