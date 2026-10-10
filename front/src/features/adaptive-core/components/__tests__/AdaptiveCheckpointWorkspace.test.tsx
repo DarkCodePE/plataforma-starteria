@@ -98,7 +98,7 @@ describe('AdaptiveCheckpointWorkspace', () => {
     );
 
     expect(screen.getByRole('region', { name: 'Workspace adaptativo del checkpoint' })).toBeInTheDocument();
-    expect(screen.getByText('Preguntas minimas para avanzar')).toBeInTheDocument();
+    expect(screen.getByText('Preguntas mínimas para avanzar')).toBeInTheDocument();
     expect(screen.getByText('Quien debe validar esta iniciativa?')).toBeInTheDocument();
 
     const confirm = screen.getByRole('button', { name: /Confirmar checkpoint/i });
@@ -112,6 +112,42 @@ describe('AdaptiveCheckpointWorkspace', () => {
     expect(onConfirmCheckpoint).toHaveBeenCalledWith({
       owner_and_actor_required: 'La directora de operaciones',
     }, undefined);
+  });
+
+  it('muestra prioridad, ruta y output en lenguaje claro, sin claves internas', () => {
+    render(
+      <AdaptiveCheckpointWorkspace core={core} step={0} checkpoint={{ ...checkpoint, outputKey: 'InitiativeFraming' }} questions={[question]} />,
+    );
+
+    expect(screen.getByText('Imprescindible')).toBeInTheDocument();
+    expect(screen.getByText('Explorar y validar')).toBeInTheDocument();
+    expect(screen.getByText('Profundidad: Estándar')).toBeInTheDocument();
+    expect(screen.getByText(/Lo que estás construyendo: Encuadre de la iniciativa/)).toBeInTheDocument();
+    expect(screen.queryByText(/Variable:/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Fuente:/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/^must$/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/InitiativeFraming/)).not.toBeInTheDocument();
+  });
+
+  it('en sólo lectura muestra las respuestas pero no las deja editar ni confirmar', () => {
+    const onConfirmCheckpoint = vi.fn();
+    render(
+      <AdaptiveCheckpointWorkspace
+        core={core}
+        step={0}
+        checkpoint={checkpoint}
+        questions={[question]}
+        initialResponses={{ owner_and_actor_required: 'La directora de operaciones' }}
+        readOnly
+        onConfirmCheckpoint={onConfirmCheckpoint}
+        onConfirmOutput={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByLabelText('Quien debe validar esta iniciativa?')).toHaveAttribute('readonly');
+    expect(screen.getByLabelText('Quien debe validar esta iniciativa?')).toHaveValue('La directora de operaciones');
+    expect(screen.queryByRole('button', { name: /Confirmar checkpoint/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Confirmar resultado del Step/i })).not.toBeInTheDocument();
   });
 
   it('sends the persisted CP-1.3 truth binding shape', () => {

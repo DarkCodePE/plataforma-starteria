@@ -12,6 +12,8 @@ import { MentorSupportModal } from '../components/MentorSupportModal';
 import { MentorVirtualPanel } from '../components/MentorVirtualPanel';
 import { PdfInitiativeUploader } from '../components/PdfInitiativeUploader';
 import { InitiativeStartChooser } from '../components/InitiativeStartChooser';
+import { getProjectAccess } from '../authz/projectAccess';
+import { ReadOnlyNotice } from '../components/ReadOnlyNotice';
 import { usePdfAutofill } from '../hooks/usePdfAutofill';
 import { isPdfAutofillEnabled } from '../services/featureFlags';
 // Sparkles & CheckCircle2 already come from the lucide import at the top of
@@ -706,6 +708,9 @@ function ProjectHomeContent() {
   );
 
   const projectMember = getProjectMember(project.id, user?.email);
+  // Viewer, Sponsor o Portfolio Lead que revisa: ven la iniciativa sin sus controles de
+  // escritura. Gestionar el equipo (invitar, sponsors) es sólo del Owner.
+  const { canEdit, canManageTeam, readOnlyReason } = getProjectAccess(user, project);
   const isSponsorViewer = user?.role === 'sponsor';
   const sponsorInvitationSent = projectMember?.role === 'Sponsor' && projectMember.status === 'Enviado';
   const sponsorInvitationActive = projectMember?.role === 'Sponsor' && projectMember.status === 'Activo';
@@ -920,7 +925,7 @@ function ProjectHomeContent() {
   const overallProgress = totalModules > 0 ? Math.round((completedModules / totalModules) * 100) : 0;
   const sponsorMembers = project.team.filter(member => member.role === 'Sponsor');
   const sponsorSlotsLeft = Math.max(0, 2 - sponsorMembers.length);
-  const canManageSponsors = user?.role === 'owner' || user?.role === 'admin';
+  const canManageSponsors = canManageTeam;
   const firstName = user?.name?.trim().split(/\s+/)[0];
   const step0Complete = project.step0Status === 'Completado';
   // First-run = fresh initiative with nothing done yet → show the start chooser
@@ -1257,6 +1262,8 @@ function ProjectHomeContent() {
         <ArrowLeft size={15} /> Mis proyectos
       </button>
 
+      <ReadOnlyNotice reason={readOnlyReason} className="mb-6" />
+
       {/* Header */}
       <div className="flex items-start justify-between mb-6 gap-4 flex-wrap">
         <div className="flex-1 min-w-0 pr-4">
@@ -1419,7 +1426,7 @@ function ProjectHomeContent() {
       </div>
 
       {/* ─── Option C: first-run "¿cómo quieres empezar?" chooser ─── */}
-      {isFirstRun && startMode === 'choose' && (
+      {canEdit && isFirstRun && startMode === 'choose' && (
         <InitiativeStartChooser
           autofillEnabled={autofillEnabled}
           onChooseManual={openStep0}
@@ -1430,7 +1437,7 @@ function ProjectHomeContent() {
       {/* ─── PDF auto-fill (PRD-002 / SPEC-002) — gated by feature flag. On a
            first-run initiative it only appears once the user picks "Tengo un
            documento"; returning users keep direct access. ─── */}
-      {autofillEnabled && (!isFirstRun || startMode === 'upload') && (
+      {canEdit && autofillEnabled && (!isFirstRun || startMode === 'upload') && (
         <div className="bg-amber-50/60 border border-amber-200 rounded-2xl p-5 mb-6">
           {isFirstRun && startMode === 'upload' && (
             <button
@@ -2495,7 +2502,7 @@ function ProjectHomeContent() {
                   </div>
                 </div>
               ))}
-              {user?.role === 'owner' && (
+              {canManageTeam && (
                 <div className="pt-3 border-t border-slate-100">
                   <div className="flex gap-2">
                     <input

@@ -17,9 +17,9 @@ import type {
 type StepNumber = 0 | 1 | 2 | 3 | 4;
 
 const STABLE_PURPOSE: Record<StepNumber, string> = {
-  0: 'Entender, alinear y definir que debe validarse o resolverse',
+  0: 'Entender, alinear y definir qué debe validarse o resolverse',
   1: 'Delimitar y fundamentar el foco con evidencia',
-  2: 'Disenar la ruta de accion, apuesta, solucion o experimento',
+  2: 'Diseñar la ruta de acción, apuesta, solución o experimento',
   3: 'Ejecutar, aprender, controlar y decidir',
   4: 'Cerrar, transferir, presentar y proyectar continuidad',
 };
@@ -81,18 +81,18 @@ const STEP_OUTPUT_BY_ROUTE: Record<AdaptiveRouteType, Record<StepNumber, string>
 
 const STEP_VISIBLE_NAME_BY_ROUTE: Record<AdaptiveRouteType, Record<StepNumber, string>> = {
   explore_validate: {
-    0: 'Ordenar contexto y definir que validar',
+    0: 'Ordenar contexto y definir qué validar',
     1: 'Fundamentar el foco',
-    2: 'Disenar experimento o apuesta',
+    2: 'Diseñar experimento o apuesta',
     3: 'Ejecutar y aprender',
     4: 'Cerrar y transferir aprendizaje',
   },
   design_solution: {
     0: 'Confirmar oportunidad y condiciones',
-    1: 'Revisar criterio problema-solucion',
-    2: 'Comparar y seleccionar solucion',
-    3: 'Probar ejecucion de la solucion',
-    4: 'Presentar decision y traspaso',
+    1: 'Revisar criterio problema-solución',
+    2: 'Comparar y seleccionar solución',
+    3: 'Probar ejecución de la solución',
+    4: 'Presentar decisión y traspaso',
   },
   implement_handoff: {
     0: 'Confirmar mandato y readiness inicial',
@@ -104,8 +104,8 @@ const STEP_VISIBLE_NAME_BY_ROUTE: Record<AdaptiveRouteType, Record<StepNumber, s
   plan_coordinate: {
     0: 'Aclarar objetivo, deadline y stakeholders',
     1: 'Sustentar alcance y riesgos',
-    2: 'Disenar ruta coordinada',
-    3: 'Controlar ejecucion y cambios',
+    2: 'Diseñar ruta coordinada',
+    3: 'Controlar ejecución y cambios',
     4: 'Cerrar entrega y continuidad',
   },
   reconstruct_existing: {
@@ -131,7 +131,7 @@ const CHECKPOINTS: Record<StepNumber, Array<Omit<StepCheckpoint, 'status' | 'que
       step: 0,
       code: 'CP-0.1',
       title: 'Enmarcar la iniciativa',
-      purpose: 'Aclarar que se quiere mover, origen, tipo de reto, output y relacion con reto o frente.',
+      purpose: 'Aclarar qué se quiere mover, origen, tipo de reto, output y relación con reto o frente.',
       outputKey: 'InitiativeFraming',
       completionCriteria: ['Resultado entendible', 'Tipo de reto visible', 'Relacion con reto o frente tratada'],
     },
@@ -148,10 +148,10 @@ const CHECKPOINTS: Record<StepNumber, Array<Omit<StepCheckpoint, 'status' | 'que
       id: 'cp-0-3',
       step: 0,
       code: 'CP-0.3',
-      title: 'Definir que validar o decidir',
-      purpose: 'Separar hechos, senales, supuestos y faltantes para definir hipotesis y decision futura.',
+      title: 'Definir qué validar o decidir',
+      purpose: 'Separar hechos, señales, supuestos y faltantes para definir hipótesis y decisión futura.',
       outputKey: 'AlignmentBrief + ValidationContract',
-      completionCriteria: ['Hipotesis o pregunta central', 'Criterio de exito', 'Decision futura definida'],
+      completionCriteria: ['Hipótesis o pregunta central', 'Criterio de éxito', 'Decisión futura definida'],
     },
   ],
   1: [
@@ -159,8 +159,8 @@ const CHECKPOINTS: Record<StepNumber, Array<Omit<StepCheckpoint, 'status' | 'que
       id: 'cp-1-1',
       step: 1,
       code: 'CP-1.1',
-      title: 'Priorizar que comprobar',
-      purpose: 'Priorizar pregunta, evidencia disponible, faltantes y metodo.',
+      title: 'Priorizar qué comprobar',
+      purpose: 'Priorizar pregunta, evidencia disponible, faltantes y método.',
       outputKey: 'ValidationFocus + EvidenceNeedMap',
       completionCriteria: ['Foco priorizado', 'Faltantes visibles', 'Metodo seleccionado'],
     },
@@ -168,7 +168,7 @@ const CHECKPOINTS: Record<StepNumber, Array<Omit<StepCheckpoint, 'status' | 'que
       id: 'cp-1-2',
       step: 1,
       code: 'CP-1.2',
-      title: 'Disenar plan de aprendizaje',
+      title: 'Diseñar plan de aprendizaje',
       purpose: 'Definir fuentes, tecnica, muestra, tiempos y responsables.',
       outputKey: 'ValidationPlan',
       completionCriteria: ['Fuentes definidas', 'Plan ejecutable', 'Responsable claro'],
@@ -178,7 +178,7 @@ const CHECKPOINTS: Record<StepNumber, Array<Omit<StepCheckpoint, 'status' | 'que
       step: 1,
       code: 'CP-1.3',
       title: 'Incorporar y analizar evidencia',
-      purpose: 'Vincular evidencia a hipotesis, fuentes y contradicciones.',
+      purpose: 'Vincular evidencia a hipótesis, fuentes y contradicciones.',
       outputKey: 'EvidenceMap + FindingsLog',
       completionCriteria: ['Evidencia con fuente', 'Contradicciones visibles', 'Fuerza evaluada'],
     },
@@ -198,7 +198,7 @@ const CHECKPOINTS: Record<StepNumber, Array<Omit<StepCheckpoint, 'status' | 'que
       step: 2,
       code: 'CP-2.1',
       title: 'Traducir foco a criterios',
-      purpose: 'Convertir evidencia en criterios de diseno, valor, factibilidad y riesgo.',
+      purpose: 'Convertir evidencia en criterios de diseño, valor, factibilidad y riesgo.',
       outputKey: 'DesignCriteria',
       completionCriteria: ['Criterios visibles', 'Restricciones tratadas', 'Guardrails definidos'],
     },
@@ -207,7 +207,7 @@ const CHECKPOINTS: Record<StepNumber, Array<Omit<StepCheckpoint, 'status' | 'que
       step: 2,
       code: 'CP-2.2',
       title: 'Comparar alternativas',
-      purpose: 'Evitar saltar a la primera solucion comparando opciones suficientes.',
+      purpose: 'Evitar saltar a la primera solución comparando opciones suficientes.',
       outputKey: 'AlternativeComparison',
       completionCriteria: ['Alternativas comparadas', 'Backup definido', 'Riesgos comparados'],
     },
@@ -216,7 +216,7 @@ const CHECKPOINTS: Record<StepNumber, Array<Omit<StepCheckpoint, 'status' | 'que
       step: 2,
       code: 'CP-2.3',
       title: 'Seleccionar apuesta',
-      purpose: 'Elegir apuesta principal y explicitar la hipotesis mas riesgosa.',
+      purpose: 'Elegir apuesta principal y explicitar la hipótesis más riesgosa.',
       outputKey: 'SelectedBet',
       completionCriteria: ['Apuesta seleccionada', 'Hipotesis riesgosa explicita', 'Decisor visible'],
     },
@@ -224,10 +224,10 @@ const CHECKPOINTS: Record<StepNumber, Array<Omit<StepCheckpoint, 'status' | 'que
       id: 'cp-2-4',
       step: 2,
       code: 'CP-2.4',
-      title: 'Disenar prueba o ejecucion',
+      title: 'Diseñar prueba o ejecución',
       purpose: 'Definir unidad de prueba, metricas, evidencia, responsables y umbrales.',
       outputKey: 'ExperimentOrDeliveryPlan',
-      completionCriteria: ['Plan medible', 'Evidencia requerida', 'Condicion de decision'],
+      completionCriteria: ['Plan medible', 'Evidencia requerida', 'Condición de decisión'],
     },
   ],
   3: [
@@ -235,7 +235,7 @@ const CHECKPOINTS: Record<StepNumber, Array<Omit<StepCheckpoint, 'status' | 'que
       id: 'cp-3-1',
       step: 3,
       code: 'CP-3.1',
-      title: 'Preparar ejecucion',
+      title: 'Preparar ejecución',
       purpose: 'Confirmar baseline, actores, medicion y riesgos antes de ejecutar.',
       outputKey: 'ExecutionRunbook',
       completionCriteria: ['Baseline visible', 'Responsables claros', 'Riesgos controlados'],
@@ -245,7 +245,7 @@ const CHECKPOINTS: Record<StepNumber, Array<Omit<StepCheckpoint, 'status' | 'que
       step: 3,
       code: 'CP-3.2',
       title: 'Ejecutar y registrar evidencia',
-      purpose: 'Capturar resultados relevantes con fuente, fecha, hipotesis y criterio.',
+      purpose: 'Capturar resultados relevantes con fuente, fecha, hipótesis y criterio.',
       outputKey: 'ExecutionEvidenceLog',
       completionCriteria: ['Evidencia asociada', 'Cambios relevantes registrados', 'Sin microactividad'],
     },
@@ -262,10 +262,10 @@ const CHECKPOINTS: Record<StepNumber, Array<Omit<StepCheckpoint, 'status' | 'que
       id: 'cp-3-4',
       step: 3,
       code: 'CP-3.4',
-      title: 'Crear decision sustentada',
+      title: 'Crear decisión sustentada',
       purpose: 'Recomendar iterar, pivotear, escalar, transferir, pausar o cerrar con evidencia.',
       outputKey: 'EvidenceBasedDecision',
-      completionCriteria: ['Decision recomendada', 'Evidencia vinculada', 'Siguiente aprendizaje'],
+      completionCriteria: ['Decisión recomendada', 'Evidencia vinculada', 'Siguiente aprendizaje'],
     },
   ],
   4: [
@@ -273,10 +273,10 @@ const CHECKPOINTS: Record<StepNumber, Array<Omit<StepCheckpoint, 'status' | 'que
       id: 'cp-4-1',
       step: 4,
       code: 'CP-4.1',
-      title: 'Definir audiencia y decision',
-      purpose: 'Aclarar quien decide, que necesita ver y que salida corresponde.',
+      title: 'Definir audiencia y decisión',
+      purpose: 'Aclarar quién decide, qué necesita ver y qué salida corresponde.',
       outputKey: 'DecisionAudienceMap',
-      completionCriteria: ['Audiencia clara', 'Decision esperada', 'Validadores visibles'],
+      completionCriteria: ['Audiencia clara', 'Decisión esperada', 'Validadores visibles'],
     },
     {
       id: 'cp-4-2',
@@ -285,7 +285,7 @@ const CHECKPOINTS: Record<StepNumber, Array<Omit<StepCheckpoint, 'status' | 'que
       title: 'Construir narrativa con evidencia',
       purpose: 'Preparar historia ejecutiva con resultados, fuentes, limitaciones y supuestos.',
       outputKey: 'ExecutiveNarrative',
-      completionCriteria: ['Evidencia y limites visibles', 'Supuestos no presentados como resultados', 'Lectura ejecutiva clara'],
+      completionCriteria: ['Evidencia y límites visibles', 'Supuestos no presentados como resultados', 'Lectura ejecutiva clara'],
     },
     {
       id: 'cp-4-3',
@@ -294,16 +294,16 @@ const CHECKPOINTS: Record<StepNumber, Array<Omit<StepCheckpoint, 'status' | 'que
       title: 'Preparar handoff u ownership',
       purpose: 'Definir owner del siguiente paso, gobernanza, metricas y transferencia.',
       outputKey: 'HandoffPlan',
-      completionCriteria: ['Owner del siguiente paso', 'Gobernanza minima', 'Metricas de continuidad'],
+      completionCriteria: ['Owner del siguiente paso', 'Gobernanza mínima', 'Métricas de continuidad'],
     },
     {
       id: 'cp-4-4',
       step: 4,
       code: 'CP-4.4',
-      title: 'Registrar decision final',
-      purpose: 'Cerrar, transferir o proyectar continuidad conservando aprendizaje y contribucion.',
+      title: 'Registrar decisión final',
+      purpose: 'Cerrar, transferir o proyectar continuidad conservando aprendizaje y contribución.',
       outputKey: 'FinalDecisionPackage',
-      completionCriteria: ['Decision registrada', 'Evidencia vinculada', 'Contribucion final visible'],
+      completionCriteria: ['Decisión registrada', 'Evidencia vinculada', 'Contribución final visible'],
     },
   ],
 };
@@ -489,7 +489,7 @@ function buildMasterContext(input: {
       coverage: 60,
       confidence: 'medium',
       capturedAt: input.now,
-      constraints: ['Toda restriccion derivada del contexto debe confirmarse antes de crear hard gates.'],
+      constraints: ['Toda restricción derivada del contexto debe confirmarse antes de crear hard gates.'],
       actors: ['Sponsor', 'Owner de iniciativa'],
       confirmable: true,
     });
@@ -503,7 +503,7 @@ function buildMasterContext(input: {
       coverage: 70,
       confidence: 'medium',
       capturedAt: input.now,
-      constraints: ['Validar que la contribucion no duplique iniciativas existentes.'],
+      constraints: ['Validar que la contribución no duplique iniciativas existentes.'],
       actors: ['Challenge Owner', 'Portfolio Lead'],
       confirmable: true,
     });
@@ -518,10 +518,10 @@ function buildMasterContext(input: {
     depthLevel: input.depthLevel,
     maturity: input.routeType === 'reconstruct_existing' ? 'legacy_reconstruction' : input.routeType === 'implement_handoff' ? 'solution_proposed' : 'problem',
     knownFacts: [input.contextInitial, input.initialFocus, input.expectedImpact].filter(isNonEmpty),
-    assumptions: input.pendingQuestions.length > 0 ? input.pendingQuestions : ['La hipotesis central aun debe confirmarse en Step 0.'],
+    assumptions: input.pendingQuestions.length > 0 ? input.pendingQuestions : ['La hipótesis central aún debe confirmarse en Step 0.'],
     missingCriticalInformation: input.pendingQuestions,
     risks: [input.mainRisk].filter(isNonEmpty),
-    decisions: [input.nextRecommendedStep ?? 'Definir decision futura en CP-0.3.'],
+    decisions: [input.nextRecommendedStep ?? 'Definir decisión futura en CP-0.3.'],
     contextSnapshots,
     createdAt: input.now,
   };
@@ -570,12 +570,12 @@ function buildQuestionsForCheckpoint(code: string, routeType: AdaptiveRouteType,
 
   if (code === 'CP-0.1') {
     add({
-      prompt: 'Que resultado o cambio debe quedar entendible para un lider?',
-      purpose: 'Aclarar proposito antes de ejecutar metodo.',
+      prompt: '¿Qué resultado o cambio debe quedar entendible para un líder?',
+      purpose: 'Aclarar propósito antes de ejecutar método.',
       clarifiesVariable: 'objective',
       priority: 'must',
       answerType: 'free_text',
-      reason: 'Step 0 no puede cerrar sin proposito entendible.',
+      reason: 'Step 0 no puede cerrar sin propósito entendible.',
       source: 'method_catalog',
       allowsUnknown: false,
       optional: false,
@@ -583,12 +583,12 @@ function buildQuestionsForCheckpoint(code: string, routeType: AdaptiveRouteType,
     });
     if (masterContext.contextSnapshots.some(snapshot => snapshot.type === 'challenge')) {
       add({
-        prompt: 'Que parte del reto padre aborda esta iniciativa?',
-        purpose: 'Trazar contribucion sin duplicar cobertura.',
+        prompt: '¿Qué parte del reto padre aborda esta iniciativa?',
+        purpose: 'Trazar contribución sin duplicar cobertura.',
         clarifiesVariable: 'challengeContribution.subproblem',
         priority: 'must',
         answerType: 'free_text',
-        reason: 'La iniciativa esta vinculada a un reto y debe reportar contribucion.',
+        reason: 'La iniciativa está vinculada a un reto y debe reportar contribución.',
         source: 'challenge_context',
         allowsUnknown: true,
         optional: false,
@@ -598,7 +598,7 @@ function buildQuestionsForCheckpoint(code: string, routeType: AdaptiveRouteType,
 
   if (code === 'CP-0.2') {
     add({
-      prompt: 'Quien es el owner operativo y que actor debe confirmar condiciones?',
+      prompt: '¿Quién es el owner operativo y qué actor debe confirmar condiciones?',
       purpose: 'Evitar avanzar sin responsable o validador.',
       clarifiesVariable: 'owner_and_actor_required',
       priority: 'must',
@@ -610,8 +610,8 @@ function buildQuestionsForCheckpoint(code: string, routeType: AdaptiveRouteType,
     });
     if (masterContext.contextSnapshots.some(snapshot => snapshot.type === 'company')) {
       add({
-        prompt: 'Que restriccion de empresa podria afectar evidencia, datos o aprobaciones?',
-        purpose: 'Usar contexto organizacional como hipotesis confirmable.',
+        prompt: '¿Qué restricción de empresa podría afectar evidencia, datos o aprobaciones?',
+        purpose: 'Usar contexto organizacional como hipótesis confirmable.',
         clarifiesVariable: 'company_constraints',
         priority: 'should',
         answerType: 'free_text',
@@ -625,23 +625,23 @@ function buildQuestionsForCheckpoint(code: string, routeType: AdaptiveRouteType,
 
   if (code === 'CP-0.3') {
     add({
-      prompt: 'Cual es la hipotesis o pregunta central que debe validarse o decidirse?',
+      prompt: '¿Cuál es la hipótesis o pregunta central que debe validarse o decidirse?',
       purpose: 'Crear Validation Contract.',
       clarifiesVariable: 'critical_hypothesis',
       priority: 'must',
       answerType: 'free_text',
-      reason: 'Step 0 debe cerrar con hipotesis o pregunta central.',
+      reason: 'Step 0 debe cerrar con hipótesis o pregunta central.',
       source: 'method_catalog',
       allowsUnknown: false,
       optional: false,
     });
     add({
-      prompt: 'Que evidencia o criterio permitiria tomar la siguiente decision?',
-      purpose: 'Definir criterio de cierre y proxima decision.',
+      prompt: '¿Qué evidencia o criterio permitiría tomar la siguiente decisión?',
+      purpose: 'Definir criterio de cierre y próxima decisión.',
       clarifiesVariable: 'decision_criteria',
       priority: 'must',
       answerType: 'free_text',
-      reason: 'No se debe avanzar sin criterio de decision.',
+      reason: 'No se debe avanzar sin criterio de decisión.',
       source: 'critical_missing',
       allowsUnknown: true,
       optional: false,
@@ -650,8 +650,8 @@ function buildQuestionsForCheckpoint(code: string, routeType: AdaptiveRouteType,
 
   if (code.startsWith('CP-1')) {
     add({
-      prompt: 'Que evidencia con fuente sostiene o contradice el foco vigente?',
-      purpose: 'Separar hechos, senales y supuestos.',
+      prompt: '¿Qué evidencia con fuente sostiene o contradice el foco vigente?',
+      purpose: 'Separar hechos, señales y supuestos.',
       clarifiesVariable: 'evidence_map',
       priority: 'must',
       answerType: 'evidence_link',
@@ -665,9 +665,9 @@ function buildQuestionsForCheckpoint(code: string, routeType: AdaptiveRouteType,
   if (code.startsWith('CP-2')) {
     add({
       prompt: routeType === 'implement_handoff'
-        ? 'Que guardrail impide ejecutar sin autorizacion o readiness suficiente?'
-        : 'Que alternativa merece compararse antes de seleccionar la apuesta?',
-      purpose: 'Evitar saltar de evidencia a solucion unica.',
+        ? '¿Qué guardrail impide ejecutar sin autorización o readiness suficiente?'
+        : '¿Qué alternativa merece compararse antes de seleccionar la apuesta?',
+      purpose: 'Evitar saltar de evidencia a solución única.',
       clarifiesVariable: 'alternative_or_guardrail',
       priority: 'must',
       answerType: 'free_text',
@@ -680,12 +680,12 @@ function buildQuestionsForCheckpoint(code: string, routeType: AdaptiveRouteType,
 
   if (code.startsWith('CP-3')) {
     add({
-      prompt: 'Que resultado relevante quedo asociado a fuente, fecha, hipotesis y criterio?',
-      purpose: 'Registrar ejecucion trazable.',
+      prompt: '¿Qué resultado relevante quedó asociado a fuente, fecha, hipótesis y criterio?',
+      purpose: 'Registrar ejecución trazable.',
       clarifiesVariable: 'execution_evidence',
       priority: 'must',
       answerType: 'evidence_link',
-      reason: 'Step 3 no escala automaticamente; propone decision con evidencia.',
+      reason: 'Step 3 no escala automáticamente; propone decisión con evidencia.',
       source: 'method_catalog',
       allowsUnknown: true,
       optional: false,
@@ -694,12 +694,12 @@ function buildQuestionsForCheckpoint(code: string, routeType: AdaptiveRouteType,
 
   if (code.startsWith('CP-4')) {
     add({
-      prompt: 'Quien recibe el paquete final y quien queda como owner del siguiente paso?',
+      prompt: '¿Quién recibe el paquete final y quién queda como owner del siguiente paso?',
       purpose: 'Cerrar o transferir sin perder ownership.',
       clarifiesVariable: 'handoff_owner',
       priority: 'must',
       answerType: 'owner',
-      reason: 'Step 4 debe terminar con decision, transferencia o cierre formal.',
+      reason: 'Step 4 debe terminar con decisión, transferencia o cierre formal.',
       source: 'method_catalog',
       allowsUnknown: false,
       optional: false,
@@ -717,16 +717,16 @@ function buildGatesForCheckpoint(code: string, masterContext: InitiativeMasterCo
       severity: 'hard' as const,
       label: 'Owner requerido',
       condition: 'No existe owner operativo confirmado.',
-      resolution: 'Asignar owner o registrar quien debe confirmarlo antes de cerrar Step 0.',
+      resolution: 'Asignar owner o registrar quién debe confirmarlo antes de cerrar Step 0.',
     });
   }
   if (code === 'CP-0.3') {
     gates.push({
       id: 'gate-decision-criteria-required',
       severity: 'hard' as const,
-      label: 'Criterio de decision requerido',
-      condition: 'No existe decision futura ni criterio de exito.',
-      resolution: 'Definir que decision habilita la iniciativa y que evidencia minima se necesita.',
+      label: 'Criterio de decisión requerido',
+      condition: 'No existe decisión futura ni criterio de éxito.',
+      resolution: 'Definir qué decisión habilita la iniciativa y qué evidencia mínima se necesita.',
     });
   }
   if (masterContext.contextSnapshots.some(snapshot => snapshot.type === 'company' && snapshot.coverage < 50)) {
@@ -735,20 +735,20 @@ function buildGatesForCheckpoint(code: string, masterContext: InitiativeMasterCo
       severity: 'soft' as const,
       label: 'Contexto incompleto',
       condition: 'La cobertura de contexto empresarial es baja.',
-      resolution: 'Presentar restricciones como hipotesis a confirmar, no como reglas.',
+      resolution: 'Presentar restricciones como hipótesis a confirmar, no como reglas.',
     });
   }
   return gates;
 }
 
 function buildStepObjective(step: StepNumber, routeType: AdaptiveRouteType): string {
-  if (step === 0) return 'Convertir la intencion inicial en hipotesis estrategica delimitada y contrato de validacion o ejecucion.';
-  if (step === 1) return 'Delimitar y fundamentar el foco mediante evidencia suficiente para decidir que pasa a diseno.';
-  if (step === 2) return 'Disenar y seleccionar una apuesta concreta, comparada y ejecutable segun evidencia, contexto y restricciones.';
-  if (step === 3) return 'Ejecutar la apuesta, capturar evidencia trazable, aprender y proponer una decision sustentada.';
+  if (step === 0) return 'Convertir la intención inicial en hipótesis estratégica delimitada y contrato de validación o ejecución.';
+  if (step === 1) return 'Delimitar y fundamentar el foco mediante evidencia suficiente para decidir qué pasa a diseño.';
+  if (step === 2) return 'Diseñar y seleccionar una apuesta concreta, comparada y ejecutable según evidencia, contexto y restricciones.';
+  if (step === 3) return 'Ejecutar la apuesta, capturar evidencia trazable, aprender y proponer una decisión sustentada.';
   return routeType === 'implement_handoff'
-    ? 'Convertir la decision en transferencia, ownership operativo y continuidad medible.'
-    : 'Cerrar la iniciativa con paquete de decision, aprendizaje y siguiente horizonte.';
+    ? 'Convertir la decisión en transferencia, ownership operativo y continuidad medible.'
+    : 'Cerrar la iniciativa con paquete de decisión, aprendizaje y siguiente horizonte.';
 }
 
 function buildClosureCriteria(step: StepNumber): string[] {
@@ -757,8 +757,8 @@ function buildClosureCriteria(step: StepNumber): string[] {
       'Objetivo o resultado entendible',
       'Alcance inicial y owner',
       'Tipo de reto y ruta confirmada',
-      'Hipotesis o pregunta central',
-      'Decision futura y criterio de exito',
+      'Hipótesis o pregunta central',
+      'Decisión futura y criterio de éxito',
       'Output final confirmado',
     ];
   }
@@ -769,9 +769,9 @@ function buildClosureCriteria(step: StepNumber): string[] {
     return ['Criterios claros', 'Alternativas comparadas', 'Apuesta seleccionada', 'Plan medible con guardrails'];
   }
   if (step === 3) {
-    return ['Resultados vinculados a fuentes', 'Limitaciones visibles', 'Aprendizajes', 'Decision basada en evidencia'];
+    return ['Resultados vinculados a fuentes', 'Limitaciones visibles', 'Aprendizajes', 'Decisión basada en evidencia'];
   }
-  return ['Paquete final', 'Decision registrada', 'Owner de siguiente paso o cierre formal', 'Contribucion final visible'];
+  return ['Paquete final', 'Decisión registrada', 'Owner de siguiente paso o cierre formal', 'Contribución final visible'];
 }
 
 function buildProgressSignal(stepConfiguration: StepConfiguration, masterContext: InitiativeMasterContext, now: string): ProgressSignal {
@@ -784,12 +784,12 @@ function buildProgressSignal(stepConfiguration: StepConfiguration, masterContext
     checkpointTitle: checkpoint.title,
     health: hasRisk ? 'attention' : 'healthy',
     hypothesis: masterContext.assumptions[0] ?? 'Hipotesis pendiente de definir en Step 0.',
-    evidence: masterContext.knownFacts[0] ?? 'Sin evidencia robusta aun; Step 0 ordena contexto.',
+    evidence: masterContext.knownFacts[0] ?? 'Sin evidencia robusta aún; Step 0 ordena contexto.',
     evidenceStrength: masterContext.knownFacts.length > 1 ? 'weak' : 'none',
     blocker: hasRisk ? masterContext.risks[0] : '',
     actorRequired: masterContext.contextSnapshots.some(snapshot => snapshot.type === 'challenge') ? 'Challenge Owner' : 'Owner de iniciativa',
     nextAction: `Iniciar ${checkpoint.code}: ${checkpoint.title}.`,
-    upcomingDecision: masterContext.decisions[0] ?? 'Definir decision futura en CP-0.3.',
+    upcomingDecision: masterContext.decisions[0] ?? 'Definir decisión futura en CP-0.3.',
     updatedAt: now,
   };
 }

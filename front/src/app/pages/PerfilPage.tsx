@@ -3,6 +3,7 @@ import { User, Star, TrendingUp, Copy, Download, ChevronRight, Edit3, CheckCircl
 import { isSameTeamMember, useApp } from '../context/AppContext';
 import { ProgressBar } from '../components/ProgressBar';
 import { StatusChip } from '../components/StatusChip';
+import { userRoleLabel } from '../layout/roleLabels';
 
 const SKILLS_DATA = [
   { skill: 'Design Thinking', level: 4, max: 5, verified: true, badge: 'Verificado por mentor' },
@@ -73,7 +74,7 @@ export function PerfilPage() {
             <p className="text-sm text-slate-500">{user?.email}</p>
             <div className="flex items-center gap-2 mt-1">
               <span className="text-xs px-2 py-0.5 bg-indigo-50 text-indigo-700 rounded-full" style={{ fontWeight: 500 }}>
-                {user?.role === 'owner' ? 'Participante' : user?.role === 'mentor' ? 'Mentor' : user?.role === 'admin' ? 'Administrador' : 'Sponsor'}
+                {userRoleLabel(user)}
               </span>
               {user?.cohort && <span className="text-xs text-slate-400">{user.cohort}</span>}
             </div>

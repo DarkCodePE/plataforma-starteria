@@ -34,12 +34,12 @@ vi.mock('../../../features/adaptive-core/services/adaptiveCoreService', async (i
 }));
 
 vi.mock('../../../features/adaptive-core/components', () => ({
-  AdaptiveCheckpointWorkspace: ({ checkpoint, onConfirmCheckpoint, onConfirmOutput, error }: any) => (
+  AdaptiveCheckpointWorkspace: ({ checkpoint, onConfirmCheckpoint, onConfirmOutput, error, readOnly }: any) => (
     <div data-testid="adaptive-workspace">
       <span>{checkpoint?.checkpointKey ?? checkpoint?.code}</span>
       {error && <p role="alert">{error}</p>}
-      <button type="button" onClick={() => onConfirmCheckpoint?.({}, checkpoint?.checkpointKey === 'CP-1.3' ? { claimId: 'claim-real', evidenceIds: ['evidence-real'], sourceRefIds: ['source-real'] } : undefined)}>Confirmar checkpoint</button>
-      {onConfirmOutput && <button type="button" onClick={() => onConfirmOutput()}>Confirmar output del Step</button>}
+      {!readOnly && <button type="button" onClick={() => onConfirmCheckpoint?.({}, checkpoint?.checkpointKey === 'CP-1.3' ? { claimId: 'claim-real', evidenceIds: ['evidence-real'], sourceRefIds: ['source-real'] } : undefined)}>Confirmar checkpoint</button>}
+      {onConfirmOutput && !readOnly && <button type="button" onClick={() => onConfirmOutput()}>Confirmar output del Step</button>}
     </div>
   ),
   CriticalChangeReview: () => null,
@@ -338,6 +338,30 @@ describe('Adaptive authority in pages', () => {
     expect(await screen.findByText(/Estado adaptativo no disponible/i)).toBeInTheDocument();
     expect(screen.queryByTestId('adaptive-workspace')).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /Confirmar checkpoint/i })).not.toBeInTheDocument();
+  });
+
+  it('Step0 en sólo lectura para un Viewer del equipo: aviso y sin controles de escritura', async () => {
+    appState.projects = [{ ...project, team: [{ id: 't1', name: 'Ana', email: 'ana@example.com', role: 'Viewer', status: 'Activo', initials: 'AN' }] }];
+    getAdaptiveCore.mockResolvedValueOnce(serverCore);
+
+    render(<Step0Page />);
+
+    await waitFor(() => expect(screen.getByTestId('adaptive-workspace')).toBeInTheDocument());
+    expect(screen.getByRole('note', { name: 'Sólo lectura' })).toHaveTextContent(/tu rol en el equipo es Viewer/);
+    expect(screen.queryByRole('button', { name: /Confirmar checkpoint/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Hacerlo más claro sin inventar/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Continuar este bloque/i })).not.toBeInTheDocument();
+  });
+
+  it('ProjectHome para un Viewer: aviso de sólo lectura y sin invitar al equipo', async () => {
+    appState.projects = [{ ...project, team: [{ id: 't1', name: 'Ana', email: 'ana@example.com', role: 'Viewer', status: 'Activo', initials: 'AN' }] }];
+    getAdaptiveCore.mockResolvedValueOnce(serverCore);
+
+    render(<ProjectHomePage />);
+
+    expect(await screen.findByRole('note', { name: 'Sólo lectura' })).toBeInTheDocument();
+    fireEvent.click(screen.getAllByRole('button', { name: /Equipo/ })[0]);
+    expect(screen.queryByPlaceholderText('Invitar por correo…')).not.toBeInTheDocument();
   });
 
   it('Step0 retry renders confirmation workspace only from server core', async () => {

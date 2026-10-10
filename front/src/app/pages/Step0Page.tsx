@@ -2,6 +2,9 @@ import React, { useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router';
 import { AlertCircle, ArrowLeft, Calendar, CheckCircle2, ChevronRight, Copy, CreditCard, Download, Loader2, Sparkles, X } from 'lucide-react';
 import { enrichProject, useApp } from '../context/AppContext';
+import { getProjectAccess } from '../authz/projectAccess';
+import { ReadOnlyNotice } from '../components/ReadOnlyNotice';
+import { depthLevelLabel, outputLabel, routeTypeLabel } from '../../features/adaptive-core/domain/adaptiveLabels';
 import { MentorVirtualPanel } from '../components/MentorVirtualPanel';
 import { MentorSupportModal } from '../components/MentorSupportModal';
 import { AutosaveIndicator, useAutosave } from '../components/AutosaveIndicator';
@@ -490,6 +493,9 @@ export function Step0Page() {
   const [projectFetching, setProjectFetching] = useState(false);
   const [projectFetchError, setProjectFetchError] = useState(false);
   const project = contextProject ?? fetchedProject;
+  // Viewer, Sponsor o Portfolio Lead que revisa: ven la iniciativa, no la editan (el backend
+  // responde 403 a sus escrituras).
+  const { canEdit, readOnlyReason } = getProjectAccess(user, project);
   const [showIAPanel, setShowIAPanel] = useState(false);
   const [iaLoading, setIaLoading] = useState(false);
   const [showMentorModal, setShowMentorModal] = useState(false);
@@ -728,7 +734,7 @@ const step0Configuration = adaptiveCore
   : null;
 
 const stepOutputLabel =
-  step0Configuration?.expectedOutput ?? 'output del Step 0';
+  step0Configuration?.expectedOutput ? outputLabel(step0Configuration.expectedOutput) : 'resultado del Step 0';
 
 const stepVisibleName =
   step0Configuration?.visibleName ?? 'Step 0';
@@ -960,7 +966,7 @@ const draftStep0Brief = (adaptiveCore?.stepOutputs ?? []).find(
     owner_and_actor_required: form.quienEscuchar || form.alignmentPerson || form.leaderFeedbackPerson,
     company_constraints: form.currentEvidence || form.validationSignal,
     priorityHypothesis: form.validationSignal || form.decisionRequested || form.quePasaQueQuieres,
-    decisionCriteria: form.decisionRequested || form.supportNeeded || 'Definir decision de continuidad hacia Step 1.',
+    decisionCriteria: form.decisionRequested || form.supportNeeded || 'Definir decisión de continuidad hacia Step 1.',
     availableEvidence: form.currentEvidence,
     currentEvidence: form.currentEvidence,
     adoption: form.sponsorInterestReason,
@@ -1048,6 +1054,7 @@ const draftStep0Brief = (adaptiveCore?.stepOutputs ?? []).find(
   const checkpointWorkspace = (
     <AdaptiveCheckpointWorkspace
       embedded
+      readOnly={!canEdit}
       core={adaptiveCore}
       step={0}
       checkpoint={activeCheckpointFromServer ?? activeCheckpoint}
@@ -1056,8 +1063,8 @@ const draftStep0Brief = (adaptiveCore?.stepOutputs ?? []).find(
       outputPreview={draftStep0Brief?.output ?? null}
       saving={checkpointSaving}
       error={checkpointError}
-      onConfirmCheckpoint={confirmActiveCheckpoint}
-      onConfirmOutput={draftStep0Brief?.output ? confirmBriefAndGoToStep1 : undefined}
+      onConfirmCheckpoint={canEdit ? confirmActiveCheckpoint : undefined}
+      onConfirmOutput={canEdit && draftStep0Brief?.output ? confirmBriefAndGoToStep1 : undefined}
       onRefresh={() => {
         if (!projectId) return;
         getAdaptiveCore(projectId)
@@ -1141,7 +1148,13 @@ const draftStep0Brief = (adaptiveCore?.stepOutputs ?? []).find(
           </div>
         </div>
 
-        {shouldShowPublicDraftCard && (
+        {readOnlyReason && (
+          <div className="border-b border-slate-100 bg-white px-5 py-3">
+            <ReadOnlyNotice reason={readOnlyReason} className="mx-auto max-w-[1480px]" />
+          </div>
+        )}
+
+        {shouldShowPublicDraftCard && canEdit && (
           <div className="border-b border-indigo-100 bg-indigo-50/60 px-5 py-4">
             <div className="mx-auto max-w-[1480px] rounded-2xl border border-indigo-100 bg-white p-4 shadow-sm">
               <div className="flex flex-wrap items-start justify-between gap-4">
@@ -1263,21 +1276,21 @@ const draftStep0Brief = (adaptiveCore?.stepOutputs ?? []).find(
                 <p className="mt-1 max-w-3xl text-sm text-slate-600">{activeCheckpoint.purpose}</p>
               </div>
               <div className="rounded-xl border border-slate-200 bg-white px-3 py-2">
-                <p className="text-xs text-slate-500" style={{ fontWeight: 700 }}>Output</p>
-                <p className="mt-1 text-sm text-slate-900" style={{ fontWeight: 700 }}>{activeCheckpoint.outputKey}</p>
+                <p className="text-xs text-slate-500" style={{ fontWeight: 700 }}>Resultado</p>
+                <p className="mt-1 text-sm text-slate-900" style={{ fontWeight: 700 }}>{outputLabel(activeCheckpoint.outputKey)}</p>
               </div>
             </div>
             <div className="mt-4 grid gap-3 md:grid-cols-3">
               <div className="rounded-xl border border-slate-200 bg-white p-3">
                 <p className="text-xs text-slate-500" style={{ fontWeight: 700 }}>Ruta</p>
-                <p className="mt-1 text-sm text-slate-900">{adaptiveCore.masterContext.routeType.replaceAll('_', ' ')}</p>
+                <p className="mt-1 text-sm text-slate-900">{routeTypeLabel(adaptiveCore.masterContext.routeType)}</p>
               </div>
               <div className="rounded-xl border border-slate-200 bg-white p-3">
                 <p className="text-xs text-slate-500" style={{ fontWeight: 700 }}>Profundidad</p>
-                <p className="mt-1 text-sm text-slate-900">{adaptiveCore.masterContext.depthLevel}</p>
+                <p className="mt-1 text-sm text-slate-900">{depthLevelLabel(adaptiveCore.masterContext.depthLevel)}</p>
               </div>
               <div className="rounded-xl border border-slate-200 bg-white p-3">
-                <p className="text-xs text-slate-500" style={{ fontWeight: 700 }}>Preguntas materializadas</p>
+                <p className="text-xs text-slate-500" style={{ fontWeight: 700 }}>Preguntas</p>
                 <p className="mt-1 text-sm text-slate-900">{activeCheckpointQuestions.length} para este checkpoint</p>
               </div>
             </div>
@@ -1286,15 +1299,16 @@ const draftStep0Brief = (adaptiveCore?.stepOutputs ?? []).find(
                 {activeCheckpointQuestions.slice(0, 3).map(question => (
                   <div key={question.id} className="rounded-xl border border-slate-200 bg-white p-3">
                     <p className="text-sm text-slate-900" style={{ fontWeight: 700 }}>{question.prompt}</p>
-                    <p className="mt-1 text-xs text-slate-500">{question.reason} Fuente: {question.source}.</p>
+                    <p className="mt-1 text-xs text-slate-500">{question.reason}</p>
                     {question.contextDerived && (
-                      <p className="mt-1 text-xs text-amber-700">Deriva del contexto y debe confirmarse antes de tratarse como restriccion.</p>
+                      <p className="mt-1 text-xs text-amber-700">Deriva del contexto y debe confirmarse antes de tratarse como restricción.</p>
                     )}
                   </div>
                 ))}
               </div>
             )}
             {checkpointError && <p className="mt-3 text-sm text-rose-600">{checkpointError}</p>}
+            {canEdit && (
             <div className="mt-4 flex flex-wrap gap-2">
               <button
                 type="button"
@@ -1317,11 +1331,12 @@ const draftStep0Brief = (adaptiveCore?.stepOutputs ?? []).find(
                 </button>
               )}
             </div>
+            )}
             {draftStep0Brief?.output && (
               <div className="mt-4 rounded-xl border border-emerald-200 bg-white p-3">
-                <p className="text-xs text-emerald-700" style={{ fontWeight: 800 }}>BRIEF STEP 0 EN REVISION</p>
-                <p className="mt-2 text-sm text-slate-700">Hipotesis: {String((draftStep0Brief.output as any).priorityHypothesis ?? 'Pendiente')}</p>
-                <p className="mt-1 text-sm text-slate-700">Criterio de decision: {String((draftStep0Brief.output as any).decisionCriteria ?? 'Pendiente')}</p>
+                <p className="text-xs text-emerald-700" style={{ fontWeight: 800 }}>BRIEF STEP 0 EN REVISIÓN</p>
+                <p className="mt-2 text-sm text-slate-700">Hipótesis: {String((draftStep0Brief.output as any).priorityHypothesis ?? 'Pendiente')}</p>
+                <p className="mt-1 text-sm text-slate-700">Criterio de decisión: {String((draftStep0Brief.output as any).decisionCriteria ?? 'Pendiente')}</p>
               </div>
             )}
           </div>
@@ -1372,7 +1387,7 @@ const draftStep0Brief = (adaptiveCore?.stepOutputs ?? []).find(
             <div ref={node => { moduleRefs.current.decision = node; }}>
               <CheckpointSection
                 code={sectionFor('decision')?.code ?? 'CP-0.3'}
-                title={sectionFor('decision')?.title ?? 'Definir que validar o decidir'}
+                title={sectionFor('decision')?.title ?? 'Definir qué validar o decidir'}
                 sequence={sectionFor('decision')?.sequence ?? 3}
                 status={sectionFor('decision')?.status ?? 'locked'}
                 isActive={Boolean(sectionFor('decision')?.isActive)}
@@ -1399,9 +1414,11 @@ const draftStep0Brief = (adaptiveCore?.stepOutputs ?? []).find(
               <div className="rounded-2xl border border-slate-200 bg-white p-5">
                 <h2 className="text-sm text-slate-900" style={{ fontWeight: 700 }}>Output de este paso</h2>
                 <p className="mt-1 text-sm text-slate-500">Cuando completes los campos clave, podrás elaborar el output de este paso: {stepOutputLabel}.</p>
-                <button onClick={runAnalysis} disabled={!canSave} className="mt-4 rounded-xl bg-indigo-600 px-4 py-2.5 text-sm text-white disabled:cursor-not-allowed disabled:opacity-50" style={{ fontWeight: 600 }}>
-                  <Sparkles size={14} className="mr-2 inline" />Elaborar {stepOutputLabel}
-                </button>
+                {canEdit && (
+                  <button onClick={runAnalysis} disabled={!canSave} className="mt-4 rounded-xl bg-indigo-600 px-4 py-2.5 text-sm text-white disabled:cursor-not-allowed disabled:opacity-50" style={{ fontWeight: 600 }}>
+                    <Sparkles size={14} className="mr-2 inline" />Elaborar {stepOutputLabel}
+                  </button>
+                )}
               </div>
             )}
 
@@ -1448,7 +1465,7 @@ const draftStep0Brief = (adaptiveCore?.stepOutputs ?? []).find(
 
                   <div className="mt-4 flex flex-wrap gap-3">
                     <button onClick={() => setShowProposalOnePager(true)} className="rounded-xl bg-indigo-600 px-4 py-2.5 text-sm text-white" style={{ fontWeight: 600 }}>Ver propuesta</button>
-                    <button onClick={requestStep1Advance} disabled={checkpointSaving} className="rounded-xl border border-indigo-200 bg-white px-4 py-2.5 text-sm text-indigo-700 hover:bg-indigo-50 disabled:cursor-not-allowed disabled:opacity-60" style={{ fontWeight: 700 }}>Avanzar a Step 1</button>
+                    {canEdit && <button onClick={requestStep1Advance} disabled={checkpointSaving} className="rounded-xl border border-indigo-200 bg-white px-4 py-2.5 text-sm text-indigo-700 hover:bg-indigo-50 disabled:cursor-not-allowed disabled:opacity-60" style={{ fontWeight: 700 }}>Avanzar a Step 1</button>}
                     <button onClick={() => setShowPromptPreview(true)} className="rounded-xl border border-slate-200 px-4 py-2.5 text-sm text-slate-600" style={{ fontWeight: 600 }}><Copy size={14} className="mr-2 inline" />Copiar prompt para PPT/Gamma</button>
                     <button onClick={downloadSummary} className="rounded-xl border border-slate-200 px-4 py-2.5 text-sm text-slate-600" style={{ fontWeight: 600 }}><Download size={14} className="mr-2 inline" />Descargar propuesta</button>
                     <button onClick={() => setShowLeaderMessage(prev => !prev)} className="rounded-xl border border-slate-200 px-4 py-2.5 text-sm text-slate-600" style={{ fontWeight: 600 }}>Preparar mensaje para líder</button>
@@ -1526,7 +1543,7 @@ const draftStep0Brief = (adaptiveCore?.stepOutputs ?? []).find(
                         <Area rows={3} value={form.alignmentEvidenceNote ?? ''} onChange={event => setField('alignmentEvidenceNote', event.target.value)} placeholder="Pega una nota, resumen o link si ya lo tienes." />
                       </div>
                     </Field>
-                    <div className="flex flex-wrap gap-3">
+                    <div className={canEdit ? 'flex flex-wrap gap-3' : 'hidden'}>
                       <button onClick={() => persistStep0()} className="rounded-xl bg-indigo-600 px-4 py-2.5 text-sm text-white" style={{ fontWeight: 600 }}>Guardar alineación</button>
                       <button onClick={requestStep1Advance} disabled={checkpointSaving} className="rounded-xl border border-slate-200 px-4 py-2.5 text-sm text-slate-600 disabled:cursor-not-allowed disabled:opacity-60" style={{ fontWeight: 600 }}>Ir a Step 1 con este contexto</button>
                     </div>
@@ -1593,8 +1610,12 @@ const draftStep0Brief = (adaptiveCore?.stepOutputs ?? []).find(
                   </>
                 )}
               </div>
-              <button onClick={openIA} className="w-full rounded-xl border border-violet-100 bg-violet-50 px-3 py-2.5 text-left text-sm text-violet-700 hover:bg-violet-100" style={{ fontWeight: 600 }}><Sparkles size={14} className="mr-2 inline" />Hacerlo más claro sin inventar</button>
-              <p className="text-xs text-slate-500">La IA puede mejorar redacción y estructura, pero no agregará evidencia que no hayas dado.</p>
+              {canEdit && (
+                <>
+                  <button onClick={openIA} className="w-full rounded-xl border border-violet-100 bg-violet-50 px-3 py-2.5 text-left text-sm text-violet-700 hover:bg-violet-100" style={{ fontWeight: 600 }}><Sparkles size={14} className="mr-2 inline" />Hacerlo más claro sin inventar</button>
+                  <p className="text-xs text-slate-500">La IA puede mejorar redacción y estructura, pero no agregará evidencia que no hayas dado.</p>
+                </>
+              )}
             </div>
           </div>
         </div>
@@ -1602,15 +1623,17 @@ const draftStep0Brief = (adaptiveCore?.stepOutputs ?? []).find(
 
       <div className="shrink-0 border-t border-slate-200 bg-white px-5 py-4">
         <div className="mx-auto flex max-w-[1480px] flex-wrap items-center gap-3">
+          {canEdit && (
           <button onClick={handlePrimaryAction} disabled={saving} className="rounded-xl bg-indigo-600 px-5 py-2.5 text-sm text-white disabled:cursor-not-allowed disabled:opacity-50" style={{ fontWeight: 600 }}>
             {saving ? 'Guardando...' : <>{primaryLabel} <ChevronRight size={14} className="ml-1 inline" /></>}
           </button>
-          {analysisState === 'done' && (
+          )}
+          {canEdit && analysisState === 'done' && (
             <button onClick={requestStep1Advance} disabled={checkpointSaving} className="rounded-xl border border-indigo-200 px-4 py-2.5 text-sm text-indigo-700 hover:bg-indigo-50 disabled:cursor-not-allowed disabled:opacity-60" style={{ fontWeight: 700 }}>
               Avanzar a Step 1
             </button>
           )}
-          <button onClick={openIA} className="rounded-xl border border-violet-200 px-4 py-2.5 text-sm text-violet-600" style={{ fontWeight: 600 }}><Sparkles size={14} className="mr-2 inline" />Hacerlo más claro sin inventar</button>
+          {canEdit && <button onClick={openIA} className="rounded-xl border border-violet-200 px-4 py-2.5 text-sm text-violet-600" style={{ fontWeight: 600 }}><Sparkles size={14} className="mr-2 inline" />Hacerlo más claro sin inventar</button>}
           {/* PRD-03 §6 (Zona 4): un unico CTA contextual. El aviso "Te falta 1 campo clave"
               era un cuarto contador de faltantes; el que manda es el del checkpoint. */}
           <div className="flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
@@ -1622,7 +1645,7 @@ const draftStep0Brief = (adaptiveCore?.stepOutputs ?? []).find(
                 <span>{completedCheckpoints}/{checkpointSections.length} cerrados</span>
               </>
             ) : (
-              <span style={{ fontWeight: 800 }}>Checkpoint bloqueado hasta cargar Adaptive Core</span>
+              <span style={{ fontWeight: 800 }}>Checkpoint bloqueado hasta cargar el estado adaptativo</span>
             )}
           </div>
           <div className="ml-auto hidden items-center gap-3 sm:flex">
@@ -1786,8 +1809,8 @@ const draftStep0Brief = (adaptiveCore?.stepOutputs ?? []).find(
                 {[
                   ['Que quiere mover', initialReviewArtifact.onePager.whatToMove],
                   ['Tipo de reto', CHALLENGE_TYPE_LABELS[initialReviewArtifact.onePager.challengeType]],
-                  ['Por que importa ahora', initialReviewArtifact.onePager.whyNow],
-                  ['A quien impacta', initialReviewArtifact.onePager.impactedAudience],
+                  ['Por qué importa ahora', initialReviewArtifact.onePager.whyNow],
+                  ['A quién impacta', initialReviewArtifact.onePager.impactedAudience],
                   ['Evidencia inicial disponible', initialReviewArtifact.onePager.initialEvidence],
                   ['Riesgo principal', initialReviewArtifact.onePager.mainRisk],
                   ['Ruta recomendada', initialReviewArtifact.onePager.recommendedRoute],

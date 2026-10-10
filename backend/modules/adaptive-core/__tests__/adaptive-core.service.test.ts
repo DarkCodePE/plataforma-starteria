@@ -831,7 +831,7 @@ describe('AdaptiveCoreService Step 0 cycle', () => {
     const contextual = cp02?.materializedQuestionsJson.find((q: any) => q.source === 'company_context');
     expect(contextual.confirmationRequired).toBe(true);
     expect(contextual.required).toBe(false);
-    expect(String(contextual.reason)).toContain('hipotesis');
+    expect(String(contextual.reason)).toMatch(/hip[oó]tesis/);
   });
 
   it('3. scope change creates critical change assessment without reconfiguration', async () => {

@@ -8,6 +8,8 @@ import {
 } from 'lucide-react';
 import { MentorSupportModal } from '../components/MentorSupportModal';
 import { enrichProject, type Project, useApp } from '../context/AppContext';
+import { getProjectAccess } from '../authz/projectAccess';
+import { ReadOnlyNotice } from '../components/ReadOnlyNotice';
 import { StatusChip } from '../components/StatusChip';
 import { ProgressBar } from '../components/ProgressBar';
 import { BannerPorDefinir } from '../components/BannerPorDefinir';
@@ -230,6 +232,8 @@ export function Step1Page() {
   const [projectFetching, setProjectFetching] = useState(false);
   const [projectFetchError, setProjectFetchError] = useState(false);
   const project = contextProject ?? fetchedProject;
+  // Viewer, Sponsor o Portfolio Lead que revisa: ven el Step, no lo confirman (el backend responde 403).
+  const { canEdit, readOnlyReason } = getProjectAccess(user, project);
   const step = project?.steps.find(s => s.number === 1);
   const step0 = project?.step0Data;
 
@@ -659,7 +663,9 @@ export function Step1Page() {
     <main className="min-h-full overflow-y-auto bg-slate-50 p-4 md:p-8">
       <div className="mx-auto max-w-6xl">
         <button type="button" onClick={() => navigate(`/projects/${projectId}`)} className="mb-5 text-sm text-slate-500 hover:text-slate-800">Volver al proyecto</button>
+        <ReadOnlyNotice reason={readOnlyReason} className="mb-5" />
         <AdaptiveCheckpointWorkspace
+          readOnly={!canEdit}
           core={adaptiveCore}
           step={1}
           checkpoint={adaptiveStep1Checkpoint}

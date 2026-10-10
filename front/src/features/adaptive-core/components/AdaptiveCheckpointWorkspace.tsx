@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { AlertTriangle, CheckCircle2, ClipboardList, HelpCircle, Lock, RefreshCw } from 'lucide-react';
 import type { AdaptiveGate, AdaptiveInitiativeCore, AdaptiveQuestion, StepCheckpoint, StepConfiguration } from '../domain/types';
 import type { TruthBinding } from '../services/adaptiveCoreService';
+import { depthLevelLabel, outputLabel, questionPriorityLabel, routeTypeLabel } from '../domain/adaptiveLabels';
 
 type ActiveCheckpoint = StepCheckpoint | NonNullable<AdaptiveInitiativeCore['activeCheckpoint']>;
 export interface AdaptiveCheckpointWorkspaceProps {
@@ -19,6 +20,11 @@ export interface AdaptiveCheckpointWorkspaceProps {
    * del checkpoint (Step 0). En ese caso su propia cabecera seria una repeticion.
    */
   embedded?: boolean;
+  /**
+   * Sólo lectura (Viewer, Sponsor, Portfolio Lead que revisa): las respuestas se ven pero no se
+   * editan y no se ofrecen las confirmaciones, que el backend rechazaría con 403.
+   */
+  readOnly?: boolean;
   onConfirmCheckpoint?: (responses: Record<string, unknown>, truthBindings?: TruthBinding) => void | Promise<void>;
   onConfirmOutput?: () => void | Promise<void>;
   onRefresh?: () => void | Promise<void>;
@@ -30,7 +36,7 @@ function checkpointCode(checkpoint: ActiveCheckpoint | null | undefined) {
 }
 
 function checkpointTitle(checkpoint: ActiveCheckpoint | null | undefined, fallback?: string) {
-  if (!checkpoint) return 'Aun no hay checkpoint activo';
+  if (!checkpoint) return 'Aún no hay checkpoint activo';
   return 'title' in checkpoint ? checkpoint.title : fallback ?? checkpoint.checkpointKey;
 }
 
@@ -95,6 +101,7 @@ export function AdaptiveCheckpointWorkspace({
   saving = false,
   error,
   embedded = false,
+  readOnly = false,
   onConfirmCheckpoint,
   onConfirmOutput,
   onRefresh,
@@ -124,7 +131,7 @@ export function AdaptiveCheckpointWorkspace({
   const purpose = checkpointPurpose(checkpoint, configuredCheckpoint?.purpose ?? config?.objective ?? core.progressSignal?.nextAction ?? 'Completa este checkpoint para avanzar.');
   const criteria = checkpointCriteria(checkpoint).length ? checkpointCriteria(checkpoint) : configuredCheckpoint?.completionCriteria ?? [];
   const gates = checkpointGates(checkpoint).length ? checkpointGates(checkpoint) : configuredCheckpoint?.gates ?? [];
-  const canConfirmCheckpoint = Boolean(onConfirmCheckpoint && checkpoint && missing.length === 0 && !saving);
+  const canConfirmCheckpoint = Boolean(!readOnly && onConfirmCheckpoint && checkpoint && missing.length === 0 && !saving);
   // Si el contexto ya subido resuelve todas las variables del checkpoint, no tiene sentido
   // pedir de nuevo lo mismo: se presenta como resuelto, con lo usado a la vista, para que
   // la persona valide en vez de rellenar.
@@ -158,7 +165,7 @@ export function AdaptiveCheckpointWorkspace({
 
   const payload = () => questions.reduce<Record<string, unknown>>((acc, question) => {
     const key = responseKey(question);
-    acc[key] = unknowns[key] ? 'No lo se aun' : responses[key]?.trim() ?? '';
+    acc[key] = unknowns[key] ? 'No lo sé aún' : responses[key]?.trim() ?? '';
     return acc;
   }, {});
 
@@ -178,10 +185,10 @@ export function AdaptiveCheckpointWorkspace({
                 </span>
               )}
               <span className="rounded-full bg-white px-3 py-1 text-xs text-indigo-700 ring-1 ring-indigo-100" style={{ fontWeight: 700 }}>
-                {config?.routeType.replaceAll('_', ' ') ?? core.masterContext?.routeType?.replaceAll('_', ' ') ?? 'ruta adaptativa'}
+                {routeTypeLabel(config?.routeType ?? core.masterContext?.routeType)}
               </span>
               <span className="rounded-full bg-white px-3 py-1 text-xs text-slate-600 ring-1 ring-indigo-100" style={{ fontWeight: 700 }}>
-                {config?.depthLevel ?? core.masterContext?.depthLevel ?? 'standard'}
+                Profundidad: {depthLevelLabel(config?.depthLevel ?? core.masterContext?.depthLevel)}
               </span>
             </div>
             {!embedded && (
@@ -191,11 +198,11 @@ export function AdaptiveCheckpointWorkspace({
             )}
             <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-700">{purpose}</p>
             <p className="mt-2 text-sm text-indigo-900" style={{ fontWeight: 700 }}>
-              Output que estas construyendo: {checkpointOutputKey(checkpoint, configuredCheckpoint?.outputKey ?? config?.expectedOutput ?? 'output adaptativo')}
+              Lo que estás construyendo: {outputLabel(checkpointOutputKey(checkpoint, configuredCheckpoint?.outputKey ?? config?.expectedOutput ?? ''))}
             </p>
             {configuredCheckpoints.length > 0 && (
               <p className="mt-2 text-xs text-indigo-700" style={{ fontWeight: 700 }}>
-                Progreso Adaptive: {completedCheckpoints}/{configuredCheckpoints.length} checkpoints confirmados
+                Progreso: {completedCheckpoints}/{configuredCheckpoints.length} checkpoints confirmados
               </p>
             )}
           </div>
@@ -219,7 +226,7 @@ export function AdaptiveCheckpointWorkspace({
           {resolvedByContext ? (
             <div className="mb-4 rounded-xl border border-emerald-200 bg-emerald-50 p-4">
               <p className="text-sm text-emerald-900" style={{ fontWeight: 800 }}>
-                Este checkpoint ya queda resuelto con la informacion que subiste
+                Este checkpoint ya queda resuelto con la información que subiste
               </p>
               <p className="mt-1 text-xs text-emerald-800">
                 No hace falta responder nada nuevo. Revisa abajo lo que usamos y confirma si es correcto.
@@ -228,8 +235,8 @@ export function AdaptiveCheckpointWorkspace({
           ) : (
             <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
               <div>
-                <p className="text-sm text-slate-950" style={{ fontWeight: 800 }}>Preguntas minimas para avanzar</p>
-                <p className="mt-1 text-xs text-slate-500">Responde solo lo necesario para este checkpoint. Si falta informacion permitida, dejala trazada.</p>
+                <p className="text-sm text-slate-950" style={{ fontWeight: 800 }}>Preguntas mínimas para avanzar</p>
+                <p className="mt-1 text-xs text-slate-500">Responde solo lo necesario para este checkpoint. Si te falta información y la pregunta lo permite, déjalo indicado.</p>
               </div>
               <span className="rounded-full bg-slate-100 px-3 py-1 text-xs text-slate-600" style={{ fontWeight: 700 }}>
                 {questions.length} preguntas / {missing.length} pendientes
@@ -253,7 +260,7 @@ export function AdaptiveCheckpointWorkspace({
                         <p className="mt-1 text-xs leading-5 text-slate-500">{question.reason}</p>
                       </div>
                       <span className={`rounded-full px-2 py-0.5 text-[11px] ${question.priority === 'must' ? 'bg-rose-50 text-rose-700' : 'bg-white text-slate-500 ring-1 ring-slate-200'}`} style={{ fontWeight: 700 }}>
-                        {question.priority}
+                        {questionPriorityLabel(question.priority)}
                       </span>
                     </div>
                     <textarea
@@ -261,16 +268,15 @@ export function AdaptiveCheckpointWorkspace({
                       value={responses[key] ?? ''}
                       onChange={(event) => setResponses(prev => ({ ...prev, [key]: event.target.value }))}
                       disabled={unknown || saving}
+                      readOnly={readOnly}
                       rows={3}
                       className="mt-3 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:bg-slate-100 disabled:text-slate-400"
-                      placeholder={question.answerType === 'owner' ? 'Nombre, rol o area responsable' : 'Respuesta breve con la mejor informacion disponible'}
+                      placeholder={question.answerType === 'owner' ? 'Nombre, rol o área responsable' : 'Respuesta breve con la mejor información disponible'}
                     />
                     <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
-                      <div className="flex flex-wrap gap-2 text-[11px] text-slate-500">
-                        <span className="rounded-full bg-white px-2 py-0.5 ring-1 ring-slate-200">Fuente: {question.source}</span>
-                        <span className="rounded-full bg-white px-2 py-0.5 ring-1 ring-slate-200">Variable: {question.clarifiesVariable}</span>
-                      </div>
-                      {question.allowsUnknown && (
+                      {/* Fuente y variable son claves internas del Core: no se muestran a la persona. */}
+                      <span />
+                      {question.allowsUnknown && !readOnly && (
                         <label className="inline-flex items-center gap-2 text-xs text-slate-600">
                           <input
                             type="checkbox"
@@ -278,7 +284,7 @@ export function AdaptiveCheckpointWorkspace({
                             onChange={(event) => setUnknowns(prev => ({ ...prev, [key]: event.target.checked }))}
                             className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
                           />
-                          No lo se aun
+                          No lo sé aún
                         </label>
                       )}
                     </div>
@@ -288,7 +294,7 @@ export function AdaptiveCheckpointWorkspace({
             </div>
           ) : (
             <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-5 text-sm text-slate-600">
-              Este checkpoint todavia no materializo preguntas. Recarga backend o confirma el output anterior.
+              Este checkpoint todavía no tiene preguntas. Recarga o confirma el resultado del paso anterior.
             </div>
           )}
 
@@ -300,7 +306,7 @@ export function AdaptiveCheckpointWorkspace({
           )}
 
           <div className="mt-5 flex flex-wrap items-center gap-3">
-            {onConfirmCheckpoint && (
+            {onConfirmCheckpoint && !readOnly && (
               <button
                 type="button"
                 onClick={() => void onConfirmCheckpoint?.(payload(), binding)}
@@ -311,7 +317,7 @@ export function AdaptiveCheckpointWorkspace({
                 <CheckCircle2 size={16} /> {saving ? 'Confirmando...' : resolvedByContext ? 'Validar y cerrar este checkpoint' : 'Confirmar checkpoint'}
               </button>
             )}
-            {onConfirmOutput && (
+            {onConfirmOutput && !readOnly && (
               <button
                 type="button"
                 onClick={() => void onConfirmOutput()}
@@ -319,15 +325,15 @@ export function AdaptiveCheckpointWorkspace({
                 className="inline-flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-2.5 text-sm text-emerald-800 hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-60"
                 style={{ fontWeight: 800 }}
               >
-                <ClipboardList size={16} /> {outputConfirmed ? 'Output confirmado' : 'Confirmar output del Step'}
+                <ClipboardList size={16} /> {outputConfirmed ? 'Resultado confirmado' : 'Confirmar resultado del Step'}
               </button>
             )}
-            {missing.length > 0 && (
-              <p className="text-xs text-slate-500">Completa las preguntas obligatorias o marca "No lo se aun" cuando este permitido.</p>
+            {missing.length > 0 && !readOnly && (
+              <p className="text-xs text-slate-500">Completa las preguntas imprescindibles o marca "No lo sé aún" cuando esté permitido.</p>
             )}
           </div>
 
-          {requiresTruthBinding && (
+          {requiresTruthBinding && !readOnly && (
             <div className="mt-5 rounded-xl border border-amber-200 bg-amber-50 p-4" aria-label="Vinculacion de evidencia persistente">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
@@ -373,7 +379,7 @@ export function AdaptiveCheckpointWorkspace({
         <aside className="border-t border-slate-200 bg-slate-50 p-5 lg:border-l lg:border-t-0">
           <div className="space-y-4">
             <div>
-              <p className="text-xs uppercase text-slate-400" style={{ fontWeight: 800 }}>Por que importa</p>
+              <p className="text-xs uppercase text-slate-400" style={{ fontWeight: 800 }}>Por qué importa</p>
               <p className="mt-2 text-sm leading-6 text-slate-700">{config?.objective ?? core.progressSignal?.hypothesis ?? purpose}</p>
             </div>
             <div>
@@ -402,7 +408,7 @@ export function AdaptiveCheckpointWorkspace({
             )}
             {outputPreview && (
               <div className="rounded-xl border border-emerald-200 bg-white p-3">
-                <p className="text-xs uppercase text-emerald-700" style={{ fontWeight: 800 }}>Output en construccion</p>
+                <p className="text-xs uppercase text-emerald-700" style={{ fontWeight: 800 }}>Resultado en construcción</p>
                 <pre className="mt-2 max-h-56 overflow-auto whitespace-pre-wrap break-words text-xs text-slate-700">
                   {JSON.stringify(outputPreview, null, 2)}
                 </pre>
@@ -411,12 +417,12 @@ export function AdaptiveCheckpointWorkspace({
             {!checkpoint && (
               <div className="flex items-start gap-2 rounded-xl border border-slate-200 bg-white p-3 text-sm text-slate-600">
                 <Lock size={15} className="mt-0.5 shrink-0" />
-                <span>Este step queda bloqueado hasta confirmar el output del step anterior.</span>
+                <span>Este Step queda bloqueado hasta confirmar el resultado del Step anterior.</span>
               </div>
             )}
             <div className="flex items-start gap-2 rounded-xl border border-indigo-100 bg-white p-3 text-xs text-indigo-800">
               <HelpCircle size={14} className="mt-0.5 shrink-0" />
-              <span>El checkpoint decide que informacion minima necesita Starteria para adaptar el siguiente tramo del recorrido.</span>
+              <span>El checkpoint decide qué información mínima necesita Starteria para adaptar el siguiente tramo del recorrido.</span>
             </div>
           </div>
         </aside>
