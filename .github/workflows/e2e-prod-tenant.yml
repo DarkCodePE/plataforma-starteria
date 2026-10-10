@@ -2,13 +2,14 @@
 # Runbook: docs/e2e-job-driven/prod-dedicated-user.md
 #
 #   setup    organización org-e2e-prod + e2e-lead@starteria.test (portfolio_lead) +
-#            e2e-participante@starteria.test (participante). Idempotente; con apply=true
+#            e2e-participante@starteria.test (participante) + 4 miembros del swarm de roles
+#            (participante-2, colaborador, viewer, sponsor). Idempotente; con apply=true
 #            también reescribe las contraseñas con las de los secrets.
 #   cleanup  borra sólo lo creado por esos usuarios o en esa organización.
 #   smoke    login del lead y GET a los endpoints de portafolio (no escribe).
 #
-# Contraseñas: secrets del environment production E2E_PROD_LEAD_PASSWORD y
-# E2E_PROD_PARTICIPANT_PASSWORD. Nunca en el repo.
+# Contraseñas: secrets del environment production E2E_PROD_LEAD_PASSWORD,
+# E2E_PROD_PARTICIPANT_PASSWORD y E2E_PROD_MEMBER_PASSWORD. Nunca en el repo.
 name: E2E prod tenant
 on:
   workflow_dispatch:
@@ -93,6 +94,7 @@ jobs:
           APPLY: ${{ inputs.apply }}
           E2E_PROD_LEAD_PASSWORD: ${{ secrets.E2E_PROD_LEAD_PASSWORD }}
           E2E_PROD_PARTICIPANT_PASSWORD: ${{ secrets.E2E_PROD_PARTICIPANT_PASSWORD }}
+          E2E_PROD_MEMBER_PASSWORD: ${{ secrets.E2E_PROD_MEMBER_PASSWORD }}
         run: |
           set -euo pipefail
           pw=$(kubectl -n "$NAMESPACE" get secret starteria-db-secrets -o jsonpath='{.data.POSTGRES_PASSWORD}' | base64 -d)

@@ -42,6 +42,7 @@ Crea, de forma idempotente:
 | Organización | `org-e2e-prod` · "Starteria E2E (prueba)" |
 | Portfolio Lead | `e2e-lead@starteria.test` (`portfolio_lead`, admin de la org) |
 | Participante | `e2e-participante@starteria.test` (`participante`, miembro de la org) |
+| Miembros del swarm de roles | `e2e-participante-2`, `e2e-colaborador`, `e2e-viewer`, `e2e-sponsor` `@starteria.test` (contraseña `E2E_PROD_MEMBER_PASSWORD`). Ver `prod-role-swarm.md` |
 
 Los emails se cambian con `E2E_PROD_LEAD_EMAIL` / `E2E_PROD_PARTICIPANT_EMAIL`. Las contraseñas
 nunca van al repo.
