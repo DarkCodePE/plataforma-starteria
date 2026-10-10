@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { ChallengeCoverageReadService } from '../challenge-coverage.read-service';
+import { ChallengeCoverageReadService, deriveChallengeCoverage } from '../challenge-coverage.read-service';
 
 function service(challenge: any) {
   return new ChallengeCoverageReadService({ challenge: { findUnique: vi.fn().mockResolvedValue(challenge) } } as any);
@@ -69,5 +69,29 @@ describe('ChallengeCoverageReadService (§13)', () => {
 
   it('404 si el reto no existe', async () => {
     await expect(service(null).get('nope')).rejects.toMatchObject({ code: 'CHALLENGE_NOT_FOUND' });
+  });
+});
+
+describe('cobertura efectiva: el mismo criterio que la tarjeta del reto', () => {
+  it('con iniciativas en curso y sin_cobertura persistido devuelve cobertura_parcial', async () => {
+    const reading = await service(
+      challenge({ coverageStatus: 'sin_cobertura', initiativeMetas: [meta({ status: 'en_step_0', currentStep: 'Step 0' })] }),
+    ).get('c1');
+    expect(reading.hasWork).toBe(true);
+    expect(reading.uncovered).toBeNull();
+    expect(reading.coverageStatus).toBe('cobertura_parcial');
+  });
+
+  it('sin iniciativas es sin_cobertura aunque lo persistido diga otra cosa', async () => {
+    const reading = await service(challenge({ coverageStatus: 'cobertura_parcial' })).get('c1');
+    expect(reading.coverageStatus).toBe('sin_cobertura');
+  });
+
+  it('deriveChallengeCoverage: suficiente, bloqueo, no baja lo persistido y respeta decisiones', () => {
+    expect(deriveChallengeCoverage('sin_cobertura', [{ status: 'lista_para_decision', readyForDecision: true, resolvedCorePart: true }])).toBe('cobertura_suficiente');
+    expect(deriveChallengeCoverage('sin_cobertura', [{ status: 'bloqueada', resolvedCorePart: true }])).toBe('cobertura_parcial');
+    expect(deriveChallengeCoverage('cobertura_suficiente', [{ status: 'en_step_1' }])).toBe('cobertura_suficiente');
+    expect(deriveChallengeCoverage('reformular', [{ status: 'en_step_1' }])).toBe('reformular');
+    expect(deriveChallengeCoverage('resuelto', [])).toBe('resuelto');
   });
 });

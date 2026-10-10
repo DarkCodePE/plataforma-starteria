@@ -1,7 +1,4 @@
-import {
-  DECISION_RELEVANT_INITIATIVE_STATUSES,
-  NON_ACTIVE_INITIATIVE_STATUSES,
-} from './constants';
+import { NON_ACTIVE_INITIATIVE_STATUSES } from './constants';
 import type {
   Challenge,
   ChallengeActivationInputs,
@@ -236,6 +233,21 @@ export function deriveChallengeStatus(challenge: Challenge, initiatives: Initiat
   return 'recibiendo_iniciativas';
 }
 
+const COVERAGE_RANK: Partial<Record<ChallengeCoverageStatus, number>> = {
+  sin_cobertura: 0,
+  cobertura_parcial: 1,
+  cobertura_suficiente: 2,
+};
+
+/**
+ * Cobertura efectiva del reto: la que muestran la tarjeta, el detalle y el panel de lectura.
+ * Espejo de deriveChallengeCoverage (backend/modules/portfolio/challenge-coverage.read-service.ts),
+ * que alimenta GET /portfolio/challenges/:id/coverage-reading; si cambia uno, cambia el otro.
+ * - `reformular` / `resuelto` son decisiones explícitas y se respetan.
+ * - Sin iniciativas no hay cobertura.
+ * - Con iniciativas: parcial; suficiente si alguna llegó a decisión y resolvió la parte central.
+ * - Nunca queda por debajo de lo persistido (Step 4 / decisión pueden declarar más).
+ */
 export function deriveChallengeCoverageStatus(
   challenge: Challenge,
   initiatives: Initiative[],
@@ -251,15 +263,14 @@ export function deriveChallengeCoverageStatus(
   const related = initiatives.filter(item => item.challengeId === challenge.id);
   if (related.length === 0) return 'sin_cobertura';
 
-  const ready = related.filter(
-    item =>
-      isInitiativeReadyForDecision(item)
-      || DECISION_RELEVANT_INITIATIVE_STATUSES.includes(normalizeInitiativeStatus(item.status))
-  ).length;
-  const resolved = related.filter(item => item.resolvedCorePart).length;
-
-  if (ready > 0 && resolved > 0) return 'cobertura_suficiente';
-  return 'cobertura_parcial';
+  // Antes un bloqueo contaba como "llegó a decisión" (DECISION_RELEVANT_INITIATIVE_STATUSES):
+  // una iniciativa bloqueada no puede dejar el reto con cobertura suficiente.
+  const sufficient = related.some(item => item.resolvedCorePart && isInitiativeReadyForDecision(item));
+  const derived: ChallengeCoverageStatus = sufficient ? 'cobertura_suficiente' : 'cobertura_parcial';
+  const persisted: ChallengeCoverageStatus = normalizedCoverage === 'sufficient'
+    ? 'cobertura_suficiente'
+    : normalizedCoverage === 'partial' ? 'cobertura_parcial' : 'sin_cobertura';
+  return (COVERAGE_RANK[persisted] ?? 0) > (COVERAGE_RANK[derived] ?? 0) ? persisted : derived;
 }
 
 export function buildDecisionRecommendation(initiative: Initiative): PortfolioDecisionItem {

@@ -119,14 +119,26 @@ export function getFrontCoverageStatus(
 
 export function getPortfolioSummary(state: PortfolioLeadState): PortfolioLeadSummary {
   const pendingDecisions = getPendingDecisions(state.initiatives);
+  // "En curso" = no cerrada. Es el mismo criterio para contar iniciativas y para decir qué retos
+  // y frentes tienen trabajo: el estado del reto/frente (borrador, publicado) no se actualiza
+  // solo cuando llegan iniciativas, y "0 retos activos" junto a "16 iniciativas en curso"
+  // parecía una contradicción (2026-10-10).
+  const activeInitiatives = state.initiatives.filter(initiative => normalizeInitiativeStatus(initiative.status) !== 'closed');
+  const challengeFront = new Map(state.challenges.map(challenge => [challenge.id, challenge.strategicFrontId]));
+  const challengesWithWork = new Set(activeInitiatives.map(initiative => initiative.challengeId).filter(Boolean));
+  const frontsWithWork = new Set(
+    activeInitiatives.map(initiative => challengeFront.get(initiative.challengeId) || initiative.strategicFrontId).filter(Boolean),
+  );
   return {
     fronts: state.strategicFronts.length,
     activeFronts: getActiveFronts(state.strategicFronts).length,
+    frontsWithActiveInitiatives: state.strategicFronts.filter(front => frontsWithWork.has(front.id)).length,
     challenges: state.challenges.length,
     activeChallenges: state.challenges.filter(challenge => challenge.visibleToParticipants).length,
+    challengesWithActiveInitiatives: state.challenges.filter(challenge => challengesWithWork.has(challenge.id)).length,
     challengesReadyToActivate: getChallengesReadyToActivate(state.challenges).length,
     initiatives: state.initiatives.length,
-    activeInitiatives: state.initiatives.filter(initiative => normalizeInitiativeStatus(initiative.status) !== 'closed').length,
+    activeInitiatives: activeInitiatives.length,
     blockedInitiatives: getBlockedInitiatives(state.initiatives).length,
     pendingDecisions: pendingDecisions.length,
     readyForDecisionInitiatives: pendingDecisions.filter(initiative => isInitiativeReadyForDecision(initiative)).length,
@@ -1175,9 +1187,10 @@ function getHomeSummaryCards(state: PortfolioLeadState): PortfolioHomeSummaryCar
     },
     {
       id: 'retos-activos',
-      label: 'Retos activos',
+      // Cuenta retos publicados, no retos con trabajo: la etiqueta lo dice tal cual.
+      label: 'Retos publicados',
       value: String(summary.activeChallenges),
-      microcopy: 'Retos visibles en curso.',
+      microcopy: `Visibles para participantes · ${summary.challengesWithActiveInitiatives} con iniciativas en curso.`,
       tone: summary.activeChallenges > 0 ? 'sky' : 'slate',
       icon: 'challenges',
       path: '/portfolio/retos',

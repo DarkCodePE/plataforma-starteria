@@ -18,6 +18,7 @@ import { isDemoDataEnabled } from '../featureFlags';
 import { can } from '../authz/permissions';
 import { WorkspaceSwitcher } from './WorkspaceSwitcher';
 import { usePortfolioLead } from '../portfolio/PortfolioLeadContext';
+import { getPendingDecisions } from '../../features/portfolio-lead/domain/selectors';
 import { usePortfolioHomeEntryContext, useScopedFirstValueEntryAccess } from '../../features/portfolio-entry/home/usePortfolioHomeEntryContext';
 
 const ROLE_LABELS = {
@@ -55,10 +56,9 @@ function PortfolioLeadLayoutContent() {
   const scopedEntryChecking = (scopedHomeArrival && (scopedEntryContext.status === 'idle' || scopedEntryContext.status === 'loading'))
     || (scopedSetupArrival && (scopedSetupAccess.status === 'idle' || scopedSetupAccess.status === 'loading'));
 
-  const pendingDecisions = useMemo(
-    () => initiatives.filter(item => item.readyForDecision || item.status === 'bloqueada').length,
-    [initiatives],
-  );
+  // Mismo criterio que la tarjeta "Decisiones pendientes" del Home (getPendingDecisions): antes
+  // el badge filtraba aparte y contaba una menos (10 vs 11, 2026-10-10).
+  const pendingDecisions = useMemo(() => getPendingDecisions(initiatives).length, [initiatives]);
 
   const navItems = [
     { icon: LayoutDashboard, label: 'Inicio', path: '/portfolio/inicio' },

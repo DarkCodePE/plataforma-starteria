@@ -122,8 +122,17 @@ export function PortfolioLeadHomePage() {
             description="Indicadores agregados para leer foco, carga y decisiones sin convertir Home en un tablero de métricas ficticias."
             density="compact"
             items={[
-              { label: 'Frentes', value: `${commandCenter.summary.activeFronts} activos de ${commandCenter.summary.fronts}` },
-              { label: 'Retos', value: `${commandCenter.summary.activeChallenges} activos de ${commandCenter.summary.challenges}` },
+              // "Activo" del frente y "publicado" del reto son estados propios; las iniciativas en
+              // curso pueden colgar de retos en borrador. Se dicen las dos cosas para no contradecir
+              // la fila de Iniciativas.
+              {
+                label: 'Frentes',
+                value: `${commandCenter.summary.activeFronts} activos de ${commandCenter.summary.fronts} · ${commandCenter.summary.frontsWithActiveInitiatives} con iniciativas en curso`,
+              },
+              {
+                label: 'Retos',
+                value: `${commandCenter.summary.activeChallenges} publicados de ${commandCenter.summary.challenges} · ${commandCenter.summary.challengesWithActiveInitiatives} con iniciativas en curso`,
+              },
               { label: 'Iniciativas', value: `${commandCenter.summary.activeInitiatives} en curso de ${commandCenter.summary.initiatives}` },
               { label: 'Decisiones', value: `${commandCenter.summary.pendingDecisions} pendientes` },
             ]}
