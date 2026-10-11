@@ -1,16 +1,17 @@
 # Starteria — Portfolio Setup Continuity Experience Contract v0.1 (114F)
 
-**Estado:** `PROPOSED_FOR_ACCEPTANCE_REVIEW`  
+**Estado:** `ACCEPTED / FROZEN FOR IMPLEMENTATION PLANNING` — sólo 114F (KAN-132)
 **Tipo:** Experience Contract; KAN-128 / KAN-131  
 **Fecha:** 2026-10-11  
-**IMPLEMENTATION_AUTHORIZED:** `NO` — requiere aceptación humana explícita de este contrato y una slice técnica separada.  
+**IMPLEMENTATION_PLANNING_AUTHORIZED:** `YES` — incluye auditoría técnica y arquitectura.
+**RUNTIME_IMPLEMENTATION_AUTHORIZED:** `NO` — requiere una slice técnica separada con autoridad explícita.
 **Alcance:** experiencia desde Critical Handoff 114D confirmado y Starteria Path 114E hasta el handoff a Portfolio Home / Bootstrap o una continuación provisional segura.
 
 ## 0. Autoridad, estado y propósito
 
-Rige la jerarquía de [Authority Map](../../STARTERIA_AUTHORITY.md): [Core v0.2 factual](../../../doc/CONTRATO_LOGICA_CORE_STARTERIA_MVP_v0.2_ES(1).md) (`Base fundacional revisada / Por validar`) → [ADR-003](../../../doc/product-adr/ADR-003-public-entry-registration-continuation-boundary.md), [ADR-004](../../../doc/product-adr/ADR-004-authenticated-continuation-access-and-initiative-handoff-authority.md) y [ADR-005](../../../doc/product-adr/ADR-005-portfolio-handoff-assignment-persistence-and-legacy-route-boundary.md) `ACCEPTED` → [Portfolio Entry Logic v0.1](../../../doc/experience/portfolio-entry/PORTFOLIO_ENTRY_LOGIC_CONTRACT_v0.1.md) aprobado. El [contrato 114E](PORTFOLIO_ENTRY_STARTERIA_PATH_EXPERIENCE_CONTRACT_v0.1.md) gobierna su Path, y [Activation v0.2](../../portfolio-lead/05-activation-handoff/PORTFOLIO_TO_INITIATIVE_ACTIVATION_EXPERIENCE_CONTRACT_v0.2.md) gobierna el handoff Initiative dentro de su bounded context. Este contrato propuesto no adquiere autoridad aprobada por existir.
+Rige la jerarquía de [Authority Map](../../STARTERIA_AUTHORITY.md): [Core v0.2 factual](../../../doc/CONTRATO_LOGICA_CORE_STARTERIA_MVP_v0.2_ES(1).md) (`Base fundacional revisada / Por validar`) → [ADR-003](../../../doc/product-adr/ADR-003-public-entry-registration-continuation-boundary.md), [ADR-004](../../../doc/product-adr/ADR-004-authenticated-continuation-access-and-initiative-handoff-authority.md) y [ADR-005](../../../doc/product-adr/ADR-005-portfolio-handoff-assignment-persistence-and-legacy-route-boundary.md) `ACCEPTED` → [Portfolio Entry Logic v0.1](../../../doc/experience/portfolio-entry/PORTFOLIO_ENTRY_LOGIC_CONTRACT_v0.1.md) aprobado. El [contrato 114E](PORTFOLIO_ENTRY_STARTERIA_PATH_EXPERIENCE_CONTRACT_v0.1.md) gobierna su Path, y [Activation v0.2](../../portfolio-lead/05-activation-handoff/PORTFOLIO_TO_INITIATIVE_ACTIVATION_EXPERIENCE_CONTRACT_v0.2.md) gobierna el handoff Initiative dentro de su bounded context. KAN-132 adopta este contrato sólo para 114F y subordinado a esas autoridades.
 
-El [paquete KAN-130](PORTFOLIO_SETUP_CONTINUITY_DECISION_PACKAGE_v0.1.md) cierra las decisiones para redactar este candidato; [KAN-129](../../implementation/portfolio-entry/KAN-129_ADR003_114F_AUTHORITY_RECONCILIATION_v0.1.md) reconcilia ADR-003. [Manifest](../../../STARTERIA_V2_MANIFEST.md) y [Current State](../../../CURRENT_STATE.md) registran 114E `IMPLEMENTED_VERIFIED`, 114F `NOT_IMPLEMENTED`. `114F_CONTRACT_READY = YES` significa listo para redactar y revisar; `114F_IMPLEMENTATION_READY = NO`. ADR-003 §1 contiene una referencia factual conflictiva al Core v0.3: KAN-129 la documenta; aquí gobierna Core v0.2 y no se promueve el candidato v0.3.
+El [paquete KAN-130](PORTFOLIO_SETUP_CONTINUITY_DECISION_PACKAGE_v0.1.md) es la base de decisiones y evidencia de shaping, subordinada a los ADRs aceptados y a este contrato para la frontera 114F; [KAN-129](../../implementation/portfolio-entry/KAN-129_ADR003_114F_AUTHORITY_RECONCILIATION_v0.1.md) reconcilia ADR-003. [Manifest](../../../STARTERIA_V2_MANIFEST.md) y [Current State](../../../CURRENT_STATE.md) registran 114E `IMPLEMENTED_VERIFIED`, 114F `NOT_IMPLEMENTED`. El readiness de KAN-130 (`114F_CONTRACT_READY = YES`, `114F_IMPLEMENTATION_READY = NO`) describía la etapa previa a esta aceptación; ahora sólo están autorizadas la auditoría técnica, la arquitectura y la planificación. ADR-003 §1 contiene una referencia factual conflictiva al Core v0.3: KAN-129 la documenta; aquí gobierna Core v0.2 y no se promueve el candidato v0.3.
 
 **Propósito:** conservar lo que Starteria ya aprendió y establecer el contexto organizacional/Portfolio correcto mediante autoridad del servidor, sin convertir una representación provisional en verdad organizacional. 114F no reabre la entrevista de Entry ni ejecuta conversión comercial 114E.
 
@@ -205,27 +206,33 @@ LEGACY_AVAILABLE != LEGACY_AUTHORITY
 
 ## 15. Criterios de aceptación del contrato
 
-- [ ] La secuencia 114D→114E→114F preserva contexto confirmado/provisional y no repite la entrevista Entry.
-- [ ] Gate y binding cubren identidad, ownership, revisión actual, versiones soportadas, perfil y ausencia de continuación incompatible.
-- [ ] Perfil server-owned estable o transición explícita/versionada; Path/CTA/IA no eligen ruta.
-- [ ] Acceso A/B/C y cero/uno/varios scopes están definidos; selección y cada acción tenant se revalidan en servidor.
-- [ ] Contexto provisional, representación confirmada, autoridad server-owned y verdad organizacional se distinguen por claim.
-- [ ] Unknowns y later work sobreviven con dueño, impacto y bloqueo acotado.
-- [ ] Fuente obsoleta, scope revocado y errores de validación fallan cerrados; snapshot/retry son determinísticos y currentness-bound.
-- [ ] 114F no crea Organization, StrategicFront, Challenge, Initiative/Project, Step ni decisión Core canónica.
-- [ ] Excepción Initiative requiere target y Assignment/issuer/recipient/permiso, y separa Invitation, Accept y Start.
-- [ ] No existe fallback 114F a rutas legacy Project/Steps; consumidores antiguos permanecen clasificados.
-- [ ] Handoff a Home/Bootstrap define datos, autoridad revalidable, ausencia de invenciones y ownership del trabajo posterior.
+KAN-132 verificó estos criterios sobre la semántica escrita; las marcas no son evidencia de implementación ni de pruebas runtime.
+
+- [x] La secuencia 114D→114E→114F preserva contexto confirmado/provisional y no repite la entrevista Entry.
+- [x] Gate y binding cubren identidad, ownership, revisión actual, versiones soportadas, perfil y ausencia de continuación incompatible.
+- [x] Perfil server-owned estable o transición explícita/versionada; Path/CTA/IA no eligen ruta.
+- [x] Acceso A/B/C y cero/uno/varios scopes están definidos; selección y cada acción tenant se revalidan en servidor.
+- [x] Contexto provisional, representación confirmada, autoridad server-owned y verdad organizacional se distinguen por claim.
+- [x] Unknowns y later work sobreviven con dueño, impacto y bloqueo acotado.
+- [x] Fuente obsoleta, scope revocado y errores de validación fallan cerrados; snapshot/retry son determinísticos y currentness-bound.
+- [x] 114F no crea Organization, StrategicFront, Challenge, Initiative/Project, Step ni decisión Core canónica.
+- [x] Excepción Initiative requiere target y Assignment/issuer/recipient/permiso, y separa Invitation, Accept y Start.
+- [x] No existe fallback 114F a rutas legacy Project/Steps; consumidores antiguos permanecen clasificados.
+- [x] Handoff a Home/Bootstrap define datos, autoridad revalidable, ausencia de invenciones y ownership del trabajo posterior.
 
 ## 16. Disposición del contrato Post-Entry anterior y readiness
 
-[Portfolio Post-Entry Continuation v0.1](../../../doc/experience/portfolio-entry/PORTFOLIO_POST_ENTRY_CONTINUATION_CONTRACT_v0.1.md) conserva `PROPOSED FOR REVIEW`. **Disposición propuesta: `SUPERSEDED_IN_PART` al aceptar 114F**. Su no-repeat, separación de permisos y no Project/Steps son compatibles; sus campos `recommended_approach`, `starteria_path`, `recommended_cta` y handoff legacy no gobiernan la fuente 114D/114E actual, y carece de gates scoped, perfil, provisional sin scope y semántica Initiative completa. Hasta aceptación humana, sigue evidencia propuesta/histórica; este archivo es candidato sucesor claro, sin cambiarle el estado ni reescribirlo.
+[Portfolio Post-Entry Continuation v0.1](../../../doc/experience/portfolio-entry/PORTFOLIO_POST_ENTRY_CONTINUATION_CONTRACT_v0.1.md) conserva su estado documental `PROPOSED FOR REVIEW`; su disposición en la frontera 114F superpuesta es `SUPERSEDED_IN_PART`. La continuidad sin repetición, separación de permisos y ausencia de Project/Steps automáticos siguen siendo compatibles. Sus campos `recommended_approach`, `starteria_path`, `recommended_cta` y handoff legacy no gobiernan la fuente 114D/114E actual. Este contrato aceptado gobierna la continuación 114F; no reescribe el contenido histórico ni promueve el contrato anterior.
 
 ```text
-CONTRACT_STATUS: PROPOSED_FOR_ACCEPTANCE_REVIEW
+CONTRACT_STATUS: ACCEPTED / FROZEN FOR IMPLEMENTATION PLANNING
+CONTRACT_AUTHORITY_STATUS: ACCEPTED_FOR_114F
+SCOPE: 114F — Portfolio Setup Continuity only
 CONTRACT_SEMANTICS_COMPLETE: YES
-IMPLEMENTATION_READY_IF_ACCEPTED: YES — para arquitectura/auditoría y planificación de slices, no código directo
+IMPLEMENTATION_PLANNING_AUTHORIZED: YES
+TECHNICAL_AUDIT_AUTHORIZED: YES
+RUNTIME_IMPLEMENTATION_AUTHORIZED: NO
 IMPLEMENTATION_AUTHORIZED_NOW: NO
 ```
 
-La completitud semántica incluye estados seguros cuando faltan grants, transición de perfil o issuer. La habilitación real de esas capacidades requiere políticas externas aceptadas, contrato aceptado, auditoría técnica/current-state, slice Jira de implementación y guardrail check. Acceptance review debe verificar la frontera con Activation para Assigned Challenge y el conflicto factual ADR-003/Core v0.3 registrado por KAN-129; ninguna de esas referencias promueve Core v0.3 ni autoriza runtime.
+La completitud semántica incluye estados seguros cuando faltan grants, transición de perfil o issuer. La habilitación real de esas capacidades requiere políticas externas aceptadas, auditoría técnica/current-state, slice Jira de implementación y guardrail check. KAN-132 revisó la frontera con Activation para Assigned Challenge y el conflicto factual ADR-003/Core v0.3 registrado por KAN-129; ninguna de esas referencias promueve Core v0.3 ni autoriza runtime. El siguiente gate es **114F Technical Current-State Audit + Architecture**: debe determinar el esquema/runtime de `PortfolioEntryPortfolioContinuation`, ownership/currentness de sesión, persistencia de perfil, acceso/grants scoped, establecimiento de contexto, cero/uno/varios scopes, ruta de entrada a Home, dependencia Bootstrap, consumidores legacy, wiring de la excepción Initiative, gaps frente a este contrato, necesidad de cambio Prisma, frontera mínima API read/write y plan E2E/security/regression. Esta aceptación no resuelve esas decisiones técnicas.

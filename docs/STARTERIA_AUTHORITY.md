@@ -201,7 +201,7 @@ queda fuera de la linea de autoridad. Es evidencia factual de current state para
 
 - `doc/experience/portfolio-entry/PORTFOLIO_ENTRY_LOGIC_CONTRACT_v0.1.md`
 - `docs/experience/portfolio-entry/PORTFOLIO_ENTRY_ACCEPTANCE_CHECKLIST_v0.1.md`
-- `docs/experience/portfolio-entry/PORTFOLIO_POST_ENTRY_CONTINUATION_CONTRACT_v0.1.md` - propuesto para revision, no implementado
+- `doc/experience/portfolio-entry/PORTFOLIO_POST_ENTRY_CONTINUATION_CONTRACT_v0.1.md` - `PROPOSED FOR REVIEW`; `SUPERSEDED_IN_PART` sólo en la frontera 114F por el contrato aceptado, conservado para compatibilidad/trazabilidad
 - `docs/agents/portfolio-entry/PORTFOLIO_ENTRY_AGENT_CONTRACT_v0.1.md` - propuesto
 - `docs/agents/portfolio-entry/skills/entry-01-intent-detection/SKILL.md` a `entry-04-question-planner/SKILL.md` - propuestos
 - `docs/ai-harness/portfolio-entry/PORTFOLIO_ENTRY_AI_HARNESS_v0.1.md` - harness propuesto/ejecutable segun su propio estado
@@ -265,10 +265,11 @@ que registraron `PROPOSED` conservan su observación histórica, sin determinar
 el estado actual. La antigua discrepancia `OPEN / DEFERRED` de estado queda
 reconciliada; la jerarquía de autoridad de la sección 2 no cambia.
 
-Esta aceptación no autoriza runtime 114F. Portfolio Setup Continuity requiere
-un Experience Contract aceptado, decisiones de autoridad contextual pendientes
-y un slice de implementación explícito. Las capacidades parciales existentes
-de continuación pertenecen a sus slices y no equivalen a 114F implementado.
+Esta aceptación no autorizó runtime 114F. KAN-132 adopta después el Experience
+Contract 114F sólo para planificación, sin resolver la autoridad contextual
+pendiente ni autorizar una slice de implementación. Las capacidades parciales
+existentes de continuación pertenecen a sus slices y no equivalen a 114F
+implementado.
 
 Nota de estado: implementado no equivale a aprobado ni a probado end-to-end. El Experience Contract v0.1 sigue siendo el contrato activo aprobado para Pantalla 1. Los documentos Agent/Skill conservan su estado propio hasta ratificacion explicita.
 
@@ -316,6 +317,39 @@ recommended_approach, or recommended_cta; establish Early Access or Demo
 availability; authorize Landing claims beyond the adopted boundary; or open
 product access. Candidate Clarification/Handoff v0.2.1 and legacy documents
 remain unpromoted. Legacy consumers remain KEEP_COMPAT.
+
+#### KAN-132 — 114F Portfolio Setup Continuity scoped authority adoption
+
+`docs/experience/portfolio-entry/PORTFOLIO_SETUP_CONTINUITY_EXPERIENCE_CONTRACT_v0.1.md`
+is `ACCEPTED / FROZEN FOR IMPLEMENTATION PLANNING` for **114F — Portfolio Setup
+Continuity only**. Its adoption does not change the global hierarchy in §2.
+
+The scoped chain is:
+
+1. Factual Core v0.2.
+2. Accepted product ADRs, including ADR-003, ADR-004 and ADR-005; all remain
+   above Experience Contracts.
+3. Approved Portfolio Entry Logic Contract v0.1.
+4. Governed 114D Critical Handoff semantics and the accepted 114E Starteria
+   Path boundary where relevant, each within its own scope.
+5. Accepted Portfolio Setup Continuity Experience Contract v0.1 for 114F.
+6. Future 114F Technical Current-State Audit + Architecture, then a separately
+   authorized implementation slice.
+
+The KAN-130 Decision Package is accepted shaping evidence and a decision
+baseline used to draft 114F. It is not a formal Experience Contract and does
+not outrank accepted ADRs or the accepted 114F contract. Activation v0.2 owns
+Invitation, Accept and Start in its own bounded context; Portfolio Home /
+Bootstrap owns interpretation after the 114F handoff.
+
+This acceptance authorizes technical audit, architecture and implementation
+planning only. It does not replace Core or ADRs; authorize runtime, frontend,
+backend or Prisma changes; provision Portfolio grants or Initiative issuer
+authority; activate Steps; promote legacy routes or semantics; or open product
+access. The old Post-Entry v0.1 remains `PROPOSED FOR REVIEW` and is
+`SUPERSEDED_IN_PART` for the overlapping 114F boundary. Its no-repeat
+continuity and permission separation remain compatible; legacy handoff fields
+do not govern 114F.
 
 ### Portfolio Lead / Activation-Handoff
 

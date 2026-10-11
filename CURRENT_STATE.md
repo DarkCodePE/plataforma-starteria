@@ -105,8 +105,8 @@ No debe presentarse como runtime productivo certificado. Los resultados E2E en e
 - Authority map: `docs/STARTERIA_AUTHORITY.md`.
 - Core Contract: `doc/CONTRATO_LOGICA_CORE_STARTERIA_MVP_v0.2_ES(1).md`.
   - Estado factual real: `v0.2`, `Base fundacional revisada / Por validar`.
-  - `docs/core/STARTERIA_CORE_LOGIC_CONTRACT.md` no esta materializado ni promovido.
-  - Core v0.3 es un candidate externo no autoritativo; requiere ADR, evidencia original y re-test antes de promocionarse.
+  - `docs/core/STARTERIA_CORE_LOGIC_CONTRACT.md` está materializado como candidato, no promovido.
+  - Core v0.3 no es autoridad factual; requiere ADR, evidencia original y re-test antes de promocionarse.
   - Evidencia: `docs/reconciliation/CORE_0_CANDIDATE_RECONCILIATION.md`.
   - Su presencia aqui no lo convierte en aprobado.
 - Portfolio Entry Experience Contract aprobado:
@@ -115,7 +115,7 @@ No debe presentarse como runtime productivo certificado. Los resultados E2E en e
   - SHA-256 observado: `D34FDEA9A5E5BE843105DDC2A3CED4970144AE2596AC8BF5AB897A95B2A54E8A`.
 - Portfolio Post-Entry Continuation:
   - El contrato presente es `doc/experience/portfolio-entry/PORTFOLIO_POST_ENTRY_CONTINUATION_CONTRACT_v0.1.md`.
-  - Estado del contrato: `PROPOSED FOR REVIEW`; no es autoridad aprobada ni autoriza runtime productivo.
+  - Estado documental: `PROPOSED FOR REVIEW`; disposición `SUPERSEDED_IN_PART` para la frontera 114F por el contrato aceptado. No autoriza runtime productivo. Su continuidad sin repetición y separación de permisos siguen compatibles; el handoff legacy no gobierna 114F.
   - La continuación Portfolio por defecto es una decisión de ADR-003 `ACCEPTED`; esto no acredita que la integración canónica de 114F exista.
   - La implementación observada en este checkout es mixta: existe una superficie candidata de continuación Portfolio y permanecen rutas legacy de pilot/public-draft que pueden crear Project/Steps.
   - La slice `AUTHENTICATED_PORTFOLIO_CONTEXT_ESTABLISHMENT` está implementada sobre autoridad scoped: resuelve y selecciona contextos existentes sin crear autoridad ni entidades de negocio. Ver `docs/portfolio-entry/implementation/PORTFOLIO_ENTRY_AUTHENTICATED_PORTFOLIO_CONTEXT_ESTABLISHMENT_v0.1.md`.
@@ -134,7 +134,7 @@ IMPLEMENTED_TODAY:
   - Public Entry, auth y rutas legacy Project/Steps coexisten en el checkout.
   - Existe una rama candidata de continuación Portfolio y tests de sus límites.
 
-ACCEPTED_DECISION / NOT_YET_INTEGRATED (ADR-003; requiere contrato y slice 114F):
+ACCEPTED_DECISION / NOT_YET_INTEGRATED (ADR-003; contrato 114F aceptado, requiere auditoría/arquitectura y slice técnica separada):
   Public Entry → handoff provisional → registration/login →
   restaurar contexto → Portfolio context por defecto.
 
@@ -157,11 +157,13 @@ Invariantes de esta frontera: `AUTHENTICATION != BUSINESS CANONICALIZATION`,
 `PUBLIC_ENTRY_CONTINUATION != PROJECT_CREATION` y
 `PUBLIC_ENTRY_CONTINUATION != STEPS_ENTRY`.
 
-114F sigue `NOT_IMPLEMENTATION_READY`: ADR-003 aceptado no sustituye un
-Experience Contract 114F aceptado, la autorización explícita de su slice ni
-las decisiones de autoridad pendientes sobre grants, perfil contextual e
-invitaciones. La evidencia de continuidad existente es de slices anteriores,
-no una declaración de que 114F haya empezado.
+114F tiene lógica `ACCEPTED / FROZEN FOR IMPLEMENTATION PLANNING` por KAN-132,
+limitada a Portfolio Setup Continuity. Su implementación está `NOT_IMPLEMENTED`;
+la auditoría técnica/current-state está `NOT_YET_COMPLETED` y runtime no está
+autorizado. La aceptación permite auditoría, arquitectura y planificación;
+no sustituye la autorización explícita de una slice técnica ni resuelve la
+provisión de grants, la transición de perfil o la política de issuer Initiative.
+La evidencia de continuidad existente pertenece a slices anteriores.
 
 - Portfolio Home Governance: PH-0 target freeze at `docs/portfolio-lead/06-portfolio-home-governance/`; runtime not certified.
 - PH-2 read-model implementation evidence is present on this branch, including
