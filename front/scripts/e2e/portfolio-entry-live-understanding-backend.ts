@@ -182,6 +182,35 @@ function provenance(id: string, claimRef: string, sourceRef: string): CriticalSi
 
 const app = express();
 app.use(express.json());
+type ConversionFixtureMode = 'NONE' | 'DEMO' | 'EARLY_ACCESS' | 'BOTH';
+let conversionFixtureMode: ConversionFixtureMode = 'NONE';
+let conversionFixtureVersion = 1;
+const conversionFixtureTypes = (): Array<'DEMO' | 'EARLY_ACCESS'> =>
+  conversionFixtureMode === 'BOTH' ? ['DEMO', 'EARLY_ACCESS']
+    : conversionFixtureMode === 'NONE' ? [] : [conversionFixtureMode];
+
+// This control exists only in the NODE_ENV=test composition guarded above.
+// It never changes the production commercial configuration.
+app.post('/__test/starteria-path-conversion', (req, res) => {
+  const mode = req.body?.mode;
+  if (!['NONE', 'DEMO', 'EARLY_ACCESS', 'BOTH'].includes(mode)) {
+    res.status(400).json({ error: 'Invalid conversion fixture mode.' });
+    return;
+  }
+  conversionFixtureMode = mode as ConversionFixtureMode;
+  conversionFixtureVersion += 1;
+  res.json({ mode: conversionFixtureMode, version: conversionFixtureVersion });
+});
+
+const readConversionFixture = () => ({
+  version: conversionFixtureVersion,
+  commercialOwner: conversionFixtureMode === 'NONE' ? undefined : 'conversion.e2e@starteria.test',
+  approvedExternalDestinations: [],
+  destinations: conversionFixtureTypes().map((type) => ({
+    type, status: 'VERIFIED_ACTIVE' as const, destinationKind: 'FIRST_PARTY' as const,
+    receiver: 'CONVERSION_SUBMISSION_V1' as const, contextSharingSupported: true as const,
+  })),
+});
 app.get('/__test/portfolio-entry-stats', (req, res, next) => {
   void (async () => {
     const sessionId = typeof req.query.sessionId === 'string' ? req.query.sessionId : undefined;
@@ -224,6 +253,7 @@ const portfolioEntryRouter = buildPortfolioEntryRouter({
 }, {
   agentAdapter,
   liveUnderstandingSynthesizer,
+  starteriaPathConversionConfig: readConversionFixture,
 });
 app.use(createApp({ portfolioEntryRouter }));
 

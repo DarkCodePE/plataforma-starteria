@@ -553,9 +553,9 @@ PR #161 is integrated into the governed baseline at merge commit `82ab8710b6e5a8
 slice_id: PORTFOLIO_ENTRY_STARTERIA_PATH_114E
 HU: KAN-120 parent scope; KAN-121 audit; KAN-122 boundary; KAN-123 experience contract; KAN-124 architecture; KAN-125 implementation; KAN-126 scoped adoption
 logic_status: ACTIVE_V2_BASELINE (bounded 114E semantics only)
-implementation_status: PARTIAL_IMPLEMENTATION
-visual_status: NOT_IMPLEMENTED
-evidence_status: SUPPORTED (125A evidence only; no full 114E runtime verification)
+implementation_status: IMPLEMENTED_VERIFIED (125F local evidence; pending integration)
+visual_status: V2_PILOT (not V2_MIGRATED while ADR-003 authority discrepancy is open/deferred for 114F)
+evidence_status: SUPPORTED (125A–125E integrated; 125F local E2E, security and regression evidence)
 semantic_owner: Portfolio Entry V2 for 114E; KAN-114 remains the sole business-reasoning source
 authority: factual Core v0.2; accepted product ADRs; active Portfolio Entry Logic Contract v0.1; accepted/frozen Critical Reasoning Experience Contract v0.1; KAN-114 semantic acceptance; KAN-119 governed 114D baseline; KAN-122 Business Capability Boundary (114E scoped); KAN-123 Starteria Path Experience Contract (114E scoped); KAN-124 architecture; KAN-120/KAN-125/KAN-126 scoped authority
 source_gate: latest current, explicitly confirmed 114D Critical Handoff
@@ -564,21 +564,27 @@ semantic_path: DERIVED
 conversion_intent: PERSISTED_ON_ACCEPTED_SUBMISSION
 consent: SUBMISSION_ONLY
 path_view_auth: SESSION_OWNERSHIP
-completed_slice: 125A
-completed_artifact: deterministic projector
+completed_slices: 125A, 125B, 125C, 125D, 125E; 125F implemented and verified locally, pending integration
+completed_artifact: deterministic projector; owned read API; Path UI; conversion presentation; first-party submission and consent; bounded analytics and regression E2E
 125A_evidence: PR #180 merged at adb810475fffbedf3015820babceecaa1cd30e35; 23 focused tests; backend typecheck PASS; no I/O; no persistence; no API/UI; no legacy semantics; no 114F/Core/Steps leakage
-next_authorized_slice: 125B read boundary/API, effective after KAN-126 merges
-125B_scope: SESSION_OWNERSHIP; current-and-confirmed source gate; source binding/currentness; DTO allowlist; stale/unconfirmed/invalid fail closed; legacy isolation
-125B_exclusions: UI; conversion; Early Access; Demo; consent persistence; 114F; Core; Steps
-current_boundaries: no UI; no API; no semantic Path persistence; no conversion runtime; no verified Early Access/Demo destination
+125B_evidence: PR #182 merged at 1761c19; owned GET Path boundary and source/DTO gates
+125C_evidence: PR #185 merged at 848eda1; bounded Path UI
+125D_evidence: PR #187 merged at 72782f6; fail-closed conversion presentation
+KAN-127_evidence: PR #189 merged at d184b80; scoped conversion submission policy adoption
+125E_evidence: PR #190 merged at d52f86bc0605fedfec17b767397941e8eb9fca1b; first-party submission, consent and migration
+125F_evidence: local branch feat/KAN-125-starteria-path-125F; closure report at docs/implementation/portfolio-entry/KAN-125F_STARTERIA_PATH_E2E_SECURITY_CLOSURE_v0.1.md; no commit, push or PR yet
+commercial_activation: DISABLED / NO_VERIFIED_DESTINATION (production/default; Demo and Early Access unavailable)
+current_boundaries: semantic Path DERIVED, not persisted; conversion submission only under VERIFIED_ACTIVE first-party fixture; no verified production Early Access/Demo destination
 legacy_treatment: KEEP_COMPAT; legacy starteria_path, recommended_approach, and recommended_cta are not 114E semantic authority
-exclusions: 114F; Portfolio Setup continuity; ADR-003 reconciliation; Core; Steps; legacy semantic reuse; Early Access/Demo activation or destination availability; open product access; Landing claims beyond adopted boundary; UI; API; semantic Path persistence; conversion runtime
+exclusions: 114F; Portfolio Setup continuity; ADR-003 reconciliation; Core; Steps; legacy semantic reuse; production Early Access/Demo activation or destination availability; open product access; Landing claims beyond adopted boundary; semantic Path persistence
 non_promoted: 114F; Portfolio Setup continuity; ADR-003 resolution; Core; Steps; legacy starteria_path/recommended_approach/recommended_cta; Early Access destination availability; Demo destination availability; Landing claims beyond the adopted boundary; open product access
 ```
 
-This adoption does not declare IMPLEMENTED_VERIFIED or V2_MIGRATED.
-KAN-126 authority becomes part of the governed baseline when merged; only then
-may 125B begin within the scope above.
+`IMPLEMENTED_VERIFIED` records locally tested 114E runtime semantics, not
+commercial activation. Guardrails §17 prevents `V2_MIGRATED` while an authority
+conflict remains open (ADR-003 is deferred to 114F); legacy consumers remain
+explicit `KEEP_COMPAT`. The 125F local evidence must be integrated before this
+status becomes the `main` baseline.
 
 # 6. V2 E2E slice map
 

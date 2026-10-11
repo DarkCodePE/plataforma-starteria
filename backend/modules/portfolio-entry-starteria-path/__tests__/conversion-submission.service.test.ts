@@ -98,10 +98,14 @@ describe('125E first-party conversion submission', () => {
     expect(f.rows).toHaveLength(0);
   });
 
-  it('masks wrong-owner and missing session identically', async () => {
+  it('masks wrong-owner, unclaimed and missing sessions identically', async () => {
     const f = fixture();
     await expect(f.service.submit('session-1', 'user-2', conversionSubmissionSchema.parse(request)))
       .rejects.toMatchObject({ statusCode: 404, code: 'PORTFOLIO_ENTRY_SESSION_NOT_FOUND' });
+    f.session.ownershipState = 'ANONYMOUS';
+    await expect(f.service.submit('session-1', 'user-1', conversionSubmissionSchema.parse(request)))
+      .rejects.toMatchObject({ statusCode: 404, code: 'PORTFOLIO_ENTRY_SESSION_NOT_FOUND' });
+    f.session.ownershipState = 'CLAIMED';
     f.session.id = '';
     await expect(f.service.submit('session-1', 'user-1', conversionSubmissionSchema.parse(request)))
       .rejects.toMatchObject({ statusCode: 404, code: 'PORTFOLIO_ENTRY_SESSION_NOT_FOUND' });

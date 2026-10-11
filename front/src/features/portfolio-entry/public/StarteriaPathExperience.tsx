@@ -1,6 +1,8 @@
+import { useEffect, useRef } from 'react';
 import { Button } from '../../../app/components/ui/button';
 import type { StarteriaPathDto, StarteriaPathSupportedDto } from './starteriaPath.types';
 import { ConversionSubmissionForm } from './ConversionSubmissionForm';
+import { trackStarteriaPathEvent, type StarteriaPathAnalyticsEvent } from './analytics';
 
 export type StarteriaPathRequestState = 'loading' | 'ready' | 'missing' | 'invalid' | 'error';
 
@@ -110,9 +112,46 @@ function SupportedPath({ path, sessionId, decisionInView, onRetry }: {
   path: StarteriaPathSupportedDto; sessionId?: string; decisionInView?: string | null; onRetry: () => void;
 }) {
   const bounded = path.experienceState === 'BOUNDED';
+  const pathRef = useRef<HTMLElement | null>(null);
+  const tangibleRef = useRef<HTMLElement | null>(null);
+  const conversionRef = useRef<HTMLElement | null>(null);
+  const recordedViews = useRef(new Set<string>());
+
+  useEffect(() => {
+    const sourceKey = [path.sourceBinding.criticalHandoffId,
+      path.sourceBinding.criticalHandoffVersion, path.sourceBinding.sourceContextRevision].join(':');
+    const observed: Array<{ element: HTMLElement | null; event: StarteriaPathAnalyticsEvent; properties: Record<string, unknown> }> = [
+      { element: pathRef.current, event: 'starteria_path_viewed', properties: { experienceState: path.experienceState } },
+      { element: tangibleRef.current, event: 'tangible_value_viewed', properties: { experienceState: path.experienceState } },
+    ];
+    if (path.conversionPresentation.destinations.length > 0) {
+      observed.push({ element: conversionRef.current, event: 'conversion_cta_viewed',
+        properties: { availabilityState: path.conversionPresentation.availability } });
+    }
+    if (typeof IntersectionObserver === 'undefined') return;
+    const observer = new IntersectionObserver((entries) => {
+      for (const entry of entries) {
+        if (!entry.isIntersecting) continue;
+        const item = observed.find((candidate) => candidate.element === entry.target);
+        if (!item) continue;
+        const key = `${sourceKey}:${item.event}${item.event === 'conversion_cta_viewed'
+          ? `:${path.conversionPresentation.conversionConfigVersion}` : ''}`;
+        if (recordedViews.current.has(key)) continue;
+        recordedViews.current.add(key);
+        trackStarteriaPathEvent(item.event, item.properties);
+        observer.unobserve(entry.target);
+      }
+    }, { threshold: 0 });
+    for (const item of observed) if (item.element) observer.observe(item.element);
+    return () => observer.disconnect();
+  }, [path.sourceBinding.criticalHandoffId, path.sourceBinding.criticalHandoffVersion,
+    path.sourceBinding.sourceContextRevision, path.experienceState,
+    path.conversionPresentation.availability, path.conversionPresentation.conversionConfigVersion,
+    path.conversionPresentation.destinations.length]);
 
   return (
     <section
+      ref={pathRef}
       className="mx-auto max-w-3xl min-w-0 space-y-4"
       role="region"
       aria-labelledby="starteria-path-title"
@@ -147,6 +186,7 @@ function SupportedPath({ path, sessionId, decisionInView, onRetry }: {
           ) : null}
         </ValueSection>
 
+        <section ref={tangibleRef}>
         <ValueSection title="Qué podría quedar para revisar" testId="starteria-path-tangible-outcome">
           <p className="whitespace-pre-wrap break-words text-text-primary">{path.valueBridge.tangibleOutcome.statement}</p>
           <p className="whitespace-pre-wrap break-words">{path.valueBridge.tangibleOutcome.observableArtifact}</p>
@@ -154,6 +194,7 @@ function SupportedPath({ path, sessionId, decisionInView, onRetry }: {
             Esto describe una ayuda y un artefacto que podrían quedar disponibles; no garantiza un resultado de negocio.
           </p>
         </ValueSection>
+        </section>
 
         {path.valueBridge.remainingDependency.length > 0 ? (
           <ValueSection title="Qué sigue pendiente" testId="starteria-path-remaining-dependency">
@@ -228,7 +269,7 @@ function SupportedPath({ path, sessionId, decisionInView, onRetry }: {
         </aside>
       ) : null}
       {path.conversionPresentation.availability !== 'NO_VERIFIED_DESTINATION' ? (
-        <section className="space-y-4 border-t border-border-default pt-4" aria-labelledby="starteria-path-conversion-title">
+        <section ref={conversionRef} className="space-y-4 border-t border-border-default pt-4" aria-labelledby="starteria-path-conversion-title">
           <h3 id="starteria-path-conversion-title" className="text-base font-semibold text-text-primary">
             Sobre esta posibilidad de ayuda
           </h3>
@@ -245,6 +286,8 @@ function SupportedPath({ path, sessionId, decisionInView, onRetry }: {
                 ) : destination.destinationKind === 'EXTERNAL' ? (
                   <Button asChild variant="outline">
                     <a href={destination.href} target="_blank" rel="noopener noreferrer" referrerPolicy="no-referrer"
+                      onClick={() => trackStarteriaPathEvent(destination.type === 'DEMO' ? 'demo_clicked' : 'early_access_clicked',
+                        { destinationType: destination.type, availabilityState: path.conversionPresentation.availability })}
                       aria-describedby={`conversion-disclosure-${destination.type}`}>
                       {destination.label}
                     </a>

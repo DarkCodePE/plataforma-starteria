@@ -2,7 +2,7 @@ import React from 'react';
 import axios from 'axios';
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { StarteriaPathExperience } from '../StarteriaPathExperience';
 import type { StarteriaPathDto, StarteriaPathSupportedDto } from '../starteriaPath.types';
 import { parseStarteriaPathDto } from '../starteriaPath.types';
@@ -72,6 +72,46 @@ function renderPath(path: StarteriaPathDto, onRetry = vi.fn()) {
 }
 
 describe('StarteriaPathExperience', () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('records visible Path and tangible value, but no commercial funnel without a destination', () => {
+    const events: Array<Record<string, unknown>> = [];
+    (window as unknown as { dataLayer: Array<Record<string, unknown>> }).dataLayer = events;
+    vi.stubGlobal('IntersectionObserver', class {
+      constructor(private readonly callback: IntersectionObserverCallback) {}
+      observe(target: Element) { this.callback([{ isIntersecting: true, target } as IntersectionObserverEntry], this as unknown as IntersectionObserver); }
+      disconnect() {}
+      unobserve() {}
+      takeRecords() { return []; }
+    });
+    renderPath(makeSupportedPath());
+    expect(events.filter((item) => item.event === 'starteria_path_viewed')).toHaveLength(1);
+    expect(events.filter((item) => item.event === 'tangible_value_viewed')).toHaveLength(1);
+    expect(events.filter((item) => /conversion_cta_viewed|demo_clicked|early_access_clicked|conversion_submitted/.test(String(item.event)))).toHaveLength(0);
+    expect(events).not.toContainEqual(expect.objectContaining({ decisionInView: expect.anything() }));
+  });
+  it('does not recount Path value when only commercial configuration changes', () => {
+    const events: Array<Record<string, unknown>> = [];
+    (window as unknown as { dataLayer: Array<Record<string, unknown>> }).dataLayer = events;
+    vi.stubGlobal('IntersectionObserver', class {
+      constructor(private readonly callback: IntersectionObserverCallback) {}
+      observe(target: Element) { this.callback([{ isIntersecting: true, target } as IntersectionObserverEntry], this as unknown as IntersectionObserver); }
+      disconnect() {}
+      unobserve() {}
+      takeRecords() { return []; }
+    });
+    const view = renderPath(makeSupportedPath());
+    const verified = makeSupportedPath({ conversionPresentation: {
+      availability: 'DEMO_ONLY', conversionConfigVersion: 2,
+      destinations: [{ type: 'DEMO', status: 'VERIFIED_ACTIVE', destinationKind: 'FIRST_PARTY',
+        contextSharingSupported: true, label: CONVERSION_COPY.DEMO.label,
+        availabilityDisclosure: 'Una solicitud no reserva una cita.' }],
+    } });
+    view.rerender(<StarteriaPathExperience requestState="ready" path={verified} onRetry={vi.fn()} />);
+    expect(events.filter((item) => item.event === 'starteria_path_viewed')).toHaveLength(1);
+    expect(events.filter((item) => item.event === 'tangible_value_viewed')).toHaveLength(1);
+    expect(events.filter((item) => item.event === 'conversion_cta_viewed')).toHaveLength(1);
+  });
   it.each(['DEMO', 'EARLY_ACCESS'] as const)('opens only the verified first-party %s form', async (type) => {
     const destination = type === 'DEMO'
       ? { type, status: 'VERIFIED_ACTIVE', destinationKind: 'FIRST_PARTY', contextSharingSupported: true,

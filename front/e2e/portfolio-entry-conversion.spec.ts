@@ -856,8 +856,8 @@ test.describe('Portfolio Entry 114D Critical Handoff and explicit legacy compati
     await page.screenshot({ path: testInfo.outputPath('portfolio-entry-clarification.png'), fullPage: true });
   });
 
-  // CURRENT_114D: this browser journey stops after the confirmed Critical Handoff.
-  test('[CURRENT_114D] KAN-102 Landing → Entry → clarification → confirmed Critical Handoff', async ({ page }, testInfo) => {
+  // CURRENT_114D supplies the confirmed source; 114E then reads a bounded Path.
+  test('[CURRENT_114D] KAN-102 Landing → Entry → clarification → confirmed Critical Handoff → 114E Path', async ({ page }, testInfo) => {
     const currentBoundary = watchForbiddenCriticalHandoffNavigation(page);
     const entryRequests: string[] = [];
     page.on('request', (request) => {
@@ -968,6 +968,16 @@ test.describe('Portfolio Entry 114D Critical Handoff and explicit legacy compati
     });
     expect(confirmedBody.data).not.toHaveProperty('confirmedByUserId');
     await expect(page.getByTestId('critical-handoff-confirmed')).toContainText(/representa suficientemente tu situaci.n/i);
+    await expect(page.getByTestId('starteria-path-supported')).toBeVisible();
+    await expect(page.getByTestId('starteria-path-value-bridge')).toBeVisible();
+    await expect(page.getByTestId('starteria-path-tangible-outcome')).toBeVisible();
+    const pathGetCount = () => entryRequests.filter((entry) => entry.startsWith('GET ') && entry.endsWith('/starteria-path')).length;
+    const readsAfterConfirmation = pathGetCount();
+    expect(readsAfterConfirmation).toBeGreaterThanOrEqual(1);
+    expect(readsAfterConfirmation).toBeLessThanOrEqual(3);
+    await expect(page.getByRole('button', { name: /Solicitar una demo|Solicitar acceso anticipado/ })).toHaveCount(0);
+    await expect(page.getByTestId('conversion-submission-form-DEMO')).toHaveCount(0);
+    expect(await prisma.portfolioEntryConversionSubmission.count({ where: { sessionId } })).toBe(0);
     await expect(page).toHaveURL(/\/public\/start$/);
 
     const confirmedPersisted = await prisma.portfolioEntryCriticalHandoff.findUniqueOrThrow({ where: { id: freshPersisted!.id } });
@@ -988,6 +998,11 @@ test.describe('Portfolio Entry 114D Critical Handoff and explicit legacy compati
     expect(finalArtifact.projection).toEqual(freshArtifact.projection);
     expect(finalArtifact.confirmedAt).toBe(confirmedBody.data.confirmedAt);
     expect(finalArtifact).not.toHaveProperty('confirmedByUserId');
+    await expect(page.getByTestId('starteria-path-supported')).toBeVisible();
+    await page.waitForTimeout(300);
+    expect(pathGetCount()).toBeGreaterThan(readsAfterConfirmation);
+    expect(pathGetCount()).toBeLessThanOrEqual(readsAfterConfirmation + 2);
+    expect(entryRequests.some((entry) => entry.startsWith('POST ') && entry.endsWith('/conversion-submissions'))).toBe(false);
     await expectNoCriticalHandoffLegacyFallback(page);
 
     const browserStorage = await page.evaluate(() => JSON.stringify({
@@ -1037,6 +1052,109 @@ test.describe('Portfolio Entry 114D Critical Handoff and explicit legacy compati
       currentBoundary.dispose();
     });
   }
+
+  test('[CURRENT_114E] verified first-party fixtures persist bounded consent and reject changed source/config', async ({ page }) => {
+    const backendApi = await pwRequest.newContext({ baseURL: process.env.E2E_BACKEND_URL || 'http://127.0.0.1:4100' });
+    const userEmail = process.env.E2E_USER_EMAIL || 'portfolio.e2e@starteria.test';
+    const userPassword = process.env.E2E_USER_PASSWORD || 'demo123';
+    const user = await prisma.user.findUniqueOrThrow({ where: { email: userEmail } });
+    const created = await backendApi.post('/api/v1/public/portfolio-entry/sessions', {
+      data: { sourceMetadata: { channel: 'public_start_frontend' } },
+    });
+    expect(created.status()).toBe(201);
+    const sessionId = (await created.json()).data.session.id as string;
+    const seeded = await prisma.portfolioEntrySession.findUniqueOrThrow({ where: { id: sessionId } });
+    const semantic = seeded.semanticState as Record<string, unknown>;
+    await prisma.portfolioEntrySession.update({ where: { id: sessionId }, data: {
+      ownerUserId: user.id, ownershipState: 'CLAIMED', lifecycleStatus: 'AWAITING_CONFIRMATION',
+      executionStatus: 'SUCCEEDED', semanticState: { ...semantic, userExplorationChoice: 'provisional_route' },
+    } });
+    const critical = await prisma.portfolioEntryCriticalHandoff.create({ data: {
+      sessionId, artifactVersion: 1, schemaVersion: 'critical-handoff-projection-v0.1',
+      sourceContextRevision: seeded.contextRevision, confirmationState: 'confirmed',
+      confirmedAt: new Date(), confirmedByUserId: user.id,
+      payload: {
+        conclusionStatus: 'supported', finalReading: 'La capacidad debe compararse antes de priorizar.',
+        decisionInView: 'Qué iniciativas reciben capacidad durante este ciclo.',
+        usableNow: [{ item: 'Capacidad actual', howItCanHelp: 'Acota las opciones.' }],
+        decisionChangingUnknowns: [{ uncertainty: 'Disponibilidad del equipo', whyItMatters: 'Puede cambiar la secuencia.' }],
+        firstMovement: { movement: 'Revisar la evidencia disponible.', whyNow: 'Ya existe información para comparar.',
+          whatItMayClarify: 'Qué opciones tienen base.', boundary: 'No decide por la organización.' },
+      },
+    } });
+    const beforeCanonical = await canonicalCounts();
+    const beforePilotLead = await prisma.pilotLead.count();
+    const mode = async (value: 'NONE' | 'DEMO' | 'EARLY_ACCESS' | 'BOTH') => {
+      const response = await backendApi.post('/__test/starteria-path-conversion', { data: { mode: value } });
+      expect(response.status()).toBe(200);
+    };
+    const login = await backendApi.post('/api/v1/auth/login', {
+      data: { email: userEmail, password: userPassword },
+    });
+    expect(login.status()).toBe(200);
+    const authorization = `Bearer ${extractToken(await login.json())}`;
+    await mode('BOTH');
+    await page.goto('/auth');
+    await loginThroughUi(page, userEmail, userPassword);
+    await expect(page).toHaveURL(/\/(dashboard|portfolio\/inicio)/, { timeout: 20_000 });
+    await page.evaluate((id) => {
+      window.sessionStorage.removeItem('starteria.portfolioEntry.current');
+      window.sessionStorage.setItem('starteria.portfolioEntry.claimedSession', JSON.stringify({ sessionId: id }));
+      window.sessionStorage.setItem('starteria.portfolioEntry.criticalHandoffReviewSession', id);
+    }, sessionId);
+    await page.goto('/public/start');
+    await expect(page.getByTestId('starteria-path-supported')).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Solicitar una demo' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Solicitar acceso anticipado' })).toBeVisible();
+
+    await page.getByRole('button', { name: 'Solicitar una demo' }).click();
+    await page.getByLabel(/Correo electr/i).first().fill('conversion-person@example.org');
+    await page.getByRole('button', { name: 'Enviar solicitud' }).click();
+    await expect(page.getByTestId('conversion-submission-success')).toBeVisible();
+    const demo = await prisma.portfolioEntryConversionSubmission.findFirstOrThrow({ where: { sessionId, destinationType: 'DEMO' } });
+    expect(demo).toMatchObject({ contextSharingMode: 'NO_ENTRY_CONTEXT_SHARED', sharedDecisionInView: null,
+      consentedAt: null, consentScopeVersion: null, criticalHandoffId: critical.id });
+
+    await page.getByRole('button', { name: 'Solicitar acceso anticipado' }).click();
+    await page.getByLabel(/Correo electr/i).fill('conversion-person@example.org');
+    await page.getByRole('checkbox').check();
+    await page.getByRole('button', { name: 'Enviar solicitud' }).click();
+    await expect(page.getByTestId('conversion-submission-success')).toHaveCount(2);
+    const early = await prisma.portfolioEntryConversionSubmission.findFirstOrThrow({ where: { sessionId, destinationType: 'EARLY_ACCESS' } });
+    expect(early).toMatchObject({ contextSharingMode: 'SHARE_CONTEXT_WITH_CONVERSION',
+      sharedDecisionInView: 'Qué iniciativas reciben capacidad durante este ciclo.',
+      consentScopeVersion: 'DECISION_IN_VIEW_V1', criticalHandoffId: critical.id });
+    expect(early.consentedAt).toBeInstanceOf(Date);
+    expect(await prisma.portfolioEntryConversionSubmission.count({ where: { sessionId } })).toBe(2);
+
+    await page.reload();
+    await page.getByRole('button', { name: 'Solicitar una demo' }).click();
+    await page.getByLabel(/Correo electr/i).first().fill('conversion-person@example.org');
+    await mode('NONE');
+    await page.getByRole('button', { name: 'Enviar solicitud' }).click();
+    await expect(page.getByTestId('conversion-submission-stale')).toBeVisible();
+    await expect(page.getByTestId('conversion-submission-success')).toHaveCount(0);
+    expect(await prisma.portfolioEntryConversionSubmission.count({ where: { sessionId } })).toBe(2);
+    await page.getByRole('button', { name: 'Revisar lectura' }).click();
+    await expect(page.getByTestId('starteria-path-supported')).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Solicitar una demo' })).toHaveCount(0);
+
+    await mode('DEMO');
+    await page.reload();
+    await page.getByRole('button', { name: 'Solicitar una demo' }).click();
+    await page.getByLabel(/Correo electr/i).fill('conversion-person@example.org');
+    await prisma.portfolioEntrySession.update({ where: { id: sessionId }, data: { contextRevision: seeded.contextRevision + 1 } });
+    await page.getByRole('button', { name: 'Enviar solicitud' }).click();
+    await expect(page.getByTestId('conversion-submission-stale')).toBeVisible();
+    await expect(page.getByTestId('conversion-submission-success')).toHaveCount(0);
+    expect(await prisma.portfolioEntryConversionSubmission.count({ where: { sessionId } })).toBe(2);
+    expect(await prisma.portfolioEntryCriticalHandoff.findUniqueOrThrow({ where: { id: critical.id } }))
+      .toMatchObject({ confirmationState: 'confirmed', sourceContextRevision: seeded.contextRevision });
+    expect(await canonicalCounts()).toEqual(beforeCanonical);
+    expect(await prisma.pilotLead.count()).toBe(beforePilotLead);
+    await expect(page).not.toHaveURL(/portfolio\/setup|continue-portfolio/);
+    await backendApi.dispose();
+  });
 
   // LEGACY_COMPAT: all continuation readers below use a separately seeded historical handoff.
   test('[LEGACY_COMPAT] KAN-96 hydrates the exact confirmed Brief after continuation and refresh before explicit P1 action', async ({ page }) => {
