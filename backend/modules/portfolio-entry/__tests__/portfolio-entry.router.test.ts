@@ -28,11 +28,31 @@ import { InMemoryPortfolioEntryIdempotencyRepository } from '../infrastructure/i
 import type { PortfolioEntryIdempotencyRepository } from '../application/portfolio-entry-idempotency.repository';
 import { buildPortfolioEntryRouter } from '../portfolio-entry.router';
 import type { PortfolioSetupContinuityReadService } from '../../portfolio-entry-continuation/portfolio-setup-continuity-read.service';
+import type { PortfolioSetupContinuityWriteService } from '../../portfolio-entry-continuation/portfolio-setup-continuity-write.service';
 
 const base = '/api/v1/public/portfolio-entry';
 const legacyCompatibilityRepositories = new WeakMap<express.Express, InMemoryPortfolioEntrySessionRepository>();
 
 describe('Portfolio Entry Experimental Session API', () => {
+  it('114F POST requires auth and an idempotency key, and rejects client authority fields', async () => {
+    const continueWrite = vi.fn().mockResolvedValue({ dtoVersion: 'portfolio-setup-continuity-write-v0.1', snapshotId: 'snapshot-1' });
+    const { app } = makeApp({ portfolioSetupWriteService: { continue: continueWrite } as unknown as PortfolioSetupContinuityWriteService });
+    const path = `${base}/sessions/session-1/portfolio-setup-continuity/continue`;
+    const body = { expectedSessionRevision: 3, sourceBinding: { sessionId: 'session-1', contextRevision: 1,
+      criticalHandoffId: 'critical-1', criticalHandoffVersion: 1,
+      criticalHandoffSchemaVersion: 'critical-handoff-projection-v0.1', confirmedAt: '2026-10-11T00:00:00.000Z' } };
+    await request(app).post(path).send(body).expect(401);
+    await request(app).post(path).set('Authorization', 'Bearer owner-1').send(body).expect(400);
+    await request(app).post(path).set('Authorization', 'Bearer owner-1').set('Idempotency-Key', 'test-key-114f')
+      .send({ ...body, carriedProjection: { rawEntry: 'private' } }).expect(400);
+    const result = await request(app).post(path).set('Authorization', 'Bearer owner-1')
+      .set('Idempotency-Key', 'test-key-114f').send(body).expect(200);
+    expect(result.body.data.snapshotId).toBe('snapshot-1');
+    expect(continueWrite).toHaveBeenCalledOnce();
+    expect(continueWrite).toHaveBeenCalledWith({ sessionId: 'session-1', ownerUserId: 'owner-1',
+      idempotencyKey: 'test-key-114f', request: body });
+  });
+
   it('114F GET requires authentication and passes only the server principal and session ID', async () => {
     const read = vi.fn().mockResolvedValue({ dtoVersion: 'portfolio-setup-continuity-read-v0.1',
       status: 'READY_PROVISIONAL', scopeState: 'NONE', portfolioAccess: { portfolioRead: false }, openItems: [] });
@@ -1232,6 +1252,7 @@ function makeApp(input: {
   starteriaPathConversionConfig?: () => unknown;
   conversionSubmissionService?: ConversionSubmissionService;
   portfolioSetupReadService?: PortfolioSetupContinuityReadService;
+  portfolioSetupWriteService?: PortfolioSetupContinuityWriteService;
   options?: Parameters<typeof buildPortfolioEntryRouter>[0];
 } = {}) {
   const app = express();
@@ -1261,6 +1282,7 @@ function makeApp(input: {
     ...(input.starteriaPathConversionConfig ? { starteriaPathConversionConfig: input.starteriaPathConversionConfig } : {}),
     ...(input.conversionSubmissionService ? { conversionSubmissionService: input.conversionSubmissionService } : {}),
     ...(input.portfolioSetupReadService ? { portfolioSetupReadService: input.portfolioSetupReadService } : {}),
+    ...(input.portfolioSetupWriteService ? { portfolioSetupWriteService: input.portfolioSetupWriteService } : {}),
   }));
   app.use(errorHandler);
   return { app, repository };
