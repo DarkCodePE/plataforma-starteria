@@ -1,6 +1,7 @@
 import { Prisma, type PrismaClient } from '@prisma/client';
 import { AppError } from '../../shared/errors/AppError';
-import { ScopedPortfolioAccessService } from '../../shared/authz/scoped-portfolio-access.service';
+import { ScopedPortfolioAccessService, type ReadablePortfolioScope,
+  type ReadableScopeResolution } from '../../shared/authz/scoped-portfolio-access.service';
 import { parseCriticalHandoffLifecycle, parseCriticalHandoffPayload,
   PORTFOLIO_ENTRY_CRITICAL_HANDOFF_SCHEMA_VERSION } from '../portfolio-entry-sessions/domain/portfolio-entry-critical-handoff.types';
 import { BUSINESS_CAPABILITY_BOUNDARY_VERSION, STARTERIA_PATH_PROJECTION_VERSION,
@@ -20,13 +21,12 @@ type ReadHandoff = {
   confirmationState: string; confirmedAt: Date | null; confirmedByUserId: string | null; payload: unknown;
 };
 type ReadSnapshot = Parameters<typeof classifyContinuationRow>[0];
-type Scope = { organizationId: string; name: string };
 
 export type PortfolioSetupReadView = {
   readSession: (sessionId: string) => Promise<ReadSession | null>;
   readLatestHandoff: (sessionId: string) => Promise<ReadHandoff | null>;
   readCurrentSnapshots: (sessionId: string) => Promise<ReadSnapshot[]>;
-  listReadableScopes: (userId: string) => Promise<Scope[]>;
+  resolveReadableScopes: (userId: string) => Promise<ReadableScopeResolution>;
 };
 export type PortfolioSetupReadDependencies = {
   withReadView: <T>(sessionId: string, run: (view: PortfolioSetupReadView) => Promise<T>) => Promise<T>;
@@ -61,7 +61,7 @@ export function createPortfolioSetupReadDependencies(db: PrismaClient): Portfoli
         carriedProjection: true, openItems: true,
       },
     }),
-    listReadableScopes: (userId) => scoped.listAccessibleOrganizations({ userId, capability: 'portfolio:read' }),
+    resolveReadableScopes: (userId) => scoped.resolveReadableScopes(userId),
     };
   };
   return {
@@ -162,12 +162,15 @@ export class PortfolioSetupContinuityReadService {
       if (current.source.starteriaPath) sourceBinding.starteriaPath = current.source.starteriaPath;
     }
 
-    let scopes: Scope[];
-    try { scopes = await view.listReadableScopes(input.ownerUserId); }
+    let resolution: ReadableScopeResolution;
+    try { resolution = await view.resolveReadableScopes(input.ownerUserId); }
     catch { return done({ ...base(), ...ownContext, continuationProfile, status: 'SCOPE_VALIDATION_FAILED',
       scopeState: 'VALIDATION_FAILED', recovery: { code: 'RETRY_SCOPE_VALIDATION' } }); }
-    // Multiple membership rows for one organization still represent one readable scope.
-    scopes = [...new Map(scopes.map((scope) => [scope.organizationId, scope])).values()];
+    if (resolution.state === 'RESOLVER_FAILURE') {
+      return done({ ...base(), ...ownContext, continuationProfile, status: 'SCOPE_VALIDATION_FAILED',
+        scopeState: 'VALIDATION_FAILED', recovery: { code: 'RETRY_SCOPE_VALIDATION' } });
+    }
+    const scopes: ReadablePortfolioScope[] = resolution.scopes;
     // A snapshot is never a grant. A revoked stored scope is omitted from public output.
     const snapshotScope = current?.scope.organizationId
       ? scopes.find((scope) => scope.organizationId === current.scope.organizationId) : undefined;
@@ -176,7 +179,7 @@ export class PortfolioSetupContinuityReadService {
       : current?.scope.organizationId ? 'NO_AUTHORIZED_SCOPE' : 'READY_PROVISIONAL';
     const output: PortfolioSetupContinuityDto = {
       ...base(), ...ownContext, continuationProfile, status,
-      scopeState: scopes.length === 0 ? 'NONE' : scopes.length === 1 ? 'ONE' : 'MULTIPLE',
+      scopeState: resolution.state === 'ZERO_SCOPES' ? 'NONE' : resolution.state === 'ONE_SCOPE' ? 'ONE' : 'MULTIPLE',
       portfolioAccess: { portfolioRead: Boolean(chosen), checkedAt: this.now().toISOString() },
       ...(scopes.length > 0 ? { authorizedScopes: scopes } : {}), ...(chosen ? { currentScope: chosen } : {}),
       ...(snapshotScope && current ? { snapshot: { id: current.id, generation: current.generation,
