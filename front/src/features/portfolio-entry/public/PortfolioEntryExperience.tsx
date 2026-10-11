@@ -2182,6 +2182,12 @@ export function PortfolioEntryExperience({
                 requestState={pathLoad?.requestState === 'idle' || !pathLoad ? 'loading' : pathLoad.requestState}
                 errorRecovery={pathLoad?.errorRecovery}
                 path={pathLoad?.path}
+                sessionId={sessionDto.id}
+                decisionInView={pathLoad?.path && (pathLoad.path.experienceState === 'SUPPORTED' || pathLoad.path.experienceState === 'BOUNDED')
+                  && criticalArtifact?.id === pathLoad.path.sourceBinding.criticalHandoffId
+                  && criticalArtifact.version === pathLoad.path.sourceBinding.criticalHandoffVersion
+                  && criticalArtifact.sourceContextRevision === pathLoad.path.sourceBinding.sourceContextRevision
+                  ? criticalArtifact.projection.decisionInView : null}
                 onRetry={() => void fetchStarteriaPath(sessionDto.id, true)}
               />
             ) : null}

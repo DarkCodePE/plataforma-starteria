@@ -1,6 +1,6 @@
 import express, { type RequestHandler } from 'express';
 import request from 'supertest';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { AppError } from '../../../shared/errors/AppError';
 import { errorHandler } from '../../../shared/errors/error-handler';
 import { requestId } from '../../../shared/middleware/request-id';
@@ -23,6 +23,7 @@ import type { CriticalHandoffProjection } from '../presentation/critical-handoff
 import type { PortfolioEntryModelExecutionRecord } from '../../portfolio-entry-sessions/observability/portfolio-entry-execution-metadata';
 import { InMemoryPortfolioEntrySessionRepository } from '../../portfolio-entry-sessions/infrastructure/in-memory-portfolio-entry-session.repository';
 import type { StarteriaPathProjector } from '../../portfolio-entry-starteria-path/application/starteria-path.service';
+import type { ConversionSubmissionService } from '../../portfolio-entry-starteria-path/application/conversion-submission.service';
 import { InMemoryPortfolioEntryIdempotencyRepository } from '../infrastructure/in-memory-portfolio-entry-idempotency.repository';
 import type { PortfolioEntryIdempotencyRepository } from '../application/portfolio-entry-idempotency.repository';
 import { buildPortfolioEntryRouter } from '../portfolio-entry.router';
@@ -31,12 +32,54 @@ const base = '/api/v1/public/portfolio-entry';
 const legacyCompatibilityRepositories = new WeakMap<express.Express, InMemoryPortfolioEntrySessionRepository>();
 
 describe('Portfolio Entry Experimental Session API', () => {
+  it('125E rejects a commercial submission while no destination is verified', async () => {
+    const { app, repository } = makeApp({ conversionSubmissionService: {
+      submit: async () => { throw new AppError(503, 'Esta solicitud no está disponible.', 'CONVERSION_DESTINATION_UNAVAILABLE'); },
+    } as unknown as ConversionSubmissionService });
+    const { sessionId } = await createOwnedConfirmedCriticalHandoff(repository);
+    const response = await request(app)
+      .post(`${base}/sessions/${sessionId}/conversion-submissions`)
+      .set('Authorization', 'Bearer user-1')
+      .send({
+        destinationType: 'DEMO', purpose: 'DEMO_REQUEST', destinationConfigVersion: 1,
+        sourceBinding: { criticalHandoffId: 'source', criticalHandoffVersion: 1, sourceContextRevision: 0,
+          projectionVersion: 'starteria-path-projection-v0.1',
+          businessCapabilityBoundaryVersion: 'business-capability-boundary-v0.1',
+          pathSchemaVersion: 'starteria-path-dto-v0.2' },
+        email: 'person@example.org', contextSharingMode: 'NO_ENTRY_CONTEXT_SHARED',
+        idempotencyKey: 'test-submission-00000001',
+      })
+      .expect(503);
+    expect(response.body.error.code).toBe('CONVERSION_DESTINATION_UNAVAILABLE');
+  });
+
+  it('125E requires Bearer authentication and rejects extra fields before calling the receiver', async () => {
+    const submit = vi.fn();
+    const { app } = makeApp({ conversionSubmissionService: { submit } as unknown as ConversionSubmissionService });
+    const endpoint = `${base}/sessions/session-1/conversion-submissions`;
+    const body = {
+      destinationType: 'DEMO', purpose: 'DEMO_REQUEST', destinationConfigVersion: 1,
+      sourceBinding: { criticalHandoffId: 'critical-1', criticalHandoffVersion: 1, sourceContextRevision: 0,
+        projectionVersion: 'starteria-path-projection-v0.1',
+        businessCapabilityBoundaryVersion: 'business-capability-boundary-v0.1',
+        pathSchemaVersion: 'starteria-path-dto-v0.2' },
+      email: 'person@example.org', contextSharingMode: 'NO_ENTRY_CONTEXT_SHARED',
+      idempotencyKey: 'conversion-test-key-0001',
+    };
+    await request(app).post(endpoint).send(body).expect(401);
+    await request(app).post(endpoint).set('Authorization', 'Bearer user-1')
+      .send({ ...body, notes: 'should never persist' }).expect(400);
+    await request(app).post(endpoint).set('Authorization', 'Bearer user-1')
+      .send({ ...body, organization: 'x'.repeat(9000) }).expect(400);
+    expect(submit).not.toHaveBeenCalled();
+  });
   it.each([
     [[], 'NO_VERIFIED_DESTINATION'], [['DEMO'], 'DEMO_ONLY'],
     [['EARLY_ACCESS'], 'EARLY_ACCESS_ONLY'], [['DEMO', 'EARLY_ACCESS'], 'EARLY_ACCESS_AND_DEMO'],
   ])('GET Path applies server configuration %j without session or source writes', async (types, availability) => {
     const { app, repository } = makeApp({ starteriaPathConversionConfig: () => ({
       version: 5,
+      commercialOwner: 'commercial@example.org',
       approvedExternalDestinations: types.map((type) => ({ type, href: `https://calendly.com/starteria/${type.toLowerCase()}` })),
       destinations: types.map((type) => ({ type, status: 'VERIFIED_ACTIVE', destinationKind: 'EXTERNAL',
         href: `https://calendly.com/starteria/${type.toLowerCase()}`, contextSharingSupported: false })),
@@ -1141,6 +1184,7 @@ function makeApp(input: {
   idempotencyRepository?: PortfolioEntryIdempotencyRepository;
   starteriaPathProjector?: StarteriaPathProjector;
   starteriaPathConversionConfig?: () => unknown;
+  conversionSubmissionService?: ConversionSubmissionService;
   options?: Parameters<typeof buildPortfolioEntryRouter>[0];
 } = {}) {
   const app = express();
@@ -1168,6 +1212,7 @@ function makeApp(input: {
     idempotencyTtlMs: 60 * 60_000,
     ...(input.starteriaPathProjector ? { starteriaPathProjector: input.starteriaPathProjector } : {}),
     ...(input.starteriaPathConversionConfig ? { starteriaPathConversionConfig: input.starteriaPathConversionConfig } : {}),
+    ...(input.conversionSubmissionService ? { conversionSubmissionService: input.conversionSubmissionService } : {}),
   }));
   app.use(errorHandler);
   return { app, repository };

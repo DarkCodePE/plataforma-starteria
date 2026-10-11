@@ -1,5 +1,6 @@
 import { Button } from '../../../app/components/ui/button';
 import type { StarteriaPathDto, StarteriaPathSupportedDto } from './starteriaPath.types';
+import { ConversionSubmissionForm } from './ConversionSubmissionForm';
 
 export type StarteriaPathRequestState = 'loading' | 'ready' | 'missing' | 'invalid' | 'error';
 
@@ -8,6 +9,8 @@ type StarteriaPathExperienceProps = {
   errorRecovery?: 'reauthenticate' | 'retry';
   path?: StarteriaPathDto;
   onRetry: () => void;
+  sessionId?: string;
+  decisionInView?: string | null;
 };
 
 function LoadingState() {
@@ -103,7 +106,9 @@ function ValueSection({ title, children, testId }: { title: string; children: Re
   );
 }
 
-function SupportedPath({ path }: { path: StarteriaPathSupportedDto }) {
+function SupportedPath({ path, sessionId, decisionInView, onRetry }: {
+  path: StarteriaPathSupportedDto; sessionId?: string; decisionInView?: string | null; onRetry: () => void;
+}) {
   const bounded = path.experienceState === 'BOUNDED';
 
   return (
@@ -233,12 +238,18 @@ function SupportedPath({ path }: { path: StarteriaPathSupportedDto }) {
                 <p id={`conversion-disclosure-${destination.type}`} className="text-sm leading-6 text-text-secondary">
                   {destination.availabilityDisclosure}
                 </p>
-                <Button asChild variant="outline">
-                  <a href={destination.href} target="_blank" rel="noopener noreferrer" referrerPolicy="no-referrer"
-                    aria-describedby={`conversion-disclosure-${destination.type}`}>
-                    {destination.label}
-                  </a>
-                </Button>
+                {destination.destinationKind === 'FIRST_PARTY' && sessionId ? (
+                  <ConversionSubmissionForm key={`${path.sourceBinding.criticalHandoffId}:${path.sourceBinding.criticalHandoffVersion}:${path.sourceBinding.sourceContextRevision}:${path.conversionPresentation.conversionConfigVersion}:${destination.type}`}
+                    sessionId={sessionId} path={path} destination={destination}
+                    decisionInView={decisionInView ?? null} onPathRefresh={onRetry} />
+                ) : destination.destinationKind === 'EXTERNAL' ? (
+                  <Button asChild variant="outline">
+                    <a href={destination.href} target="_blank" rel="noopener noreferrer" referrerPolicy="no-referrer"
+                      aria-describedby={`conversion-disclosure-${destination.type}`}>
+                      {destination.label}
+                    </a>
+                  </Button>
+                ) : null}
               </li>
             ))}
           </ul>
@@ -248,7 +259,7 @@ function SupportedPath({ path }: { path: StarteriaPathSupportedDto }) {
   );
 }
 
-export function StarteriaPathExperience({ requestState, errorRecovery, path, onRetry }: StarteriaPathExperienceProps) {
+export function StarteriaPathExperience({ requestState, errorRecovery, path, onRetry, sessionId, decisionInView }: StarteriaPathExperienceProps) {
   if (requestState === 'loading') return <LoadingState />;
   if (requestState === 'missing' || requestState === 'invalid' || requestState === 'error') {
     return <RecoveryState requestState={requestState} errorRecovery={errorRecovery} onRetry={onRetry} />;
@@ -256,7 +267,7 @@ export function StarteriaPathExperience({ requestState, errorRecovery, path, onR
   if (!path) return <RecoveryState requestState="invalid" onRetry={onRetry} />;
 
   if (path.experienceState === 'SUPPORTED' || path.experienceState === 'BOUNDED') {
-    return <SupportedPath path={path} />;
+    return <SupportedPath path={path} sessionId={sessionId} decisionInView={decisionInView} onRetry={onRetry} />;
   }
   return <UnavailableState state={path.experienceState} />;
 }

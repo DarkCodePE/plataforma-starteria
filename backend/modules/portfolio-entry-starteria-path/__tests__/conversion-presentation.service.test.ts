@@ -9,6 +9,7 @@ const earlyHref = 'https://calendly.com/starteria/early-access-request';
 function facts(types: string[] = ['DEMO']) {
   return {
     version: 7,
+    commercialOwner: 'commercial@example.org',
     approvedExternalDestinations: types.map((type) => ({ type, href: type === 'DEMO' ? demoHref : earlyHref })),
     destinations: types.map((type) => ({
       type, status: 'VERIFIED_ACTIVE', destinationKind: 'EXTERNAL',
@@ -18,6 +19,18 @@ function facts(types: string[] = ['DEMO']) {
 }
 
 describe('125D server-owned conversion facts', () => {
+  it('shows a first-party submit destination only with an accountable owner', () => {
+    const firstParty = {
+      version: 8, commercialOwner: 'commercial@example.org', approvedExternalDestinations: [],
+      destinations: [{ type: 'DEMO', status: 'VERIFIED_ACTIVE', destinationKind: 'FIRST_PARTY',
+        receiver: 'CONVERSION_SUBMISSION_V1', contextSharingSupported: true }],
+    };
+    expect(readConversionPresentation(() => firstParty)).toMatchObject({
+      availability: 'DEMO_ONLY', destinations: [{ type: 'DEMO', destinationKind: 'FIRST_PARTY' }],
+    });
+    expect(readConversionPresentation(() => ({ ...firstParty, commercialOwner: '' })).availability)
+      .toBe('NO_VERIFIED_DESTINATION');
+  });
   it('defaults absent config and the governed baseline to no verified destination', () => {
     for (const input of [undefined, null, {}, starteriaPathConversionConfig]) {
       expect(readConversionPresentation(() => input)).toMatchObject({

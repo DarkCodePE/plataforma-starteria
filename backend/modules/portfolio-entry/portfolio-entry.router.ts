@@ -39,6 +39,8 @@ import type { CriticalHandoffProjection } from './presentation/critical-handoff-
 import { StarteriaPathService, type StarteriaPathProjector } from '../portfolio-entry-starteria-path/application/starteria-path.service';
 import { StarteriaPathController } from '../portfolio-entry-starteria-path/starteria-path.controller';
 import type { ConversionConfigReader } from '../portfolio-entry-starteria-path/application/conversion-presentation.service';
+import { ConversionSubmissionService } from '../portfolio-entry-starteria-path/application/conversion-submission.service';
+import { ConversionSubmissionController } from '../portfolio-entry-starteria-path/conversion-submission.controller';
 
 const versioning = {
   contractVersion: 'portfolio-entry-contract-v0.1',
@@ -51,6 +53,7 @@ export interface PortfolioEntryRouterOptions {
   maxCreateRequests?: number;
   maxSubmitRequests?: number;
   maxHandoffRequests?: number;
+  maxConversionSubmissionRequests?: number;
   windowMs?: number;
 }
 
@@ -62,6 +65,7 @@ export interface PortfolioEntryRouterDeps {
   criticalHandoffProjector?: (source: unknown) => CriticalHandoffProjection;
   starteriaPathProjector?: StarteriaPathProjector;
   starteriaPathConversionConfig?: ConversionConfigReader;
+  conversionSubmissionService?: ConversionSubmissionService;
   handoffMaterializer?: PortfolioEntryHandoffMaterializer;
   authenticate?: RequestHandler;
   optionalAuthenticate?: RequestHandler;
@@ -112,6 +116,11 @@ export function buildPortfolioEntryRouter(
     ...(deps.starteriaPathProjector ? { projector: deps.starteriaPathProjector } : {}),
   });
   const starteriaPathController = new StarteriaPathController(starteriaPathService);
+  const conversionSubmissionController = new ConversionSubmissionController(
+    deps.conversionSubmissionService ?? new ConversionSubmissionService(
+      prisma, deps.starteriaPathConversionConfig ?? (() => config.starteriaPathConversion),
+    ),
+  );
   const conversionController = new PortfolioEntryConversionController(
     deps.conversionService ?? new PortfolioEntryConversionService(prisma, idempotencyRepository),
   );
@@ -137,6 +146,11 @@ export function buildPortfolioEntryRouter(
     maxRequests: options.maxHandoffRequests ?? 10,
     scope: 'portfolio-entry:handoff',
   });
+  const conversionSubmissionLimiter = createPortfolioEntryRateLimiter({
+    windowMs,
+    maxRequests: options.maxConversionSubmissionRequests ?? 5,
+    scope: 'portfolio-entry:conversion-submission',
+  });
 
   router.get('/health', (_req, res) => res.json(portfolioEntryLiveHealth()));
 
@@ -153,6 +167,7 @@ export function buildPortfolioEntryRouter(
   router.post('/sessions/:sessionId/critical-handoff', optionalAuth, handoffLimiter, controller.materializeCriticalHandoff);
   router.get('/sessions/:sessionId/critical-handoff', optionalAuth, submitLimiter, controller.readCriticalHandoff);
   router.get('/sessions/:sessionId/starteria-path', auth, submitLimiter, starteriaPathController.read);
+  router.post('/sessions/:sessionId/conversion-submissions', auth, conversionSubmissionLimiter, conversionSubmissionController.submit);
   router.post('/sessions/:sessionId/critical-handoff/:artifactId/confirmation', auth, handoffLimiter, controller.confirmCriticalHandoff);
   router.post('/sessions/:sessionId/handoff/confirmation', auth, handoffLimiter, controller.confirmOrCorrectHandoff);
   router.post('/sessions/:sessionId/claim', auth, handoffLimiter, controller.claim);
