@@ -116,13 +116,16 @@ No debe presentarse como runtime productivo certificado. Los resultados E2E en e
 - Portfolio Post-Entry Continuation:
   - El contrato presente es `doc/experience/portfolio-entry/PORTFOLIO_POST_ENTRY_CONTINUATION_CONTRACT_v0.1.md`.
   - Estado del contrato: `PROPOSED FOR REVIEW`; no es autoridad aprobada ni autoriza runtime productivo.
-  - La continuación Portfolio es un `APPROVED_TARGET` de ADR-003 todavía `PROPOSED`, no una afirmación de que el flujo productivo canónico ya exista.
+  - La continuación Portfolio por defecto es una decisión de ADR-003 `ACCEPTED`; esto no acredita que la integración canónica de 114F exista.
   - La implementación observada en este checkout es mixta: existe una superficie candidata de continuación Portfolio y permanecen rutas legacy de pilot/public-draft que pueden crear Project/Steps.
   - La slice `AUTHENTICATED_PORTFOLIO_CONTEXT_ESTABLISHMENT` está implementada sobre autoridad scoped: resuelve y selecciona contextos existentes sin crear autoridad ni entidades de negocio. Ver `docs/portfolio-entry/implementation/PORTFOLIO_ENTRY_AUTHENTICATED_PORTFOLIO_CONTEXT_ESTABLISHMENT_v0.1.md`.
 
 ## ADR-003 — estado reconciliado
 
-`doc/product-adr/ADR-003-public-entry-registration-continuation-boundary.md` mantiene estado `PROPOSED`.
+`doc/product-adr/ADR-003-public-entry-registration-continuation-boundary.md` y
+`doc/product-adr/ADR-INDEX.md` declaran ADR-003 `ACCEPTED`. Las auditorías de
+2026-09-25 que lo registraron como `PROPOSED` conservan su valor histórico;
+no determinan su estado actual.
 
 La lectura activa para esta frontera es:
 
@@ -131,7 +134,7 @@ IMPLEMENTED_TODAY:
   - Public Entry, auth y rutas legacy Project/Steps coexisten en el checkout.
   - Existe una rama candidata de continuación Portfolio y tests de sus límites.
 
-PROPOSED_TARGET (ADR-003; pendiente de aceptación e integración):
+ACCEPTED_DECISION / NOT_YET_INTEGRATED (ADR-003; requiere contrato y slice 114F):
   Public Entry → handoff provisional → registration/login →
   restaurar contexto → Portfolio context por defecto.
 
@@ -153,6 +156,12 @@ NOT_YET_IMPLEMENTED:
 Invariantes de esta frontera: `AUTHENTICATION != BUSINESS CANONICALIZATION`,
 `PUBLIC_ENTRY_CONTINUATION != PROJECT_CREATION` y
 `PUBLIC_ENTRY_CONTINUATION != STEPS_ENTRY`.
+
+114F sigue `NOT_IMPLEMENTATION_READY`: ADR-003 aceptado no sustituye un
+Experience Contract 114F aceptado, la autorización explícita de su slice ni
+las decisiones de autoridad pendientes sobre grants, perfil contextual e
+invitaciones. La evidencia de continuidad existente es de slices anteriores,
+no una declaración de que 114F haya empezado.
 
 - Portfolio Home Governance: PH-0 target freeze at `docs/portfolio-lead/06-portfolio-home-governance/`; runtime not certified.
 - PH-2 read-model implementation evidence is present on this branch, including
@@ -234,10 +243,10 @@ The Critical Reasoning contract authorizes no runtime change by itself.
 Technical implementation still requires a valid implementation HU and explicit
 slice authorization.
 
-The ADR-003 status discrepancy remains OPEN / DEFERRED and must be reconciled
-before Portfolio Setup Continuity. It does not block the Critical Situation
-Synthesis phase because that phase excludes continuation, authentication,
-conversion and Portfolio Setup.
+At the Critical Situation Synthesis checkpoint, the ADR-003 status discrepancy
+was recorded as OPEN / DEFERRED. KAN-129 reconciles that historical observation:
+ADR-003 is ACCEPTED. That phase excludes continuation, authentication,
+conversion and Portfolio Setup and did not implement 114F.
 
 KAN-114A remains a local planning/traceability label rather than a Jira issue
 found in the connected Jira site.
@@ -334,19 +343,21 @@ The closure report is
 
 Post-confirmation reopen/correction is not generalized as a future reopen
 feature; the confirmed artifact remains immutable under current v0.1 semantics.
-ADR-003 remains `PROPOSED` with its discrepancy `OPEN / DEFERRED`; it must be
-reconciled before Portfolio Setup Continuity.
+At the KAN-119/114D closure, ADR-003 was recorded as `PROPOSED` with a
+discrepancy `OPEN / DEFERRED`. This is a historical closure observation;
+KAN-129 reconciles the current status as `ACCEPTED` before 114F shaping.
 
 No generalized post-confirmation reopen/correction feature is part of v0.1; the
 confirmed artifact remains immutable. The broader future policy remains open.
 At the time of the KAN-119 closure, 114E had not started. Its later bounded
 adoption and partial implementation are recorded below. The ADR-003
-discrepancy remains open before any Portfolio Setup Continuity work.
+discrepancy was recorded as open at that closure, before any Portfolio Setup
+Continuity work.
 
-This closure does not alter the unresolved ADR-003 status recorded above.
-ADR-003 remains `PROPOSED` in `CURRENT_STATE.md` and its discrepancy remains
-`OPEN / DEFERRED`; it is still to be reconciled before Portfolio Setup
-Continuity.
+This closure did not alter the ADR-003 status recorded at the time. Those
+`PROPOSED` / `OPEN / DEFERRED` statements are historical evidence; the current
+status is `ACCEPTED` under the reconciliation above. Portfolio Setup Continuity
+still requires its own accepted Experience Contract and implementation slice.
 
 ### KAN-120 / KAN-126 — Starteria Path (114E), bounded adoption
 
@@ -359,12 +370,13 @@ slice-specific adoption does not change the global authority hierarchy.
 KAN-114 remains the sole business-reasoning source, and the KAN-119 Critical
 Handoff remains the governed 114D baseline. KAN-125A–125E are integrated in
 `main` through PRs #180, #182, #185, #187, #189 (KAN-127 authority), and #190.
-KAN-125F completes the bounded local 114E implementation and verification;
+KAN-125F completed the bounded 114E implementation and local verification;
+PR #192 merged it into `origin/main` at `bf5547cf06e67ea929e1c37fbe44b2155ab454df`;
 its evidence is in
 `docs/implementation/portfolio-entry/KAN-125F_STARTERIA_PATH_E2E_SECURITY_CLOSURE_v0.1.md`.
 
-114E IMPLEMENTATION_STATUS: IMPLEMENTED_VERIFIED (125F local evidence; pending integration)
-114E VISUAL_STATUS: V2_PILOT (not V2_MIGRATED: ADR-003 remains open/deferred for 114F)
+114E IMPLEMENTATION_STATUS: IMPLEMENTED_VERIFIED (125F local evidence; PR #192 integrated)
+114E VISUAL_STATUS: V2_PILOT (not V2_MIGRATED: 114F is not implemented; legacy consumers and the broader V2 journey remain)
 114E COMMERCIAL_ACTIVATION: DISABLED / NO_VERIFIED_DESTINATION
 
 The current, confirmed 114D source drives a derived Path, owned read API and
@@ -383,11 +395,11 @@ intent is persisted only on accepted submission with submission-only consent;
 no verified production Early Access or Demo destination; no 114F, Core, or Steps
 write; legacy consumers remain KEEP_COMPAT without legacy semantic reuse.
 
-The adoption does not promote Portfolio Setup continuity, resolve ADR-003,
+The adoption did not promote Portfolio Setup continuity or resolve ADR-003 at
+the time; KAN-129 reconciles ADR-003 status separately. It did not
 promote legacy starteria_path, recommended_approach, or recommended_cta,
 establish Early Access/Demo availability, authorize Landing claims beyond the
-adopted boundary, or open product access. ADR-003 remains OPEN / DEFERRED
-before 114F.
+adopted boundary, or open product access. 114F remains NOT_IMPLEMENTATION_READY.
 
 ## ADRs
 

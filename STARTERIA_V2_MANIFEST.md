@@ -553,8 +553,8 @@ PR #161 is integrated into the governed baseline at merge commit `82ab8710b6e5a8
 slice_id: PORTFOLIO_ENTRY_STARTERIA_PATH_114E
 HU: KAN-120 parent scope; KAN-121 audit; KAN-122 boundary; KAN-123 experience contract; KAN-124 architecture; KAN-125 implementation; KAN-126 scoped adoption
 logic_status: ACTIVE_V2_BASELINE (bounded 114E semantics only)
-implementation_status: IMPLEMENTED_VERIFIED (125F local evidence; pending integration)
-visual_status: V2_PILOT (not V2_MIGRATED while ADR-003 authority discrepancy is open/deferred for 114F)
+implementation_status: IMPLEMENTED_VERIFIED (125F local evidence; PR #192 integrated)
+visual_status: V2_PILOT (not V2_MIGRATED; 114F remains unimplemented and legacy consumers remain)
 evidence_status: SUPPORTED (125A–125E integrated; 125F local E2E, security and regression evidence)
 semantic_owner: Portfolio Entry V2 for 114E; KAN-114 remains the sole business-reasoning source
 authority: factual Core v0.2; accepted product ADRs; active Portfolio Entry Logic Contract v0.1; accepted/frozen Critical Reasoning Experience Contract v0.1; KAN-114 semantic acceptance; KAN-119 governed 114D baseline; KAN-122 Business Capability Boundary (114E scoped); KAN-123 Starteria Path Experience Contract (114E scoped); KAN-124 architecture; KAN-120/KAN-125/KAN-126 scoped authority
@@ -564,7 +564,7 @@ semantic_path: DERIVED
 conversion_intent: PERSISTED_ON_ACCEPTED_SUBMISSION
 consent: SUBMISSION_ONLY
 path_view_auth: SESSION_OWNERSHIP
-completed_slices: 125A, 125B, 125C, 125D, 125E; 125F implemented and verified locally, pending integration
+completed_slices: 125A, 125B, 125C, 125D, 125E, 125F; PR #192 integrated 125F
 completed_artifact: deterministic projector; owned read API; Path UI; conversion presentation; first-party submission and consent; bounded analytics and regression E2E
 125A_evidence: PR #180 merged at adb810475fffbedf3015820babceecaa1cd30e35; 23 focused tests; backend typecheck PASS; no I/O; no persistence; no API/UI; no legacy semantics; no 114F/Core/Steps leakage
 125B_evidence: PR #182 merged at 1761c19; owned GET Path boundary and source/DTO gates
@@ -572,7 +572,7 @@ completed_artifact: deterministic projector; owned read API; Path UI; conversion
 125D_evidence: PR #187 merged at 72782f6; fail-closed conversion presentation
 KAN-127_evidence: PR #189 merged at d184b80; scoped conversion submission policy adoption
 125E_evidence: PR #190 merged at d52f86bc0605fedfec17b767397941e8eb9fca1b; first-party submission, consent and migration
-125F_evidence: local branch feat/KAN-125-starteria-path-125F; closure report at docs/implementation/portfolio-entry/KAN-125F_STARTERIA_PATH_E2E_SECURITY_CLOSURE_v0.1.md; no commit, push or PR yet
+125F_evidence: local test evidence in docs/implementation/portfolio-entry/KAN-125F_STARTERIA_PATH_E2E_SECURITY_CLOSURE_v0.1.md; merged as PR #192 at bf5547cf06e67ea929e1c37fbe44b2155ab454df; the report's no-commit/push/PR statement describes its earlier local snapshot
 commercial_activation: DISABLED / NO_VERIFIED_DESTINATION (production/default; Demo and Early Access unavailable)
 current_boundaries: semantic Path DERIVED, not persisted; conversion submission only under VERIFIED_ACTIVE first-party fixture; no verified production Early Access/Demo destination
 legacy_treatment: KEEP_COMPAT; legacy starteria_path, recommended_approach, and recommended_cta are not 114E semantic authority
@@ -580,11 +580,31 @@ exclusions: 114F; Portfolio Setup continuity; ADR-003 reconciliation; Core; Step
 non_promoted: 114F; Portfolio Setup continuity; ADR-003 resolution; Core; Steps; legacy starteria_path/recommended_approach/recommended_cta; Early Access destination availability; Demo destination availability; Landing claims beyond the adopted boundary; open product access
 ```
 
-`IMPLEMENTED_VERIFIED` records locally tested 114E runtime semantics, not
-commercial activation. Guardrails §17 prevents `V2_MIGRATED` while an authority
-conflict remains open (ADR-003 is deferred to 114F); legacy consumers remain
-explicit `KEEP_COMPAT`. The 125F local evidence must be integrated before this
-status becomes the `main` baseline.
+`IMPLEMENTED_VERIFIED` records bounded 114E runtime semantics, not commercial
+activation or completion of the wider V2 journey. The historical 114E exclusions
+above record that KAN-125/KAN-126 did not reconcile ADR-003. KAN-129 reconciles
+its current status as `ACCEPTED`; this does not change the 114E visual state or
+promote 114F. Legacy consumers remain explicit `KEEP_COMPAT`. PR #192 merged
+125F at `bf5547cf06e67ea929e1c37fbe44b2155ab454df`.
+
+## KAN-128 / KAN-129 — Portfolio Setup Continuity (114F), authority gate
+
+```text
+slice_id: PORTFOLIO_SETUP_CONTINUITY_114F
+HU: KAN-128; KAN-129 ADR-003 factual/authority reconciliation only
+logic_status: CANDIDATE (114F Experience Contract not yet materialized or accepted)
+implementation_status: NOT_IMPLEMENTED (as a 114F slice; earlier scoped continuation primitives exist)
+visual_status: V2_TARGET_UNRESOLVED
+evidence_status: SUPPORTED (ADR-003 status reconciliation and earlier scoped runtime evidence; no 114F verification)
+authority: Core v0.2 factual; ADR-003 ACCEPTED for registration/continuation; ADR-004 and ADR-005 ACCEPTED for their bounded access/handoff decisions; Portfolio Entry Logic Contract v0.1
+blockers: accepted 114F Experience Contract; explicit 114F implementation slice; server-owned profile establishment; grant issuer/provisioning and organization scope policy; target-scoped Initiative invitation policy and integration; continuation snapshot/currentness decision; legacy consumer disposition
+legacy_treatment: KEEP_COMPAT pending repository-wide consumer evidence and separate retirement authority
+```
+
+ADR-003's former status conflict is no longer a 114F blocker. Its acceptance
+does not make 114F implementation-ready or authorize Portfolio Setup, Core,
+Steps, route retirement or runtime changes. See
+`docs/implementation/portfolio-entry/KAN-129_ADR003_114F_AUTHORITY_RECONCILIATION_v0.1.md`.
 
 # 6. V2 E2E slice map
 
@@ -600,6 +620,7 @@ status becomes the `main` baseline.
 | Clarification | CANDIDATE + hypotheses | EXPERIMENTAL / VERIFY | V2_PILOT | TESTING | TEST |
 | Handoff / Value Handoff Cognition | CANDIDATE + hypotheses | EXPERIMENTAL / VERIFY | V2_PILOT | TESTING | TEST |
 | Registration / continuation | CANDIDATE | IMPLEMENTED_UNVERIFIED | MIXED | TESTING | VERIFY grant and full E2E |
+| Portfolio Setup Continuity 114F | CANDIDATE; Experience Contract not materialized | NOT_IMPLEMENTED as 114F slice | V2_TARGET_UNRESOLVED | SUPPORTED for authority gate only | SHAPE contract and decisions; no runtime authorization |
 | Portfolio Bootstrap | CANDIDATE | IMPLEMENTED_VERIFIED reported | V2_MIGRATED / VERIFY | VERIFIED reported | RECONCILE |
 | Portfolio Home | TARGET AUTHORITY FROZEN PH-0 / CANDIDATE | PH-2 read-model implementation evidence; post-merge `GO_WITH_GAPS`; runtime not certified | V2_TARGET_DEFINED; PH-3A evidence only | REQUIRES_RETEST | RECONCILE; PH-3B not implemented |
 | Strategic Framing | ACTIVE_V2_BASELINE / APPROVED EXPERIENCE BASELINE (SF-0) | PARTIAL_IMPLEMENTATION / IMPLEMENTED_UNVERIFIED (SF-1, SF-2, SF-3A, SF-3B) | V2_TARGET_DEFINED | TESTING | SF-3C+ not implemented; no end-to-end runtime, UI, Copilot or canonical promotion |
