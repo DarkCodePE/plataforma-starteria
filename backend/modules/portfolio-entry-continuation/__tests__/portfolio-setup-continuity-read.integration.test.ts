@@ -4,12 +4,64 @@ import { afterAll, describe, expect, it } from 'vitest';
 import { PortfolioSetupContinuityReadService, createPortfolioSetupReadDependencies } from '../portfolio-setup-continuity-read.service';
 import { CONTINUATION_114F_FORMAT, sourceBindingFingerprint } from '../portfolio-entry-continuation.data-contract';
 import { PORTFOLIO_ENTRY_CRITICAL_HANDOFF_SCHEMA_VERSION } from '../../portfolio-entry-sessions/domain/portfolio-entry-critical-handoff.types';
+import { ScopedPortfolioAccessService } from '../../../shared/authz/scoped-portfolio-access.service';
 
 const describeDatabase = process.env.PORTFOLIO_ENTRY_DB_INTEGRATION === '1' ? describe : describe.skip;
 const prisma = new PrismaClient();
 
 describeDatabase('114F read-only Prisma adapter', () => {
   afterAll(async () => { await prisma.$disconnect(); });
+
+  it('resolves zero/one/many and revalidates injected, revoked and other-tenant candidates on PostgreSQL', async () => {
+    const userId = randomUUID();
+    const otherUserId = randomUUID();
+    const organizationIds = [randomUUID(), randomUUID(), randomUUID()];
+    const [orgA, orgB, orgC] = organizationIds;
+    await prisma.user.createMany({ data: [userId, otherUserId].map((id) => ({
+      id, email: `${id}@starteria.test`, name: id, role: 'portfolio_lead', roles: ['portfolio_lead'], initials: 'SR', skills: [],
+    })) });
+    try {
+      for (const id of organizationIds) {
+        await prisma.organization.create({ data: { id, name: 'Same name', slug: `scope-${id}` } });
+      }
+      await prisma.organizationMember.createMany({ data: [
+        { userId, organizationId: orgA }, { userId, organizationId: orgA },
+        { userId, organizationId: orgB }, { userId, organizationId: orgC },
+        { userId: otherUserId, organizationId: orgB },
+      ] });
+      const resolver = new ScopedPortfolioAccessService(prisma);
+      const candidate = (organizationId: string) => resolver.revalidateReadableScope({ userId, organizationId });
+      expect(await resolver.resolveReadableScopes(userId)).toEqual({ state: 'ZERO_SCOPES', scopes: [] });
+      await prisma.organizationPortfolioAccessGrant.createMany({ data: [
+        { userId, organizationId: orgC, capability: 'portfolio:write' },
+        { userId: otherUserId, organizationId: orgB, capability: 'portfolio:read' },
+      ] });
+      expect(await candidate(orgC)).toEqual({ state: 'REJECTED' });
+      expect(await candidate(orgB)).toEqual({ state: 'REJECTED' });
+      expect(await candidate(randomUUID())).toEqual({ state: 'REJECTED' });
+      await prisma.organizationPortfolioAccessGrant.create({ data: { userId, organizationId: orgA, capability: 'portfolio:read' } });
+      expect(await resolver.resolveReadableScopes(userId)).toEqual({ state: 'ONE_SCOPE',
+        scopes: [{ organizationId: orgA, name: 'Same name' }] });
+      expect(await candidate(orgA)).toEqual({ state: 'AUTHORIZED', scope: { organizationId: orgA, name: 'Same name' } });
+      await prisma.organizationPortfolioAccessGrant.create({ data: { userId, organizationId: orgB, capability: 'portfolio:read' } });
+      const expectedIds = [orgA, orgB].sort();
+      expect(await resolver.resolveReadableScopes(userId)).toEqual({ state: 'MULTIPLE_SCOPES',
+        scopes: expectedIds.map((organizationId) => ({ organizationId, name: 'Same name' })) });
+      await prisma.organizationPortfolioAccessGrant.delete({ where: {
+        userId_organizationId_capability: { userId, organizationId: orgA, capability: 'portfolio:read' },
+      } });
+      expect(await candidate(orgA)).toEqual({ state: 'REJECTED' });
+      await prisma.organizationMember.deleteMany({ where: { userId, organizationId: orgB } });
+      expect(await candidate(orgB)).toEqual({ state: 'REJECTED' });
+      await prisma.organization.delete({ where: { id: orgB } });
+      expect(await candidate(orgB)).toEqual({ state: 'REJECTED' });
+    } finally {
+      await prisma.organizationPortfolioAccessGrant.deleteMany({ where: { userId: { in: [userId, otherUserId] } } });
+      await prisma.organizationMember.deleteMany({ where: { userId: { in: [userId, otherUserId] } } });
+      await prisma.organization.deleteMany({ where: { id: { in: organizationIds } } });
+      await prisma.user.deleteMany({ where: { id: { in: [userId, otherUserId] } } });
+    }
+  });
 
   it('reads current 114F only, revalidates the grant, and does not write Project or Steps', async () => {
     const userId = randomUUID();

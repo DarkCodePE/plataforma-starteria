@@ -3,6 +3,7 @@ import { PortfolioSetupContinuityReadService, type PortfolioSetupReadDependencie
   type PortfolioSetupReadView } from './portfolio-setup-continuity-read.service';
 import { PORTFOLIO_ENTRY_CRITICAL_HANDOFF_SCHEMA_VERSION } from '../portfolio-entry-sessions/domain/portfolio-entry-critical-handoff.types';
 import { CONTINUATION_114F_FORMAT, sourceBindingFingerprint } from './portfolio-entry-continuation.data-contract';
+import type { ReadableScopeResolution } from '../../shared/authz/scoped-portfolio-access.service';
 
 const now = new Date('2026-10-11T12:00:00.000Z');
 const session = {
@@ -52,12 +53,18 @@ function snapshot(overrides: Record<string, unknown> = {}, organizationScopeId =
 }
 
 function setup(overrides: { session?: Record<string, unknown> | null; handoff?: Record<string, unknown> | null;
-  snapshots?: Array<Record<string, unknown>>; scopes?: Array<{ organizationId: string; name: string }> } = {}) {
+  snapshots?: Array<Record<string, unknown>>; scopes?: Array<{ organizationId: string; name: string }>;
+  scopeResolution?: ReadableScopeResolution } = {}) {
+  const scopes = [...new Map((overrides.scopes ?? []).map((scope) => [scope.organizationId, scope])).values()];
+  const resolution: ReadableScopeResolution = overrides.scopeResolution ?? (scopes.length === 0
+    ? { state: 'ZERO_SCOPES', scopes: [] }
+    : scopes.length === 1 ? { state: 'ONE_SCOPE', scopes: [scopes[0]] }
+      : { state: 'MULTIPLE_SCOPES', scopes: [scopes[0], scopes[1], ...scopes.slice(2)] });
   const view = {
     readSession: vi.fn().mockResolvedValue(overrides.session === undefined ? session : overrides.session),
     readLatestHandoff: vi.fn().mockResolvedValue(overrides.handoff === undefined ? handoff : overrides.handoff),
     readCurrentSnapshots: vi.fn().mockResolvedValue(overrides.snapshots ?? []),
-    listReadableScopes: vi.fn().mockResolvedValue(overrides.scopes ?? []),
+    resolveReadableScopes: vi.fn().mockResolvedValue(resolution),
   } as unknown as PortfolioSetupReadView;
   const deps = { ...view, withReadView: vi.fn(async (_sessionId, run) => run(view)) } as unknown as PortfolioSetupReadDependencies & PortfolioSetupReadView;
   return { service: new PortfolioSetupContinuityReadService(deps, () => now), deps };
@@ -117,11 +124,13 @@ describe('114F read/status boundary', () => {
   });
 
   it('does not convert a resolver failure into zero scopes', async () => {
-    const { service, deps } = setup();
-    vi.mocked(deps.listReadableScopes).mockRejectedValue(new Error('database unavailable'));
+    const { service, deps } = setup({ scopeResolution: { state: 'RESOLVER_FAILURE' } });
     const dto = await read(service);
     expect(dto.status).toBe('SCOPE_VALIDATION_FAILED');
+    expect(dto.scopeState).toBe('VALIDATION_FAILED');
     expect(dto.authorizedScopes).toBeUndefined();
+    expect(JSON.stringify(dto)).not.toContain('database');
+    expect(deps.resolveReadableScopes).toHaveBeenCalledWith(session.ownerUserId);
   });
 
   it('returns ERROR when source storage fails', async () => {
@@ -211,7 +220,7 @@ describe('114F read/status boundary', () => {
     expect(deps.readSession).toHaveBeenCalledOnce();
     expect(deps.readLatestHandoff).toHaveBeenCalledOnce();
     expect(deps.readCurrentSnapshots).toHaveBeenCalledOnce();
-    expect(deps.listReadableScopes).toHaveBeenCalledOnce();
-    expect(Object.keys(deps).sort()).toEqual(['listReadableScopes', 'readCurrentSnapshots', 'readLatestHandoff', 'readSession', 'withReadView']);
+    expect(deps.resolveReadableScopes).toHaveBeenCalledOnce();
+    expect(Object.keys(deps).sort()).toEqual(['readCurrentSnapshots', 'readLatestHandoff', 'readSession', 'resolveReadableScopes', 'withReadView']);
   });
 });
