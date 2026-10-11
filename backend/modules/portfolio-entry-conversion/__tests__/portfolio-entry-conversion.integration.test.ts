@@ -216,7 +216,8 @@ describeIntegration('Portfolio Entry Conversion Boundary', () => {
       portfolioAccessGranted: true,
     });
     expect(first.body.data.continuationId).toBeTruthy();
-    expect(first.body.data.destinationRoute).toBe(`/portfolio/inicio?portfolioEntryContinuationId=${encodeURIComponent(first.body.data.continuationId)}`);
+    // This is the unchanged legacy continuation destination; 114F Home routing belongs to a later slice.
+    expect(first.body.data.destinationRoute).toBe('/portfolio/setup');
     expect(first.body.data.context.understanding).toMatchObject({
       value: 'Starteria entendio que hay que ordenar iniciativas comerciales',
     });
@@ -266,7 +267,7 @@ describeIntegration('Portfolio Entry Conversion Boundary', () => {
     ]);
 
     const [continuation, session, after] = await Promise.all([
-      prisma.portfolioEntryPortfolioContinuation.findUnique({ where: { sessionId: seeded.sessionId } }),
+      prisma.portfolioEntryPortfolioContinuation.findFirst({ where: { sessionId: seeded.sessionId, snapshotFormat: null } }),
       prisma.portfolioEntrySession.findUnique({ where: { id: seeded.sessionId } }),
       canonicalCounts(),
     ]);

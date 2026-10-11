@@ -127,7 +127,7 @@ export class PortfolioEntryContinuationService {
     const row = await this.prisma.portfolioEntryPortfolioContinuation.findUnique({
       where: { id: input.continuationId },
     });
-    if (!row) throw AppError.notFound('Portfolio Entry continuation', 'PORTFOLIO_ENTRY_CONTINUATION_NOT_FOUND');
+    if (!row || row.snapshotFormat != null) throw AppError.notFound('Portfolio Entry continuation', 'PORTFOLIO_ENTRY_CONTINUATION_NOT_FOUND');
     if (row.continuedByUserId !== input.authenticatedUserId) {
       throw AppError.forbidden('No autorizado.', 'PORTFOLIO_ENTRY_CONTINUATION_FORBIDDEN');
     }
@@ -150,7 +150,7 @@ export class PortfolioEntryContinuationService {
     const row = await this.prisma.portfolioEntryPortfolioContinuation.findUnique({
       where: { id: input.continuationId },
     });
-    if (!row || row.continuedByUserId !== input.authenticatedUserId) {
+    if (!row || row.snapshotFormat != null || row.continuedByUserId !== input.authenticatedUserId) {
       throw AppError.forbidden('No autorizado.', 'PORTFOLIO_ENTRY_CONTINUATION_FORBIDDEN');
     }
     const session = await this.prisma.portfolioEntrySession.findUnique({ where: { id: row.sessionId } });
@@ -168,7 +168,7 @@ export class PortfolioEntryContinuationService {
     const organization = await this.prisma.organization.findUnique({ where: { id: scope }, select: { id: true, name: true } });
     if (!organization) throw AppError.forbidden('No tienes acceso a este espacio de Portfolio.', 'PORTFOLIO_ENTRY_CONTINUATION_SCOPED_PORTFOLIO_ACCESS_REQUIRED');
 
-    const snapshot = row.sourceSnapshot as Record<string, unknown>;
+    const snapshot = (row.sourceSnapshot ?? {}) as Record<string, unknown>;
     const handoff = (snapshot.handoff ?? {}) as Record<string, unknown>;
     const confirmation = (snapshot.confirmation ?? {}) as Record<string, unknown>;
     return {
@@ -189,7 +189,7 @@ export class PortfolioEntryContinuationService {
 
   async authorizeScopedFirstValueEntry(input: ReadScopedEntryAccessInput): Promise<{ continuationId: string }> {
     const row = await this.prisma.portfolioEntryPortfolioContinuation.findFirst({
-      where: { sessionId: input.identity.sessionId, continuedByUserId: input.authenticatedUserId },
+      where: { sessionId: input.identity.sessionId, continuedByUserId: input.authenticatedUserId, snapshotFormat: null },
     });
     if (!row) throw AppError.forbidden('No autorizado.', 'PORTFOLIO_ENTRY_CONTINUATION_FORBIDDEN');
     const session = await this.prisma.portfolioEntrySession.findUnique({ where: { id: row.sessionId } });
@@ -243,7 +243,7 @@ export class PortfolioEntryContinuationService {
           throw AppError.conflict('La sesion ya fue convertida a Initiative/Project.', 'PORTFOLIO_ENTRY_CONTINUATION_INCOMPATIBLE_CONVERSION');
         }
 
-        const existing = await tx.portfolioEntryPortfolioContinuation.findUnique({ where: { sessionId: input.sessionId } });
+        const existing = await tx.portfolioEntryPortfolioContinuation.findFirst({ where: { sessionId: input.sessionId, snapshotFormat: null } });
         if (existing) return existing;
 
         const [handoff, confirmation, user] = await Promise.all([
@@ -391,11 +391,14 @@ export class PortfolioEntryContinuationService {
   }
 
   private async findContinuationBySession(sessionId: string): Promise<ContinuationRow | null> {
-    return this.prisma.portfolioEntryPortfolioContinuation.findUnique({ where: { sessionId } });
+    return this.prisma.portfolioEntryPortfolioContinuation.findFirst({ where: { sessionId, snapshotFormat: null } });
   }
 
   private toDto(row: ContinuationRow): PortfolioEntryContinuationResultDto {
-    const snapshot = row.sourceSnapshot as Record<string, unknown>;
+    if (!row.destinationRoute || !row.sourceSnapshot || !row.portfolioScope) {
+      throw AppError.notFound('Portfolio Entry continuation', 'PORTFOLIO_ENTRY_CONTINUATION_NOT_FOUND');
+    }
+    const snapshot = (row.sourceSnapshot ?? {}) as Record<string, unknown>;
     const handoff = (snapshot.handoff ?? {}) as Record<string, unknown>;
     const scope = row.portfolioScope as PortfolioEntryContinuationResultDto['portfolioScope'];
     return {
@@ -424,7 +427,7 @@ type ContinuationRow = {
   sessionId: string;
   portfolioScope: Prisma.JsonValue;
   sourceSnapshot: Prisma.JsonValue;
-  destinationRoute: string;
+  destinationRoute: string | null;
   continuedAt: Date;
 };
 

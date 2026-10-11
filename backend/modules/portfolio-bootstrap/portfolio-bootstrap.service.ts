@@ -275,7 +275,7 @@ export class PortfolioBootstrapService {
         const continuation = await db.portfolioEntryPortfolioContinuation.findUnique({
           where: { id: input.portfolioEntryContinuationId },
         });
-        if (!continuation) throw AppError.notFound('Portfolio Entry continuation', 'PORTFOLIO_BOOTSTRAP_CONTINUATION_NOT_FOUND');
+        if (!continuation || continuation.snapshotFormat != null) throw AppError.notFound('Portfolio Entry continuation', 'PORTFOLIO_BOOTSTRAP_CONTINUATION_NOT_FOUND');
         if (continuation.continuedByUserId !== input.authenticatedUserId) {
           throw AppError.forbidden('No autorizado.', 'PORTFOLIO_BOOTSTRAP_CONTINUATION_FORBIDDEN');
         }
