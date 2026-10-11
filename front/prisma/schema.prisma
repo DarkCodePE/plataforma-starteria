@@ -2774,6 +2774,7 @@ model PortfolioEntrySession {
   confirmations   PortfolioEntryConfirmation[]
   modelExecutions PortfolioEntryModelExecution[]
   conversion      PortfolioEntryConversion?
+  conversionSubmissions PortfolioEntryConversionSubmission[]
   portfolioContinuation PortfolioEntryPortfolioContinuation?
 
   @@index([ownerUserId])
@@ -2783,6 +2784,41 @@ model PortfolioEntrySession {
   @@index([expiresAt])
   @@index([lastActivityAt])
   @@index([lifecycleStatus, expiresAt])
+}
+
+// 114E: one accepted contact request and its exact submission-time consent choice.
+// expiresAt stays null until a legally approved retention and erasure policy exists.
+model PortfolioEntryConversionSubmission {
+  id                        String   @id @default(cuid())
+  sessionId                 String
+  destinationType           String
+  purpose                   String
+  destinationConfigVersion  Int
+  status                    String   @default("ACCEPTED")
+  submittedAt               DateTime @default(now())
+  expiresAt                 DateTime?
+  contactEmail              String
+  contactName               String?
+  organization              String?
+  contextSharingMode        String
+  consentedAt               DateTime?
+  sharedDecisionInView      String?
+  criticalHandoffId         String
+  criticalHandoffVersion    Int
+  sourceContextRevision     Int
+  projectionVersion         String
+  businessCapabilityBoundaryVersion String
+  pathSchemaVersion         String
+  consentScopeVersion       String?
+  idempotencyKeyHash        String
+  requestFingerprint        String
+  createdAt                 DateTime @default(now())
+  updatedAt                 DateTime @updatedAt
+
+  session PortfolioEntrySession @relation(fields: [sessionId], references: [id], onDelete: Restrict)
+
+  @@unique([sessionId, destinationType, idempotencyKeyHash], map: "ConversionSubmission_idempotency_key")
+  @@index([sessionId, submittedAt])
 }
 
 model PortfolioEntryConversion {

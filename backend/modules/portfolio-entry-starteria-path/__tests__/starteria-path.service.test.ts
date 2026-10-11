@@ -86,6 +86,7 @@ describe('StarteriaPathService', () => {
   ])('uses only server facts for destinations %j', async (types, availability) => {
     const readConversionConfig = vi.fn(() => ({
       version: 1,
+      commercialOwner: 'commercial@example.org',
       approvedExternalDestinations: types.map((type) => ({ type, href: `https://calendly.com/starteria/${type.toLowerCase()}` })),
       destinations: types.map((type) => ({
         type, status: 'VERIFIED_ACTIVE', destinationKind: 'EXTERNAL',

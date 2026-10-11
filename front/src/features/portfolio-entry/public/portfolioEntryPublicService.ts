@@ -283,6 +283,38 @@ export async function getPortfolioEntryStarteriaPath(sessionId: string): Promise
   return dto;
 }
 
+/** First-party 114E contact receipt. No semantic Path or Critical Handoff payload is sent. */
+export async function submitPortfolioEntryConversion(
+  sessionId: string,
+  input: {
+    destinationType: 'DEMO' | 'EARLY_ACCESS';
+    purpose: 'DEMO_REQUEST' | 'EARLY_ACCESS_REQUEST';
+    destinationConfigVersion: number;
+    sourceBinding: Omit<import('./starteriaPath.types').StarteriaPathSupportedDto['sourceBinding'], 'current' | 'confirmed'>;
+    email: string;
+    name?: string;
+    organization?: string;
+    contextSharingMode: 'NO_ENTRY_CONTEXT_SHARED' | 'SHARE_CONTEXT_WITH_CONVERSION';
+    explicitContextConsent?: true;
+    decisionInViewPreview?: string;
+    idempotencyKey: string;
+  },
+): Promise<{
+  submissionId: string; destinationType: 'DEMO' | 'EARLY_ACCESS';
+  purpose: 'DEMO_REQUEST' | 'EARLY_ACCESS_REQUEST'; submittedAt: string;
+  receiptStatus: 'RECEIVED'; contextShared: boolean; idempotentReplay: boolean;
+}> {
+  const { default: api } = await import('../../../app/services/api');
+  const response = await api.post<PortfolioEntryApiEnvelope<{
+    submissionId: string; destinationType: 'DEMO' | 'EARLY_ACCESS';
+    purpose: 'DEMO_REQUEST' | 'EARLY_ACCESS_REQUEST'; submittedAt: string;
+    receiptStatus: 'RECEIVED'; contextShared: boolean; idempotentReplay: boolean;
+  }>>(
+    `/public/portfolio-entry/sessions/${encodeURIComponent(sessionId)}/conversion-submissions`, input,
+  );
+  return unwrap(response);
+}
+
 export async function confirmPortfolioEntryCriticalHandoff(
   sessionId: string,
   input: CriticalHandoffConfirmationInput,

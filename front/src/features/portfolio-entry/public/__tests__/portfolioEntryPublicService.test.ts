@@ -13,6 +13,7 @@ import {
   materializePortfolioEntryCriticalHandoff,
   normalizePortfolioEntryApiError,
   submitPortfolioEntryMessage,
+  submitPortfolioEntryConversion,
 } from '../portfolioEntryPublicService';
 import type { StarteriaPathSupportedDto } from '../starteriaPath.types';
 import { StarteriaPathInvalidResponseError } from '../starteriaPath.types';
@@ -45,6 +46,34 @@ function makeSession(overrides: Partial<PortfolioEntrySessionDto> = {}): Portfol
 }
 
 describe('portfolioEntryPublicService', () => {
+  it('posts only the bounded 125E request and reads a receipt', async () => {
+    server.use(http.post('*/public/portfolio-entry/sessions/:sessionId/conversion-submissions', async ({ request, params }) => {
+      expect(params.sessionId).toBe('session-1');
+      expect(await request.json()).toEqual({
+        destinationType: 'DEMO', purpose: 'DEMO_REQUEST', destinationConfigVersion: 2,
+        sourceBinding: { criticalHandoffId: 'critical-1', criticalHandoffVersion: 1,
+          sourceContextRevision: 3, projectionVersion: 'starteria-path-projection-v0.1',
+          businessCapabilityBoundaryVersion: 'business-capability-boundary-v0.1',
+          pathSchemaVersion: 'starteria-path-dto-v0.2' },
+        email: 'person@example.org', contextSharingMode: 'NO_ENTRY_CONTEXT_SHARED',
+        idempotencyKey: 'conversion-key-00000001',
+      });
+      return HttpResponse.json({ success: true, data: {
+        submissionId: 'submission-1', destinationType: 'DEMO', purpose: 'DEMO_REQUEST',
+        submittedAt: '2026-10-11T00:00:00.000Z', receiptStatus: 'RECEIVED',
+        contextShared: false, idempotentReplay: false,
+      } });
+    }));
+    await expect(submitPortfolioEntryConversion('session-1', {
+      destinationType: 'DEMO', purpose: 'DEMO_REQUEST', destinationConfigVersion: 2,
+      sourceBinding: { criticalHandoffId: 'critical-1', criticalHandoffVersion: 1,
+        sourceContextRevision: 3, projectionVersion: 'starteria-path-projection-v0.1',
+        businessCapabilityBoundaryVersion: 'business-capability-boundary-v0.1',
+        pathSchemaVersion: 'starteria-path-dto-v0.2' },
+      email: 'person@example.org', contextSharingMode: 'NO_ENTRY_CONTEXT_SHARED',
+      idempotencyKey: 'conversion-key-00000001',
+    })).resolves.toMatchObject({ submissionId: 'submission-1', receiptStatus: 'RECEIVED' });
+  });
   it('reads Starteria Path only from its dedicated session endpoint and returns its DTO', async () => {
     const expected: StarteriaPathSupportedDto = {
       conversionPresentation: { availability: 'NO_VERIFIED_DESTINATION', conversionConfigVersion: 1, destinations: [] },

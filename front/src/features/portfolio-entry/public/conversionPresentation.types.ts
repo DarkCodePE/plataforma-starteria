@@ -28,19 +28,35 @@ const destinationFields = {
   status: z.literal('VERIFIED_ACTIVE'),
   destinationKind: z.literal('EXTERNAL'),
   href: safeExternalHref,
-  // No context-sharing integration is enabled in 125D.
   contextSharingSupported: z.literal(false),
 };
-const demo = z.object({
+const demoExternal = z.object({
   ...destinationFields, type: z.literal('DEMO'),
   label: z.literal(CONVERSION_COPY.DEMO.label),
   availabilityDisclosure: z.literal(CONVERSION_COPY.DEMO.availabilityDisclosure),
 }).strict();
-const earlyAccess = z.object({
+const earlyAccessExternal = z.object({
   ...destinationFields, type: z.literal('EARLY_ACCESS'),
   label: z.literal(CONVERSION_COPY.EARLY_ACCESS.label),
   availabilityDisclosure: z.literal(CONVERSION_COPY.EARLY_ACCESS.availabilityDisclosure),
 }).strict();
+const firstPartyFields = {
+  status: z.literal('VERIFIED_ACTIVE'),
+  destinationKind: z.literal('FIRST_PARTY'),
+  contextSharingSupported: z.literal(true),
+};
+const demoFirstParty = z.object({
+  ...firstPartyFields, type: z.literal('DEMO'),
+  label: z.literal(CONVERSION_COPY.DEMO.label),
+  availabilityDisclosure: z.literal('Envía una solicitud de contacto para una posible demostración. No reserva una cita.'),
+}).strict();
+const earlyAccessFirstParty = z.object({
+  ...firstPartyFields, type: z.literal('EARLY_ACCESS'),
+  label: z.literal(CONVERSION_COPY.EARLY_ACCESS.label),
+  availabilityDisclosure: z.literal('Envía una solicitud de interés en acceso anticipado. No garantiza acceso.'),
+}).strict();
+const demo = z.union([demoExternal, demoFirstParty]);
+const earlyAccess = z.union([earlyAccessExternal, earlyAccessFirstParty]);
 const verifiedVersion = z.number().int().positive().max(Number.MAX_SAFE_INTEGER);
 
 // Tuples enforce exact state/action correspondence, uniqueness and bounded order.

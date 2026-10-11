@@ -72,6 +72,25 @@ function renderPath(path: StarteriaPathDto, onRetry = vi.fn()) {
 }
 
 describe('StarteriaPathExperience', () => {
+  it.each(['DEMO', 'EARLY_ACCESS'] as const)('opens only the verified first-party %s form', async (type) => {
+    const destination = type === 'DEMO'
+      ? { type, status: 'VERIFIED_ACTIVE', destinationKind: 'FIRST_PARTY', contextSharingSupported: true,
+        label: CONVERSION_COPY.DEMO.label,
+        availabilityDisclosure: 'Envía una solicitud de contacto para una posible demostración. No reserva una cita.' }
+      : { type, status: 'VERIFIED_ACTIVE', destinationKind: 'FIRST_PARTY', contextSharingSupported: true,
+        label: CONVERSION_COPY.EARLY_ACCESS.label,
+        availabilityDisclosure: 'Envía una solicitud de interés en acceso anticipado. No garantiza acceso.' };
+    const path = makeSupportedPath({ conversionPresentation: {
+      availability: type === 'DEMO' ? 'DEMO_ONLY' : 'EARLY_ACCESS_ONLY',
+      conversionConfigVersion: 2, destinations: [destination],
+    } } as unknown as Partial<StarteriaPathSupportedDto>);
+    render(<StarteriaPathExperience requestState="ready" path={path} sessionId="session-1"
+      decisionInView="Decidir el siguiente paso." onRetry={vi.fn()} />);
+    expect(screen.queryByRole('form')).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: destination.label }));
+    expect(screen.getByTestId(`conversion-submission-form-${type}`)).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: destination.label })).not.toBeInTheDocument();
+  });
   it('clicks only navigate and never submit or persist Entry context or consent', async () => {
     const post = vi.spyOn(axios.Axios.prototype, 'post');
     const xhr = vi.spyOn(XMLHttpRequest.prototype, 'send');
