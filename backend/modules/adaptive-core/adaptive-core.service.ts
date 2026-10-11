@@ -1,4 +1,5 @@
 import type { PrismaClient } from '@prisma/client';
+import { DECISION_CHOICES, EVIDENCE_CLASSIFICATION_CHOICES, FINAL_STATE_CHOICES, matchChoice } from './answer-choices';
 import { AppError } from '../../shared/errors/AppError';
 import { propagateDecisionToPortfolioTx } from './decision-portfolio-return';
 import { syncInitiativeProgress } from '../portfolio/initiative-progress';
@@ -91,8 +92,8 @@ const STEP0_OUTPUT_BY_ROUTE: Record<AdaptiveRouteType, string> = {
 };
 
 const STEP1_CHECKPOINTS = [
-  { key: 'CP-1.1', sequence: 1, title: 'Priorizar validacion', outputKey: 'ValidationFocus' },
-  { key: 'CP-1.2', sequence: 2, title: 'Disenar plan de evidencia', outputKey: 'EvidencePlan' },
+  { key: 'CP-1.1', sequence: 1, title: 'Priorizar qué validar', outputKey: 'ValidationFocus' },
+  { key: 'CP-1.2', sequence: 2, title: 'Diseñar el plan de evidencia', outputKey: 'EvidencePlan' },
   { key: 'CP-1.3', sequence: 3, title: 'Capturar y analizar evidencia', outputKey: 'EvidenceMap' },
   { key: 'CP-1.4', sequence: 4, title: 'Sintetizar y decidir foco', outputKey: 'Step1FocusDecision' },
 ] as const;
@@ -107,11 +108,11 @@ const STEP1_OUTPUT_BY_ROUTE: Record<AdaptiveRouteType, string> = {
 };
 
 const STEP2_CHECKPOINTS = [
-  { key: 'CP-2.1', sequence: 1, title: 'Design Criteria', outputKey: 'DesignCriteria' },
-  { key: 'CP-2.2', sequence: 2, title: 'Alternatives', outputKey: 'AlternativeSet' },
-  { key: 'CP-2.3', sequence: 3, title: 'Selected Bet', outputKey: 'SelectedBet' },
-  { key: 'CP-2.4', sequence: 4, title: 'Execution Design', outputKey: 'ExecutionDesign' },
-  { key: 'CP-2.5', sequence: 5, title: 'Readiness', outputKey: 'ReadinessCheck' },
+  { key: 'CP-2.1', sequence: 1, title: 'Criterios de diseño', outputKey: 'DesignCriteria' },
+  { key: 'CP-2.2', sequence: 2, title: 'Alternativas', outputKey: 'AlternativeSet' },
+  { key: 'CP-2.3', sequence: 3, title: 'Apuesta elegida', outputKey: 'SelectedBet' },
+  { key: 'CP-2.4', sequence: 4, title: 'Diseño de la prueba', outputKey: 'ExecutionDesign' },
+  { key: 'CP-2.5', sequence: 5, title: 'Preparación', outputKey: 'ReadinessCheck' },
 ] as const;
 
 const STEP2_OUTPUT_BY_ROUTE: Record<AdaptiveRouteType, string> = {
@@ -124,11 +125,11 @@ const STEP2_OUTPUT_BY_ROUTE: Record<AdaptiveRouteType, string> = {
 };
 
 const STEP3_CHECKPOINTS = [
-  { key: 'CP-3.1', sequence: 1, title: 'Execution Readiness', outputKey: 'ExecutionReadiness' },
-  { key: 'CP-3.2', sequence: 2, title: 'Execution Log', outputKey: 'ExecutionLog' },
-  { key: 'CP-3.3', sequence: 3, title: 'Result Analysis', outputKey: 'ExperimentResultAnalysis' },
-  { key: 'CP-3.4', sequence: 4, title: 'Decision', outputKey: 'Step3Decision' },
-  { key: 'CP-3.5', sequence: 5, title: 'Operational Readiness', outputKey: 'OperationalReadiness' },
+  { key: 'CP-3.1', sequence: 1, title: 'Listos para ejecutar', outputKey: 'ExecutionReadiness' },
+  { key: 'CP-3.2', sequence: 2, title: 'Registro de ejecución', outputKey: 'ExecutionLog' },
+  { key: 'CP-3.3', sequence: 3, title: 'Análisis de resultados', outputKey: 'ExperimentResultAnalysis' },
+  { key: 'CP-3.4', sequence: 4, title: 'Decisión', outputKey: 'Step3Decision' },
+  { key: 'CP-3.5', sequence: 5, title: 'Preparación para operar', outputKey: 'OperationalReadiness' },
 ] as const;
 
 const STEP3_OUTPUT_BY_ROUTE: Record<AdaptiveRouteType, string> = {
@@ -141,10 +142,10 @@ const STEP3_OUTPUT_BY_ROUTE: Record<AdaptiveRouteType, string> = {
 };
 
 const STEP4_CHECKPOINTS = [
-  { key: 'CP-4.1', sequence: 1, title: 'Audiencia y decision', outputKey: 'DecisionAudienceBrief' },
+  { key: 'CP-4.1', sequence: 1, title: 'Audiencia y decisión', outputKey: 'DecisionAudienceBrief' },
   { key: 'CP-4.2', sequence: 2, title: 'Narrativa con evidencia', outputKey: 'EvidenceBackedNarrative' },
   { key: 'CP-4.3', sequence: 3, title: 'Siguiente horizonte', outputKey: 'NextHorizonPlan' },
-  { key: 'CP-4.4', sequence: 4, title: 'Paquete de decision', outputKey: 'DecisionPackage' },
+  { key: 'CP-4.4', sequence: 4, title: 'Paquete de decisión', outputKey: 'DecisionPackage' },
   { key: 'CP-4.5', sequence: 5, title: 'Transferencia o cierre', outputKey: 'TransferOrClosure' },
 ] as const;
 
@@ -155,6 +156,16 @@ const STEP4_OUTPUT_BY_ROUTE: Record<AdaptiveRouteType, string> = {
   plan_coordinate: 'ExecutiveDeliveryReport',
   reconstruct_existing: 'RegularizationGovernancePackage',
   lightweight_plan: 'LightweightDecisionBrief',
+};
+
+const COMPANY_INFLUENCE_TARGET_LABEL: Record<string, string> = {
+  methods: 'los métodos',
+  actors: 'quiénes participan',
+  restrictions: 'las restricciones',
+  evidence: 'la evidencia',
+  artifacts: 'los documentos',
+  validators: 'quién valida',
+  guardrails: 'los límites',
 };
 
 export class AdaptiveCoreService {
@@ -2699,29 +2710,29 @@ const sufficiency = this.evaluateCheckpoint(
       outputKey: cp.outputKey,
       questions: idx === 0 ? this.buildQuestions(cp.key, version, masterContext, []) : [],
       completionCriteria: step === 0
-        ? ['Sintesis suficiente', 'Faltantes visibles', 'Siguiente accion definida']
+        ? ['Síntesis suficiente', 'Faltantes visibles', 'Siguiente acción definida']
         : step === 1
-          ? ['Foco visible', 'Evidencia con sourceRefs', 'Decision de continuidad explicita']
+          ? ['Foco visible', 'Evidencia con su fuente', 'Decisión de continuidad explícita']
           : step === 2
-            ? ['Foco transferido', 'Hipotesis de Step 1 visible', 'Restricciones y criterios heredados']
+            ? ['Foco transferido', 'Hipótesis del Step 1 visible', 'Restricciones y criterios heredados']
             : step === 3
-              ? ['Ejecucion registrada', 'Resultado analizado', 'Decision confirmable']
-              : ['Decision Step 3 transferida', 'Continuidad configurada'],
+              ? ['Ejecución registrada', 'Resultado analizado', 'Decisión lista para confirmar']
+              : ['Decisión del Step 3 transferida', 'Continuidad definida'],
     }));
     return {
       id: `step-${step}-${routeType}-v${version}`,
       step,
       version,
-      visibleName: step === 0 ? STEP0_VISIBLE_NAME_BY_ROUTE[routeType] : step === 1 ? 'Step 1 adaptativo' : step === 2 ? 'Step 2 adaptativo' : step === 3 ? 'Step 3 adaptativo' : 'Step 4 configurado',
+      visibleName: step === 0 ? STEP0_VISIBLE_NAME_BY_ROUTE[routeType] : step === 1 ? 'Validar con evidencia' : step === 2 ? 'Elegir la apuesta y diseñar la prueba' : step === 3 ? 'Ejecutar y decidir' : 'Llevar la decisión a la organización',
       objective: step === 0
-        ? 'Convertir la intencion inicial en hipotesis estrategica delimitada y contrato de validacion o ejecucion.'
+        ? 'Convertir la intención inicial en una hipótesis delimitada y acordar cómo se va a validar o ejecutar.'
         : step === 1
           ? 'Delimitar y fundamentar el foco mediante evidencia suficiente.'
           : step === 2
             ? 'Convertir el foco sustentado en una apuesta seleccionada y una forma ejecutable de probarla o implementarla.'
             : step === 3
-              ? 'Ejecutar, analizar resultados y confirmar una decision trazable desde la apuesta seleccionada.'
-              : 'Preparar continuidad o cierre operativo desde la decision confirmada de Step 3.',
+              ? 'Ejecutar, analizar los resultados y confirmar una decisión respaldada por lo que pasó.'
+              : 'Preparar la continuidad o el cierre a partir de la decisión confirmada en el Step 3.',
       expectedOutput: step === 0 ? STEP0_OUTPUT_BY_ROUTE[routeType] : step === 1 ? STEP1_OUTPUT_BY_ROUTE[routeType] : step === 2 ? STEP2_OUTPUT_BY_ROUTE[routeType] : step === 3 ? STEP3_OUTPUT_BY_ROUTE[routeType] : STEP4_OUTPUT_BY_ROUTE[routeType],
       routeType,
       depthLevel: masterContext.depthLevel ?? 'standard',
@@ -2771,132 +2782,132 @@ const sufficiency = this.evaluateCheckpoint(
     };
 
     if (checkpointKey === 'CP-0.1') {
-      add('core', 'Que resultado o cambio debe quedar entendible para un lider?', 'objective', true, 'Step 0 no puede cerrar sin proposito entendible.', ['PRD-03:9.4'], { allowsUnknown: false });
-      add('challenge_type', 'Que tipo de reto describe mejor la iniciativa hoy?', 'challengeType', true, 'El tipo de reto ajusta profundidad y preguntas posteriores.', [String(masterContext.challengeType ?? '')]);
-      if (masterContext.challengeSnapshot) add('challenge_context', 'Que parte del reto padre aborda esta iniciativa?', 'challengeContribution.subproblem', true, 'La iniciativa vinculada debe reportar contribucion al reto.', [masterContext.challengeSnapshot.id], { contextDerived: true });
+      add('core', '¿Qué resultado o cambio debe quedar claro para un líder?', 'objective', true, 'El Step 0 no puede cerrarse sin un propósito que se entienda.', ['PRD-03:9.4'], { allowsUnknown: false });
+      add('challenge_type', '¿Qué tipo de reto describe mejor la iniciativa hoy?', 'challengeType', true, 'El tipo de reto ajusta la profundidad y las preguntas siguientes.', [String(masterContext.challengeType ?? '')]);
+      if (masterContext.challengeSnapshot) add('challenge_context', '¿Qué parte del reto aborda esta iniciativa?', 'challengeContribution.subproblem', true, 'Una iniciativa vinculada a un reto tiene que mostrar qué le aporta.', [masterContext.challengeSnapshot.id], { contextDerived: true });
     }
     if (checkpointKey === 'CP-0.2') {
-      add('core', 'Cual es el alcance inicial y que queda fuera por ahora?', 'scope', true, 'El cierre de Step 0 requiere alcance inicial.', ['PRD-03:9.4']);
-      add('core', 'Quien es el owner operativo y que actor debe confirmar condiciones?', 'owner_and_actor_required', true, 'Sin owner hay hard gate de Step 0.', ['PRD-03:9.5'], { answerType: 'owner', allowsUnknown: false });
+      add('core', '¿Cuál es el alcance inicial y qué queda fuera por ahora?', 'scope', true, 'Para cerrar el Step 0 hace falta un alcance inicial.', ['PRD-03:9.4']);
+      add('core', '¿Quién es responsable de la iniciativa y quién tiene que confirmar las condiciones?', 'owner_and_actor_required', true, 'Sin una persona responsable, el Step 0 no puede cerrarse.', ['PRD-03:9.5'], { answerType: 'owner', allowsUnknown: false });
       if (masterContext.companySnapshot) {
         add(
           'company_context',
-          'Que restriccion de empresa podria afectar evidencia, datos o aprobaciones?',
+          '¿Qué restricción de la empresa podría afectar la evidencia, los datos o las aprobaciones?',
           'company_constraints',
           !masterContext.companySnapshot.lowCoverage,
           masterContext.companySnapshot.lowCoverage
-            ? 'La cobertura de contexto es baja; se presenta como hipotesis a confirmar, no como hard gate.'
-            : 'El contexto empresarial sugiere revisar restricciones antes de avanzar.',
+            ? 'Hay poco contexto de la empresa: tómalo como algo a confirmar, no como un bloqueo.'
+            : 'El contexto de la empresa sugiere revisar restricciones antes de avanzar.',
           masterContext.companySnapshot.sources ?? [],
           { contextDerived: true, confirmationRequired: true },
         );
       }
     }
     if (checkpointKey === 'CP-0.3') {
-      add('core', 'Cual es la hipotesis prioritaria que debe validarse o decidirse?', 'priorityHypothesis', true, 'Step 0 debe cerrar con hipotesis o pregunta central.', ['PRD-03:9.4'], { allowsUnknown: false });
-      add('previous_answer', 'Que evidencia o criterio permitiria tomar la siguiente decision?', 'decisionCriteria', true, 'El criterio de decision se deriva de respuestas previas y faltantes.', previousAnswers.map((_, i) => `checkpoint-response-${i + 1}`));
+      add('core', '¿Cuál es la hipótesis más importante que hay que validar o decidir?', 'priorityHypothesis', true, 'El Step 0 cierra con una hipótesis o pregunta central.', ['PRD-03:9.4'], { allowsUnknown: false });
+      add('previous_answer', '¿Qué evidencia o criterio permitiría tomar la siguiente decisión?', 'decisionCriteria', true, 'El criterio sale de lo que ya respondiste y de lo que falta.', previousAnswers.map((_, i) => `checkpoint-response-${i + 1}`));
     }
     if (checkpointKey === 'CP-1.1') {
-      add('core', 'Cual es la hipotesis principal que debe validarse primero?', 'mainHypothesis', true, 'Step 1 delimita una hipotesis principal antes de disenar evidencia.', ['Step0AlignmentBrief'], { allowsUnknown: false });
-      add('core', 'Cual es el supuesto critico detras de esa hipotesis?', 'criticalAssumption', true, 'El plan de evidencia depende del supuesto con mayor riesgo.', ['PRD-03:CP-1.1'], { allowsUnknown: false });
-      add('core', 'Que pregunta de aprendizaje debe responder la evidencia?', 'learningQuestion', true, 'Toda evidencia debe conectar con una pregunta verificable.', ['PRD-03:CP-1.1'], { allowsUnknown: false });
-      add('core', 'Que riesgo existe si se equivocan en esta hipotesis?', 'riskOfBeingWrong', true, 'El riesgo prioriza profundidad y metodo.', ['PRD-03:CP-1.1']);
-      add('core', 'Que decision depende de esta evidencia?', 'dependentDecision', true, 'Step 1 debe preparar una decision posterior explicita.', ['Step0AlignmentBrief']);
+      add('core', '¿Cuál es la hipótesis principal que conviene validar primero?', 'mainHypothesis', true, 'Antes de buscar evidencia hay que saber qué se quiere comprobar.', ['Step0AlignmentBrief'], { allowsUnknown: false });
+      add('core', '¿Qué supuesto, si resulta falso, haría caer esa hipótesis?', 'criticalAssumption', true, 'La evidencia se busca primero para el supuesto más riesgoso.', ['PRD-03:CP-1.1'], { allowsUnknown: false });
+      add('core', '¿Qué pregunta concreta debería responder la evidencia?', 'learningQuestion', true, 'Cada evidencia tiene que responder una pregunta que se pueda verificar.', ['PRD-03:CP-1.1'], { allowsUnknown: false });
+      add('core', '¿Qué pasa si se equivocan con esta hipótesis?', 'riskOfBeingWrong', true, 'El riesgo define cuánta profundidad y qué método hacen falta.', ['PRD-03:CP-1.1']);
+      add('core', '¿Qué decisión depende de esta evidencia?', 'dependentDecision', true, 'El Step 1 prepara una decisión concreta para después.', ['Step0AlignmentBrief']);
       if (masterContext.companySnapshot) {
         const influence = this.buildCompanyInfluence(masterContext.companySnapshot, 'validators');
-        add('company_context', 'Que actor de empresa debe validar o abrir acceso para esta evidencia?', 'companyValidator', false, influence.reason, influence.sourceRefs, { contextDerived: true, confirmationRequired: influence.confirmationStatus !== 'confirmed' });
+        add('company_context', '¿Quién en la empresa tiene que validar o dar acceso para conseguir esta evidencia?', 'companyValidator', false, influence.reason, influence.sourceRefs, { contextDerived: true, confirmationRequired: influence.confirmationStatus !== 'confirmed' });
       }
     }
     if (checkpointKey === 'CP-1.2') {
-      add('method_catalog', 'Que metodo usaran para conseguir evidencia suficiente?', 'methods', true, 'El metodo debe corresponder a hipotesis, reto, empresa, restricciones y acceso.', ['PRD-03:CP-1.2'], { answerType: 'multi_choice', allowsUnknown: false });
-      add('core', 'Que fuentes y actores participaran?', 'sourcesAndActors', true, 'El plan exige fuentes, actores y responsables.', ['PRD-03:CP-1.2']);
-      add('core', 'Quien es responsable y en que fechas se conseguira la evidencia?', 'responsibleAndDates', true, 'Sin responsable y fechas el plan no es ejecutable.', ['PRD-03:CP-1.2'], { answerType: 'date' });
-      add('core', 'Que evidencia esperan obtener y cual es el criterio de suficiencia?', 'expectedEvidenceAndSufficiency', true, 'El criterio evita cerrar Step 1 por opinion.', ['PRD-03:CP-1.2']);
+      add('method_catalog', '¿Cómo van a conseguir la evidencia? (entrevistas, revisión de métricas, observación, documentos…)', 'methods', true, 'El método depende de la hipótesis, el reto, las restricciones y el acceso que tengan.', ['PRD-03:CP-1.2'], { answerType: 'multi_choice', allowsUnknown: false });
+      add('core', '¿Qué fuentes y qué personas van a participar?', 'sourcesAndActors', true, 'El plan necesita fuentes, personas y responsables.', ['PRD-03:CP-1.2']);
+      add('core', '¿Quién se encarga y para qué fecha tendrán la evidencia?', 'responsibleAndDates', true, 'Sin responsable ni fechas el plan no se puede ejecutar.', ['PRD-03:CP-1.2'], { answerType: 'date' });
+      add('core', '¿Qué evidencia esperan obtener y cuánta alcanza para decidir?', 'expectedEvidenceAndSufficiency', true, 'Así el Step 1 no se cierra por opinión.', ['PRD-03:CP-1.2']);
     }
     if (checkpointKey === 'CP-1.3') {
-      add('core', 'Que evidencias capturaron? Incluye archivos, links, texto, metricas, entrevistas, observaciones o documentos.', 'evidenceItems', true, 'Step 1 requiere evidencia explicita antes de sintetizar.', ['PRD-03:CP-1.3'], { allowsUnknown: false });
-      add('core', 'Clasifica cada evidencia como supports, contradicts, weak_signal, insufficient, context o new_uncertainty.', 'evidenceClassifications', true, 'La clasificacion alimenta contradicciones y suficiencia.', ['PRD-03:CP-1.3'], { allowsUnknown: false });
-      add('core', 'Que sourceRefs respaldan cada conclusion?', 'sourceRefs', true, 'Toda conclusion debe preservar referencias de fuente.', ['PRD-03:CP-1.3'], { allowsUnknown: false });
+      add('core', '¿Qué evidencia consiguieron? Puede ser un archivo, un link, una métrica, una entrevista o una observación.', 'evidenceItems', true, 'Hace falta evidencia concreta antes de sacar conclusiones.', ['PRD-03:CP-1.3'], { allowsUnknown: false });
+      add('core', 'Para cada evidencia, ¿apoya la hipótesis, la contradice, es una señal débil, no alcanza, es contexto o abre una duda nueva?', 'evidenceClassifications', true, 'Esto muestra las contradicciones y si la evidencia alcanza.', ['PRD-03:CP-1.3'], { allowsUnknown: false });
+      add('core', '¿De qué fuente sale cada conclusión?', 'sourceRefs', true, 'Cada conclusión tiene que poder rastrearse hasta su fuente.', ['PRD-03:CP-1.3'], { allowsUnknown: false });
     }
     if (checkpointKey === 'CP-1.4') {
-      add('core', 'Cuales son los hechos, contradicciones, vacios y aprendizajes principales?', 'synthesis', true, 'La sintesis debe separar evidencia de interpretacion.', ['EvidenceMap'], { allowsUnknown: false });
-      add('core', 'Cual es el foco actualizado y que hipotesis pasa a Step 2?', 'updatedFocusAndHypothesis', true, 'Step 2 se configura desde este foco confirmado.', ['ValidationFocus', 'EvidenceMap'], { allowsUnknown: false });
-      add('core', 'Decision de continuidad: mantener, acotar, reformular, cambiar, pausar, cerrar o avanzar con observaciones.', 'continuityDecision', true, 'Step 1 no cierra sin decision revisada por usuario.', ['PRD-03:CP-1.4'], { allowsUnknown: false });
+      add('core', '¿Cuáles son los hechos, las contradicciones, lo que falta y lo que aprendieron?', 'synthesis', true, 'La síntesis separa lo que se comprobó de lo que se interpreta.', ['EvidenceMap'], { allowsUnknown: false });
+      add('core', '¿Cuál es el foco ahora y qué hipótesis pasa al Step 2?', 'updatedFocusAndHypothesis', true, 'El Step 2 se arma a partir de este foco.', ['ValidationFocus', 'EvidenceMap'], { allowsUnknown: false });
+      add('core', '¿Cómo siguen? Mantener, acotar, reformular, cambiar, pausar, cerrar o avanzar con observaciones.', 'continuityDecision', true, 'El Step 1 no cierra sin que decidas cómo seguir.', ['PRD-03:CP-1.4'], { allowsUnknown: false });
     }
     if (checkpointKey === 'CP-2.1') {
-      add('previous_answer', 'Cual es el resultado esperado de la apuesta?', 'expectedOutcome', true, 'Los criterios de diseno parten del foco confirmado de Step 1.', ['Step1ConfirmedOutput'], { allowsUnknown: false });
-      add('core', 'Define criterios de exito, evidencia esperada y tiempo hasta senal.', 'successCriteria', true, 'Step 2 necesita criterios para comparar alternativas.', ['PRD-03:CP-2.1'], { allowsUnknown: false });
-      add('core', 'Que restricciones, guardrails y condiciones no negociables aplican?', 'constraintsGuardrails', true, 'La seleccion debe respetar restricciones y guardrails.', ['Step1ConfirmedOutput']);
-      add('core', 'Cual es el nivel de reversibilidad de la apuesta?', 'reversibilityLevel', true, 'La reversibilidad ajusta riesgo y modalidad de prueba.', ['PRD-03:CP-2.1'], { answerType: 'single_choice' });
+      add('previous_answer', '¿Qué resultado esperan de la apuesta?', 'expectedOutcome', true, 'Los criterios parten del foco que confirmaste en el Step 1.', ['Step1ConfirmedOutput'], { allowsUnknown: false });
+      add('core', '¿Cómo sabrán que funcionó, con qué evidencia y en cuánto tiempo deberían verlo?', 'successCriteria', true, 'Sin criterios de éxito no se pueden comparar alternativas.', ['PRD-03:CP-2.1'], { allowsUnknown: false });
+      add('core', '¿Qué restricciones o condiciones no se pueden romper?', 'constraintsGuardrails', true, 'La apuesta elegida tiene que respetar estos límites.', ['Step1ConfirmedOutput']);
+      add('core', '¿Qué tan fácil sería dar marcha atrás con esta apuesta?', 'reversibilityLevel', true, 'Cuanto más difícil sea volver atrás, más cuidadosa tiene que ser la prueba.', ['PRD-03:CP-2.1'], { answerType: 'single_choice' });
       if (masterContext.companySnapshot) {
         const influence = this.buildCompanyInfluence(masterContext.companySnapshot, 'guardrails');
-        add('company_context', 'Confirma que guardrails empresariales deben afectar el diseno.', 'companyGuardrails', false, influence.reason, influence.sourceRefs, { contextDerived: true, confirmationRequired: influence.confirmationStatus !== 'confirmed' });
+        add('company_context', '¿Qué límites de la empresa tiene que respetar el diseño?', 'companyGuardrails', false, influence.reason, influence.sourceRefs, { contextDerived: true, confirmationRequired: influence.confirmationStatus !== 'confirmed' });
       }
     }
     if (checkpointKey === 'CP-2.2') {
-      add('method_catalog', 'Registra o genera alternativas suficientes para esta ruta, incluyendo opcion de no hacer nada si aplica.', 'alternatives', true, 'No se exige idear 10 opciones; se comparan alternativas pertinentes.', ['PRD-03:CP-2.2'], { allowsUnknown: false });
-      add('route', 'Que modalidad aplica: build, buy, partner, implementar, coordinar, recuperar o no hacer nada?', 'implementationModes', true, 'La modalidad cambia por routeType y madurez.', [String(masterContext.routeType ?? '')], { answerType: 'multi_choice' });
-      add('previous_answer', 'Que evidenceRefs respaldan cada alternativa?', 'alternativeEvidenceRefs', true, 'Las alternativas deben preservar trazabilidad a evidencia.', ['EvidenceMap'], { allowsUnknown: false });
+      add('method_catalog', '¿Qué alternativas tienen? Incluye no hacer nada si es una opción real.', 'alternatives', true, 'No hacen falta muchas opciones, sólo las que valga la pena comparar.', ['PRD-03:CP-2.2'], { allowsUnknown: false });
+      add('route', '¿Cómo lo resolverían: construirlo, comprarlo, con un socio, coordinando lo que ya existe o no haciendo nada?', 'implementationModes', true, 'La forma de resolverlo depende de la ruta y la madurez de la iniciativa.', [String(masterContext.routeType ?? '')], { answerType: 'multi_choice' });
+      add('previous_answer', '¿Qué evidencia respalda cada alternativa?', 'alternativeEvidenceRefs', true, 'Cada alternativa tiene que apoyarse en evidencia.', ['EvidenceMap'], { allowsUnknown: false });
     }
     if (checkpointKey === 'CP-2.3') {
-      add('core', 'Compara alternativas por valor, alineamiento, factibilidad, viabilidad, riesgo, reversibilidad, tiempo hasta senal, carga operativa y compatibilidad empresarial.', 'comparison', true, 'La apuesta seleccionada debe tener comparacion explicita.', ['AlternativeSet'], { allowsUnknown: false });
-      add('core', 'Cual es la apuesta principal, cual es el backup y por que?', 'selectedBet', true, 'El output requiere apuesta, backup y justificacion.', ['PRD-03:CP-2.3'], { allowsUnknown: false });
-      add('previous_answer', 'Que supuestos, riesgos y evidenceRefs sustentan la seleccion?', 'selectedBetEvidenceRefs', true, 'La seleccion debe preservar evidencia y supuestos.', ['EvidenceMap', 'AlternativeSet'], { allowsUnknown: false });
+      add('core', 'Compara las alternativas: ¿cuál aporta más valor, cuál es más factible, cuál tiene menos riesgo y cuál da resultados antes?', 'comparison', true, 'La apuesta elegida tiene que salir de una comparación explícita.', ['AlternativeSet'], { allowsUnknown: false });
+      add('core', '¿Cuál es la apuesta principal, cuál el plan B y por qué?', 'selectedBet', true, 'Hace falta una apuesta, un plan B y la razón de la elección.', ['PRD-03:CP-2.3'], { allowsUnknown: false });
+      add('previous_answer', '¿En qué supuestos, riesgos y evidencia se apoya la elección?', 'selectedBetEvidenceRefs', true, 'La elección tiene que dejar a la vista sus supuestos y su evidencia.', ['EvidenceMap', 'AlternativeSet'], { allowsUnknown: false });
     }
     if (checkpointKey === 'CP-2.4') {
-      add('route', 'Describe la prueba o ejecucion: alcance, participantes, baseline, metrica, umbral y duracion.', 'executionDesign', true, 'Cada ruta produce un diseno ejecutable.', [String(masterContext.routeType ?? '')], { allowsUnknown: false });
-      add('core', 'Quienes son responsables, que recursos se requieren y que evidencia se capturara?', 'ownersResourcesEvidence', true, 'El diseno debe poder ejecutarse y medirse.', ['SelectedBet']);
-      add('core', 'Define riesgos, guardrails y criterio Go/No-Go.', 'goNoGoCriteria', true, 'El cierre de Step 2 prepara la decision futura.', ['PRD-03:CP-2.4'], { allowsUnknown: false });
+      add('route', 'Describe la prueba: ¿qué alcance tiene, quiénes participan, qué métrica miran (y su valor actual) y qué valor esperan alcanzar?', 'executionDesign', true, 'La prueba tiene que estar lista para ejecutarse.', [String(masterContext.routeType ?? '')], { allowsUnknown: false });
+      add('core', '¿Quiénes son responsables, qué recursos necesitan y qué evidencia van a registrar?', 'ownersResourcesEvidence', true, 'El diseño tiene que poder ejecutarse y medirse.', ['SelectedBet']);
+      add('core', '¿Qué riesgos hay y qué resultado los haría seguir o frenar?', 'goNoGoCriteria', true, 'Dejarlo definido ahora prepara la decisión de después.', ['PRD-03:CP-2.4'], { allowsUnknown: false });
     }
     if (checkpointKey === 'CP-2.5') {
-      add('core', 'Confirma owner, tiempo, recursos, datos, tecnologia, permisos, seguridad y presupuesto.', 'readinessChecklist', true, 'Readiness se activa para iniciativas complejas, transversales, reguladas, con dependencias, implementacion o alto riesgo.', ['PRD-03:CP-2.5'], { allowsUnknown: false });
-      add('core', 'Que dependencias, bloqueos y plan alternativo quedan?', 'dependenciesAndFallback', true, 'Sin plan alternativo, una apuesta riesgosa no debe avanzar sin observaciones.', ['SelectedBet']);
+      add('core', '¿Tienen responsable, tiempo, presupuesto y los permisos o datos necesarios? Indica qué falta.', 'readinessChecklist', true, 'Esta revisión aparece en iniciativas complejas, reguladas o de alto riesgo.', ['PRD-03:CP-2.5'], { allowsUnknown: false });
+      add('core', '¿Qué dependencias o bloqueos quedan y cuál es el plan alternativo?', 'dependenciesAndFallback', true, 'Una apuesta riesgosa no debería avanzar sin un plan alternativo.', ['SelectedBet']);
     }
     if (checkpointKey === 'CP-3.1') {
-      add('previous_answer', 'Confirma hipotesis, prueba o plan, alcance, baseline, metrica, umbral y guardrails transferidos desde Step 2.', 'step3TransferConfirmation', true, 'Step 3 se configura desde el output confirmado de Step 2.', ['Step2ConfirmedOutput'], { allowsUnknown: false });
-      add('core', 'Que requisitos ya estan cumplidos para ejecutar y cuales faltan?', 'executionReadinessChecklist', true, 'CP-3.1 genera ExecutionReadiness antes de operar.', ['PRD-03:CP-3.1'], { allowsUnknown: false });
-      add('core', 'Que permisos, dependencias, bloqueos, actores requeridos y fallbackPlan aplican?', 'executionDependencies', true, 'La ejecucion debe distinguir quick wins de implementaciones complejas y hard gates.', ['Step2Readiness'], { allowsUnknown: false });
+      add('previous_answer', '¿Sigue vigente lo que definieron en el Step 2 (hipótesis, prueba, métrica y límites)? Indica si algo cambió.', 'step3TransferConfirmation', true, 'El Step 3 parte de lo que se confirmó en el Step 2.', ['Step2ConfirmedOutput'], { allowsUnknown: false });
+      add('core', '¿Qué tienen listo para ejecutar y qué les falta?', 'executionReadinessChecklist', true, 'Conviene saberlo antes de empezar.', ['PRD-03:CP-3.1'], { allowsUnknown: false });
+      add('core', '¿Qué permisos, dependencias o bloqueos hay y cuál es el plan si algo falla?', 'executionDependencies', true, 'Así se separa lo que se puede hacer ya de lo que necesita aprobación.', ['Step2Readiness'], { allowsUnknown: false });
     }
     if (checkpointKey === 'CP-3.2') {
-      add('core', 'Registra actividades, mediciones, observaciones, entrevistas, incidentes, decisiones o evidencias relevantes de ejecucion.', 'executionRecords', true, 'CP-3.2 registra hechos relevantes, no cada clic ni edicion menor.', ['PRD-03:CP-3.2'], { allowsUnknown: false });
-      add('core', 'Que sourceRefs o evidenceRefs respaldan esos registros?', 'executionSourceRefs', true, 'Los registros operativos deben preservar trazabilidad.', ['ExecutionLog'], { allowsUnknown: false });
-      add('core', 'Hubo cambios de alcance, hipotesis, dependencias o riesgos criticos?', 'criticalExecutionChanges', false, 'Los cambios criticos alimentan CriticalChangeReview.', ['CriticalChangeReview']);
+      add('core', '¿Qué pasó durante la ejecución? Anota mediciones, observaciones, incidentes o decisiones importantes.', 'executionRecords', true, 'Sólo lo relevante, no cada detalle.', ['PRD-03:CP-3.2'], { allowsUnknown: false });
+      add('core', '¿De qué fuente sale cada registro?', 'executionSourceRefs', true, 'Cada registro tiene que poder rastrearse hasta su fuente.', ['ExecutionLog'], { allowsUnknown: false });
+      add('core', '¿Cambió algo importante: el alcance, la hipótesis, una dependencia o un riesgo?', 'criticalExecutionChanges', false, 'Un cambio importante puede requerir revisar el plan.', ['CriticalChangeReview']);
     }
     if (checkpointKey === 'CP-3.3') {
-      add('core', 'Compara baseline, resultado, umbral, adopcion, esfuerzo, carga operativa, riesgos y efectos no previstos.', 'resultComparison', true, 'CP-3.3 analiza resultado contra el diseno de ejecucion.', ['ExecutionDesign', 'ExecutionLog'], { allowsUnknown: false });
-      add('core', 'Clasifica la hipotesis y separa evidencia que apoya, contradice o limita la interpretacion.', 'hypothesisClassification', true, 'La IA puede proponer interpretacion, pero el usuario debe confirmarla.', ['PRD-03:CP-3.3'], { allowsUnknown: false });
-      add('core', 'Confirma interpretacion, limitaciones y efectos inesperados.', 'confirmedInterpretation', true, 'Step 3 no debe avanzar a decision sin interpretacion confirmada.', ['ExperimentResultAnalysis'], { allowsUnknown: false });
+      add('core', '¿Cómo quedó el resultado frente al valor inicial y al valor esperado? ¿Hubo efectos que no esperaban?', 'resultComparison', true, 'El resultado se compara con lo que se diseñó en el Step 2.', ['ExecutionDesign', 'ExecutionLog'], { allowsUnknown: false });
+      add('core', '¿La hipótesis se confirmó, se descartó o quedó en duda? ¿Qué evidencia apoya y cuál contradice?', 'hypothesisClassification', true, 'La interpretación la confirmas tú, aunque Starteria te sugiera una.', ['PRD-03:CP-3.3'], { allowsUnknown: false });
+      add('core', '¿Cuál es tu interpretación final y qué límites tiene?', 'confirmedInterpretation', true, 'No se decide sin una interpretación confirmada.', ['ExperimentResultAnalysis'], { allowsUnknown: false });
     }
     if (checkpointKey === 'CP-3.4') {
-      add('core', 'Elige decision: iterate, repeat_test, expand_sample, change_scope, pivot, scale_pilot, continue_implementation, transfer, integrate_to_roadmap, pause, close_with_learning o reformulate_challenge.', 'decision', true, 'Step 3 no cierra automaticamente; requiere decision del usuario.', ['PRD-03:CP-3.4'], { answerType: 'single_choice', allowsUnknown: false });
-      add('core', 'Explica rationale, riesgos, incertidumbres restantes, nextAction, owner, dueDate y requiredApprover.', 'decisionDetails', true, 'La decision debe ser ejecutable y trazable.', ['ExperimentResultAnalysis'], { allowsUnknown: false });
-      add('previous_answer', 'Que evidenceRefs sustentan la decision?', 'decisionEvidenceRefs', true, 'La decision debe estar respaldada por evidencia.', ['ExecutionLog', 'ExperimentResultAnalysis'], { allowsUnknown: false });
+      add('core', '¿Qué deciden? Por ejemplo: iterar, repetir la prueba, ampliar la muestra, pivotear, escalar el piloto, transferir, integrar al roadmap, pausar o cerrar con aprendizaje.', 'decision', true, 'El Step 3 no se cierra solo: la decisión es tuya.', ['PRD-03:CP-3.4'], { answerType: 'single_choice', allowsUnknown: false });
+      add('core', '¿Por qué esa decisión, cuál es el siguiente paso, quién lo hace, para cuándo y quién lo aprueba?', 'decisionDetails', true, 'La decisión tiene que poder ejecutarse.', ['ExperimentResultAnalysis'], { allowsUnknown: false });
+      add('previous_answer', '¿Qué evidencia respalda la decisión?', 'decisionEvidenceRefs', true, 'La decisión tiene que apoyarse en evidencia.', ['ExecutionLog', 'ExperimentResultAnalysis'], { allowsUnknown: false });
     }
     if (checkpointKey === 'CP-3.5') {
-      add('core', 'Confirma owner futuro, soporte, mantenimiento, infraestructura, seguridad, presupuesto, adopcion, documentacion, metricas, rollback y aceptacion del area receptora.', 'operationalReadinessChecklist', true, 'CP-3.5 solo aplica cuando la decision operacionaliza o escala.', ['PRD-03:CP-3.5'], { allowsUnknown: false });
-      add('core', 'Que bloqueos, aprobadores o plan alternativo quedan para operacionalizar?', 'operationalBlockers', true, 'El escalamiento no debe avanzar sin readiness operacional visible.', ['Step3Decision'], { allowsUnknown: false });
+      add('core', 'Para operarlo: ¿quién será responsable, quién da soporte, con qué presupuesto y lo aceptó el área que lo recibe?', 'operationalReadinessChecklist', true, 'Aparece porque la decisión implica operar o escalar.', ['PRD-03:CP-3.5'], { allowsUnknown: false });
+      add('core', '¿Qué bloqueos o aprobaciones faltan para operarlo y cuál es el plan si algo falla?', 'operationalBlockers', true, 'No conviene escalar sin saber si se puede operar.', ['Step3Decision'], { allowsUnknown: false });
     }
     if (checkpointKey === 'CP-4.1') {
-      add('previous_answer', 'Confirma decision, resultados, evidencia, limitaciones, riesgos, proximo paso, owner y aprobador transferidos desde Step 3.', 'step4TransferConfirmation', true, 'Step 4 se configura desde output confirmado de Step 3.', ['Step3ConfirmedOutput'], { allowsUnknown: false });
-      add('core', 'Quien es la audiencia primaria, decision maker, audiencias secundarias y deadline?', 'decisionAudience', true, 'CP-4.1 define audiencia y decision solicitada antes de redactar narrativa.', ['PRD-03:CP-4.1'], { allowsUnknown: false });
-      add('core', 'Que decision se solicita, que evidencia requieren, que objeciones anticipan y que formato prefieren?', 'audienceDecisionNeeds', true, 'El paquete debe responder a necesidades reales de decision, no forzar pitch.', ['Step3Decision'], { allowsUnknown: false });
+      add('previous_answer', '¿Sigue vigente la decisión del Step 3, con su siguiente paso y responsable? Indica si algo cambió.', 'step4TransferConfirmation', true, 'El Step 4 parte de la decisión confirmada en el Step 3.', ['Step3ConfirmedOutput'], { allowsUnknown: false });
+      add('core', '¿A quién se lo van a presentar, quién decide y para cuándo?', 'decisionAudience', true, 'Antes de armar el mensaje hay que saber a quién va dirigido.', ['PRD-03:CP-4.1'], { allowsUnknown: false });
+      add('core', '¿Qué decisión le piden a esa audiencia, qué evidencia va a querer ver y qué objeciones esperan?', 'audienceDecisionNeeds', true, 'El paquete responde a lo que esa audiencia necesita para decidir.', ['Step3Decision'], { allowsUnknown: false });
     }
     if (checkpointKey === 'CP-4.2') {
-      add('core', 'Redacta narrativa con contexto, foco, hipotesis, apuesta, ejecucion, resultados, aprendizajes, contradicciones, riesgos, limitaciones, recomendacion y proximo paso.', 'evidenceNarrative', true, 'CP-4.2 produce narrativa respaldada por evidencia.', ['PRD-03:CP-4.2'], { allowsUnknown: false });
-      add('previous_answer', 'Que evidenceRefs/sourceRefs respaldan las afirmaciones criticas y que limitaciones mantienen?', 'narrativeEvidenceRefs', true, 'Toda afirmacion critica debe preservar trazabilidad y confianza.', ['Step3Output'], { allowsUnknown: false });
+      add('core', 'Cuenta la historia en pocas líneas: qué querían resolver, qué probaron, qué resultó y qué recomiendan.', 'evidenceNarrative', true, 'La narrativa tiene que apoyarse en la evidencia.', ['PRD-03:CP-4.2'], { allowsUnknown: false });
+      add('previous_answer', '¿Qué evidencia respalda las afirmaciones más importantes y qué límites tienen?', 'narrativeEvidenceRefs', true, 'Las afirmaciones importantes tienen que poder rastrearse.', ['Step3Output'], { allowsUnknown: false });
     }
     if (checkpointKey === 'CP-4.3') {
-      add('route', 'Define el siguiente horizonte segun decision: roadmap, transferencia, operacion, iteracion o cierre.', 'nextHorizonPlan', true, 'CP-4.3 materializa el plan posterior adecuado al decisionType.', ['Step3Decision'], { allowsUnknown: false });
-      add('core', 'Incluye fases, alcance, owner, recursos, inversion, gobernanza, adopcion, riesgos, metricas, hitos, dependencias, rollback y seguimiento segun aplique.', 'nextHorizonDetails', true, 'El horizonte debe ser ejecutable pero minimo.', ['PRD-03:CP-4.3'], { allowsUnknown: false });
+      add('route', '¿Qué sigue después de la decisión: entra al roadmap, se transfiere, se opera, se itera o se cierra?', 'nextHorizonPlan', true, 'El plan siguiente depende de la decisión tomada.', ['Step3Decision'], { allowsUnknown: false });
+      add('core', '¿Cuáles son los próximos hitos, quién es responsable, qué recursos hacen falta y cómo se va a medir?', 'nextHorizonDetails', true, 'Basta con un plan mínimo que se pueda ejecutar.', ['PRD-03:CP-4.3'], { allowsUnknown: false });
     }
     if (checkpointKey === 'CP-4.4') {
-      add('core', 'Que artefactos minimos necesita esta audiencia: one-pager, memo, business case, pilot report, deck outline, implementation plan, handoff, learning report o closure report?', 'decisionArtifacts', true, 'No se generan todos los artefactos por defecto.', ['PRD-03:CP-4.4'], { allowsUnknown: false });
-      add('previous_answer', 'Confirma version, autor, fecha, limitaciones y evidenceRefs por artefacto.', 'artifactTraceability', true, 'Cada artefacto debe ser editable y trazable.', ['EvidenceBackedNarrative'], { allowsUnknown: false });
+      add('core', '¿Qué documentos necesita esta audiencia? Por ejemplo: un resumen de una página, un memo, un caso de negocio o una presentación.', 'decisionArtifacts', true, 'Sólo los que esa audiencia va a usar.', ['PRD-03:CP-4.4'], { allowsUnknown: false });
+      add('previous_answer', 'Para cada documento: ¿quién lo hizo, con qué fecha y en qué evidencia se apoya?', 'artifactTraceability', true, 'Cada documento tiene que poder rastrearse.', ['EvidenceBackedNarrative'], { allowsUnknown: false });
     }
     if (checkpointKey === 'CP-4.5') {
-      add('core', 'Registra transferencia, decision final o cierre: receptor, aceptacion, recursos, documentacion, capacitacion, soporte, permisos, fecha, metricas y seguimiento segun aplique.', 'transferOrClosure', true, 'CP-4.5 materializa transferencia o cierre organizacional.', ['PRD-03:CP-4.5'], { allowsUnknown: false });
-      add('core', 'Confirma estado final: completed, transferred, scaled, integrated_to_roadmap, closed_with_learning, paused, new_iteration_required, pivoted, seeking_capability o benefit_tracking.', 'finalState', true, 'El estado final se separa de resultado de hipotesis y contribucion al reto.', ['PRD-03:Estados finales'], { answerType: 'single_choice', allowsUnknown: false });
-      add('challenge_context', 'Como cambia la cobertura del reto sin marcarlo automaticamente como resuelto?', 'challengeCoverageUpdate', false, 'La cobertura final se actualiza con contribucion, evidencia, solapamiento y metricas.', ['ChallengeContribution']);
+      add('core', '¿Cómo queda: quién lo recibe, si lo aceptó, desde qué fecha y cómo se le va a dar seguimiento?', 'transferOrClosure', true, 'Así queda registrado el traspaso o el cierre.', ['PRD-03:CP-4.5'], { allowsUnknown: false });
+      add('core', '¿En qué estado termina la iniciativa? Por ejemplo: completada, transferida, escalada, integrada al roadmap, cerrada con aprendizaje, pausada, en nueva iteración o pivoteada.', 'finalState', true, 'El estado final es distinto del resultado de la hipótesis.', ['PRD-03:Estados finales'], { answerType: 'single_choice', allowsUnknown: false });
+      add('challenge_context', '¿Cuánto avanza el reto con esta iniciativa? (no lo da por resuelto)', 'challengeCoverageUpdate', false, 'El avance del reto se actualiza con lo que aportó esta iniciativa.', ['ChallengeContribution']);
     }
     return questions;
   }
@@ -3418,7 +3429,8 @@ const sufficiency = this.evaluateCheckpoint(
   private buildStep3Decision(merged: Record<string, any>, resultAnalysis: Record<string, any>, executionDesign: Record<string, any>) {
     const details = typeof merged.decisionDetails === 'object' && merged.decisionDetails !== null ? merged.decisionDetails as Record<string, any> : {};
     const rawDecision = typeof merged.decision === 'object' && merged.decision !== null ? merged.decision as Record<string, any> : { decision: merged.decision };
-    const decision = String(rawDecision.decision ?? rawDecision.type ?? merged.decision ?? 'iterate');
+    const rawValue = rawDecision.decision ?? rawDecision.type ?? merged.decision;
+    const decision = matchChoice(rawValue, DECISION_CHOICES) ?? String(rawValue ?? 'iterate');
     return {
       decision,
       rationale: String(rawDecision.rationale ?? details.rationale ?? resultAnalysis.interpretation ?? ''),
@@ -3823,7 +3835,8 @@ const sufficiency = this.evaluateCheckpoint(
       close_with_learning: 'closed_with_learning',
       reformulate_challenge: 'new_iteration_required',
     };
-    const normalized = byDecision[value] ?? value;
+    const decisionCode = byDecision[value] ? value : matchChoice(value, DECISION_CHOICES);
+    const normalized = byDecision[value] ?? matchChoice(value, FINAL_STATE_CHOICES) ?? (decisionCode ? byDecision[decisionCode] : undefined) ?? value;
     const allowed = new Set([
       'completed', 'transferred', 'scaled', 'integrated_to_roadmap', 'closed_with_learning', 'paused', 'new_iteration_required',
       'pivoted', 'seeking_capability', 'benefit_tracking',
@@ -4089,7 +4102,8 @@ const sufficiency = this.evaluateCheckpoint(
     const decision = typeof merged.decision === 'object' && merged.decision !== null
       ? String((merged.decision as Record<string, any>).decision ?? (merged.decision as Record<string, any>).type ?? '')
       : String(merged.decision ?? '');
-    return ['scale_pilot', 'continue_implementation', 'transfer', 'integrate_to_roadmap'].includes(decision)
+    const decisionCode = matchChoice(decision, DECISION_CHOICES) ?? decision;
+    return ['scale_pilot', 'continue_implementation', 'transfer', 'integrate_to_roadmap'].includes(decisionCode)
       || ['scale_pilot', 'continue_implementation', 'transfer', 'integrate_to_roadmap'].includes(String(masterContext.step3Output?.decision?.decision ?? ''));
   }
 
@@ -4160,7 +4174,8 @@ const sufficiency = this.evaluateCheckpoint(
     const allowed = new Set(['supports', 'contradicts', 'weak_signal', 'insufficient', 'context', 'new_uncertainty']);
     return items.map((item: any, index) => {
       const itemRefs = this.sourceRefsFrom(item?.sourceRefs ?? item?.sourceRef ?? item?.id ?? refs[index] ?? refs);
-      const classification = String(item?.classification ?? classifications[index] ?? 'context');
+      const rawClassification = item?.classification ?? classifications[index] ?? 'context';
+      const classification = matchChoice(rawClassification, EVIDENCE_CLASSIFICATION_CHOICES) ?? String(rawClassification);
       return {
         id: String(item?.id ?? `evidence-${index + 1}`),
         type: String(item?.type ?? item?.tipo ?? 'text'),
@@ -4194,8 +4209,8 @@ const sufficiency = this.evaluateCheckpoint(
       source: 'CompanyContextSnapshot',
       target,
       reason: coverageLevel === 'low'
-        ? 'Cobertura baja: usar como sugerencia y pedir confirmacion; no crear hard gate.'
-        : `Contexto empresarial afecta ${target}.`,
+        ? 'Hay poco contexto de la empresa: tómalo como una sugerencia a confirmar, no como un bloqueo.'
+        : `El contexto de la empresa influye en ${COMPANY_INFLUENCE_TARGET_LABEL[target] ?? 'esta pregunta'}.`,
       sourceRefs: companySnapshot.sources ?? [],
       coverageLevel,
       confirmationStatus: coverageLevel === 'low' ? 'needs_confirmation' : 'confirmed',
