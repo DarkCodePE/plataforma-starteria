@@ -71,7 +71,40 @@ describe('Portfolio Entry Experimental Session API', () => {
       .send({ ...body, notes: 'should never persist' }).expect(400);
     await request(app).post(endpoint).set('Authorization', 'Bearer user-1')
       .send({ ...body, organization: 'x'.repeat(9000) }).expect(400);
+    await request(app).post(endpoint).set('Authorization', 'Bearer user-1')
+      .send({ ...body, idempotencyKey: 'x'.repeat(129) }).expect(400);
+    await request(app).post(endpoint).set('Authorization', 'Bearer user-1')
+      .send({ ...body, purpose: 'PRODUCT_ACCESS' }).expect(400);
+    await request(app).post(endpoint).set('Authorization', 'Bearer user-1')
+      .send({ ...body, rawConversation: 'private conversation' }).expect(400);
     expect(submit).not.toHaveBeenCalled();
+  });
+
+  it('125F rate limits commercial writes independently of the semantic Path read', async () => {
+    const submit = vi.fn(async () => ({ submissionId: 'receipt-1', destinationType: 'DEMO',
+      purpose: 'DEMO_REQUEST', submittedAt: new Date().toISOString(), receiptStatus: 'RECEIVED',
+      contextShared: false, idempotentReplay: false }));
+    const { app, repository } = makeApp({
+      conversionSubmissionService: { submit } as unknown as ConversionSubmissionService,
+      options: { maxCreateRequests: 100, maxSubmitRequests: 100,
+        maxConversionSubmissionRequests: 1, windowMs: 60_000 },
+    });
+    const { sessionId } = await createOwnedConfirmedCriticalHandoff(repository);
+    const endpoint = `${base}/sessions/${sessionId}/conversion-submissions`;
+    const body = {
+      destinationType: 'DEMO', purpose: 'DEMO_REQUEST', destinationConfigVersion: 1,
+      sourceBinding: { criticalHandoffId: 'critical-1', criticalHandoffVersion: 1, sourceContextRevision: 0,
+        projectionVersion: 'starteria-path-projection-v0.1',
+        businessCapabilityBoundaryVersion: 'business-capability-boundary-v0.1',
+        pathSchemaVersion: 'starteria-path-dto-v0.2' },
+      email: 'person@example.org', contextSharingMode: 'NO_ENTRY_CONTEXT_SHARED',
+      idempotencyKey: 'test-submission-00000001',
+    };
+    await request(app).post(endpoint).set('Authorization', 'Bearer user-1').send(body).expect(201);
+    await request(app).post(endpoint).set('Authorization', 'Bearer user-1').send(body).expect(429);
+    expect(submit).toHaveBeenCalledOnce();
+    await request(app).get(`${base}/sessions/${sessionId}/starteria-path`)
+      .set('Authorization', 'Bearer user-1').expect(200);
   });
   it.each([
     [[], 'NO_VERIFIED_DESTINATION'], [['DEMO'], 'DEMO_ONLY'],

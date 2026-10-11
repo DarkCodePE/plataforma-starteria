@@ -37,6 +37,40 @@ function renderForm(type: 'DEMO' | 'EARLY_ACCESS' = 'DEMO', decisionInView: stri
 describe('125E bounded submission form', () => {
   beforeEach(() => { vi.clearAllMocks(); });
 
+  it('records bounded click, consent choice and accepted receipt without contact data', async () => {
+    const events: Array<Record<string, unknown>> = [];
+    (window as unknown as { dataLayer: Array<Record<string, unknown>> }).dataLayer = events;
+    service.submit.mockResolvedValue({ submissionId: 'private-receipt', receiptStatus: 'RECEIVED',
+      destinationType: 'DEMO', contextShared: false, idempotentReplay: false });
+    renderForm();
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: 'Solicitar una demo' }));
+    await user.type(screen.getByLabelText(/Correo electr/i), 'person@example.org');
+    await user.click(screen.getByRole('checkbox'));
+    await user.click(screen.getByRole('checkbox'));
+    await user.click(screen.getByRole('button', { name: 'Enviar solicitud' }));
+    await screen.findByTestId('conversion-submission-success');
+    expect(events.map((item) => item.event)).toEqual([
+      'demo_clicked', 'context_share_opt_in', 'context_share_declined', 'conversion_submitted',
+    ]);
+    expect(events.find((item) => item.event === 'conversion_submitted')).toEqual({
+      event: 'conversion_submitted', destinationType: 'DEMO', contextShared: false,
+      idempotentReplay: false, resultCategory: 'RECEIVED',
+    });
+    expect(JSON.stringify(events)).not.toMatch(/person@example.org|private-receipt|Decidir el pr/i);
+  });
+
+  it('moves keyboard focus into the inline form and restores it after cancel', async () => {
+    const user = userEvent.setup();
+    renderForm();
+    const action = screen.getByRole('button', { name: 'Solicitar una demo' });
+    action.focus();
+    await user.click(action);
+    expect(screen.getByRole('textbox', { name: /Correo electr/i })).toHaveFocus();
+    await user.click(screen.getByRole('button', { name: 'Cancelar' }));
+    expect(screen.getByRole('button', { name: 'Solicitar una demo' })).toHaveFocus();
+  });
+
   it.each(['DEMO', 'EARLY_ACCESS'] as const)('requires email and keeps context sharing off for %s', async (type) => {
     const user = userEvent.setup();
     service.submit.mockResolvedValue({ submissionId: 'receipt-1', receiptStatus: 'RECEIVED' });

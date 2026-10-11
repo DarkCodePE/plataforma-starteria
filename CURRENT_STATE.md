@@ -357,36 +357,31 @@ architecture is accepted as the KAN-125 implementation baseline. This
 slice-specific adoption does not change the global authority hierarchy.
 
 KAN-114 remains the sole business-reasoning source, and the KAN-119 Critical
-Handoff remains the governed 114D baseline. KAN-125A's deterministic projector
-was implemented and merged in [PR #180](https://github.com/DarkCodePE/plataforma-starteria/pull/180)
-at merge SHA adb810475fffbedf3015820babceecaa1cd30e35.
+Handoff remains the governed 114D baseline. KAN-125A–125E are integrated in
+`main` through PRs #180, #182, #185, #187, #189 (KAN-127 authority), and #190.
+KAN-125F completes the bounded local 114E implementation and verification;
+its evidence is in
+`docs/implementation/portfolio-entry/KAN-125F_STARTERIA_PATH_E2E_SECURITY_CLOSURE_v0.1.md`.
 
-114E IMPLEMENTATION_STATUS: PARTIAL_IMPLEMENTATION
+114E IMPLEMENTATION_STATUS: IMPLEMENTED_VERIFIED (125F local evidence; pending integration)
+114E VISUAL_STATUS: V2_PILOT (not V2_MIGRATED: ADR-003 remains open/deferred for 114F)
+114E COMMERCIAL_ACTIVATION: DISABLED / NO_VERIFIED_DESTINATION
 
-125A evidence: deterministic projector; 23 focused tests; backend typecheck
-PASS; no I/O, persistence, API, or UI; no legacy semantics; no 114F, Core, or
-Steps leakage. This is evidence for 125A only and does not claim 114E runtime
-completion.
+The current, confirmed 114D source drives a derived Path, owned read API and
+bounded UI. Verified first-party destinations and accepted submissions work only
+under controlled test fixtures; the production/default config has no verified
+Demo or Early Access destination. No production PII retention or commercial
+operation is approved by this implementation status.
 
 The accepted KAN-124 architecture is Option C: semantic Path DERIVED;
 conversion intent PERSISTED_ON_ACCEPTED_SUBMISSION; consent SUBMISSION_ONLY;
 Path view authorization SESSION_OWNERSHIP. These choices do not make Early
 Access or Demo destinations available.
 
-Current 114E boundaries:
-
-- no UI or API yet;
-- no persistence of the semantic Path;
-- no conversion runtime;
-- no verified Early Access or Demo destination;
-- no 114F, Core, or Steps;
-- legacy consumers remain KEEP_COMPAT, with no legacy semantic reuse.
-
-After KAN-126 merges, 125B is authorized only to implement the read boundary/API,
-SESSION_OWNERSHIP, the current-and-confirmed source gate, source
-binding/currentness, DTO allowlist, fail-closed stale/unconfirmed/invalid
-states, and legacy isolation. 125B is not authorized to implement UI,
-conversion, Early Access, Demo, consent persistence, 114F, Core, or Steps.
+Current 114E boundaries: semantic Path is derived and not persisted; conversion
+intent is persisted only on accepted submission with submission-only consent;
+no verified production Early Access or Demo destination; no 114F, Core, or Steps
+write; legacy consumers remain KEEP_COMPAT without legacy semantic reuse.
 
 The adoption does not promote Portfolio Setup continuity, resolve ADR-003,
 promote legacy starteria_path, recommended_approach, or recommended_cta,
