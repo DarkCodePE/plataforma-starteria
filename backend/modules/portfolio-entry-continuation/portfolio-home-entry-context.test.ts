@@ -1,9 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
 import { PortfolioEntryContinuationService } from './portfolio-entry-continuation.service';
 
-function makeService({ grant = true, owner = 'user-1' } = {}) {
+function makeService({ grant = true, owner = 'user-1', snapshotFormat = null as string | null } = {}) {
   const continuation = {
-    id: 'continuation-1', sessionId: 'session-1', continuedByUserId: owner,
+    id: 'continuation-1', sessionId: 'session-1', continuedByUserId: owner, snapshotFormat,
     portfolioScope: { kind: 'scoped_portfolio_grant', organizationId: 'org-1' },
     sourceSnapshot: {
       handoff: {
@@ -64,5 +64,13 @@ describe('Portfolio Home server-owned entry context', () => {
     expect(prisma).not.toHaveProperty('initiative.create');
     expect(prisma).not.toHaveProperty('strategicFront.create');
     expect(prisma).not.toHaveProperty('challenge.create');
+  });
+
+  it('does not reinterpret a 114F snapshot through the legacy Home or continuation readers', async () => {
+    const { service } = makeService({ snapshotFormat: 'PORTFOLIO_SETUP_114F_V1' });
+    await expect(service.readPortfolioHomeEntryContext({ continuationId: 'continuation-1', authenticatedUserId: 'user-1', permissions: new Set() }))
+      .rejects.toMatchObject({ code: 'PORTFOLIO_ENTRY_CONTINUATION_FORBIDDEN' });
+    await expect(service.readContinuation({ continuationId: 'continuation-1', authenticatedUserId: 'user-1', permissions: new Set() }))
+      .rejects.toMatchObject({ code: 'PORTFOLIO_ENTRY_CONTINUATION_NOT_FOUND' });
   });
 });

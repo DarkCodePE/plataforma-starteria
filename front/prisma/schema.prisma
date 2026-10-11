@@ -2756,6 +2756,8 @@ model PortfolioEntrySession {
   questionBudget        Json
   latestAnalysis        Json?
   continuationProfile   PortfolioEntryProfile?
+  continuationProfileVersion Int?
+  continuationProfileEvidenceRef String?
   contractVersion       String
   runtimeVersion        String
   schemaVersion         String
@@ -2775,7 +2777,7 @@ model PortfolioEntrySession {
   modelExecutions PortfolioEntryModelExecution[]
   conversion      PortfolioEntryConversion?
   conversionSubmissions PortfolioEntryConversionSubmission[]
-  portfolioContinuation PortfolioEntryPortfolioContinuation?
+  portfolioContinuations PortfolioEntryPortfolioContinuation[]
 
   @@index([ownerUserId])
   @@index([ownershipState])
@@ -2848,19 +2850,44 @@ model PortfolioEntryConversion {
 
 model PortfolioEntryPortfolioContinuation {
   id                String   @id @default(cuid())
-  sessionId         String   @unique
-  handoffId         String
-  confirmationId    String
+  sessionId         String
+  handoffId         String?
+  confirmationId    String?
   continuedByUserId String
-  portfolioScope    Json
-  sourceSnapshot    Json
-  pendingItems      Json
-  mappingVersion    String
+  portfolioScope    Json?
+  sourceSnapshot    Json?
+  pendingItems      Json?
+  mappingVersion    String?
   status            String   @default("CONTINUED")
-  destinationRoute  String
+  destinationRoute  String?
   continuedAt       DateTime @default(now())
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
+
+  // Null identifies untouched compatibility rows. Only the 114F adapter accepts the new format.
+  snapshotFormat               String?
+  snapshotGeneration           Int?
+  snapshotState                String?
+  sourceContextRevision        Int?
+  criticalHandoffId            String?
+  criticalHandoffVersion       Int?
+  criticalHandoffSchemaVersion String?
+  criticalHandoffConfirmedAt   DateTime?
+  starteriaPathProjectionVersion String?
+  starteriaPathSchemaVersion     String?
+  starteriaPathBoundaryVersion   String?
+  continuationProfile          PortfolioEntryProfile?
+  continuationProfileVersion   Int?
+  profileEvidenceRef           String?
+  organizationScopeId          String?
+  snapshotOperation            String?
+  idempotencyKeyHash           String?
+  requestFingerprint           String?
+  sourceBindingHash            String?
+  supersededAt                 DateTime?
+  supersededById               String?
+  carriedProjection            Json?
+  openItems                    Json?
 
   session         PortfolioEntrySession @relation(fields: [sessionId], references: [id], onDelete: Restrict)
   continuedByUser User                  @relation(fields: [continuedByUserId], references: [id], onDelete: Restrict)
@@ -2869,6 +2896,9 @@ model PortfolioEntryPortfolioContinuation {
   @@index([continuedByUserId])
   @@index([continuedAt])
   @@index([status])
+  @@unique([sessionId, snapshotGeneration], map: "PEContinuation_session_generation_key")
+  @@unique([sessionId, snapshotOperation, idempotencyKeyHash], map: "PEContinuation_operation_key")
+  @@index([sessionId, snapshotFormat, snapshotState], map: "PEContinuation_format_state_idx")
 }
 
 model PortfolioBootstrapSession {
