@@ -27,11 +27,24 @@ import type { ConversionSubmissionService } from '../../portfolio-entry-starteri
 import { InMemoryPortfolioEntryIdempotencyRepository } from '../infrastructure/in-memory-portfolio-entry-idempotency.repository';
 import type { PortfolioEntryIdempotencyRepository } from '../application/portfolio-entry-idempotency.repository';
 import { buildPortfolioEntryRouter } from '../portfolio-entry.router';
+import type { PortfolioSetupContinuityReadService } from '../../portfolio-entry-continuation/portfolio-setup-continuity-read.service';
 
 const base = '/api/v1/public/portfolio-entry';
 const legacyCompatibilityRepositories = new WeakMap<express.Express, InMemoryPortfolioEntrySessionRepository>();
 
 describe('Portfolio Entry Experimental Session API', () => {
+  it('114F GET requires authentication and passes only the server principal and session ID', async () => {
+    const read = vi.fn().mockResolvedValue({ dtoVersion: 'portfolio-setup-continuity-read-v0.1',
+      status: 'READY_PROVISIONAL', scopeState: 'NONE', portfolioAccess: { portfolioRead: false }, openItems: [] });
+    const { app } = makeApp({ portfolioSetupReadService: { read } as unknown as PortfolioSetupContinuityReadService });
+    const path = `${base}/sessions/session-1/portfolio-setup-continuity?organizationId=forged-tenant`;
+    await request(app).get(path).expect(401);
+    const response = await request(app).get(path).set('Authorization', 'Bearer owner-1').expect(200);
+    expect(response.body.data.status).toBe('READY_PROVISIONAL');
+    expect(read).toHaveBeenCalledOnce();
+    expect(read).toHaveBeenCalledWith({ sessionId: 'session-1', ownerUserId: 'owner-1' });
+  });
+
   it('125E rejects a commercial submission while no destination is verified', async () => {
     const { app, repository } = makeApp({ conversionSubmissionService: {
       submit: async () => { throw new AppError(503, 'Esta solicitud no está disponible.', 'CONVERSION_DESTINATION_UNAVAILABLE'); },
@@ -1218,6 +1231,7 @@ function makeApp(input: {
   starteriaPathProjector?: StarteriaPathProjector;
   starteriaPathConversionConfig?: () => unknown;
   conversionSubmissionService?: ConversionSubmissionService;
+  portfolioSetupReadService?: PortfolioSetupContinuityReadService;
   options?: Parameters<typeof buildPortfolioEntryRouter>[0];
 } = {}) {
   const app = express();
@@ -1246,6 +1260,7 @@ function makeApp(input: {
     ...(input.starteriaPathProjector ? { starteriaPathProjector: input.starteriaPathProjector } : {}),
     ...(input.starteriaPathConversionConfig ? { starteriaPathConversionConfig: input.starteriaPathConversionConfig } : {}),
     ...(input.conversionSubmissionService ? { conversionSubmissionService: input.conversionSubmissionService } : {}),
+    ...(input.portfolioSetupReadService ? { portfolioSetupReadService: input.portfolioSetupReadService } : {}),
   }));
   app.use(errorHandler);
   return { app, repository };

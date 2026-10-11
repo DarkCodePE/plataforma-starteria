@@ -35,6 +35,8 @@ import { PortfolioEntryConversionController } from '../portfolio-entry-conversio
 import { PortfolioEntryConversionService } from '../portfolio-entry-conversion/portfolio-entry-conversion.service';
 import { PortfolioEntryContinuationController } from '../portfolio-entry-continuation/portfolio-entry-continuation.controller';
 import { PortfolioEntryContinuationService } from '../portfolio-entry-continuation/portfolio-entry-continuation.service';
+import { PortfolioSetupContinuityReadController } from '../portfolio-entry-continuation/portfolio-setup-continuity-read.controller';
+import { PortfolioSetupContinuityReadService, createPortfolioSetupReadDependencies } from '../portfolio-entry-continuation/portfolio-setup-continuity-read.service';
 import type { CriticalHandoffProjection } from './presentation/critical-handoff-projection';
 import { StarteriaPathService, type StarteriaPathProjector } from '../portfolio-entry-starteria-path/application/starteria-path.service';
 import { StarteriaPathController } from '../portfolio-entry-starteria-path/starteria-path.controller';
@@ -71,6 +73,7 @@ export interface PortfolioEntryRouterDeps {
   optionalAuthenticate?: RequestHandler;
   conversionService?: PortfolioEntryConversionService;
   continuationService?: PortfolioEntryContinuationService;
+  portfolioSetupReadService?: PortfolioSetupContinuityReadService;
   sessionTtlMs?: number;
   idempotencyTtlMs?: number;
 }
@@ -127,6 +130,9 @@ export function buildPortfolioEntryRouter(
   const continuationController = new PortfolioEntryContinuationController(
     deps.continuationService ?? new PortfolioEntryContinuationService(prisma, idempotencyRepository),
   );
+  const portfolioSetupReadController = new PortfolioSetupContinuityReadController(
+    deps.portfolioSetupReadService ?? new PortfolioSetupContinuityReadService(createPortfolioSetupReadDependencies(prisma)),
+  );
   const router = Router();
   const auth = deps.authenticate ?? authenticate;
   const optionalAuth = deps.optionalAuthenticate ?? createOptionalAuthenticate(auth);
@@ -160,6 +166,7 @@ export function buildPortfolioEntryRouter(
   router.get('/sessions/:sessionId/confirmed-brief', auth, submitLimiter, controller.resolveConfirmedBrief);
   router.post('/sessions/:sessionId/abandon', optionalAuth, handoffLimiter, controller.abandonSession);
   router.get('/sessions/:sessionId/portfolio-contexts', auth, submitLimiter, continuationController.listPortfolioContexts);
+  router.get('/sessions/:sessionId/portfolio-setup-continuity', auth, submitLimiter, portfolioSetupReadController.read);
   router.post('/sessions/:sessionId/messages', optionalAuth, submitLimiter, controller.submitMessage);
   router.post('/sessions/:sessionId/guided-exploration', optionalAuth, submitLimiter, controller.guidedExploration);
   router.post('/sessions/:sessionId/handoff', optionalAuth, handoffLimiter, controller.materializeHandoff);
