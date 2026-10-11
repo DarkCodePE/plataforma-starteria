@@ -254,14 +254,21 @@ This freeze covers the provisional critical reading and its user-facing reasonin
 
 `KAN-114A` is only a local traceability label: no Jira issue with that key was found. Technical implementation therefore remains out of scope until a valid Jira HU and a separate technical authorization exist.
 
-#### ADR-003 — discrepancia abierta y diferida
+#### ADR-003 — estado factual reconciliado por KAN-129
 
-ADR-003 figura como `ACCEPTED` en su documento y en el índice de ADRs de
-producto, pero como `PROPOSED` en `CURRENT_STATE.md`. Esta discrepancia queda
-`OPEN / DEFERRED`; esta anotación no resuelve ni altera el estado de ADR-003.
-No bloquea KAN-114B, cuyo alcance excluye continuation, autenticación,
-conversión y Portfolio Setup. Debe reconciliarse antes de la fase futura
-Portfolio Setup Continuity / KAN-114F.
+ADR-003 está `ACCEPTED` en su documento y en el índice de ADRs de producto.
+Es autoridad de producto para la frontera registro/continuación: autenticación
+y confirmación de intención no canonizan negocio ni conceden autoridad
+organizacional; la continuación pública toma contexto Portfolio por defecto y
+la rama Initiative requiere condiciones explícitas gobernadas. Las auditorías
+que registraron `PROPOSED` conservan su observación histórica, sin determinar
+el estado actual. La antigua discrepancia `OPEN / DEFERRED` de estado queda
+reconciliada; la jerarquía de autoridad de la sección 2 no cambia.
+
+Esta aceptación no autoriza runtime 114F. Portfolio Setup Continuity requiere
+un Experience Contract aceptado, decisiones de autoridad contextual pendientes
+y un slice de implementación explícito. Las capacidades parciales existentes
+de continuación pertenecen a sus slices y no equivalen a 114F implementado.
 
 Nota de estado: implementado no equivale a aprobado ni a probado end-to-end. El Experience Contract v0.1 sigue siendo el contrato activo aprobado para Pantalla 1. Los documentos Agent/Skill conservan su estado propio hasta ratificacion explicita.
 
