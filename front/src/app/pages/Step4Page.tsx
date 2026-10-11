@@ -886,7 +886,9 @@ export function Step4Page() {
   const stepReady = mandatoryChecks.every(Boolean) && stepFinalized;
   const initiativeCanBeFinalized = stepReady && executiveDecisionReady;
   const isProjectClosed = project.status === 'Finalizado';
-  const stepStatus = stepFinalized ? 'Completado' : 'En progreso';
+  // El Step también queda completo cuando su resultado adaptativo se confirmó, aunque no se haya
+  // usado el cierre manual del formulario (los Steps nuevos se cierran por checkpoints).
+  const stepStatus = stepFinalized || adaptiveAlreadyConfirmed ? 'Completado' : 'En progreso';
 
   const modules = [
     {

@@ -116,6 +116,83 @@ export function formatResponse(value: unknown): string {
   return '';
 }
 
+// Metadatos de trazabilidad que el servidor guarda junto al resultado; no son contenido para leer.
+const OUTPUT_META_KEYS = new Set(['createdAt', 'updatedAt', 'outputKey', 'routeType', 'sourceRefs', 'evidenceRefs', 'confidence', 'topic', 'limitations']);
+
+function outputText(value: unknown): string {
+  if (value && typeof value === 'object' && !Array.isArray(value)) {
+    const item = value as Record<string, unknown>;
+    if (typeof item.text === 'string') return item.text.trim();
+    const main = item.summary ?? item.name ?? item.title ?? item.statement ?? item.label ?? item.description;
+    if (main != null) return outputText(main);
+    return Object.entries(item)
+      .filter(([key]) => !OUTPUT_META_KEYS.has(key))
+      .map(([, child]) => outputText(child))
+      .filter(Boolean)
+      .join(' · ');
+  }
+  if (Array.isArray(value)) return value.map(outputText).filter(Boolean).join(' · ');
+  if (typeof value === 'boolean') return value ? 'Sí' : 'No';
+  return formatResponse(value);
+}
+
+const OUTPUT_LABEL: Record<string, string> = {
+  narrative: 'Narrativa',
+  hypothesis: 'Hipótesis',
+  hypothesisResult: 'Resultado de la hipótesis',
+  decision: 'Decisión',
+  decisionType: 'Tipo de decisión',
+  decisionPackage: 'Paquete de decisión',
+  recommendation: 'Recomendación',
+  alternatives: 'Alternativas',
+  sustainableClaims: 'Afirmaciones sostenibles',
+  finalState: 'Estado final',
+  nextHorizon: 'Siguiente horizonte',
+  audienceBrief: 'Audiencia',
+  completionRoute: 'Ruta de cierre',
+  transferOrClosure: 'Transferencia o cierre',
+  organizationalDecision: 'Decisión organizacional',
+  challengeCoverage: 'Cobertura del reto',
+  challengeContribution: 'Aporte al reto',
+  finalChallengeContribution: 'Aporte final al reto',
+  selectedBet: 'Apuesta seleccionada',
+  executionSummary: 'Resumen de ejecución',
+  executionLog: 'Registro de ejecución',
+  resultAnalysis: 'Análisis de resultados',
+  executionReadiness: 'Preparación para ejecutar',
+  operationalReadiness: 'Preparación operativa',
+  risks: 'Riesgos',
+  scope: 'Alcance',
+  metric: 'Métrica',
+  baseline: 'Línea base',
+  threshold: 'Umbral',
+  evidence: 'Evidencia',
+  facts: 'Hechos',
+  gaps: 'Vacíos',
+  learning: 'Aprendizaje',
+  objective: 'Objetivo',
+  assumptions: 'Supuestos',
+  restrictions: 'Restricciones',
+  initiativeCompleted: 'Iniciativa completada',
+  lifecycleProjection: 'Ciclo de vida',
+  methodologicalCompletion: 'Cierre metodológico',
+  portfolioReviewRequired: 'Requiere revisión del portafolio',
+};
+
+function humanizeKey(key: string): string {
+  if (OUTPUT_LABEL[key]) return OUTPUT_LABEL[key];
+  const words = key.replace(/([a-z0-9])([A-Z])/g, '$1 $2').replace(/[_-]+/g, ' ').toLowerCase();
+  return words.charAt(0).toUpperCase() + words.slice(1);
+}
+
+/** El resultado del Step como pares etiqueta → texto, sin metadatos ni campos vacíos. */
+export function outputSummaryRows(output: Record<string, unknown>): Array<{ key: string; label: string; text: string }> {
+  return Object.entries(output)
+    .filter(([key]) => !OUTPUT_META_KEYS.has(key))
+    .map(([key, value]) => ({ key, label: humanizeKey(key), text: outputText(value) }))
+    .filter(row => row.text);
+}
+
 function unansweredRequired(questions: AdaptiveQuestion[], responses: Record<string, string>, unknowns: Record<string, boolean>) {
   return questions.filter(question => {
     if (question.optional || question.priority === 'could') return false;
@@ -196,6 +273,9 @@ export function AdaptiveCheckpointWorkspace({
   const configuredCheckpoints = config?.checkpoints ?? [];
   const completedList = completedCheckpointsFor(core, step);
   const completedCheckpoints = completedList.length;
+  // Hay checkpoints que se activan según el contexto (p. ej. CP-3.5) y no figuran en la
+  // configuración: el total cuenta los configurados más los confirmados que no están en ella.
+  const totalCheckpoints = new Set([...configuredCheckpoints.map(item => item.code), ...completedList.map(item => item.key)]).size;
   // Sin checkpoint activo en este Step y con checkpoints confirmados: el Step ya se hizo. Se
   // muestra lo que se respondió en vez de "Aún no hay checkpoint activo" / "0 preguntas".
   const stepDone = !checkpoint && completedCheckpoints > 0;
@@ -239,7 +319,7 @@ export function AdaptiveCheckpointWorkspace({
             </p>
             {configuredCheckpoints.length > 0 && (
               <p className="mt-2 text-xs text-indigo-700" style={{ fontWeight: 700 }}>
-                Progreso: {completedCheckpoints}/{configuredCheckpoints.length} checkpoints confirmados
+                Progreso: {completedCheckpoints}/{totalCheckpoints} checkpoints confirmados
               </p>
             )}
           </div>
@@ -447,10 +527,17 @@ export function AdaptiveCheckpointWorkspace({
             )}
             {outputPreview && (
               <div className="rounded-xl border border-emerald-200 bg-white p-3">
-                <p className="text-xs uppercase text-emerald-700" style={{ fontWeight: 800 }}>Resultado en construcción</p>
-                <pre className="mt-2 max-h-56 overflow-auto whitespace-pre-wrap break-words text-xs text-slate-700">
-                  {JSON.stringify(outputPreview, null, 2)}
-                </pre>
+                <p className="text-xs uppercase text-emerald-700" style={{ fontWeight: 800 }}>
+                  {outputConfirmed ? 'Resultado confirmado' : 'Resultado en construcción'}
+                </p>
+                <dl className="mt-2 max-h-72 space-y-2 overflow-auto text-xs">
+                  {outputSummaryRows(outputPreview).map(row => (
+                    <div key={row.key}>
+                      <dt className="text-slate-500" style={{ fontWeight: 700 }}>{row.label}</dt>
+                      <dd className="break-words text-slate-700">{row.text}</dd>
+                    </div>
+                  ))}
+                </dl>
               </div>
             )}
             {!checkpoint && !stepDone && (
