@@ -587,23 +587,30 @@ its current status as `ACCEPTED`; this does not change the 114E visual state or
 promote 114F. Legacy consumers remain explicit `KEEP_COMPAT`. PR #192 merged
 125F at `bf5547cf06e67ea929e1c37fbe44b2155ab454df`.
 
-## KAN-128 / KAN-129 — Portfolio Setup Continuity (114F), authority gate
+## KAN-128 / KAN-132 — Portfolio Setup Continuity (114F), scoped authority adoption
 
 ```text
 slice_id: PORTFOLIO_SETUP_CONTINUITY_114F
-HU: KAN-128; KAN-129 ADR-003 factual/authority reconciliation only
-logic_status: CANDIDATE (114F Experience Contract not yet materialized or accepted)
+HU: KAN-128; KAN-129 ADR-003 reconciliation; KAN-130 decision package; KAN-131 contract; KAN-132 scoped adoption
+logic_status: ACCEPTED / FROZEN (114F Experience Contract v0.1, implementation planning only)
 implementation_status: NOT_IMPLEMENTED (as a 114F slice; earlier scoped continuation primitives exist)
 visual_status: V2_TARGET_UNRESOLVED
-evidence_status: SUPPORTED (ADR-003 status reconciliation and earlier scoped runtime evidence; no 114F verification)
-authority: Core v0.2 factual; ADR-003 ACCEPTED for registration/continuation; ADR-004 and ADR-005 ACCEPTED for their bounded access/handoff decisions; Portfolio Entry Logic Contract v0.1
-blockers: accepted 114F Experience Contract; explicit 114F implementation slice; server-owned profile establishment; grant issuer/provisioning and organization scope policy; target-scoped Initiative invitation policy and integration; continuation snapshot/currentness decision; legacy consumer disposition
+evidence_status: CONTRACT_ACCEPTED (KAN-132 semantic review; no 114F runtime verification)
+authority: Core v0.2 factual; ADR-003/004/005 ACCEPTED; Portfolio Entry Logic Contract v0.1; governed 114D; accepted 114E where relevant; Portfolio Setup Continuity Experience Contract v0.1 ACCEPTED for 114F only. KAN-130 remains shaping evidence/decision baseline below accepted ADRs and contract
+technical_audit_status: NOT_YET_COMPLETED
+technical_audit_authorized: YES
+implementation_planning_authorized: YES
+runtime_implementation_authorized: NO
+next_gate: TECHNICAL_CURRENT_STATE_AUDIT_AND_ARCHITECTURE
+blockers: technical current-state audit and architecture; explicit 114F implementation slice; server-owned profile transition; grant issuer/provisioning and organization scope policy; target-scoped Initiative invitation policy and integration; snapshot/currentness adaptation; legacy consumer disposition
 legacy_treatment: KEEP_COMPAT pending repository-wide consumer evidence and separate retirement authority
+old_post_entry_disposition: SUPERSEDED_IN_PART for the overlapping 114F boundary; documentary status remains PROPOSED FOR REVIEW
 ```
 
-ADR-003's former status conflict is no longer a 114F blocker. Its acceptance
-does not make 114F implementation-ready or authorize Portfolio Setup, Core,
-Steps, route retirement or runtime changes. See
+ADR-003's former status conflict is no longer a 114F blocker. KAN-132 accepts
+only the 114F logic; technical audit and implementation planning may proceed,
+while runtime, frontend, backend, Prisma, grant/issuer provisioning, Core,
+Steps and route retirement remain unauthorized. See
 `docs/implementation/portfolio-entry/KAN-129_ADR003_114F_AUTHORITY_RECONCILIATION_v0.1.md`.
 
 # 6. V2 E2E slice map
@@ -620,7 +627,7 @@ Steps, route retirement or runtime changes. See
 | Clarification | CANDIDATE + hypotheses | EXPERIMENTAL / VERIFY | V2_PILOT | TESTING | TEST |
 | Handoff / Value Handoff Cognition | CANDIDATE + hypotheses | EXPERIMENTAL / VERIFY | V2_PILOT | TESTING | TEST |
 | Registration / continuation | CANDIDATE | IMPLEMENTED_UNVERIFIED | MIXED | TESTING | VERIFY grant and full E2E |
-| Portfolio Setup Continuity 114F | CANDIDATE; Experience Contract not materialized | NOT_IMPLEMENTED as 114F slice | V2_TARGET_UNRESOLVED | SUPPORTED for authority gate only | SHAPE contract and decisions; no runtime authorization |
+| Portfolio Setup Continuity 114F | ACCEPTED / FROZEN for implementation planning | NOT_IMPLEMENTED as 114F slice | V2_TARGET_UNRESOLVED | CONTRACT_ACCEPTED; no runtime verification | TECHNICAL_CURRENT_STATE_AUDIT_AND_ARCHITECTURE; no runtime authorization |
 | Portfolio Bootstrap | CANDIDATE | IMPLEMENTED_VERIFIED reported | V2_MIGRATED / VERIFY | VERIFIED reported | RECONCILE |
 | Portfolio Home | TARGET AUTHORITY FROZEN PH-0 / CANDIDATE | PH-2 read-model implementation evidence; post-merge `GO_WITH_GAPS`; runtime not certified | V2_TARGET_DEFINED; PH-3A evidence only | REQUIRES_RETEST | RECONCILE; PH-3B not implemented |
 | Strategic Framing | ACTIVE_V2_BASELINE / APPROVED EXPERIENCE BASELINE (SF-0) | PARTIAL_IMPLEMENTATION / IMPLEMENTED_UNVERIFIED (SF-1, SF-2, SF-3A, SF-3B) | V2_TARGET_DEFINED | TESTING | SF-3C+ not implemented; no end-to-end runtime, UI, Copilot or canonical promotion |

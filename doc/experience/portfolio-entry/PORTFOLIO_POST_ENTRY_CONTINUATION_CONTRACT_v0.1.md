@@ -1,5 +1,7 @@
 # Starteria - Portfolio Post-Entry Continuation Contract
 
+> SUPERSEDED_IN_PART para la frontera 114F — Portfolio Setup Continuity: gobierna el [contrato 114F aceptado](../../../docs/experience/portfolio-entry/PORTFOLIO_SETUP_CONTINUITY_EXPERIENCE_CONTRACT_v0.1.md). Ver [CURRENT_STATE](../../../CURRENT_STATE.md). Este documento conserva su estado `PROPOSED FOR REVIEW` y su contenido histórico; la continuidad sin repetición y la separación de permisos son compatibles, pero los campos y el handoff legacy no gobiernan 114F.
+
 > PROPOSED FOR REVIEW: ver `../../../CURRENT_STATE.md`. Este contrato esta propuesto para revision. La implementacion fue observada como `IMPLEMENTED / LOCALLY VALIDATED` en el checkout productivo autorizado `Dashboardstarteria`, pero esa validacion no aprueba por si misma este contrato ni autoriza incorporar runtime productivo en este repositorio.
 
 Documento: `PORTFOLIO_POST_ENTRY_CONTINUATION_CONTRACT_v0.1.md`
