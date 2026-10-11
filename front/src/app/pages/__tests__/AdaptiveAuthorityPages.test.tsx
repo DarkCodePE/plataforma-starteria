@@ -667,6 +667,32 @@ describe('Adaptive authority in pages', () => {
     expect(screen.queryByText(/No pudimos cargar el proyecto/i)).not.toBeInTheDocument();
   });
 
+  it('Step4 se marca Completado cuando su resultado adaptativo ya está confirmado', async () => {
+    const atStep4 = serverCoreAtStep(4, 'CP-4.1');
+    const step4Done = {
+      ...atStep4,
+      activeCheckpoint: null,
+      stepOutputs: [...atStep4.stepOutputs, { id: 'out-4', step: 4, status: 'confirmed', version: 1, output: {} }],
+    };
+    getAdaptiveCore.mockResolvedValue(step4Done);
+
+    render(<Step4Page />);
+
+    const heading = await screen.findByRole('heading', { name: 'Step 4' });
+    await waitFor(() => expect(heading.parentElement).toHaveTextContent('Completado'));
+    expect(heading.parentElement).not.toHaveTextContent('En progreso');
+  });
+
+  it('Step4 sigue En progreso mientras su resultado no está confirmado', async () => {
+    getAdaptiveCore.mockResolvedValue(serverCoreAtStep(4, 'CP-4.1'));
+
+    render(<Step4Page />);
+
+    const heading = await screen.findByRole('heading', { name: 'Step 4' });
+    await waitFor(() => expect(getAdaptiveCore).toHaveBeenCalled());
+    expect(heading.parentElement).toHaveTextContent('En progreso');
+  });
+
   it('shows a real load error once when route project hydration fails', async () => {
     appState.projects = [];
     getById.mockRejectedValueOnce(new Error('not found'));

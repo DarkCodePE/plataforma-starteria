@@ -251,6 +251,37 @@ describe('AdaptiveCheckpointWorkspace — Step completado', () => {
     expect(screen.queryByText(/queda bloqueado/)).not.toBeInTheDocument();
   });
 
+  it('cuenta los checkpoints activados por contexto en el total (no muestra 2/1)', () => {
+    // La configuración define sólo CP-0.1; CP-0.2 se activó aparte (como CP-3.5 en producción).
+    render(<AdaptiveCheckpointWorkspace core={doneCore} step={0} checkpoint={null} questions={[]} outputConfirmed />);
+    expect(screen.getByText('Progreso: 2/2 checkpoints confirmados')).toBeInTheDocument();
+  });
+
+  it('muestra el resultado del Step como texto legible, sin JSON ni metadatos', () => {
+    const output = {
+      createdAt: '2026-10-10T23:09:37.496Z',
+      outputKey: 'Step4DecisionMemo',
+      sourceRefs: ['crm-report'],
+      narrative: {
+        focus: { text: 'Reducir retrabajo comercial.', topic: 'focus', confidence: 'strong', sourceRefs: ['crm-report'] },
+        risks: { text: '', topic: 'risks' },
+      },
+      decisionType: 'scale',
+      alternatives: [{ title: 'Piloto ampliado' }, { title: 'Automatizar reporte' }],
+      initiativeCompleted: true,
+      lifecycleProjection: { stage: 'closed' },
+    };
+    render(<AdaptiveCheckpointWorkspace core={doneCore} step={0} checkpoint={null} questions={[]} outputPreview={output} outputConfirmed />);
+
+    expect(screen.getByText('Resultado confirmado')).toBeInTheDocument();
+    expect(screen.getByText('Narrativa')).toBeInTheDocument();
+    expect(screen.getByText('Reducir retrabajo comercial.')).toBeInTheDocument();
+    expect(screen.getByText('Tipo de decisión')).toBeInTheDocument();
+    expect(screen.getByText('Piloto ampliado · Automatizar reporte')).toBeInTheDocument();
+    expect(screen.getByText('Iniciativa completada').nextSibling).toHaveTextContent('Sí');
+    expect(screen.queryByText(/createdAt|sourceRefs|crm-report|"focus"/)).not.toBeInTheDocument();
+  });
+
   it('un Step sin checkpoints confirmados sigue mostrándose bloqueado', () => {
     render(<AdaptiveCheckpointWorkspace core={{ ...doneCore, checkpointInstances: [] }} step={2} checkpoint={null} questions={[]} />);
     expect(screen.getByText(/queda bloqueado/)).toBeInTheDocument();
