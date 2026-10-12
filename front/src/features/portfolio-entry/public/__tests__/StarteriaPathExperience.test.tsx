@@ -105,7 +105,7 @@ describe('StarteriaPathExperience', () => {
       availability: 'DEMO_ONLY', conversionConfigVersion: 2,
       destinations: [{ type: 'DEMO', status: 'VERIFIED_ACTIVE', destinationKind: 'FIRST_PARTY',
         contextSharingSupported: true, label: CONVERSION_COPY.DEMO.label,
-        availabilityDisclosure: 'Una solicitud no reserva una cita.' }],
+        availabilityDisclosure: 'Envía una solicitud de contacto para una posible demostración. No reserva una cita.' }],
     } });
     view.rerender(<StarteriaPathExperience requestState="ready" path={verified} onRetry={vi.fn()} />);
     expect(events.filter((item) => item.event === 'starteria_path_viewed')).toHaveLength(1);
