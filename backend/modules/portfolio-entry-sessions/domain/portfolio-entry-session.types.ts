@@ -130,6 +130,8 @@ export type PortfolioEntrySession = {
   questionBudget: PortfolioEntryQuestionBudgetState;
   latestAnalysis?: PortfolioEntryAnalysisV2 | null;
   continuationProfile?: PortfolioEntryProfile | null;
+  continuationProfileVersion?: number | null;
+  continuationProfileEvidenceRef?: string | null;
   latestHandoff?: PortfolioEntryHandoffRecord | null;
   confirmation?: PortfolioEntryConfirmation | null;
   versioning: PortfolioEntryVersioning;

@@ -166,6 +166,8 @@ export type PrismaPortfolioEntrySessionRow = {
   questionBudget: Prisma.JsonValue;
   latestAnalysis: Prisma.JsonValue | null;
   continuationProfile: string | null;
+  continuationProfileVersion: number | null;
+  continuationProfileEvidenceRef: string | null;
   contractVersion: string;
   runtimeVersion: string;
   schemaVersion: string;
@@ -295,6 +297,8 @@ export class PrismaPortfolioEntrySessionMapper {
       continuationProfile: row.continuationProfile === null
         ? null
         : assertEnumValue(PORTFOLIO_ENTRY_PROFILES, row.continuationProfile, 'session.continuationProfile') as PortfolioEntryProfile,
+      continuationProfileVersion: row.continuationProfileVersion,
+      continuationProfileEvidenceRef: row.continuationProfileEvidenceRef,
       latestHandoff,
       confirmation,
       versioning: this.versioningFromRow(row),
@@ -430,6 +434,8 @@ export class PrismaPortfolioEntrySessionMapper {
         ? Prisma.JsonNull
         : toInputJson(session.latestAnalysis),
       continuationProfile: session.continuationProfile ?? null,
+      continuationProfileVersion: session.continuationProfileVersion ?? null,
+      continuationProfileEvidenceRef: session.continuationProfileEvidenceRef ?? null,
       contractVersion: session.versioning.contractVersion,
       runtimeVersion: session.versioning.runtimeVersion,
       schemaVersion: session.versioning.schemaVersion,
@@ -457,7 +463,6 @@ export class PrismaPortfolioEntrySessionMapper {
       latestAnalysis: session.latestAnalysis === undefined || session.latestAnalysis === null
         ? Prisma.JsonNull
         : toInputJson(session.latestAnalysis),
-      continuationProfile: session.continuationProfile ?? null,
       revision: session.revision,
       // contextRevision changes only through the dedicated repository primitive.
       updatedAt: session.updatedAt,
