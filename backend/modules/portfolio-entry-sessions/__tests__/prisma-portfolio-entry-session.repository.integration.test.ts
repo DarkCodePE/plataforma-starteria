@@ -49,6 +49,12 @@ describeIntegration('PrismaPortfolioEntrySessionRepository', () => {
 
   it('creates, reads, authorizes, claims and expires a pre-canonical session', async () => {
     const { service, repository } = makeService();
+    const sideEffectsBefore = {
+      grants: await prisma.organizationPortfolioAccessGrant.count(),
+      projects: await prisma.project.count(),
+      steps: await prisma.step.count(),
+      bootstrap: await prisma.portfolioBootstrapSession.count(),
+    };
     const { session, publicAccessToken } = await createSession(service);
     const storedRow = await prisma.portfolioEntrySession.findUnique({ where: { id: session.id } });
 
@@ -57,21 +63,53 @@ describeIntegration('PrismaPortfolioEntrySessionRepository', () => {
       ownershipState: 'ANONYMOUS',
       lifecycleStatus: 'ENTRY_CAPTURED',
       revision: 0,
+      continuationProfile: 'PORTFOLIO_LEAD_ENTRY',
+      continuationProfileVersion: 1,
+      continuationProfileEvidenceRef: `session-created:${session.id}`,
     });
     expect(storedRow?.publicAccessTokenHash).toBe(hashPublicAccessToken(publicAccessToken));
     expect(JSON.stringify(storedRow)).not.toContain(publicAccessToken);
+    expect({
+      grants: await prisma.organizationPortfolioAccessGrant.count(),
+      projects: await prisma.project.count(),
+      steps: await prisma.step.count(),
+      bootstrap: await prisma.portfolioBootstrapSession.count(),
+    }).toEqual(sideEffectsBefore);
     await expect(repository.findSessionById(session.id)).resolves.toMatchObject({ id: session.id });
     await expect(service.getForPublicAccess({ sessionId: session.id, publicAccessToken })).resolves.toMatchObject({ id: session.id });
 
     const claimed = await service.claimOwnership(session.id, 'user-portfolio-entry-db');
     await expect(service.getForOwner(session.id, 'user-portfolio-entry-db')).resolves.toMatchObject({ id: session.id });
     expect(claimed.revision).toBe(1);
+    expect([claimed.continuationProfile, claimed.continuationProfileVersion, claimed.continuationProfileEvidenceRef])
+      .toEqual([storedRow?.continuationProfile, storedRow?.continuationProfileVersion, storedRow?.continuationProfileEvidenceRef]);
+    const afterClaim = await prisma.portfolioEntrySession.findUniqueOrThrow({ where: { id: session.id } });
+    expect([afterClaim.continuationProfile, afterClaim.continuationProfileVersion, afterClaim.continuationProfileEvidenceRef])
+      .toEqual([storedRow?.continuationProfile, storedRow?.continuationProfileVersion, storedRow?.continuationProfileEvidenceRef]);
 
     const expired = await service.markExpired(session.id);
     expect(expired.lifecycleStatus).toBe('EXPIRED');
     expect(expired.expiredAt).toBeInstanceOf(Date);
     await expect(repository.touchActivity(session.id, new Date(), expired.revision))
       .rejects.toMatchObject({ code: 'PORTFOLIO_ENTRY_SESSION_EXPIRED' });
+  });
+
+  it('keeps historical incomplete profile evidence absent through read, resume and claim', async () => {
+    const { service, repository } = makeService();
+    const { session, publicAccessToken } = await createSession(service);
+    await prisma.portfolioEntrySession.update({ where: { id: session.id }, data: {
+      continuationProfileVersion: null, continuationProfileEvidenceRef: null,
+    } });
+    const before = await prisma.portfolioEntrySession.findUniqueOrThrow({ where: { id: session.id } });
+    const resumed = await service.getForPublicAccess({ sessionId: session.id, publicAccessToken });
+    const read = await repository.findSessionById(session.id);
+    expect([resumed.continuationProfileVersion, resumed.continuationProfileEvidenceRef]).toEqual([null, null]);
+    expect([read?.continuationProfileVersion, read?.continuationProfileEvidenceRef]).toEqual([null, null]);
+    const claimed = await service.claimOwnership(session.id, 'user-portfolio-entry-db');
+    expect([claimed.continuationProfileVersion, claimed.continuationProfileEvidenceRef]).toEqual([null, null]);
+    const after = await prisma.portfolioEntrySession.findUniqueOrThrow({ where: { id: session.id } });
+    expect([after.continuationProfile, after.continuationProfileVersion, after.continuationProfileEvidenceRef])
+      .toEqual([before.continuationProfile, before.continuationProfileVersion, before.continuationProfileEvidenceRef]);
   });
 
   it('persists pending input as the next CAS revision before a turn is appended', async () => {

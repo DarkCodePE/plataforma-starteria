@@ -132,8 +132,9 @@ export class PortfolioEntrySessionService {
     const now = input.now ?? this.now();
     const publicAccessToken = createPublicAccessToken();
     const initialBudget = createInitialBudget();
+    const sessionId = randomUUID();
     const session: PortfolioEntrySession = {
-      id: randomUUID(),
+      id: sessionId,
       ownerUserId: null,
       publicAccessTokenHash: hashPublicAccessToken(publicAccessToken),
       ownershipState: 'ANONYMOUS',
@@ -150,6 +151,8 @@ export class PortfolioEntrySessionService {
       questionBudget: initialBudget,
       latestAnalysis: null,
       continuationProfile: 'PORTFOLIO_LEAD_ENTRY',
+      continuationProfileVersion: 1,
+      continuationProfileEvidenceRef: `session-created:${sessionId}`,
       latestHandoff: null,
       confirmation: null,
       versioning: this.config.versioning,

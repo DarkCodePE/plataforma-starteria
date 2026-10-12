@@ -30,7 +30,20 @@ describe('PortfolioEntrySessionService', () => {
     expect(session.executionStatus).toBe('NOT_STARTED');
     expect(session.revision).toBe(0);
     expect(session.contextRevision).toBe(0);
+    expect(session.continuationProfile).toBe('PORTFOLIO_LEAD_ENTRY');
+    expect(session.continuationProfileVersion).toBe(1);
+    expect(session.continuationProfileEvidenceRef).toBe(`session-created:${session.id}`);
     expect(publicAccessToken).toHaveLength(64);
+  });
+
+  it('establishes the same server-owned profile for authenticated Entry origin', async () => {
+    const { service } = makeService();
+    const { session } = await service.createAnonymousSession({ entryOrigin: 'authenticated_portfolio_entry' });
+    expect(session).toMatchObject({
+      continuationProfile: 'PORTFOLIO_LEAD_ENTRY',
+      continuationProfileVersion: 1,
+      continuationProfileEvidenceRef: `session-created:${session.id}`,
+    });
   });
 
   it('does not persist the raw public access token', async () => {
@@ -79,6 +92,8 @@ describe('PortfolioEntrySessionService', () => {
     expect(claimed.ownershipState).toBe('CLAIMED');
     expect(claimed.ownerUserId).toBe('user-1');
     expect(claimed.contextRevision).toBe(0);
+    expect([claimed.continuationProfile, claimed.continuationProfileVersion, claimed.continuationProfileEvidenceRef])
+      .toEqual([session.continuationProfile, session.continuationProfileVersion, session.continuationProfileEvidenceRef]);
     await expect(service.getForOwner(session.id, 'user-1')).resolves.toMatchObject({ id: session.id });
   });
 
