@@ -176,12 +176,44 @@ describeDatabase('114F write/snapshot PostgreSQL boundary', () => {
           usableNow: [], decisionChangingUnknowns: [], firstMovement: null }, confirmationState: 'confirmed',
         confirmedAt, confirmedByUserId: f.userId,
       } });
+      const read = new PortfolioSetupContinuityReadService(createPortfolioSetupReadDependencies(prisma));
+      const beforeRecovery = {
+        revision: (await prisma.portfolioEntrySession.findUniqueOrThrow({ where: { id: f.sessionId } })).revision,
+        snapshots: await prisma.portfolioEntryPortfolioContinuation.count({ where: { sessionId: f.sessionId } }),
+        idempotencyRows: await prisma.portfolioEntryApiIdempotency.count({ where: { sessionId: f.sessionId } }),
+        projects: await prisma.project.count({ where: { ownerId: f.userId } }),
+        steps: await prisma.step.count(),
+        grants: await prisma.organizationPortfolioAccessGrant.count({ where: { userId: f.userId } }),
+        bootstrap: await prisma.portfolioBootstrapSession.count({ where: { userId: f.userId } }),
+      };
+      const recovered = await read.read({ sessionId: f.sessionId, ownerUserId: f.userId });
+      expect(recovered.status).toBe('READY_AUTHORIZED_SCOPE');
+      expect(recovered.snapshot).toBeUndefined();
+      expect(recovered.sourceBinding).toMatchObject({ sessionId: f.sessionId, contextRevision: 2,
+        criticalHandoffId: nextHandoffId, criticalHandoffVersion: 2, confirmedAt: confirmedAt.toISOString() });
+      expect(recovered.carriedContext?.criticalReading).toBe('Revised reading');
+      expect(recovered.currentScope?.organizationId).toBe(f.organizationIds[0]);
+      expect(await prisma.portfolioEntryPortfolioContinuation.findUniqueOrThrow({ where: { id: a.snapshotId } }))
+        .toMatchObject({ snapshotState: 'CURRENT', supersededAt: null, supersededById: null });
+      expect({
+        revision: (await prisma.portfolioEntrySession.findUniqueOrThrow({ where: { id: f.sessionId } })).revision,
+        snapshots: await prisma.portfolioEntryPortfolioContinuation.count({ where: { sessionId: f.sessionId } }),
+        idempotencyRows: await prisma.portfolioEntryApiIdempotency.count({ where: { sessionId: f.sessionId } }),
+        projects: await prisma.project.count({ where: { ownerId: f.userId } }),
+        steps: await prisma.step.count(),
+        grants: await prisma.organizationPortfolioAccessGrant.count({ where: { userId: f.userId } }),
+        bootstrap: await prisma.portfolioBootstrapSession.count({ where: { userId: f.userId } }),
+      }).toEqual(beforeRecovery);
       await expect(service.continue(input(f, 'parallel-one'))).rejects.toMatchObject({ code: 'STALE_SOURCE' });
-      const second = await service.continue(input(f, 'next-generation', { expectedSessionRevision: 5,
-        sourceBinding: { sessionId: f.sessionId, contextRevision: 2, criticalHandoffId: nextHandoffId,
-          criticalHandoffVersion: 2, criticalHandoffSchemaVersion: PORTFOLIO_ENTRY_CRITICAL_HANDOFF_SCHEMA_VERSION,
-          confirmedAt: confirmedAt.toISOString() } }));
+      const second = await service.continue(input(f, 'next-generation', { expectedSessionRevision: beforeRecovery.revision,
+        sourceBinding: recovered.sourceBinding! }));
       expect(second.snapshotGeneration).toBe(2);
+      expect({ projects: await prisma.project.count({ where: { ownerId: f.userId } }),
+        steps: await prisma.step.count(),
+        grants: await prisma.organizationPortfolioAccessGrant.count({ where: { userId: f.userId } }),
+        bootstrap: await prisma.portfolioBootstrapSession.count({ where: { userId: f.userId } }),
+      }).toEqual({ projects: beforeRecovery.projects, steps: beforeRecovery.steps,
+        grants: beforeRecovery.grants, bootstrap: beforeRecovery.bootstrap });
       await expect(service.continue(input(f, 'parallel-one', { expectedSessionRevision: 6,
         sourceBinding: second.sourceBinding }))).rejects.toMatchObject({ code: 'IDEMPOTENCY_CONFLICT' });
       const previous = await prisma.portfolioEntryPortfolioContinuation.findUniqueOrThrow({ where: { id: a.snapshotId } });

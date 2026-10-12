@@ -152,15 +152,12 @@ export class PortfolioSetupContinuityReadService {
       return done({ ...base(), ...ownContext, continuationProfile, status: 'ERROR', recovery: { code: 'INVALID_114F_SNAPSHOT' } });
     }
     const current = classified?.kind === '114F_SNAPSHOT' ? classified : null;
-    if (current) {
-      if (!snapshotMatchesSource(current, session, handoff)) {
-        return done({ ...base(), ...ownContext, continuationProfile, status: 'STALE_SOURCE', recovery: { code: 'REVIEW_CRITICAL_HANDOFF' } });
-      }
-      if (!snapshotBindingIsValid(current)) {
-        return done({ ...base(), ...ownContext, continuationProfile, status: 'ERROR', recovery: { code: 'INVALID_114F_SNAPSHOT' } });
-      }
-      if (current.source.starteriaPath) sourceBinding.starteriaPath = current.source.starteriaPath;
+    if (current && !snapshotBindingIsValid(current)) {
+      return done({ ...base(), ...ownContext, continuationProfile, status: 'ERROR', recovery: { code: 'INVALID_114F_SNAPSHOT' } });
     }
+    // Persisted CURRENT can belong to an older, valid source. Only a matching snapshot is effective.
+    const effectiveCurrent = current && snapshotMatchesSource(current, session, handoff) ? current : null;
+    if (effectiveCurrent?.source.starteriaPath) sourceBinding.starteriaPath = effectiveCurrent.source.starteriaPath;
 
     let resolution: ReadableScopeResolution;
     try { resolution = await view.resolveReadableScopes(input.ownerUserId); }
@@ -172,19 +169,19 @@ export class PortfolioSetupContinuityReadService {
     }
     const scopes: ReadablePortfolioScope[] = resolution.scopes;
     // A snapshot is never a grant. A revoked stored scope is omitted from public output.
-    const snapshotScope = current?.scope.organizationId
-      ? scopes.find((scope) => scope.organizationId === current.scope.organizationId) : undefined;
+    const snapshotScope = effectiveCurrent?.scope.organizationId
+      ? scopes.find((scope) => scope.organizationId === effectiveCurrent.scope.organizationId) : undefined;
     const chosen = snapshotScope ?? (scopes.length === 1 ? scopes[0] : undefined);
     const status = chosen ? 'READY_AUTHORIZED_SCOPE' : scopes.length > 1 ? 'SELECT_SCOPE'
-      : current?.scope.organizationId ? 'NO_AUTHORIZED_SCOPE' : 'READY_PROVISIONAL';
+      : effectiveCurrent?.scope.organizationId ? 'NO_AUTHORIZED_SCOPE' : 'READY_PROVISIONAL';
     const output: PortfolioSetupContinuityDto = {
       ...base(), ...ownContext, continuationProfile, status,
       scopeState: resolution.state === 'ZERO_SCOPES' ? 'NONE' : resolution.state === 'ONE_SCOPE' ? 'ONE' : 'MULTIPLE',
       portfolioAccess: { portfolioRead: Boolean(chosen), checkedAt: this.now().toISOString() },
       ...(scopes.length > 0 ? { authorizedScopes: scopes } : {}), ...(chosen ? { currentScope: chosen } : {}),
-      ...(snapshotScope && current ? { snapshot: { id: current.id, generation: current.generation,
-        format: 'PORTFOLIO_SETUP_114F_V1', ...(current.carriedProjection ? { carriedProjection: current.carriedProjection } : {}) },
-        openItems: current.openItems } : {}),
+      ...(snapshotScope && effectiveCurrent ? { snapshot: { id: effectiveCurrent.id, generation: effectiveCurrent.generation,
+        format: 'PORTFOLIO_SETUP_114F_V1', ...(effectiveCurrent.carriedProjection ? { carriedProjection: effectiveCurrent.carriedProjection } : {}) },
+        openItems: effectiveCurrent.openItems } : {}),
       nextAuthorizedSurface: chosen ? 'PORTFOLIO_HOME_BOOTSTRAP'
         : scopes.length > 1 ? 'SCOPE_SELECTION_REQUIRED' : 'PROVISIONAL_CONTEXT_ESTABLISHMENT',
       ...(!chosen && scopes.length === 0 ? { recovery: { code: 'REQUEST_SCOPED_ACCESS' as const } } : {}),
