@@ -223,6 +223,12 @@ export function PortfolioSetupContinuityExperience({ sessionId, path, onReviewSo
         </fieldset>
       )}
       <div className="flex flex-wrap gap-3">
+        {state === 'CONTINUATION_READY' && success?.snapshotId && (
+          <a className="inline-flex items-center rounded-ds-md bg-primary px-4 py-2 text-sm font-semibold text-white focus-visible:outline focus-visible:outline-2"
+            href={`/portfolio/inicio?portfolioSetupContinuationId=${encodeURIComponent(success.snapshotId)}`}>
+            Continuar al portafolio
+          </a>
+        )}
         {(state === 'READY_AUTHORIZED_SCOPE' || state === 'SELECT_SCOPE') && (
           <Button type="button" onClick={() => void continueNow()} disabled={pending || (state === 'SELECT_SCOPE' && !selectedId)}>
             {pending ? 'Preparando continuidad…' : 'Continuar con este contexto'}

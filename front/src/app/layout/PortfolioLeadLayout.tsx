@@ -20,6 +20,8 @@ import { WorkspaceSwitcher } from './WorkspaceSwitcher';
 import { usePortfolioLead } from '../portfolio/PortfolioLeadContext';
 import { getPendingDecisions } from '../../features/portfolio-lead/domain/selectors';
 import { usePortfolioHomeEntryContext, useScopedFirstValueEntryAccess } from '../../features/portfolio-entry/home/usePortfolioHomeEntryContext';
+import { portfolioSetupArrivalIdentity } from '../../features/portfolio-entry/home/portfolioSetupArrivalIdentity';
+import { PortfolioSetupArrivalGate } from '../../features/portfolio-entry/home/PortfolioSetupArrivalGate';
 
 const ROLE_LABELS = {
   owner: 'Participante',
@@ -31,6 +33,10 @@ const ROLE_LABELS = {
 
 
 export function PortfolioLeadLayout() {
+  const location = useLocation();
+  const arrival = portfolioSetupArrivalIdentity(location.pathname, location.search);
+  if (arrival.present) return <PortfolioSetupArrivalGate key={arrival.snapshotId ?? 'invalid'}
+    snapshotId={arrival.snapshotId} invalid={arrival.invalid} />;
   return <PortfolioLeadLayoutContent />;
 }
 

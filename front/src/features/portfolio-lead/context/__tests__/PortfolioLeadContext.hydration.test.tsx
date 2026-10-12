@@ -37,9 +37,9 @@ function Counts() {
   );
 }
 
-function renderProvider() {
+function renderProvider(suppressHydration = false) {
   return render(
-    <PortfolioLeadProvider>
+    <PortfolioLeadProvider suppressHydration={suppressHydration}>
       <Counts />
     </PortfolioLeadProvider>,
   );
@@ -73,6 +73,15 @@ describe('PortfolioLeadProvider — hidratación gateada por sesión', () => {
     listStrategicFronts.mockResolvedValue([]);
     renderProvider();
     await waitFor(() => expect(listStrategicFronts).toHaveBeenCalledTimes(1));
+  });
+
+  it('114F arrival suppresses all tenant Portfolio transport before the consumer gate', async () => {
+    mockedUseApp.mockReturnValue({ isAuthenticated: true, authLoading: false });
+    renderProvider(true);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(listStrategicFronts).not.toHaveBeenCalled();
+    expect(listChallenges).not.toHaveBeenCalled();
+    expect(listInitiatives).not.toHaveBeenCalled();
   });
 
   it('no sustituye con mocks cuando falla la hidratacion primaria del portfolio', async () => {

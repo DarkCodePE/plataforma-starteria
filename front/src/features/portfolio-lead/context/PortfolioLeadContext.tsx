@@ -134,9 +134,11 @@ const PortfolioLeadContext = createContext<PortfolioLeadContextValue | null>(nul
 export function PortfolioLeadProvider({
   children,
   enableDemoData = false,
+  suppressHydration = false,
 }: {
   children: ReactNode;
   enableDemoData?: boolean;
+  suppressHydration?: boolean;
 }) {
   const [strategicFronts, setStrategicFronts] = useState<StrategicFront[]>(() => enableDemoData ? DEFAULT_STRATEGIC_FRONTS : []);
   const [challenges, setChallenges] = useState<Challenge[]>(() => enableDemoData ? DEFAULT_CHALLENGES : []);
@@ -172,7 +174,7 @@ export function PortfolioLeadProvider({
   // #100: hydrate the read path from the real backend (frentes → retos → iniciativas).
   // The mock fixtures above are the initial/fallback state, kept if the API is empty or
   // unreachable so local dev still works. Mutations remain local for now (follow-up).
-  const refreshPortfolioData = useCallback(async () => {
+  const refreshPortfolioData = useCallback(async (shouldApply: () => boolean = () => true) => {
     const rawFronts = await portfolioService.listStrategicFronts();
     if (!rawFronts || rawFronts.length === 0) return;
     const fronts = rawFronts.map(adaptStrategicFront);
@@ -184,17 +186,25 @@ export function PortfolioLeadProvider({
       allChallenges.map((c) => portfolioService.listInitiatives(c.id)),
     );
     const allInitiatives = initiativesByChallenge.flat().map(adaptInitiative);
-    setStrategicFronts(fronts);
-    setChallenges(allChallenges);
-    setInitiatives(allInitiatives);
+    if (shouldApply()) {
+      setStrategicFronts(fronts);
+      setChallenges(allChallenges);
+      setInitiatives(allInitiatives);
+    }
   }, []);
 
   useEffect(() => {
+    if (suppressHydration) {
+      setStrategicFronts([]);
+      setChallenges([]);
+      setInitiatives([]);
+      return;
+    }
     if (authLoading || !isAuthenticated) return;
     let cancelled = false;
     (async () => {
       try {
-        await refreshPortfolioData();
+        await refreshPortfolioData(() => !cancelled);
         if (cancelled) return;
       } catch (err) {
         if (!cancelled && !enableDemoData) {
@@ -209,7 +219,7 @@ export function PortfolioLeadProvider({
     return () => {
       cancelled = true;
     };
-  }, [authLoading, isAuthenticated, refreshPortfolioData]);
+  }, [authLoading, isAuthenticated, refreshPortfolioData, suppressHydration, enableDemoData]);
 
   const value = useMemo<PortfolioLeadContextValue>(() => ({
     strategicFronts,

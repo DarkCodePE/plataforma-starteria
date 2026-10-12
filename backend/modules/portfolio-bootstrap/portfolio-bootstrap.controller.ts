@@ -6,6 +6,7 @@ import {
   bootstrapSessionParamsSchema,
   correctProposedMutationBodySchema,
   fromContinuationBodySchema,
+  fromPortfolioSetupBodySchema,
   importBatchParamsSchema,
   manualWorkItemBodySchema,
   pasteWorkItemsBodySchema,
@@ -21,6 +22,15 @@ import {
 
 export class PortfolioBootstrapController {
   constructor(private readonly service: PortfolioBootstrapService) {}
+
+  createOrReuseFromPortfolioSetup = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      if (!req.user?.id) throw AppError.unauthorized('No autorizado.', 'PORTFOLIO_BOOTSTRAP_AUTH_REQUIRED');
+      const { snapshotId } = fromPortfolioSetupBodySchema.parse(req.body);
+      const data = await this.service.createOrReuseFromPortfolioSetup({ snapshotId, authenticatedUserId: req.user.id });
+      res.json({ success: true, data });
+    } catch (error) { next(error); }
+  };
 
   createOrReuseFromContinuation = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {

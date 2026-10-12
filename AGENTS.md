@@ -167,7 +167,8 @@ Los comandos completos, los niveles de test y los gotchas están en [`TESTING.md
 - **Portfolio Entry full-stack E2E.** Usar los modos explícitos documentados en `TESTING.md` §6:
   la prueba real de navegador/API/Prisma inyecta sólo el adaptador determinístico KAN-114 bajo
   `NODE_ENV=test` y `PORTFOLIO_ENTRY_E2E_TEST=true`; no requiere claves de proveedor. El límite de
-  creación de sesiones sólo se eleva en esa composición de prueba.
+  creación de sesiones sólo se eleva en esa composición de prueba. El recorrido 114F Home/Bootstrap
+  usa `e2e/portfolio-setup-home-handoff-141.integration.spec.ts` con ese mismo modo.
 
 ### back — `backend/`
 

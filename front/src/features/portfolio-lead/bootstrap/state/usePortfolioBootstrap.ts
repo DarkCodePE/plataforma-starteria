@@ -7,6 +7,7 @@ import {
   confirmPortfolioBootstrapProposedMutation,
   correctPortfolioBootstrapProposedMutation,
   createOrReusePortfolioBootstrapSession,
+  createOrReusePortfolioSetupBootstrapSession,
   declareNoExistingPortfolioBootstrapWork,
   getPortfolioBootstrapSession,
   leavePortfolioBootstrapProposedMutationPending,
@@ -32,7 +33,7 @@ export type PortfolioBootstrapAnalysisStatus = 'idle' | 'processing' | 'error';
 export type PortfolioBootstrapPublishStatus = 'idle' | 'processing' | 'error';
 export type PortfolioBootstrapImportStatus = 'idle' | 'uploading' | 'committing' | 'error';
 
-export function usePortfolioBootstrap(portfolioEntryContinuationId: string | null) {
+export function usePortfolioBootstrap(portfolioEntryContinuationId: string | null, mode: 'legacy' | '114F' = 'legacy') {
   const [data, setData] = useState<PortfolioBootstrapResponse | null>(null);
   const [status, setStatus] = useState<PortfolioBootstrapLoadStatus>('idle');
   const [error, setError] = useState<string | null>(null);
@@ -61,18 +62,21 @@ export function usePortfolioBootstrap(portfolioEntryContinuationId: string | nul
     setStatus('loading');
     setError(null);
     try {
-      const result = data?.bootstrapSession?.id
+      const result = mode === '114F'
+        ? await createOrReusePortfolioSetupBootstrapSession(portfolioEntryContinuationId)
+        : data?.bootstrapSession?.id
         ? await getPortfolioBootstrapSession(data.bootstrapSession.id)
         : await createOrReusePortfolioBootstrapSession(portfolioEntryContinuationId);
       setData(result);
       setStatus('ready');
     } catch (err) {
+      if (mode === '114F') setData(null);
       setStatus('error');
       setError(err instanceof PortfolioBootstrapClientError
         ? err.apiError.message
         : 'No pudimos cargar el Bootstrap de Portfolio.');
     }
-  }, [portfolioEntryContinuationId, data?.bootstrapSession?.id]);
+  }, [portfolioEntryContinuationId, data?.bootstrapSession?.id, mode]);
 
   useEffect(() => {
     let cancelled = false;
@@ -94,7 +98,8 @@ export function usePortfolioBootstrap(portfolioEntryContinuationId: string | nul
 
     setStatus('loading');
     setError(null);
-    createOrReusePortfolioBootstrapSession(portfolioEntryContinuationId)
+    (mode === '114F' ? createOrReusePortfolioSetupBootstrapSession(portfolioEntryContinuationId)
+      : createOrReusePortfolioBootstrapSession(portfolioEntryContinuationId))
       .then((result) => {
         if (!cancelled) {
           setData(result);
@@ -103,6 +108,7 @@ export function usePortfolioBootstrap(portfolioEntryContinuationId: string | nul
       })
       .catch((err) => {
         if (!cancelled) {
+          if (mode === '114F') setData(null);
           setStatus('error');
           setError(err instanceof PortfolioBootstrapClientError
             ? err.apiError.message
@@ -113,7 +119,7 @@ export function usePortfolioBootstrap(portfolioEntryContinuationId: string | nul
     return () => {
       cancelled = true;
     };
-  }, [portfolioEntryContinuationId]);
+  }, [portfolioEntryContinuationId, mode]);
 
   const updateAnchor = useCallback(async (input: UpdatePortfolioBootstrapAnchorInput) => {
     if (!data?.bootstrapSession.id) return;

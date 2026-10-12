@@ -41,7 +41,8 @@ const playwrightArgs = process.argv.slice(2).filter((argument) =>
 );
 if (fullStackPortfolioEntry && !playwrightArgs.some((argument) =>
   argument.includes('portfolio-entry-live-understanding.integration.spec.ts')
-  || argument.includes('portfolio-entry-conversion.spec.ts'))
+  || argument.includes('portfolio-entry-conversion.spec.ts')
+  || argument.includes('portfolio-setup-home-handoff-141.integration.spec.ts'))
 ) {
   throw new Error(`${fullStackPortfolioEntryFlag} requires a full-stack Portfolio Entry Playwright spec.`);
 }
