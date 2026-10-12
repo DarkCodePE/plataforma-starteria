@@ -4,6 +4,8 @@ export const fromContinuationBodySchema = z.object({
   portfolioEntryContinuationId: z.string().min(1),
 }).strict();
 
+export const fromPortfolioSetupBodySchema = z.object({ snapshotId: z.string().min(1) }).strict();
+
 export const bootstrapSessionParamsSchema = z.object({
   sessionId: z.string().min(1),
 });

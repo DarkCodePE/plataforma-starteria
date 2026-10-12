@@ -4,6 +4,7 @@ import { usePortfolioBootstrap } from '../usePortfolioBootstrap';
 import { makeBootstrap } from '../../testing/bootstrapFixtures';
 
 const createOrReuse = vi.fn();
+const createFromPortfolioSetup = vi.fn();
 const getSession = vi.fn();
 const updateAnchor = vi.fn();
 const confirmAnchor = vi.fn();
@@ -21,6 +22,7 @@ const publishReading = vi.fn();
 
 vi.mock('../../services/portfolioBootstrapClient', () => ({
   createOrReusePortfolioBootstrapSession: (...args: unknown[]) => createOrReuse(...args),
+  createOrReusePortfolioSetupBootstrapSession: (...args: unknown[]) => createFromPortfolioSetup(...args),
   getPortfolioBootstrapSession: (...args: unknown[]) => getSession(...args),
   updatePortfolioBootstrapAnchor: (...args: unknown[]) => updateAnchor(...args),
   confirmPortfolioBootstrapAnchor: (...args: unknown[]) => confirmAnchor(...args),
@@ -44,6 +46,7 @@ describe('usePortfolioBootstrap', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     createOrReuse.mockResolvedValue(makeBootstrap('anchor_sufficient'));
+    createFromPortfolioSetup.mockResolvedValue(makeBootstrap('anchor_provisional'));
     getSession.mockResolvedValue(makeBootstrap('anchor_sufficient'));
     updateAnchor.mockResolvedValue(makeBootstrap('anchor_sufficient'));
     confirmAnchor.mockResolvedValue(makeBootstrap('anchor_confirmed'));
@@ -96,6 +99,16 @@ describe('usePortfolioBootstrap', () => {
     expect(createOrReuse).toHaveBeenNthCalledWith(1, 'cont-1');
     expect(createOrReuse).toHaveBeenNthCalledWith(2, 'cont-1');
     expect(second.result.current.data?.bootstrapSession.id).toBe(sessionId);
+  });
+
+  it('114F uses only the dedicated create/reuse path and revalidates on retry', async () => {
+    const hook = renderHook(() => usePortfolioBootstrap('snapshot-114f', '114F'));
+    await waitFor(() => expect(hook.result.current.status).toBe('ready'));
+    expect(createFromPortfolioSetup).toHaveBeenCalledWith('snapshot-114f');
+    expect(createOrReuse).not.toHaveBeenCalled();
+    await act(async () => { await hook.result.current.retry(); });
+    expect(createFromPortfolioSetup).toHaveBeenCalledTimes(2);
+    expect(getSession).not.toHaveBeenCalled();
   });
 
   it('save updates anchor without confirming', async () => {

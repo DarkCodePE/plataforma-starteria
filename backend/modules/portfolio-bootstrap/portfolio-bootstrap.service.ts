@@ -6,6 +6,8 @@ import { can, type Permission } from '../../shared/authz/permissions';
 import { ScopedPortfolioAccessService } from '../../shared/authz/scoped-portfolio-access.service';
 import { logger } from '../../shared/utils/logger';
 import { deriveAnchorStatus, derivePortfolioAnchorFromContinuation } from './portfolio-anchor-derivation';
+import { derivePortfolioAnchorFromPortfolioSetup } from './portfolio-setup-anchor-derivation';
+import { validatePortfolioSetupArrival } from '../portfolio-entry-continuation/portfolio-setup-home-arrival.service';
 import { DeterministicPortfolioBootstrapAnalyzer, type PortfolioBootstrapAnalysisOutput, type PortfolioBootstrapAnalyzer } from './portfolio-bootstrap.analyzer';
 import type {
   CorrectProposedMutationBody,
@@ -262,6 +264,52 @@ export class PortfolioBootstrapService {
     private readonly now: () => Date = () => new Date(),
     private readonly analyzer: PortfolioBootstrapAnalyzer = new DeterministicPortfolioBootstrapAnalyzer(),
   ) {}
+
+  /** 114F has its own snapshot, source and exact-scoped-read gate. */
+  async createOrReuseFromPortfolioSetup(input: { snapshotId: string; authenticatedUserId: string }): Promise<PortfolioBootstrapDto> {
+    const run = async () => this.prisma.$transaction(async (tx) => {
+      const validated = await validatePortfolioSetupArrival(tx, input.snapshotId, input.authenticatedUserId, this.now());
+      const db = tx as any;
+      const existing = await this.findActiveSession(db, input.authenticatedUserId, input.snapshotId);
+      if (existing) {
+        if (existing.organizationId !== validated.dto.organization.id) {
+          throw AppError.conflict('La sesión Bootstrap tiene otro scope.', 'PORTFOLIO_SETUP_BOOTSTRAP_SCOPE_CONFLICT');
+        }
+        await this.writeAudit(db, input.authenticatedUserId, 'portfolio_bootstrap_session_reused', existing.id,
+          { sourceContinuationId: input.snapshotId });
+        return existing;
+      }
+      const derived = derivePortfolioAnchorFromPortfolioSetup({ id: input.snapshotId,
+        sessionId: validated.dto.sessionId, carriedContext: validated.carriedContext,
+        openItems: validated.dto.openItems });
+      const session = await db.portfolioBootstrapSession.create({ data: {
+        userId: input.authenticatedUserId, organizationId: validated.dto.organization.id,
+        sourceContinuationId: input.snapshotId, status: 'awaiting_anchor_review', bootstrapPhase: 'B1_ANCHOR',
+      }, include: this.sessionInclude() });
+      const anchor = await db.portfolioAnchor.create({ data: {
+        bootstrapSessionId: session.id, outcomeStatement: derived.outcomeStatement,
+        contextSummary: derived.contextSummary, decisionToEnable: derived.decisionToEnable,
+        businessSignalStatus: derived.businessSignalStatus, businessSignalValue: derived.businessSignalValue,
+        status: derived.status, sourceRefs: derived.sourceRefs, provenanceStatus: derived.provenanceStatus,
+      } });
+      await this.writeAudit(db, input.authenticatedUserId, 'portfolio_bootstrap_session_created', session.id,
+        { sourceContinuationId: input.snapshotId });
+      return { ...session, anchor };
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable, timeout: 10_000 });
+    try { return this.toDto(await run()); }
+    catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+        // A concurrent creator won. Revalidate in a new transaction before returning its session.
+        return this.prisma.$transaction(async (tx) => {
+          const validated = await validatePortfolioSetupArrival(tx, input.snapshotId, input.authenticatedUserId, this.now());
+          const existing = await this.findActiveSession(tx, input.authenticatedUserId, input.snapshotId);
+          if (!existing || existing.organizationId !== validated.dto.organization.id) throw error;
+          return this.toDto(existing);
+        }, { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead, timeout: 10_000 });
+      }
+      throw error;
+    }
+  }
 
   async createOrReuseFromContinuation(input: {
     portfolioEntryContinuationId: string;
@@ -1286,6 +1334,13 @@ export class PortfolioBootstrapService {
     capability: 'portfolio:read' | 'portfolio:write';
   }): Promise<void> {
     this.assertOwner(input.session, input.authenticatedUserId);
+    if (input.session.sourceContinuation?.snapshotFormat === 'PORTFOLIO_SETUP_114F_V1') {
+      const validated = await validatePortfolioSetupArrival(input.db as Prisma.TransactionClient,
+        input.session.sourceContinuationId, input.authenticatedUserId, this.now());
+      if (input.session.organizationId !== validated.dto.organization.id) {
+        throw AppError.conflict('La sesión Bootstrap tiene otro scope.', 'PORTFOLIO_SETUP_BOOTSTRAP_SCOPE_CONFLICT');
+      }
+    }
     if (can(input.permissions, input.capability)) return;
 
     const organizationId = typeof input.session.organizationId === 'string' ? input.session.organizationId : null;

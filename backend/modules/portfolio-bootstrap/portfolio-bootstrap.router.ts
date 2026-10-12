@@ -17,6 +17,7 @@ export function buildPortfolioBootstrapRouter(deps: PortfolioBootstrapRouterDeps
   );
 
   router.post('/sessions/from-continuation', auth, controller.createOrReuseFromContinuation);
+  router.post('/sessions/from-portfolio-setup-continuity', auth, controller.createOrReuseFromPortfolioSetup);
   router.get('/sessions/:sessionId', auth, controller.getSession);
   router.patch('/sessions/:sessionId/anchor', auth, controller.updateAnchor);
   router.post('/sessions/:sessionId/anchor/confirm', auth, controller.confirmAnchor);

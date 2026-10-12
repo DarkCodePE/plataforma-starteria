@@ -222,8 +222,10 @@ async function expectScopedPortfolioAccess(
 ) {
   // Verify the browser can rehydrate the same scoped Portfolio context from
   // the refresh cookie, rather than relying only on the in-memory access token.
+  await expect(page.getByTestId('scoped-portfolio-entry-layout')).toBeVisible();
   await page.reload();
   await expect(page).toHaveURL(/\/portfolio\/inicio\?portfolioEntryContinuationId=/);
+  await expect(page.getByTestId('scoped-portfolio-entry-layout')).toBeVisible();
 
   const persisted = await prisma.user.findUniqueOrThrow({
     where: { id: user.userId },
@@ -475,6 +477,7 @@ async function continueThroughAuthenticatedLegacyPortfolioEntry(
 
   await page.reload();
   await expect(page).toHaveURL(/\/portfolio\/setup$/);
+  await expect(page.getByTestId('scoped-portfolio-entry-layout')).toBeVisible();
   const identityAfterRefresh = await page.evaluate(() => {
     const raw = window.sessionStorage.getItem('starteria.portfolioEntry.claimedSession');
     return raw ? JSON.parse(raw) : null;
@@ -483,6 +486,7 @@ async function continueThroughAuthenticatedLegacyPortfolioEntry(
   const continuationId = continuedBody.data.continuationId as string;
   if (options.openPortfolioHomeForHomeCoverage) {
     await page.goto(`/portfolio/inicio?portfolioEntryContinuationId=${encodeURIComponent(continuationId)}`);
+    await expect(page.getByTestId('scoped-portfolio-entry-layout')).toBeVisible();
   }
   return continuationId;
 }

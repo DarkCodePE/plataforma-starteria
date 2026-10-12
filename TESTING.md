@@ -108,6 +108,7 @@ La verificación full-stack de Portfolio Entry en CI usa estos modos explícitos
 npm run test:e2e -- --portfolio-entry-full-stack-test e2e/portfolio-entry-conversion.spec.ts --grep CURRENT_114D
 npm run test:e2e -- --portfolio-entry-full-stack-test e2e/portfolio-entry-conversion.spec.ts --grep LEGACY_COMPAT
 npm run test:e2e -- --portfolio-entry-full-stack-test e2e/portfolio-entry-live-understanding.integration.spec.ts
+npm run test:e2e -- --portfolio-entry-full-stack-test e2e/portfolio-setup-home-handoff-141.integration.spec.ts
 npm run test:e2e -- --portfolio-entry-postgres-confirmation-test
 ```
 

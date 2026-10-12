@@ -117,6 +117,9 @@ describe('114F Portfolio Setup continuity', () => {
     } });
     expect(Object.keys(request)).toEqual(['expectedSessionRevision', 'sourceBinding']);
     expect(await screen.findByText(/La continuidad quedó preparada/)).toBeInTheDocument();
+    const portfolioAction = screen.getByRole('link', { name: 'Continuar al portafolio' });
+    expect(portfolioAction).toHaveAttribute('href', '/portfolio/inicio?portfolioSetupContinuationId=snapshot-1');
+    expect(portfolioAction.getAttribute('href')).not.toContain('org-a');
     expect(window.location.pathname).not.toBe('/portfolio/inicio');
   });
 

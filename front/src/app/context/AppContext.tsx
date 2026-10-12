@@ -1,4 +1,5 @@
-import React, { createContext, useContext, useEffect, useState, ReactNode } from 'react';
+import React, { createContext, useContext, useEffect, useRef, useState, ReactNode } from 'react';
+import { useLocation } from 'react-router';
 import { authService, AuthUser } from '../services/auth.service';
 import { PERMISSIONS, type Permission } from '../authz/permissions';
 import { canOpenProject, getProjectAccess, isSameTeamMember } from '../authz/projectAccess';
@@ -13,6 +14,7 @@ import {
 } from '../../features/public-start/services/publicDraftStorage';
 import { saveStep0Prefill } from '../../features/public-start/services/publicStep0PrefillService';
 import type { AdaptiveInitiativeCore } from '../../features/adaptive-core/domain/types';
+import { portfolioSetupArrivalIdentity } from '../../features/portfolio-entry/home/portfolioSetupArrivalIdentity';
 
 export type { AuthError } from '../services/api';
 
@@ -587,6 +589,11 @@ export function mapBackendUser(raw: AuthUser): User {
 }
 
 export function AppProvider({ children }: { children: ReactNode }) {
+  const location = useLocation();
+  const suppressProjectHydration = portfolioSetupArrivalIdentity(location.pathname, location.search).present;
+  const suppressProjectHydrationRef = useRef(suppressProjectHydration);
+  const previousSuppressionRef = useRef(suppressProjectHydration);
+  suppressProjectHydrationRef.current = suppressProjectHydration;
   const [user, setUser] = useState<User | null>(null);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [authLoading, setAuthLoading] = useState(true);
@@ -595,16 +602,32 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [currentProject, setCurrentProject] = useState<Project | null>(null);
 
   const loadProjects = async (currentUser: User | null) => {
+    if (suppressProjectHydrationRef.current) return;
     try {
       setProjectsLoading(true);
       const list = await projectService.list();
-      setProjects(list.map(p => enrichProject(p, currentUser)));
+      if (!suppressProjectHydrationRef.current) setProjects(list.map(p => enrichProject(p, currentUser)));
     } catch {
-      setProjects([]);
+      if (!suppressProjectHydrationRef.current) setProjects([]);
     } finally {
       setProjectsLoading(false);
     }
   };
+
+  useEffect(() => {
+    if (!suppressProjectHydration) return;
+    setProjects([]);
+    setCurrentProject(null);
+    setProjectsLoading(false);
+  }, [suppressProjectHydration]);
+
+  useEffect(() => {
+    const wasSuppressed = previousSuppressionRef.current;
+    previousSuppressionRef.current = suppressProjectHydration;
+    if (wasSuppressed && !suppressProjectHydration && isAuthenticated && !authLoading) {
+      void loadProjects(user);
+    }
+  }, [suppressProjectHydration, isAuthenticated, authLoading, user]);
 
   useEffect(() => {
     let cancelled = false;

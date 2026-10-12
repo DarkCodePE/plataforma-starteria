@@ -1,13 +1,16 @@
 import React from 'react';
-import { Outlet } from 'react-router';
+import { Outlet, useLocation } from 'react-router';
 import { Toaster } from 'sonner';
 import { AppProvider } from '../context/AppContext';
 import { AutofillProvider } from '../context/AutofillContext';
 import { PortfolioLeadProvider } from '../portfolio/PortfolioLeadContext';
 import { isDemoDataEnabled } from '../featureFlags';
+import { portfolioSetupArrivalIdentity } from '../../features/portfolio-entry/home/portfolioSetupArrivalIdentity';
 
 
 function PortfolioLeadDataBoundary() {
+  const location = useLocation();
+  const suppressHydration = portfolioSetupArrivalIdentity(location.pathname, location.search).present;
   // ADR-028: aquí había un correo hardcodeado que activaba fixtures de demo. Se quita
   // sin sustituirlo por `role === 'portfolio_lead'`: esto sirve datos FALSOS, y dárselos
   // a todo portfolio lead real sería un cambio de comportamiento que nadie pidió. Queda
@@ -15,7 +18,7 @@ function PortfolioLeadDataBoundary() {
   const enableDemoData = isDemoDataEnabled();
 
   return (
-    <PortfolioLeadProvider enableDemoData={enableDemoData}>
+    <PortfolioLeadProvider enableDemoData={enableDemoData && !suppressHydration} suppressHydration={suppressHydration}>
       <Toaster position="top-center" richColors closeButton />
       <Outlet />
     </PortfolioLeadProvider>

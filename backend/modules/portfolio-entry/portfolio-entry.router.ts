@@ -39,6 +39,9 @@ import { PortfolioSetupContinuityReadController } from '../portfolio-entry-conti
 import { PortfolioSetupContinuityWriteController } from '../portfolio-entry-continuation/portfolio-setup-continuity-write.controller';
 import { PortfolioSetupContinuityWriteService } from '../portfolio-entry-continuation/portfolio-setup-continuity-write.service';
 import { PortfolioSetupContinuityReadService, createPortfolioSetupReadDependencies } from '../portfolio-entry-continuation/portfolio-setup-continuity-read.service';
+import { PortfolioSetupHomeArrivalService } from '../portfolio-entry-continuation/portfolio-setup-home-arrival.service';
+import { AppError } from '../../shared/errors/AppError';
+import { z } from 'zod';
 import type { CriticalHandoffProjection } from './presentation/critical-handoff-projection';
 import { StarteriaPathService, type StarteriaPathProjector } from '../portfolio-entry-starteria-path/application/starteria-path.service';
 import { StarteriaPathController } from '../portfolio-entry-starteria-path/starteria-path.controller';
@@ -77,6 +80,7 @@ export interface PortfolioEntryRouterDeps {
   continuationService?: PortfolioEntryContinuationService;
   portfolioSetupReadService?: PortfolioSetupContinuityReadService;
   portfolioSetupWriteService?: PortfolioSetupContinuityWriteService;
+  portfolioSetupHomeArrivalService?: PortfolioSetupHomeArrivalService;
   sessionTtlMs?: number;
   idempotencyTtlMs?: number;
 }
@@ -139,6 +143,7 @@ export function buildPortfolioEntryRouter(
   const portfolioSetupWriteController = new PortfolioSetupContinuityWriteController(
     deps.portfolioSetupWriteService ?? new PortfolioSetupContinuityWriteService(prisma),
   );
+  const portfolioSetupHomeArrivalService = deps.portfolioSetupHomeArrivalService ?? new PortfolioSetupHomeArrivalService(prisma);
   const router = Router();
   const auth = deps.authenticate ?? authenticate;
   const optionalAuth = deps.optionalAuthenticate ?? createOptionalAuthenticate(auth);
@@ -189,6 +194,14 @@ export function buildPortfolioEntryRouter(
   router.post('/sessions/:sessionId/continue-portfolio', auth, handoffLimiter, continuationController.continueToPortfolio);
   router.get('/continuations/:continuationId', auth, submitLimiter, continuationController.readContinuation);
   router.get('/continuations/:continuationId/home-context', auth, submitLimiter, continuationController.readPortfolioHomeEntryContext);
+  router.get('/continuations/:snapshotId/portfolio-home-arrival', auth, submitLimiter, async (req, res, next) => {
+    try {
+      if (!req.user?.id) throw AppError.unauthorized('Autenticación requerida.', 'PORTFOLIO_SETUP_ARRIVAL_AUTH_REQUIRED');
+      const { snapshotId } = z.object({ snapshotId: z.string().min(1) }).strict().parse(req.params);
+      const data = await portfolioSetupHomeArrivalService.read({ snapshotId, userId: req.user.id });
+      res.json({ success: true, data });
+    } catch (error) { next(error); }
+  });
   router.post('/continuations/scoped-first-value-access', auth, submitLimiter, continuationController.authorizeScopedFirstValueEntry);
 
   return router;

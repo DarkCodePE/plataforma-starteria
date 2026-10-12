@@ -1,10 +1,10 @@
 import axios from 'axios';
+import api from '../../../app/services/api';
 import {
   portfolioSetupContinuityReadSchema, portfolioSetupContinueRequestSchema, portfolioSetupContinueResponseSchema,
   type PortfolioSetupContinuityRead, type PortfolioSetupContinueRequest, type PortfolioSetupContinueResponse,
 } from './portfolioSetupContinuity.types';
 
-const api = axios.create({ baseURL: import.meta.env.VITE_API_URL || '/api/v1', withCredentials: true });
 const endpoint = (sessionId: string) =>
   `/public/portfolio-entry/sessions/${encodeURIComponent(sessionId)}/portfolio-setup-continuity`;
 

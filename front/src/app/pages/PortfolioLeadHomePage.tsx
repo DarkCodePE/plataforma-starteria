@@ -25,12 +25,20 @@ import { PortfolioCopilotDrawer, PortfolioCopilotLauncher } from '../../features
 import { isPortfolioCopilotEnabled } from '../services/featureFlags';
 import { PortfolioBootstrapHome, usePortfolioBootstrap } from '../../features/portfolio-lead/bootstrap';
 import { usePortfolioHomeEntryContext } from '../../features/portfolio-entry/home/usePortfolioHomeEntryContext';
+import { portfolioSetupArrivalIdentity } from '../../features/portfolio-entry/home/portfolioSetupArrivalIdentity';
+import { PortfolioSetupHomeArrivalPage } from '../../features/portfolio-entry/home/PortfolioSetupHomeArrivalPage';
 
 import { PortfolioCapacityPanel } from '../../features/portfolio-lead/components/cards/PortfolioCapacityPanel';
 import { PortfolioLearningsPanel } from '../../features/portfolio-lead/components/cards/PortfolioLearningsPanel';
 
 
 export function PortfolioLeadHomePage() {
+  const location = useLocation();
+  if (portfolioSetupArrivalIdentity(location.pathname, location.search).present) return <PortfolioSetupHomeArrivalPage />;
+  return <OrdinaryPortfolioLeadHomePage />;
+}
+
+function OrdinaryPortfolioLeadHomePage() {
   const navigate = useNavigate();
   const location = useLocation();
   const portfolioState = usePortfolioLead();

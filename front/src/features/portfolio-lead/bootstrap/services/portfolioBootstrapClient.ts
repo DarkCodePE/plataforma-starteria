@@ -320,6 +320,16 @@ export async function createOrReusePortfolioBootstrapSession(
   }
 }
 
+export async function createOrReusePortfolioSetupBootstrapSession(snapshotId: string): Promise<PortfolioBootstrapResponse> {
+  try {
+    const { data } = await api.post<ApiResponse<PortfolioBootstrapResponse>>(
+      '/portfolio-bootstrap/sessions/from-portfolio-setup-continuity', { snapshotId });
+    return data.data;
+  } catch (err) {
+    throw new PortfolioBootstrapClientError(parseApiError(err));
+  }
+}
+
 export async function getPortfolioBootstrapSession(sessionId: string): Promise<PortfolioBootstrapResponse> {
   try {
     const { data } = await api.get<ApiResponse<PortfolioBootstrapResponse>>(

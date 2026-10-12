@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const http = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn() }));
-vi.mock('axios', () => ({ default: { create: () => http, isAxiosError: () => false } }));
+vi.mock('../../../../app/services/api', () => ({ default: http }));
 
 import { continuePortfolioSetup, getPortfolioSetupContinuity, PortfolioSetupInvalidResponseError } from '../portfolioSetupContinuity.client';
 
