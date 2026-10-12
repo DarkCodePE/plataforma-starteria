@@ -1035,6 +1035,128 @@ test.describe('Portfolio Entry 114D Critical Handoff and explicit legacy compati
     await api.dispose();
   });
 
+  test('[114F_133H] real confirmed 114D continues through 114E, scoped 114F, Home and Bootstrap', async ({ page }, testInfo) => {
+    const api = await pwRequest.newContext({ baseURL: process.env.E2E_BASE_URL || 'http://127.0.0.1:5176' });
+    const user = await registerPortfolioUser(api);
+    const organization = await provisionScopedPortfolioAccess(user.userId);
+    const canonicalCounts = async () => Promise.all([
+      prisma.organization.count(), prisma.project.count(), prisma.step.count(), prisma.organizationMember.count(),
+      prisma.organizationPortfolioAccessGrant.count(), prisma.strategicFront.count(),
+      prisma.challenge.count(), prisma.decision.count(), prisma.initiativePortfolioMeta.count(),
+      prisma.portfolioHandoffAssignment.count(), prisma.portfolioHandoffInvitation.count(),
+    ]);
+    const before = await canonicalCounts();
+    const sessionId = await reachCriticalHandoff(page, SCENARIOS[0], testInfo);
+    const provisional = await prisma.portfolioEntryCriticalHandoff.findFirstOrThrow({
+      where: { sessionId }, orderBy: { artifactVersion: 'desc' },
+    });
+    expect(provisional.confirmationState).toBe('provisional');
+
+    await page.getByRole('button', { name: /iniciar sesi.*para confirmar esta lectura/i }).click();
+    await loginThroughUi(page, user.email, user.password);
+    await expect(page.getByRole('button', { name: 'Confirmar esta lectura' })).toBeVisible();
+    const setupReadResponse = page.waitForResponse((response) => response.request().method() === 'GET'
+      && new URL(response.url()).pathname === `/api/v1/public/portfolio-entry/sessions/${sessionId}/portfolio-setup-continuity`);
+    const confirmedResponse = page.waitForResponse((response) => response.request().method() === 'POST'
+      && new URL(response.url()).pathname === `/api/v1/public/portfolio-entry/sessions/${sessionId}/critical-handoff/${provisional.id}/confirmation`);
+    await page.getByRole('button', { name: 'Confirmar esta lectura' }).click();
+    expect((await confirmedResponse).status()).toBe(200);
+    await expect(page.getByTestId('starteria-path-supported')).toBeVisible();
+    const confirmed = await prisma.portfolioEntryCriticalHandoff.findUniqueOrThrow({ where: { id: provisional.id } });
+    expect(confirmed.confirmationState).toBe('confirmed');
+    expect(confirmed.confirmedByUserId).toBe(user.userId);
+
+    await expect(page.getByRole('heading', { name: 'Retomamos lo que ya entendimos' })).toBeVisible();
+    const setupRead = await setupReadResponse;
+    expect(setupRead.status(), await setupRead.text()).toBe(200);
+    expect((await setupRead.json()).data).toMatchObject({
+      dtoVersion: 'portfolio-setup-continuity-read-v0.1',
+      status: 'READY_AUTHORIZED_SCOPE',
+      sourceBinding: { sessionId, criticalHandoffId: confirmed.id,
+        criticalHandoffVersion: confirmed.artifactVersion, contextRevision: confirmed.sourceContextRevision },
+      currentScope: { organizationId: organization.id },
+    });
+    const writeResponse = page.waitForResponse((response) => response.request().method() === 'POST'
+      && new URL(response.url()).pathname.endsWith(`/sessions/${sessionId}/portfolio-setup-continuity/continue`));
+    await page.getByRole('button', { name: 'Continuar con este contexto' }).click();
+    const written = await writeResponse;
+    expect(written.status(), await written.text()).toBe(200);
+    const snapshotId = (await written.json()).data.snapshotId as string;
+    const snapshot = await prisma.portfolioEntryPortfolioContinuation.findUniqueOrThrow({ where: { id: snapshotId } });
+    expect(snapshot).toMatchObject({ sessionId, continuedByUserId: user.userId,
+      organizationScopeId: organization.id, snapshotFormat: 'PORTFOLIO_SETUP_114F_V1',
+      snapshotState: 'CURRENT', criticalHandoffId: confirmed.id,
+      criticalHandoffVersion: confirmed.artifactVersion,
+      sourceContextRevision: confirmed.sourceContextRevision });
+    expect(snapshot.sourceBindingHash).toEqual(expect.any(String));
+    expect(await prisma.portfolioEntryPortfolioContinuation.count({ where: {
+      sessionId, snapshotFormat: 'PORTFOLIO_SETUP_114F_V1', snapshotState: 'CURRENT',
+    } })).toBe(1);
+
+    const requests: string[] = [];
+    page.on('request', (request) => requests.push(`${request.method()} ${new URL(request.url()).pathname}`));
+    await page.getByRole('link', { name: 'Continuar al portafolio' }).click();
+    await expect(page.getByTestId('portfolio-setup-home-arrival')).toBeVisible();
+    await expect(page.getByTestId('portfolio-bootstrap-home-a')).toBeVisible();
+    expect(requests).toContain(`GET /api/v1/public/portfolio-entry/continuations/${snapshotId}/portfolio-home-arrival`);
+    expect(requests).toContain('POST /api/v1/portfolio-bootstrap/sessions/from-portfolio-setup-continuity');
+    expect(requests.some((request) => /\/convert$|\/portfolio\/setup|\/home-context|\/projects$|\/portfolio\/(home|strategic-fronts|challenges|initiatives)/.test(request))).toBe(false);
+    expect(await prisma.portfolioBootstrapSession.findFirstOrThrow({ where: { sourceContinuationId: snapshotId } }))
+      .toMatchObject({ userId: user.userId, organizationId: organization.id });
+    expect(await canonicalCounts()).toEqual(before);
+
+    const blockedHome = async () => {
+      requests.length = 0;
+      await page.reload();
+      await expect(page.getByTestId('portfolio-setup-arrival-denied')).toBeVisible();
+      expect(requests).toContain(`GET /api/v1/public/portfolio-entry/continuations/${snapshotId}/portfolio-home-arrival`);
+      expect(requests.some((request) => /from-portfolio-setup-continuity|\/projects$|\/portfolio\/(home|strategic-fronts|challenges|initiatives)/.test(request))).toBe(false);
+    };
+    const recoveredHome = async () => {
+      await page.reload();
+      await expect(page.getByTestId('portfolio-setup-home-arrival')).toBeVisible();
+      await expect(page.getByTestId('portfolio-bootstrap-home-a')).toBeVisible();
+      expect(await prisma.portfolioBootstrapSession.count({ where: { sourceContinuationId: snapshotId } })).toBe(1);
+    };
+    await prisma.organizationPortfolioAccessGrant.deleteMany({ where: {
+      userId: user.userId, organizationId: organization.id, capability: 'portfolio:read',
+    } });
+    await blockedHome();
+    await prisma.organizationPortfolioAccessGrant.create({ data: {
+      userId: user.userId, organizationId: organization.id, capability: 'portfolio:read',
+    } });
+    await recoveredHome();
+
+    await prisma.organizationMember.deleteMany({ where: { userId: user.userId, organizationId: organization.id } });
+    await blockedHome();
+    await prisma.organizationMember.create({ data: { userId: user.userId, organizationId: organization.id } });
+    await recoveredHome();
+
+    await prisma.portfolioEntryPortfolioContinuation.update({ where: { id: snapshotId },
+      data: { sourceBindingHash: 'INVALID_HASH' } });
+    await blockedHome();
+    await prisma.portfolioEntryPortfolioContinuation.update({ where: { id: snapshotId },
+      data: { sourceBindingHash: snapshot.sourceBindingHash } });
+    await recoveredHome();
+
+    await prisma.portfolioEntryPortfolioContinuation.update({ where: { id: snapshotId },
+      data: { snapshotState: 'SUPERSEDED', supersededAt: new Date() } });
+    await blockedHome();
+    await prisma.portfolioEntryPortfolioContinuation.update({ where: { id: snapshotId },
+      data: { snapshotState: 'CURRENT', supersededAt: null } });
+    await recoveredHome();
+
+    await prisma.portfolioEntrySession.update({ where: { id: sessionId }, data: { continuationProfileVersion: 2 } });
+    await blockedHome();
+    await prisma.portfolioEntrySession.update({ where: { id: sessionId }, data: { continuationProfileVersion: 1 } });
+    await recoveredHome();
+
+    await prisma.portfolioEntrySession.update({ where: { id: sessionId }, data: { contextRevision: { increment: 1 } } });
+    await blockedHome();
+    expect(await canonicalCounts()).toEqual(before);
+    await api.dispose();
+  });
+
   // CURRENT_114D: adaptive examples all end at the Critical Handoff review.
   for (const scenario of SCENARIOS) {
     test(`[CURRENT_114D] ${scenario.id} reaches Critical Handoff without legacy semantic fallback`, async ({ page }, testInfo) => {

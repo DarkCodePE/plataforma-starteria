@@ -554,7 +554,7 @@ slice_id: PORTFOLIO_ENTRY_STARTERIA_PATH_114E
 HU: KAN-120 parent scope; KAN-121 audit; KAN-122 boundary; KAN-123 experience contract; KAN-124 architecture; KAN-125 implementation; KAN-126 scoped adoption
 logic_status: ACTIVE_V2_BASELINE (bounded 114E semantics only)
 implementation_status: IMPLEMENTED_VERIFIED (125F local evidence; PR #192 integrated)
-visual_status: V2_PILOT (not V2_MIGRATED; 114F remains unimplemented and legacy consumers remain)
+visual_status: V2_PILOT (not V2_MIGRATED; 114F Portfolio-first is now implemented, while legacy consumers remain)
 evidence_status: SUPPORTED (125A–125E integrated; 125F local E2E, security and regression evidence)
 semantic_owner: Portfolio Entry V2 for 114E; KAN-114 remains the sole business-reasoning source
 authority: factual Core v0.2; accepted product ADRs; active Portfolio Entry Logic Contract v0.1; accepted/frozen Critical Reasoning Experience Contract v0.1; KAN-114 semantic acceptance; KAN-119 governed 114D baseline; KAN-122 Business Capability Boundary (114E scoped); KAN-123 Starteria Path Experience Contract (114E scoped); KAN-124 architecture; KAN-120/KAN-125/KAN-126 scoped authority
@@ -591,26 +591,29 @@ promote 114F. Legacy consumers remain explicit `KEEP_COMPAT`. PR #192 merged
 
 ```text
 slice_id: PORTFOLIO_SETUP_CONTINUITY_114F
-HU: KAN-128; KAN-129 ADR-003 reconciliation; KAN-130 decision package; KAN-131 contract; KAN-132 scoped adoption
+HU: KAN-128; KAN-129 ADR-003 reconciliation; KAN-130 decision package; KAN-131 contract; KAN-132 scoped adoption; KAN-133 architecture; KAN-134–142 implementation and verification
 logic_status: ACCEPTED / FROZEN (114F Experience Contract v0.1, implementation planning only)
-implementation_status: NOT_IMPLEMENTED (as a 114F slice; earlier scoped continuation primitives exist)
-visual_status: V2_TARGET_UNRESOLVED
-evidence_status: CONTRACT_ACCEPTED (KAN-132 semantic review; no 114F runtime verification)
+implementation_status: IMPLEMENTED_VERIFIED (Portfolio-first 114F only; 133G Initiative exception deferred)
+visual_status: V2_PILOT (114F UI and governed arrival verified; not platform-wide V2 migration)
+evidence_status: VERIFIED (KAN-142 E2E_SECURITY_REGRESSION_VERIFIED locally; CI/deployment baseline and health smoke separated)
 authority: Core v0.2 factual; ADR-003/004/005 ACCEPTED; Portfolio Entry Logic Contract v0.1; governed 114D; accepted 114E where relevant; Portfolio Setup Continuity Experience Contract v0.1 ACCEPTED for 114F only. KAN-130 remains shaping evidence/decision baseline below accepted ADRs and contract
-technical_audit_status: NOT_YET_COMPLETED
+technical_audit_status: COMPLETED (KAN-133)
 technical_audit_authorized: YES
 implementation_planning_authorized: YES
-runtime_implementation_authorized: NO
-next_gate: TECHNICAL_CURRENT_STATE_AUDIT_AND_ARCHITECTURE
-blockers: technical current-state audit and architecture; explicit 114F implementation slice; server-owned profile transition; grant issuer/provisioning and organization scope policy; target-scoped Initiative invitation policy and integration; snapshot/currentness adaptation; legacy consumer disposition
+runtime_implementation_authorized: YES (bounded 133A–133F technical slices only; no authority for 133G)
+next_gate: KAN-142 read-only review and human-approved merge; KAN-128 closure after merge/deploy verification
+blockers: none for Portfolio-first; 133G requires external target-scoped issuer policy, governed profile transition, Assignment/provisioning evidence and explicit Initiative routing authority
 legacy_treatment: KEEP_COMPAT pending repository-wide consumer evidence and separate retirement authority
 old_post_entry_disposition: SUPERSEDED_IN_PART for the overlapping 114F boundary; documentary status remains PROPOSED FOR REVIEW
+migration_status: PARTIAL (legacy KEEP_COMPAT and 133G deferred)
+report: docs/implementation/portfolio-entry/KAN-142_114F_133H_E2E_SECURITY_REGRESSION_CLOSURE_REPORT_v0.1.md
 ```
 
-ADR-003's former status conflict is no longer a 114F blocker. KAN-132 accepts
-only the 114F logic; technical audit and implementation planning may proceed,
-while runtime, frontend, backend, Prisma, grant/issuer provisioning, Core,
-Steps and route retirement remain unauthorized. See
+ADR-003's former status conflict is no longer a 114F blocker. KAN-132 accepted
+the 114F logic; KAN-133 completed the audit and KAN-134–141 supplied specific
+runtime authority for the bounded Portfolio-first path. KAN-142 verifies that
+path. Grant/issuer provisioning, 133G, Core, Steps and route retirement remain
+outside these slices. See
 `docs/implementation/portfolio-entry/KAN-129_ADR003_114F_AUTHORITY_RECONCILIATION_v0.1.md`.
 
 # 6. V2 E2E slice map
@@ -627,7 +630,7 @@ Steps and route retirement remain unauthorized. See
 | Clarification | CANDIDATE + hypotheses | EXPERIMENTAL / VERIFY | V2_PILOT | TESTING | TEST |
 | Handoff / Value Handoff Cognition | CANDIDATE + hypotheses | EXPERIMENTAL / VERIFY | V2_PILOT | TESTING | TEST |
 | Registration / continuation | CANDIDATE | IMPLEMENTED_UNVERIFIED | MIXED | TESTING | VERIFY grant and full E2E |
-| Portfolio Setup Continuity 114F | ACCEPTED / FROZEN for implementation planning | NOT_IMPLEMENTED as 114F slice | V2_TARGET_UNRESOLVED | CONTRACT_ACCEPTED; no runtime verification | TECHNICAL_CURRENT_STATE_AUDIT_AND_ARCHITECTURE; no runtime authorization |
+| Portfolio Setup Continuity 114F | ACCEPTED / FROZEN | IMPLEMENTED_VERIFIED (Portfolio-first only) | V2_PILOT | VERIFIED (KAN-142 local E2E/security/regression) | KEEP_COMPAT legacy; 133G deferred; migration PARTIAL |
 | Portfolio Bootstrap | CANDIDATE | IMPLEMENTED_VERIFIED reported | V2_MIGRATED / VERIFY | VERIFIED reported | RECONCILE |
 | Portfolio Home | TARGET AUTHORITY FROZEN PH-0 / CANDIDATE | PH-2 read-model implementation evidence; post-merge `GO_WITH_GAPS`; runtime not certified | V2_TARGET_DEFINED; PH-3A evidence only | REQUIRES_RETEST | RECONCILE; PH-3B not implemented |
 | Strategic Framing | ACTIVE_V2_BASELINE / APPROVED EXPERIENCE BASELINE (SF-0) | PARTIAL_IMPLEMENTATION / IMPLEMENTED_UNVERIFIED (SF-1, SF-2, SF-3A, SF-3B) | V2_TARGET_DEFINED | TESTING | SF-3C+ not implemented; no end-to-end runtime, UI, Copilot or canonical promotion |
