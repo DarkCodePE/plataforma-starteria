@@ -24,6 +24,9 @@ const handoff = {
 };
 const scopeA = { organizationId: 'org-a', name: 'Espacio A' };
 const scopeB = { organizationId: 'org-b', name: 'Espacio B' };
+const refreshedSession = { ...session, contextRevision: 3 };
+const refreshedHandoff = { ...handoff, id: 'handoff-2', artifactVersion: 2, sourceContextRevision: 3,
+  confirmedAt: new Date('2026-10-11T11:30:00.000Z'), payload: { ...handoff.payload, finalReading: 'Lectura nueva' } };
 
 function snapshot(overrides: Record<string, unknown> = {}, organizationScopeId = 'org-a') {
   const binding = {
@@ -151,6 +154,20 @@ describe('114F read/status boundary', () => {
     expect(dto.snapshot).toBeUndefined();
   });
 
+  it('keeps a truly stale or unconfirmed latest 114D fail closed even with a stored snapshot', async () => {
+    for (const invalidHandoff of [
+      { ...handoff, sourceContextRevision: 1 },
+      { ...handoff, confirmationState: 'provisional', confirmedAt: null, confirmedByUserId: null },
+    ]) {
+      const { service, deps } = setup({ handoff: invalidHandoff, snapshots: [snapshot()], scopes: [scopeA] });
+      const dto = await read(service);
+      expect(dto.status).toBe('STALE_SOURCE');
+      expect(dto.recovery?.code).toBe('REVIEW_CRITICAL_HANDOFF');
+      expect(deps.readCurrentSnapshots).not.toHaveBeenCalled();
+      expect(deps.resolveReadableScopes).not.toHaveBeenCalled();
+    }
+  });
+
   it('returns PROFILE_CONFLICT for absent profile evidence', async () => {
     const dto = await read(setup({ session: { ...session, continuationProfileEvidenceRef: null } }).service);
     expect(dto.status).toBe('PROFILE_CONFLICT');
@@ -182,6 +199,51 @@ describe('114F read/status boundary', () => {
     expect(JSON.stringify(dto)).not.toContain('must never leak');
   });
 
+  it.each([
+    { scopes: [scopeA], expectedStatus: 'READY_AUTHORIZED_SCOPE', expectedScope: scopeA },
+    { scopes: [scopeA, scopeB], expectedStatus: 'SELECT_SCOPE', expectedScope: undefined },
+    { scopes: [], expectedStatus: 'READY_PROVISIONAL', expectedScope: undefined },
+  ])('ignores an intact old CURRENT snapshot with $expectedStatus after source refresh',
+    async ({ scopes, expectedStatus, expectedScope }) => {
+      const { service, deps } = setup({ session: refreshedSession, handoff: refreshedHandoff,
+        snapshots: [snapshot()], scopes });
+      const dto = await read(service);
+      expect(dto.status).toBe(expectedStatus);
+      expect(dto.snapshot).toBeUndefined();
+      expect(dto.currentScope).toEqual(expectedScope);
+      expect(dto.sourceBinding).toMatchObject({ sessionId: session.id, contextRevision: 3,
+        criticalHandoffId: refreshedHandoff.id, criticalHandoffVersion: 2,
+        criticalHandoffSchemaVersion: refreshedHandoff.schemaVersion,
+        confirmedAt: refreshedHandoff.confirmedAt.toISOString() });
+      expect(dto.sourceBinding?.starteriaPath).toBeUndefined();
+      expect(dto.carriedContext?.criticalReading).toBe('Lectura nueva');
+      expect(deps.resolveReadableScopes).toHaveBeenCalledOnce();
+    });
+
+  it('does not select the old snapshot scope when multiple current scopes exist', async () => {
+    const dto = await read(setup({ session: refreshedSession, handoff: refreshedHandoff,
+      snapshots: [snapshot()], scopes: [scopeA, scopeB] }).service);
+    expect(dto.authorizedScopes).toEqual([scopeA, scopeB]);
+    expect(dto.currentScope).toBeUndefined();
+    expect(dto.portfolioAccess.portfolioRead).toBe(false);
+  });
+
+  it('reports resolver failure after ignoring an intact old snapshot', async () => {
+    const dto = await read(setup({ session: refreshedSession, handoff: refreshedHandoff,
+      snapshots: [snapshot()], scopeResolution: { state: 'RESOLVER_FAILURE' } }).service);
+    expect(dto.status).toBe('SCOPE_VALIDATION_FAILED');
+    expect(dto.recovery?.code).toBe('RETRY_SCOPE_VALIDATION');
+    expect(dto.snapshot).toBeUndefined();
+  });
+
+  it('rejects an old snapshot with a broken binding hash before comparing source material', async () => {
+    const dto = await read(setup({ session: refreshedSession, handoff: refreshedHandoff,
+      snapshots: [snapshot({ sourceBindingHash: 'invalid' })], scopes: [scopeA] }).service);
+    expect(dto.status).toBe('ERROR');
+    expect(dto.recovery?.code).toBe('INVALID_114F_SNAPSHOT');
+    expect(dto.snapshot).toBeUndefined();
+  });
+
   it('never projects a LEGACY_UNBOUND row as 114F', async () => {
     const dto = await read(setup({ snapshots: [snapshot({ snapshotFormat: null })], scopes: [scopeA] }).service);
     expect(dto.snapshot).toBeUndefined();
@@ -194,11 +256,13 @@ describe('114F read/status boundary', () => {
     expect(JSON.stringify(dto)).not.toContain('secret');
   });
 
-  it('rejects stale 114D and incompatible 114E binding in a snapshot', async () => {
+  it('rejects snapshot material mutated without a matching binding hash', async () => {
     const stale = await read(setup({ snapshots: [snapshot({ criticalHandoffId: 'old-handoff' })], scopes: [scopeA] }).service);
-    expect(stale.status).toBe('STALE_SOURCE');
+    expect(stale.status).toBe('ERROR');
+    expect(stale.recovery?.code).toBe('INVALID_114F_SNAPSHOT');
     const path = await read(setup({ snapshots: [snapshot({ starteriaPathProjectionVersion: 'unsupported', starteriaPathSchemaVersion: 'v1', starteriaPathBoundaryVersion: 'v1' })], scopes: [scopeA] }).service);
-    expect(path.status).toBe('STALE_SOURCE');
+    expect(path.status).toBe('ERROR');
+    expect(path.recovery?.code).toBe('INVALID_114F_SNAPSHOT');
   });
 
   it('does not expose a snapshot from another tenant even if the owner can read one scope', async () => {
