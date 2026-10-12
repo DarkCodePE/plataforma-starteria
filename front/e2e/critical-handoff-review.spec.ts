@@ -6,6 +6,7 @@ const CRITICAL_HANDOFF_PATH = new RegExp(`/api/v1/public/portfolio-entry/session
 const MESSAGE_PATH = new RegExp(`/api/v1/public/portfolio-entry/sessions/${SESSION_ID}/messages$`);
 
 type Scenario = {
+  handoffExperience?: 'critical' | 'legacy';
   projection?: Record<string, unknown>;
   state?: 'current' | 'stale';
   confirmationState?: 'provisional' | 'confirmed';
@@ -68,6 +69,7 @@ function legacyHandoff() {
 function sessionDto(overrides: Record<string, unknown> = {}) {
   return {
     id: SESSION_ID,
+    handoffExperience: 'critical',
     lifecycleStatus: 'AWAITING_CONFIRMATION',
     executionStatus: 'ACTIVE',
     revision: 5,
@@ -108,10 +110,16 @@ async function installSessionMocks(page: Page, scenario: Scenario = {}) {
 
   await page.route(SESSION_PATH, async (route: Route) => {
     if (route.request().method() === 'GET') {
-      await route.fulfill({ json: { success: true, data: sessionDto() } });
+      await route.fulfill({ json: { success: true, data: sessionDto({
+        handoffExperience: scenario.handoffExperience ?? 'critical',
+      }) } });
       return;
     }
     await route.fallback();
+  });
+
+  await page.route(`**/api/v1/public/portfolio-entry/sessions/${SESSION_ID}/handoff`, async (route: Route) => {
+    await route.fulfill({ json: { success: true, data: sessionDto({ handoffExperience: 'legacy' }) } });
   });
 
   let criticalReadCount = 0;
@@ -481,7 +489,7 @@ test('Critical Handoff fetch failure exposes retry without rendering legacy cont
 });
 
 test('historical legacy session without a Critical Handoff keeps its compatibility review', async ({ page }) => {
-  await openReview(page, { absent: true, marker: false });
+  await openReview(page, { absent: true, marker: false, handoffExperience: 'legacy' });
   await expect(page.getByTestId('handoff-first-view')).toBeVisible();
   await expect(page.getByTestId('handoff-first-view').getByTestId('handoff-approach-step').getByText('LEGACY_PATH_MARKER')).toBeVisible();
   await expect(page.getByRole('button', { name: 'Trabajarlo con Starteria' })).toBeVisible();

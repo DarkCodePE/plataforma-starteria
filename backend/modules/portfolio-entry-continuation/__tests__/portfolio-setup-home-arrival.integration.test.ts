@@ -124,6 +124,12 @@ describeDatabase('114F Home consumer gate on PostgreSQL', () => {
       await expect(createOrReuse()).rejects.toMatchObject({ statusCode: 403 });
       await expect(bootstrap.getSession({ sessionId: firstBootstrap.bootstrapSession.id, authenticatedUserId: userId,
         permissions: new Set<Permission>(['portfolio:read']) })).rejects.toMatchObject({ statusCode: 403 });
+      await expect(bootstrap.updateAnchor({ sessionId: firstBootstrap.bootstrapSession.id, authenticatedUserId: userId,
+        permissions: new Set<Permission>(['portfolio:write']), body: { outcomeStatement: 'Unauthorized change' } }))
+        .rejects.toMatchObject({ statusCode: 403 });
+      expect((await db.portfolioAnchor.findFirstOrThrow({ where: {
+        bootstrapSessionId: firstBootstrap.bootstrapSession.id,
+      } })).outcomeStatement).not.toBe('Unauthorized change');
       await db.organizationPortfolioAccessGrant.create({ data: { userId, organizationId, capability: 'portfolio:read' } });
       await db.organizationMember.deleteMany({ where: { userId, organizationId } });
       await expect(read()).rejects.toMatchObject({ statusCode: 403 });

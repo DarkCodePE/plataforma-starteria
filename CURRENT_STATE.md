@@ -158,12 +158,17 @@ Invariantes de esta frontera: `AUTHENTICATION != BUSINESS CANONICALIZATION`,
 `PUBLIC_ENTRY_CONTINUATION != STEPS_ENTRY`.
 
 114F tiene lógica `ACCEPTED / FROZEN FOR IMPLEMENTATION PLANNING` por KAN-132,
-limitada a Portfolio Setup Continuity. Su implementación está `NOT_IMPLEMENTED`;
-la auditoría técnica/current-state está `NOT_YET_COMPLETED` y runtime no está
-autorizado. La aceptación permite auditoría, arquitectura y planificación;
-no sustituye la autorización explícita de una slice técnica ni resuelve la
-provisión de grants, la transición de perfil o la política de issuer Initiative.
-La evidencia de continuidad existente pertenece a slices anteriores.
+limitada a Portfolio Setup Continuity. La ruta Portfolio-first 114D confirmado
+→ 114E → 114F → Home/Bootstrap está `IMPLEMENTED_VERIFIED` por las slices
+133A–133F y el cierre local E2E/security/regression KAN-142. KAN-133 completó
+la auditoría técnica; KAN-134–141 implementaron contrato de datos, read/write,
+scope, perfil, UI y consumer gate con autoridad específica por frente. La
+verificación KAN-142 usa navegador determinístico, backend y PostgreSQL; no
+certifica todo Starteria ni reemplaza una prueba productiva de ese journey.
+La excepción Initiative 133G sigue `DEFERRED / BLOCKED_BY_EXTERNAL_AUTHORITY`:
+faltan política de issuer target-scoped, transición gobernada de perfil,
+evidencia de Assignment/provisioning y routing Initiative explícito completo.
+Los consumidores legacy siguen `KEEP_COMPAT`; Core v0.3 no se promueve.
 
 - Portfolio Home Governance: PH-0 target freeze at `docs/portfolio-lead/06-portfolio-home-governance/`; runtime not certified.
 - PH-2 read-model implementation evidence is present on this branch, including
@@ -401,7 +406,9 @@ The adoption did not promote Portfolio Setup continuity or resolve ADR-003 at
 the time; KAN-129 reconciles ADR-003 status separately. It did not
 promote legacy starteria_path, recommended_approach, or recommended_cta,
 establish Early Access/Demo availability, authorize Landing claims beyond the
-adopted boundary, or open product access. 114F remains NOT_IMPLEMENTATION_READY.
+adopted boundary, or open product access. That was the 114E adoption boundary;
+the later Portfolio-first 114F implementation and KAN-142 verification are
+recorded above. The 133G Initiative exception remains deferred.
 
 ## ADRs
 
