@@ -36,6 +36,7 @@ import {
   submitPortfolioEntryMessage,
 } from './portfolioEntryPublicService';
 import { StarteriaPathExperience, type StarteriaPathRequestState } from './StarteriaPathExperience';
+import { PortfolioSetupContinuityExperience } from './PortfolioSetupContinuityExperience';
 import { StarteriaPathInvalidResponseError, type StarteriaPathDto } from './starteriaPath.types';
 import { createIdempotencyKey } from './idempotency';
 import { trackPortfolioEntryEvent } from './analytics';
@@ -1356,7 +1357,7 @@ export function PortfolioEntryExperience({
   redirectAfterStart,
 }: PortfolioEntryExperienceProps = {}) {
   const navigate = useNavigate();
-  const { authLoading } = useApp();
+  const { authLoading, isAuthenticated } = useApp();
   const [sessionRef, setSessionRef] = useState<StoredPortfolioEntrySession | null>(null);
   const [sessionDto, setSessionDto] = useState<PortfolioEntrySessionDto | null>(null);
   const [criticalHandoffLoad, setCriticalHandoffLoad] = useState<CriticalHandoffLoad>({ sessionId: null, state: 'idle' });
@@ -2191,6 +2192,24 @@ export function PortfolioEntryExperience({
                 onRetry={() => void fetchStarteriaPath(sessionDto.id, true)}
               />
             ) : null}
+            {showStarteriaPath && isAuthenticated && sessionDto.ownership.state === 'CLAIMED'
+              && pathLoad?.requestState === 'ready' && pathLoad.path
+              && (pathLoad.path.experienceState === 'SUPPORTED' || pathLoad.path.experienceState === 'BOUNDED') ? (
+                <PortfolioSetupContinuityExperience
+                  sessionId={sessionDto.id}
+                  path={pathLoad.path}
+                  onReviewSource={() => {
+                    void fetchCriticalHandoff(sessionDto.id, undefined, true);
+                    void getClaimedPortfolioEntrySession(sessionDto.id).then(setSessionDto);
+                  }}
+                  onStartNewEntry={() => {
+                    clearClaimedPortfolioEntrySession();
+                    clearPortfolioEntryClaimedNotice();
+                    setClaimedNotice(null);
+                    restart();
+                  }}
+                />
+              ) : null}
           </>
         );
       }
