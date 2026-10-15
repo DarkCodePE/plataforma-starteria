@@ -157,7 +157,9 @@ const ALIGNMENT_STATUS_OPTIONS = [
 const ALIGNMENT_DECISION_OPTIONS = ['Avanzar a investigación', 'Ajustar enfoque antes de investigar', 'Buscar más respaldo', 'Buscar otro sponsor', 'Pausar por ahora', 'No hubo decisión todavía'];
 const ALIGNMENT_EVIDENCE_OPTIONS = ['Nota', 'Minuta', 'Correo', 'Link', 'Archivo', 'Captura'];
 const IMPORT_ALIGNMENT_OPTIONS = ['Ya fue alineada con líder/sponsor', 'Fue conversada informalmente', 'No fue alineada todavía', 'No aplica', 'Desconocido / por confirmar'];
-const STEP0_ADAPTIVE_CONFIRMATION_ERROR = 'Step 0 aún no está confirmado en Adaptive Core.';
+// Lo ve quien ejecuta: tiene que decir qué pasó y qué hacer, sin nombres internos.
+const STEP0_ADAPTIVE_CONFIRMATION_ERROR = 'No pudimos confirmar el Step 0 todavía. Recarga la página y vuelve a intentarlo; si sigue pasando, avísale a tu líder de portafolio.';
+const STEP0_NOT_READY_ERROR = 'Antes de avanzar, termina los checkpoints del Step 0: falta generar el resumen para confirmarlo.';
 
 type AlignmentStatus = NonNullable<Step0Data['alignmentStatus']>;
 
@@ -312,7 +314,38 @@ function buildAlignmentOutput(form: Step0Data, summaryBlocks: Array<{ label: str
 
 function pendingValue(value?: string) {
   const clean = value?.trim();
-  return clean ? clean : '[pendiente por completar]';
+  return clean ? clean : 'Sin definir todavía';
+}
+
+const outputText = (value: unknown): string => {
+  if (typeof value === 'string') return value.trim();
+  if (Array.isArray(value)) return value.map(outputText).filter(Boolean).join(', ');
+  if (value && typeof value === 'object') {
+    const item = value as Record<string, unknown>;
+    return outputText(item.summary ?? item.text ?? item.name ?? item.label ?? '');
+  }
+  return '';
+};
+
+/**
+ * El resumen del Step 0 (para el líder, el mensaje y el prompt) se arma con los campos del
+ * formulario. Las respuestas de los checkpoints quedan en el resultado del Step 0, así que se
+ * completan desde ahí los campos que el formulario no tiene; lo escrito en el formulario manda.
+ * Antes aparecía "[pendiente por completar]" con el dato ya respondido.
+ */
+export function step0FormWithOutput(form: Step0Data, output: Record<string, unknown> | null | undefined): Step0Data {
+  if (!output) return form;
+  const first = (...values: unknown[]) => values.map(outputText).find(Boolean) ?? '';
+  const fill = (current: string | undefined, ...values: unknown[]) => (current?.trim() ? current : first(...values) || current);
+  return {
+    ...form,
+    quePasaQueQuieres: fill(form.quePasaQueQuieres, output.objective, output.intention),
+    whyNowText: fill(form.whyNowText, output.whyNow, output.outcome),
+    impactWho: fill(form.impactWho || form.impacta?.join(', '), output.actors, output.scope),
+    currentEvidence: fill(form.currentEvidence, output.signals, output.availableEvidence, output.facts),
+    decisionRequested: fill(form.decisionRequested, output.decisionCriteria),
+    validationSignal: fill(form.validationSignal, output.priorityHypothesis),
+  };
 }
 
 function getExecutiveSections(form: Step0Data) {
@@ -668,7 +701,6 @@ export function Step0Page() {
   const nextMissingModule = MODULE_ORDER.find(moduleId => nextMissing ? MODULE_REQUIRED[moduleId].includes(nextMissing) : false) ?? activeModule;
   const previewMissing = missing.slice(0, 3);
   const readyLabels = requiredKeys.filter(key => isFilled(form[key])).slice(0, 4);
-  const executiveSections = getExecutiveSections(form);
   const alignmentStatus = form.alignmentStatus;
   const alignmentStatusLabel = getAlignmentLabel(alignmentStatus);
   const alignmentIsReady = alignmentStatus === 'aligned';
@@ -812,8 +844,15 @@ const draftStep0Brief = (adaptiveCore?.stepOutputs ?? []).find(
 ) as
   | { id?: string; output?: Record<string, unknown> }
   | undefined;
-  const leaderMessage = buildLeaderMessage(form);
-  const pptPrompt = buildPptPrompt(form);
+// El Step 0 ya confirmado: "Avanzar a Step 1" sólo navega. Antes buscaba un borrador, no lo
+// encontraba y mostraba "Step 0 aún no está confirmado" aunque lo estuviera.
+const confirmedStep0Brief = (adaptiveCore?.stepOutputs ?? []).find(
+  (output: any) => output.step === 0 && output.status === 'confirmed',
+) as { output?: Record<string, unknown> } | undefined;
+  const briefForm = step0FormWithOutput(form, (confirmedStep0Brief ?? draftStep0Brief)?.output);
+  const executiveSections = getExecutiveSections(briefForm);
+  const leaderMessage = buildLeaderMessage(briefForm);
+  const pptPrompt = buildPptPrompt(briefForm);
 
   const analysisText = ['Propuesta de iniciativa para tu líder', ...executiveSections.map(block => `${block.title}: ${block.value}`)].join('\n');
   const setField = <K extends keyof Step0Data>(key: K, value: Step0Data[K]) => {
@@ -883,8 +922,13 @@ const draftStep0Brief = (adaptiveCore?.stepOutputs ?? []).find(
       setCheckpointError(STEP0_ADAPTIVE_CONFIRMATION_ERROR);
       return;
     }
+    if (confirmedStep0Brief && canNavigateToAdaptiveStep(adaptiveCore, 1)) {
+      if (!saved || Object.keys(overrides).length > 0) await persistStep0(overrides);
+      navigate(`/projects/${project.id}/step/1`);
+      return;
+    }
     if (!draftStep0Brief?.output) {
-      setCheckpointError(STEP0_ADAPTIVE_CONFIRMATION_ERROR);
+      setCheckpointError(STEP0_NOT_READY_ERROR);
       return;
     }
 
@@ -1405,7 +1449,7 @@ const draftStep0Brief = (adaptiveCore?.stepOutputs ?? []).find(
                   className="mt-3 rounded-xl border border-rose-200 bg-white px-4 py-2 text-sm text-rose-700 hover:bg-rose-100"
                   style={{ fontWeight: 700 }}
                 >
-                  Recargar estado adaptativo
+                  Recargar
                 </button>
               </div>
             )}
@@ -1486,7 +1530,7 @@ const draftStep0Brief = (adaptiveCore?.stepOutputs ?? []).find(
                   <LeaderFeedbackStatusCard project={{ ...project, step0Data: form }} updateProject={(id, updates) => {
                     updateProject(id, updates);
                     if (updates.step0Data) setForm(prev => ({ ...prev, ...updates.step0Data }));
-                  }} variant="step0" />
+                  }} variant="step0" proposalStep0={briefForm} />
                 </div>
                 <div className="hidden rounded-2xl border border-slate-200 bg-white p-5">
                   <div className="flex flex-wrap items-start justify-between gap-3">
@@ -1644,8 +1688,10 @@ const draftStep0Brief = (adaptiveCore?.stepOutputs ?? []).find(
                 <span className="text-slate-400">·</span>
                 <span>{completedCheckpoints}/{checkpointSections.length} cerrados</span>
               </>
+            ) : confirmedStep0Brief ? (
+              <span style={{ fontWeight: 800 }}>Step 0 completado</span>
             ) : (
-              <span style={{ fontWeight: 800 }}>Checkpoint bloqueado hasta cargar el estado adaptativo</span>
+              <span style={{ fontWeight: 800 }}>Cargando los checkpoints…</span>
             )}
           </div>
           <div className="ml-auto hidden items-center gap-3 sm:flex">

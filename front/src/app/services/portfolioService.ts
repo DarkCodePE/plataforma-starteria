@@ -480,6 +480,8 @@ export interface PortfolioLearning {
 }
 
 export async function listPortfolioLearnings(): Promise<PortfolioLearning[]> {
-  const { data } = await api.get<ApiResponse<{ learnings?: PortfolioLearning[] }>>('/portfolio/home');
+  const { data } = await api.get<ApiResponse<{ learnings?: PortfolioLearning[]; learningsUnavailable?: boolean }>>('/portfolio/home');
+  // F-12: si el servidor no pudo leerlos, es un error, no una lista vacía.
+  if (data.data.learningsUnavailable) throw new Error('LEARNINGS_UNAVAILABLE');
   return data.data.learnings ?? [];
 }

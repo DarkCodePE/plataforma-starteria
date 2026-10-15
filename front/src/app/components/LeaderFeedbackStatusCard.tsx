@@ -24,7 +24,7 @@ function getStatusLabel(status?: LeaderFeedbackStatus) {
 }
 
 function pending(value?: string) {
-  return value?.trim() || '[pendiente por completar]';
+  return value?.trim() || 'Sin definir todavía';
 }
 
 function buildProposal(step0?: Partial<Step0Data>) {
@@ -59,8 +59,11 @@ export function LeaderFeedbackStatusCard({
   variant = 'step0',
   compact = false,
   stronger = false,
+  proposalStep0,
 }: {
   project: Project;
+  /** Datos para armar la propuesta, si difieren de lo guardado (p. ej. respuestas confirmadas del Step 0). */
+  proposalStep0?: Partial<Step0Data>;
   updateProject: (id: string, updates: Partial<Project>) => void;
   variant?: Variant;
   compact?: boolean;
@@ -72,7 +75,7 @@ export function LeaderFeedbackStatusCard({
   const status = step0.leaderFeedbackStatus ?? 'pending';
   const statusLabel = getStatusLabel(status);
   const imported = hasImportMetadata(project);
-  const proposal = useMemo(() => buildProposal(step0), [step0]);
+  const proposal = useMemo(() => buildProposal(proposalStep0 ?? step0), [proposalStep0, step0]);
 
   const updateFeedback = (updates: Partial<Step0Data>) => {
     updateProject(project.id, {
