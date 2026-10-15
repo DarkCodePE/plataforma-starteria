@@ -43,3 +43,55 @@ describe('reconstruct (E2E Job-Driven §14)', () => {
     expect(reading.nextMaterialUncertainty).toBe('¿Qué se buscaba mover y qué decisión habilitaba?');
   });
 });
+
+// Auditoría E2E F-09 (probe P07): "Abandono bajó 20%" y "Coste subió 5%" se cruzaban como
+// contradicción y se pedía explicar por qué no coinciden. Son compatibles: es un tradeoff.
+describe('reconstruct — tradeoffs no son contradicciones (F-09)', () => {
+  it('beneficio y costo sobre temas distintos: tradeoff, no contradicción', () => {
+    const reading = reconstruct({
+      name: 'Onboarding',
+      summary: 'Rediseñamos el onboarding.',
+      goal: 'Reducir abandono',
+      evidence: [
+        { summary: 'El abandono bajó 20%', classification: 'supports' },
+        { summary: 'El coste por usuario subió 5%', classification: 'contradicts' },
+      ],
+    });
+    expect(reading.contradictions).toEqual([]);
+    expect(reading.tradeoffs).toEqual([{ benefit: 'El abandono bajó 20%', cost: 'El coste por usuario subió 5%' }]);
+    expect(reading.sustainableClaims[0].claim).toBe('El abandono bajó 20%');
+    expect(reading.nextMaterialUncertainty).not.toMatch(/no coinciden/);
+    expect(reading.nextMaterialUncertainty).toMatch(/compensa/);
+  });
+
+  it('si declaran el mismo claim, es contradicción aunque usen palabras distintas', () => {
+    const reading = reconstruct({
+      name: 'Piloto',
+      summary: 'Piloto.',
+      evidence: [
+        { summary: 'Los usuarios terminan el alta', classification: 'supports', claim: 'retención' },
+        { summary: 'La mitad abandona en el paso 2', classification: 'contradicts', claim: 'Retención' },
+      ],
+    });
+    expect(reading.contradictions).toHaveLength(1);
+    expect(reading.tradeoffs).toEqual([]);
+  });
+
+  it('con varias evidencias, sólo empareja las del mismo tema', () => {
+    const reading = reconstruct({
+      name: 'Mixto',
+      summary: 'Resultados mixtos.',
+      evidence: [
+        { summary: 'El retrabajo bajó 30%', classification: 'supports' },
+        { summary: 'El tiempo de respuesta mejoró', classification: 'supports' },
+        { summary: 'El retrabajo volvió a subir en marzo', classification: 'contradicts' },
+      ],
+    });
+    expect(reading.contradictions).toEqual([{ supports: 'El retrabajo bajó 30%', contradicts: 'El retrabajo volvió a subir en marzo' }]);
+    expect(reading.tradeoffs).toEqual([{ benefit: 'El tiempo de respuesta mejoró', cost: 'El retrabajo volvió a subir en marzo' }]);
+    expect(reading.sustainableClaims.map((c) => c.claim)).toEqual([
+      'El retrabajo bajó 30% (sólo donde se observó; hay evidencia en contra)',
+      'El tiempo de respuesta mejoró',
+    ]);
+  });
+});

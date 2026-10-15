@@ -24,7 +24,7 @@ import {
   RoutePreviewCard,
   sectionAnchorId,
 } from '../components/ReviewCards';
-import type { SnapshotSectionId } from '../services/initiativeReviewClient';
+import type { ReviewSnapshot, SnapshotSectionId } from '../services/initiativeReviewClient';
 import { AssistantPanel, type ChatMessage } from '../components/chat/AssistantPanel';
 import {
   composeConversation,
@@ -321,6 +321,7 @@ export function InitiativeReviewResultPage() {
   const snapshotColumn = (
     <>
       <div className="grid gap-4">
+        <GenerationModeNotice mode={snapshot.generationMode} />
         <UnderstandingSummaryCard snapshot={snapshot} highlighted={highlighted.includes('understanding')} onRefine={onRefineSection} isFocused={focusedSection === 'understanding'} />
         <ChallengeTypeCard snapshot={snapshot} highlighted={highlighted.includes('challengeType')} onRefine={onRefineSection} isFocused={focusedSection === 'challengeType'} />
         <CritiqueCard snapshot={snapshot} highlighted={highlighted.includes('critique')} onRefine={onRefineSection} isFocused={focusedSection === 'critique'} />
@@ -453,6 +454,24 @@ export function InitiativeReviewResultPage() {
         </div>
         <div className="min-w-0">{snapshotColumn}</div>
       </div>
+    </div>
+  );
+}
+
+/**
+ * Auditoría E2E F-07: si la revisión la armó la plantilla (el modelo falló o la IA no está
+ * activa), se dice. Antes se presentaba igual que un análisis.
+ */
+export function GenerationModeNotice({ mode }: { mode?: ReviewSnapshot['generationMode'] }) {
+  if (mode !== 'fallback' && mode !== 'deterministic') return null;
+  return (
+    <div role="note" data-testid="generation-mode-notice" className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+      <p style={{ fontWeight: 700 }}>
+        {mode === 'fallback' ? 'Esta revisión es una versión básica: el análisis con IA no respondió.' : 'Esta revisión es una versión básica, sin análisis con IA.'}
+      </p>
+      <p className="mt-1">
+        Ordena lo que escribiste con una plantilla; no evalúa tu caso en profundidad. {mode === 'fallback' ? 'Agrega contexto o vuelve a intentarlo en unos minutos para obtener el análisis completo.' : 'Úsala como punto de partida y complétala en el Step 0.'}
+      </p>
     </div>
   );
 }

@@ -73,7 +73,15 @@ export interface GeneratedReview {
   strategicQuestions: StrategicQuestion[];
   improvedProposal: ImprovedProposal;
   routePreview: StepRoutePreviewItem[];
+  /**
+   * Quién produjo la revisión (auditoría E2E F-07): `ai` el modelo; `fallback` la plantilla porque
+   * el modelo falló; `deterministic` la plantilla porque la IA no está activada. Sin esto una
+   * plantilla se presentaba como análisis.
+   */
+  generationMode?: GenerationMode;
 }
+
+export type GenerationMode = 'ai' | 'fallback' | 'deterministic';
 
 export interface GenerateInput {
   originalInput: string;

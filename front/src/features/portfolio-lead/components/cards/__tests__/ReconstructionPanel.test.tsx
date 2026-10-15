@@ -28,4 +28,25 @@ describe('ReconstructionPanel (§14)', () => {
     expect(screen.getByText(/se retoma desde Step 0/)).toBeInTheDocument();
     expect(reconstructExistingWork).toHaveBeenCalledWith({ name: 'Piloto', summary: '4 meses en 2 sucursales', evidence: [{ summary: 'Bajó 18% en A', classification: 'supports' }] });
   });
+
+  it('muestra los costos a sopesar aparte de las contradicciones (F-09)', async () => {
+    reconstructExistingWork.mockResolvedValue({
+      provenance: 'USER_DECLARED', restartFromStep0: false,
+      sustainableClaims: [{ claim: 'El abandono bajó 20%', evidence: [] }],
+      availableEvidence: { supports: 1, contradicts: 1, insufficient: 0 },
+      contradictions: [],
+      tradeoffs: [{ benefit: 'El abandono bajó 20%', cost: 'El coste por usuario subió 5%' }],
+      gaps: [], gates: [], nextMaterialUncertainty: 'Sopesar.', suggestedReentryStep: 2,
+    });
+    render(<ReconstructionPanel />);
+    fireEvent.change(screen.getByLabelText('Nombre del trabajo'), { target: { value: 'Onboarding' } });
+    fireEvent.change(screen.getByLabelText(/Qué se hizo/), { target: { value: 'Rediseño' } });
+    fireEvent.change(screen.getByLabelText('Evidencia 1'), { target: { value: 'El abandono bajó 20%' } });
+    fireEvent.click(screen.getByRole('button', { name: /Leer qué podemos sostener/ }));
+
+    const reading = await screen.findByTestId('reconstruction-reading');
+    expect(reading).toHaveTextContent('Costos a sopesar');
+    expect(reading).toHaveTextContent('El abandono bajó 20%, pero el coste por usuario subió 5%');
+    expect(reading).not.toHaveTextContent('Contradicciones');
+  });
 });

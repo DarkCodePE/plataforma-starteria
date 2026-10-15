@@ -248,3 +248,24 @@ describe('InitialReviewService — focusSection splice (ADR-026 v2)', () => {
     expect(created.understandingSummary).toBe('Entiendo tu propuesta.'); // del gen, no del prev
   });
 });
+
+describe('InitialReviewService — modo de generación visible (F-07)', () => {
+  it('guarda el modo y lo devuelve en el snapshot, sin mezclarlo con la crítica', async () => {
+    const stored: any[] = [];
+    const prisma = makePrisma();
+    prisma.initialReviewSnapshot.create = vi.fn(async ({ data }: any) => { const row = { id: 'snap1', informationReadiness: null, ...data }; stored.push(row); return row; });
+    const svc = new InitialReviewService(prisma, fakeGenerator({ ...FIXED_GEN, generationMode: 'fallback' }));
+
+    const dto = await svc.createReview('u1', { originalInput: 'Mejorar compras' });
+
+    expect(dto.snapshot?.generationMode).toBe('fallback');
+    expect(dto.snapshot?.critique).toEqual(FIXED_GEN.critique);
+  });
+
+  it('un snapshot anterior a F-07 devuelve generationMode null', async () => {
+    const prisma = makePrisma();
+    const svc = new InitialReviewService(prisma, fakeGenerator());
+    const snap = await svc.getLatestSnapshot('rev1', 'u1', 'participante');
+    expect(snap.generationMode).toBeNull();
+  });
+});

@@ -98,6 +98,14 @@ export function ReconstructionPanel() {
               </ul>
             </div>
           ) : null}
+          {reading.tradeoffs && reading.tradeoffs.length > 0 ? (
+            <div>
+              <p className="text-sm font-semibold text-slate-900">Costos a sopesar</p>
+              <ul className="mt-1 list-disc pl-5 text-sm text-slate-700">
+                {reading.tradeoffs.map((t) => <li key={`${t.benefit}|${t.cost}`}>{t.benefit}, pero {t.cost.charAt(0).toLowerCase() + t.cost.slice(1)}</li>)}
+              </ul>
+            </div>
+          ) : null}
           <div>
             <p className="text-sm font-semibold text-slate-900">Dónde está cada paso</p>
             <ul className="mt-1 space-y-1 text-sm text-slate-700">
