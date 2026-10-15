@@ -37,7 +37,13 @@ vi.mock('../../auth/auth.middleware', async (importOriginal) => {
   };
 });
 
-vi.mock('../../../shared/db/prisma', () => ({ default: {}, prisma: {} }));
+// La guardia por recurso (F-03) resuelve la organización de la iniciativa: una del mismo
+// usuario de prueba, sin organización, así el test sigue midiendo sólo el permiso.
+const fakePrisma = {
+  user: { findUnique: async () => ({ organizationId: null }) },
+  project: { findUnique: async () => ({ owner: { organizationId: null }, portfolioMeta: [] }) },
+};
+vi.mock('../../../shared/db/prisma', () => ({ default: fakePrisma, prisma: fakePrisma }));
 
 const upsertInitiativeMeta = vi.fn();
 const listStrategicFronts = vi.fn();

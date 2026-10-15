@@ -109,7 +109,7 @@ export class PortfolioController {
     next: NextFunction,
   ) => {
     try {
-      const data = await this.service.listChallenges(req.params.frontId);
+      const data = await this.service.listChallenges(req.params.frontId, await resolvePortfolioScope(this.prismaClient, req.user!));
       res.json({ success: true, data });
     } catch (err) {
       next(err);
