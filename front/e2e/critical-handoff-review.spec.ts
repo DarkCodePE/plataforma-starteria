@@ -364,7 +364,7 @@ test('Critical Handoff loading is announced until its currentness-qualified read
 test('exploration close creates the legacy handoff, loads the Critical Handoff, and correction returns to clarification', async ({ page }) => {
   const requests = await installExplorationJourneyMocks(page);
   await page.goto('/public/start');
-  await page.getByLabel(/necesitas conseguir o entender/i).fill('Necesito decidir qué iniciativa puede avanzar antes del comité.');
+  await page.getByLabel(/necesitas resolver, conseguir o entender/i).fill('Necesito decidir qué iniciativa puede avanzar antes del comité.');
   await page.getByRole('button', { name: /analizar mi situaci[oó]n/i }).click();
 
   await page.getByRole('button', { name: /ver mi propuesta de abordaje/i }).click();

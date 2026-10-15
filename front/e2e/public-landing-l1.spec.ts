@@ -149,8 +149,8 @@ test.describe('KAN-113 public landing commercial alignment', () => {
     await closing.getByRole('link', { name: CLOSING_CTA }).click();
     await expect(page).toHaveURL(/\/public\/start$/);
     await expect(page.getByRole('heading', {
-      name: 'Aclara qué quieres conseguir antes de decidir qué hacer.',
+      name: 'Encuentra por dónde empezar con lo que necesitas resolver',
     })).toBeVisible();
-    await expect(page.getByRole('textbox', { name: /necesitas conseguir o entender/i })).toBeVisible();
+    await expect(page.getByRole('textbox', { name: /necesitas resolver, conseguir o entender/i })).toBeVisible();
   });
 });

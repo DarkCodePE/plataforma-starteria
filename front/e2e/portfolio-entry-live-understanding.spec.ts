@@ -1,7 +1,10 @@
 import { expect, test, type Page } from '@playwright/test';
+import { mkdir } from 'node:fs/promises';
+import path from 'node:path';
 
 const sessionId = '11111111-1111-4111-8111-111111111111';
 const entryText = 'Necesito entender qué validar en una iniciativa antes del comité.';
+const regressionCaptureDir = path.resolve(process.cwd(), '../artifacts/KAN-145-KAN-150A/R-COMB-01/captures');
 
 type LiveUnderstanding = {
   state: 'supported_reading' | 'no_supported_insight' | 'insufficient_basis' | 'synthesis_unavailable';
@@ -142,7 +145,7 @@ async function mockPublicEntryApi(
 async function startEntry(page: Page) {
   const baseUrl = process.env.E2E_BASE_URL || 'http://127.0.0.1:5173';
   await page.goto(new URL('/public/start', baseUrl).toString());
-  await page.getByLabel(/necesitas conseguir o entender/i).fill(entryText);
+  await page.getByLabel(/necesitas resolver, conseguir o entender/i).fill(entryText);
   await page.getByRole('button', { name: /analizar mi situ/i }).click();
 }
 
@@ -210,34 +213,61 @@ test('mobile clarification wraps long readings and unknowns without horizontal o
   expect(pageWidth).toBeLessThanOrEqual(390);
 });
 
-test('no-supported-insight keeps the clarification question as the main next action', async ({ page }) => {
-  await mockPublicEntryApi(page, questionResponse({ state: 'no_supported_insight', decisionChangingUnknowns: [] }));
+for (const viewport of [{ width: 360, height: 800 }, { width: 390, height: 844 }]) {
+  test(`no-supported-insight keeps known unknowns and the clarification question at ${viewport.width}x${viewport.height}`, async ({ page }) => {
+    await page.setViewportSize(viewport);
+    await mockPublicEntryApi(page, questionResponse({
+      state: 'no_supported_insight',
+      decisionChangingUnknowns: [{
+        uncertainty: 'Falta confirmar cuándo estará disponible el permiso.',
+        whyItMatters: 'Ese plazo puede cambiar qué evidencia llega al comité.',
+      }],
+    }));
 
-  await startEntry(page);
+    await startEntry(page);
 
-  await expect(page.getByTestId('portfolio-entry-live-understanding')).toContainText(/todavía no tiene suficiente base/i);
-  await expect(page.getByTestId('portfolio-entry-active-question-text')).toBeVisible();
-  await expect(page.getByRole('textbox', { name: /tu respuesta/i })).toBeVisible();
-  await expect(page.getByTestId('portfolio-entry-live-understanding')).not.toContainText(/tensión|decisión|cartera/i);
-});
+    const panel = page.getByTestId('portfolio-entry-live-understanding');
+    await expect(panel.getByTestId('portfolio-entry-live-understanding-no-insight'))
+      .toContainText('Por ahora Starteria todavía no tiene suficiente base para compartir una lectura útil de la situación.');
+    await expect(panel).toContainText('Falta confirmar cuándo estará disponible el permiso.');
+    await expect(panel).toContainText('Ese plazo puede cambiar qué evidencia llega al comité.');
+    await expect(panel).not.toContainText('Todavía no hay una lectura disponible para mostrar.');
+    await expect(panel).not.toContainText('Lectura provisional');
+    await expect(page.getByRole('button', { name: /esto no refleja lo que quise decir/i })).toHaveCount(0);
+    await expect(page.getByTestId('portfolio-entry-active-question-text')).toBeVisible();
+    await expect(page.getByRole('textbox', { name: /tu respuesta/i })).toBeVisible();
+    await mkdir(regressionCaptureDir, { recursive: true });
+    await panel.scrollIntoViewIfNeeded();
+    await page.screenshot({ path: path.join(regressionCaptureDir, `no-supported-insight-${viewport.width}x${viewport.height}.png`), animations: 'disabled' });
+    await page.screenshot({ path: path.join(regressionCaptureDir, `no-supported-insight-${viewport.width}x${viewport.height}-full.png`), fullPage: true, animations: 'disabled' });
+  });
 
-test('insufficient basis shows only a brief context note beside the active question', async ({ page }) => {
-  await mockPublicEntryApi(page, questionResponse({
-    state: 'insufficient_basis',
-    reading: 'No debe aparecer.',
-    tensions: [{ statement: 'No debe aparecer.', whyItMatters: 'No debe aparecer.' }],
-    decision: { decisionToPrepare: 'No debe aparecer.' },
-    decisionChangingUnknowns: [],
-  }));
+  test(`insufficient basis keeps its specific message at ${viewport.width}x${viewport.height}`, async ({ page }) => {
+    await page.setViewportSize(viewport);
+    await mockPublicEntryApi(page, questionResponse({
+      state: 'insufficient_basis',
+      tensions: [{ statement: 'No debe aparecer.', whyItMatters: 'No debe aparecer.' }],
+      decision: { decisionToPrepare: 'No debe aparecer.' },
+      decisionChangingUnknowns: [],
+    }));
 
-  await startEntry(page);
+    await startEntry(page);
 
-  const panel = page.getByTestId('portfolio-entry-live-understanding');
-  await expect(panel).toContainText('Todavía falta contexto para ofrecer una lectura útil.');
-  await expect(panel).not.toContainText('No debe aparecer.');
-  await expect(page.getByTestId('portfolio-entry-active-question-text')).toBeVisible();
-  await expect(page.getByRole('textbox', { name: /tu respuesta/i })).toBeVisible();
-});
+    const panel = page.getByTestId('portfolio-entry-live-understanding');
+    await expect(panel.getByTestId('portfolio-entry-live-understanding-insufficient'))
+      .toContainText('Todavía falta contexto para ofrecer una lectura útil.');
+    await expect(panel).not.toContainText('No debe aparecer.');
+    await expect(panel).not.toContainText('Todavía no hay una lectura disponible para mostrar.');
+    await expect(panel).not.toContainText('Lectura provisional');
+    await expect(page.getByRole('button', { name: /esto no refleja lo que quise decir/i })).toHaveCount(0);
+    await expect(page.getByTestId('portfolio-entry-active-question-text')).toBeVisible();
+    await expect(page.getByRole('textbox', { name: /tu respuesta/i })).toBeVisible();
+    await mkdir(regressionCaptureDir, { recursive: true });
+    await panel.scrollIntoViewIfNeeded();
+    await page.screenshot({ path: path.join(regressionCaptureDir, `insufficient-basis-${viewport.width}x${viewport.height}.png`), animations: 'disabled' });
+    await page.screenshot({ path: path.join(regressionCaptureDir, `insufficient-basis-${viewport.width}x${viewport.height}-full.png`), fullPage: true, animations: 'disabled' });
+  });
+}
 
 test('checkpoint correction hides the checkpoint while processing and reopens clarification', async ({ page }) => {
   let releaseCorrection = () => undefined;
@@ -276,7 +306,9 @@ test('synthesis failure is non-fatal and leaves clarification available', async 
   await startEntry(page);
 
   const panel = page.getByTestId('portfolio-entry-live-understanding');
-  await expect(panel).toContainText('Tu mensaje se recibió. La aclaración puede continuar.');
+  await expect(panel).toContainText('La lectura no está disponible ahora. Puedes continuar con la aclaración.');
+  await expect(panel).not.toContainText('Tu mensaje se recibió.');
+  await expect(panel).not.toContainText('Lectura provisional');
   await expect(panel).not.toContainText(/provider|model|openrouter|error|reintentar/i);
   await expect(page.getByRole('textbox', { name: /tu respuesta/i })).toBeVisible();
   await expect(page.getByTestId('portfolio-entry-active-question-text')).toBeVisible();

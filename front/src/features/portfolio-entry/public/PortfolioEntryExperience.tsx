@@ -114,7 +114,6 @@ type LegacyHandoffLoad = {
 };
 
 const MIN_ENTRY_LENGTH = 30;
-
 const EXAMPLES = [
   {
     label: 'Alinear iniciativas',
@@ -144,6 +143,12 @@ const PROVENANCE_LABELS: Record<ProvenanceOrigin, string> = {
 function latestQuestions(session: PortfolioEntrySessionDto | null): PortfolioEntryQuestion[] {
   const turns = session?.conversation ?? [];
   return turns.at(-1)?.emittedQuestions.slice(0, 1) ?? [];
+}
+
+function supportedContextualGoal(session: PortfolioEntrySessionDto, updating: boolean, correcting: boolean): string | null {
+  const understanding = session.liveUnderstanding;
+  if (updating || correcting || understanding?.state !== 'supported_reading' || !understanding.reading?.trim()) return null;
+  return understanding.decision?.decisionToPrepare.trim() || null;
 }
 
 function textFromProvenanced(value: ProvenancedText | 'unresolved' | undefined): string {
@@ -391,12 +396,14 @@ function InitialComposer({
   onChange,
   onSubmit,
   variant = 'workspace',
+  showPublicPromise = false,
 }: {
   value: string;
   pending: boolean;
   onChange: (value: string) => void;
   onSubmit: () => void;
   variant?: 'landing' | 'workspace';
+  showPublicPromise?: boolean;
 }) {
   const canSubmit = value.trim().length >= MIN_ENTRY_LENGTH && !pending;
   const isLanding = variant === 'landing';
@@ -408,9 +415,20 @@ function InitialComposer({
           : 'rounded-[22px] border border-border-default bg-surface-default p-4 shadow-sm shadow-slate-900/5 md:p-5'
       }
     >
+      {showPublicPromise ? (
+        <div className="mb-6 space-y-3" data-testid="portfolio-entry-pre-entry-promise">
+          <p className="text-xs font-semibold uppercase tracking-wide text-indigo-700">Copilot de orientación</p>
+          <h1 className="break-words text-[1.5rem] font-semibold leading-tight tracking-tight text-slate-950 [overflow-wrap:anywhere] md:text-5xl">
+            Encuentra por dónde empezar con lo que necesitas resolver
+          </h1>
+          <p className="text-base leading-7 text-slate-600">
+            Te ayudaré a ordenar lo que sabes y lo que falta para identificar qué necesitas decidir o aclarar y por dónde empezar. Si tenemos suficiente claridad y lo solicitas, podremos preparar una primera propuesta de abordaje para que la revises. Esta orientación es opcional y no crea trabajo en tu portafolio.
+          </p>
+        </div>
+      ) : null}
       <div className="space-y-2">
         <label htmlFor="portfolio-entry-input" className="block text-sm font-semibold text-text-primary">
-          ¿Qué necesitas conseguir o entender?
+          {showPublicPromise ? '¿Qué necesitas resolver, conseguir o entender?' : '¿Qué necesitas conseguir o entender?'}
         </label>
         <Textarea
           id="portfolio-entry-input"
@@ -426,7 +444,7 @@ function InitialComposer({
           disabled={pending}
         />
         <p className="text-xs leading-5 text-text-muted">
-          No necesitas tenerlo estructurado. Empieza con lo que sabes.
+          {showPublicPromise ? 'Puedes expresarlo con tus palabras.' : 'No necesitas tenerlo estructurado. Empieza con lo que sabes.'}
         </p>
       </div>
 
@@ -456,6 +474,7 @@ function InitialComposer({
           type="button"
           onClick={onSubmit}
           disabled={!canSubmit}
+          className={showPublicPromise ? 'h-auto min-h-11 w-full min-w-0 flex-wrap whitespace-normal break-words px-3 py-2 text-center sm:w-auto' : undefined}
         >
           Analizar mi situación
           <ArrowRight size={16} />
@@ -472,6 +491,7 @@ function ConversationPanel({
   onChange,
   onSubmit,
   liveUnderstandingSurface,
+  contextualGoal,
 }: {
   session: PortfolioEntrySessionDto;
   value: string;
@@ -479,51 +499,58 @@ function ConversationPanel({
   onChange: (value: string) => void;
   onSubmit: () => void;
   liveUnderstandingSurface: React.ReactNode;
+  contextualGoal: string | null;
 }) {
   const questions = latestQuestions(session);
   const activeQuestion = questions[0];
   const guided = session.clarification.interactionMode === 'guided_exploration';
   const canSubmit = value.trim().length > 0 && !pending;
-  const synthesis = session.semanticProjection.understanding?.value
-    ?.replace(/^AsÃ­ estoy entendiendo lo que me dices:\s*/i, '')
-    .trim();
   return (
-    <section data-testid="portfolio-entry-conversation-panel" className="mx-auto max-w-3xl rounded-ds-lg border border-border-default bg-surface-default p-5 shadow-sm md:p-7">
-      <div className="space-y-6">
-        <div className="flex flex-wrap justify-end gap-x-3 gap-y-1 text-xs text-text-muted" aria-label="Estado de la conversación">
+    <section data-testid="portfolio-entry-conversation-panel" className={guided
+      ? 'mx-auto max-w-3xl rounded-ds-lg border border-border-default bg-surface-default p-5 shadow-sm md:p-7'
+      : 'mx-auto max-w-3xl rounded-ds-lg border border-border-default bg-surface-default px-4 py-3 shadow-sm md:p-7'}>
+      <div className={guided ? 'space-y-6' : 'space-y-4 md:space-y-6'}>
+        <div className={guided
+          ? 'flex flex-wrap justify-end gap-x-3 gap-y-1 text-xs text-text-muted'
+          : 'flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-text-muted'} aria-label="Estado de la conversación">
           <h2 className="text-xs font-medium text-text-muted">{guided ? 'Exploración guiada' : 'Aclaración breve'}</h2>
-          <span aria-label="Progreso de aclaración">
-            {guided
-              ? `Profundizando · ${session.clarification.questionsAskedCurrentRound} de hasta 2`
-              : `Aclaración ${session.clarification.quickQuestionsAsked} de hasta ${session.clarification.quickQuestionBudget}`}
-          </span>
+          {guided ? (
+            <span aria-label="Progreso de aclaración">
+              {`Profundizando · ${session.clarification.questionsAskedCurrentRound} de hasta 2`}
+            </span>
+          ) : null}
         </div>
 
-        <div className="min-w-0 space-y-6">
-          <div>
-            {synthesis ? (
-              <div className="border-l-2 border-brand-primary/40 pl-4" data-testid="portfolio-entry-understanding">
-                <p className="text-xs font-semibold uppercase tracking-wide text-text-muted">Contexto de la conversación</p>
-                <p className="mt-2 max-w-2xl text-sm leading-6 text-text-primary">{synthesis}</p>
-              </div>
-            ) : null}
-          </div>
-
-            {activeQuestion ? (
+        <div className={guided ? 'min-w-0 space-y-6' : 'min-w-0 space-y-4 md:space-y-6'}>
+          {!guided && activeQuestion && contextualGoal ? (
+            <p className="min-w-0 break-words text-sm leading-6 text-text-secondary" data-testid="portfolio-entry-contextual-goal" data-source="supported_reading.decision">
+              <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-brand-primary">Lo que necesitas aclarar</span>
+              {contextualGoal}
+            </p>
+          ) : null}
+          {activeQuestion ? (
             <div
-              className="rounded-ds-md border-l-4 border-brand-primary bg-surface-default p-5 shadow-sm"
+              className={guided
+                ? 'rounded-ds-md border-l-4 border-brand-primary bg-surface-default p-5 shadow-sm'
+                : 'rounded-ds-md border-l-4 border-brand-primary bg-surface-default p-4 shadow-sm md:p-5'}
               data-testid="portfolio-entry-active-question"
+              aria-labelledby="portfolio-entry-active-question-text"
             >
-              <p className="text-xs font-semibold uppercase tracking-wide text-brand-primary">Para afinarlo un poco más</p>
+              <p className="text-xs font-semibold uppercase tracking-wide text-brand-primary">
+                {guided ? 'Para afinarlo un poco más' : 'Una pregunta para avanzar'}
+              </p>
               <p
-                className="mt-2 text-sm font-semibold leading-6 text-text-primary"
+                id="portfolio-entry-active-question-text"
+                className={guided
+                  ? 'mt-2 text-sm font-semibold leading-6 text-text-primary'
+                  : 'mt-2 text-base font-semibold leading-6 text-text-primary'}
                 data-testid="portfolio-entry-active-question-text"
               >
                 {activeQuestion.question}
               </p>
               {activeQuestion.reason_to_ask?.trim() ? (
                 <p
-                  className="mt-2 text-xs leading-5 text-text-muted"
+                  className={guided ? 'mt-2 text-xs leading-5 text-text-muted' : 'mt-2 text-[0.8125rem] leading-5 text-text-muted'}
                   data-testid="portfolio-entry-active-question-reason"
                 >
                   {activeQuestion.reason_to_ask}
@@ -557,21 +584,30 @@ function ConversationPanel({
               type="button"
               onClick={onSubmit}
               disabled={!canSubmit}
+              className={guided ? undefined : 'h-auto min-h-11 w-full min-w-0 whitespace-normal px-3 py-2 text-[0.8125rem] has-[>svg]:px-3 sm:w-auto sm:px-4 sm:text-sm'}
             >
               Enviar respuesta
-              <ArrowRight size={16} />
+              <ArrowRight size={16} className={guided ? undefined : 'hidden sm:block'} />
             </Button>
             <Button
               type="button"
               variant="ghost"
               disabled={pending}
               onClick={() => onChange('No lo se todavia.')}
+              className={guided ? undefined : 'h-auto min-h-11 w-full min-w-0 whitespace-normal px-3 py-2 text-[0.8125rem] sm:w-auto sm:px-4 sm:text-sm'}
+              data-testid="portfolio-entry-unknown-answer-action"
             >
               No lo se todavia
             </Button>
           </div> : null}
 
           {liveUnderstandingSurface}
+
+          {!guided && activeQuestion && session.clarification.quickQuestionsAsked === 1 ? (
+            <p className="text-xs leading-5 text-text-muted" data-testid="portfolio-entry-quick-question-budget-note">
+              La aclaración inicial puede requerir hasta tres preguntas, solo si aportan valor. Si después se ofrece profundizar, tú decides; esa exploración es aparte
+            </p>
+          ) : null}
 
           <ConversationTrace session={session} />
         </div>
@@ -1349,12 +1385,14 @@ type PortfolioEntryExperienceProps = {
   variant?: 'landing' | 'workspace';
   recoverExisting?: boolean;
   redirectAfterStart?: string;
+  showPublicPromise?: boolean;
 };
 
 export function PortfolioEntryExperience({
   variant = 'workspace',
   recoverExisting = true,
   redirectAfterStart,
+  showPublicPromise = false,
 }: PortfolioEntryExperienceProps = {}) {
   const navigate = useNavigate();
   const { authLoading, isAuthenticated } = useApp();
@@ -2074,15 +2112,17 @@ export function PortfolioEntryExperience({
 
   const renderMain = () => {
     if (!sessionDto) {
-      return (
+      const composer = (
         <InitialComposer
           value={currentInput}
           pending={pending}
           onChange={setCurrentInput}
           onSubmit={startFlow}
           variant={variant}
+          showPublicPromise={showPublicPromise}
         />
       );
+      return showPublicPromise ? <div className="mx-auto max-w-3xl">{composer}</div> : composer;
     }
 
     if (sessionDto.lifecycleStatus === 'CONFIRMED') {
@@ -2261,6 +2301,7 @@ export function PortfolioEntryExperience({
           onChange={setCurrentInput}
           onSubmit={submitAnswer}
           liveUnderstandingSurface={liveUnderstandingSurface}
+          contextualGoal={supportedContextualGoal(sessionDto, liveUnderstandingUpdating, liveUnderstandingCorrectionOpen)}
         />
       </>
     );

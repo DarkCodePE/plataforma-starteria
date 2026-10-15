@@ -38,7 +38,7 @@ test('real browser, Portfolio Entry router and Prisma correction lifecycle use o
   await page.goto('/public/start');
   expect(await getStats(page)).toMatchObject({ analysisCalls: 0, synthesisCalls: 0 });
 
-  const startInput = page.getByLabel(/necesitas conseguir o entender/i);
+  const startInput = page.getByLabel(/necesitas resolver, conseguir o entender/i);
   const startButton = page.getByRole('button', { name: /analizar mi situ/i });
   await startInput.fill(startText);
   await expect(startInput).toHaveValue(startText);

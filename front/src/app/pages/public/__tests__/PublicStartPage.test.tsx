@@ -4,7 +4,8 @@ import { describe, expect, it, vi } from 'vitest';
 import { PublicStartPage } from '../PublicStartPage';
 
 vi.mock('../../../../features/portfolio-entry/public', () => ({
-  PortfolioEntryExperience: () => <form aria-label="Portfolio Entry" />,
+  PortfolioEntryExperience: ({ showPublicPromise }: { showPublicPromise?: boolean }) =>
+    <form aria-label="Portfolio Entry" data-public-promise={String(showPublicPromise)} />,
 }));
 
 vi.mock('../../../../features/public-start/components', () => ({
@@ -13,12 +14,10 @@ vi.mock('../../../../features/public-start/components', () => ({
 }));
 
 describe('PublicStartPage strategic clarity framing', () => {
-  it('promises a provisional strategic reading before action, not a finished plan', () => {
+  it('delegates the approved pre-entry promise to the session-aware experience without a second hero', () => {
     render(<MemoryRouter><PublicStartPage /></MemoryRouter>);
 
-    expect(screen.getByRole('heading', { level: 1, name: 'Aclara qué quieres conseguir antes de decidir qué hacer.' })).toBeInTheDocument();
-    expect(screen.getByText(/qué quieres lograr, para qué, qué está pasando y qué parece estar en juego/i)).toBeInTheDocument();
-    expect(screen.getByRole('form', { name: 'Portfolio Entry' })).toBeInTheDocument();
-    expect(screen.queryByText(/plan de acción definitivo|portfolio automático|priorización automática/i)).not.toBeInTheDocument();
+    expect(screen.getByRole('form', { name: 'Portfolio Entry' })).toHaveAttribute('data-public-promise', 'true');
+    expect(screen.queryByRole('heading', { level: 1 })).not.toBeInTheDocument();
   });
 });

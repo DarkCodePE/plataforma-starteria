@@ -124,9 +124,13 @@ function PresentationContent({ viewModel }: { viewModel: PortfolioEntryLiveUnder
   if (viewModel.state === 'synthesis_unavailable') {
     return (
       <p className="text-sm leading-6 text-text-secondary" data-testid="portfolio-entry-live-understanding-unavailable">
-        Tu mensaje se recibió. La aclaración puede continuar.
+        La lectura no está disponible ahora. Puedes continuar con la aclaración.
       </p>
     );
+  }
+
+  if (viewModel.state === 'supported_reading' && !viewModel.reading?.trim()) {
+    return <p className="text-sm leading-6 text-text-secondary">Todavía no hay una lectura disponible para mostrar.</p>;
   }
 
   return <SupportedReading viewModel={viewModel} />;
@@ -163,22 +167,26 @@ export function LiveUnderstandingPanel({
     </div>
   ) : null;
 
-  const canCorrect = Boolean(viewModel && viewModel.state !== 'synthesis_unavailable');
+  const hasSupportedReading = viewModel?.state === 'supported_reading' && Boolean(viewModel.reading?.trim());
+  const canCorrect = Boolean(hasSupportedReading);
   const showResult = Boolean(viewModel) && !updating && !correctionOpen;
 
   return (
     <section
-      className="min-w-0 rounded-ds-lg border border-brand-primary/20 bg-brand-primary/[0.035] p-4 shadow-sm sm:p-5"
+      className={hasSupportedReading && !updating
+        ? 'min-w-0 rounded-ds-lg border border-brand-primary/20 bg-brand-primary/[0.035] p-4 shadow-sm sm:p-5'
+        : 'min-w-0 rounded-ds-md border border-border-default bg-background-subtle p-4'}
       data-testid="portfolio-entry-live-understanding"
-      aria-labelledby="portfolio-entry-live-understanding-title"
+      aria-labelledby={hasSupportedReading && !updating ? 'portfolio-entry-live-understanding-title' : undefined}
+      role={!hasSupportedReading && !updating ? 'status' : undefined}
       aria-busy={updating}
     >
-      <header className="mb-4 space-y-1">
+      {hasSupportedReading && !updating ? <header className="mb-4 space-y-1">
         <p className="text-xs font-semibold uppercase tracking-wide text-brand-primary">Lectura provisional</p>
         <h2 id="portfolio-entry-live-understanding-title" className="text-base font-semibold leading-6 text-text-primary">
           Esto es lo que Starteria está entendiendo hasta ahora
         </h2>
-      </header>
+      </header> : null}
 
       {updating ? (
         <p role="status" aria-live="polite" className="mb-4 text-sm leading-6 text-text-secondary">
@@ -232,7 +240,7 @@ export function LiveUnderstandingPanel({
             </Button>
           </div>
         </form>
-      ) : (
+      ) : hasSupportedReading && !updating ? (
         <div className="mt-4 flex flex-col items-start gap-3 border-t border-border-default/70 pt-3 sm:flex-row sm:items-center sm:justify-between">
         <p className="text-xs leading-5 text-text-muted">
             Es una lectura provisional; no es una conclusión ni una recomendación y puede cambiar con más contexto.
@@ -242,6 +250,7 @@ export function LiveUnderstandingPanel({
               type="button"
               variant="ghost"
               size="sm"
+              className="h-auto min-h-11 w-full min-w-0 max-w-full whitespace-normal py-2 text-center sm:w-auto"
               onClick={onBeginCorrection}
               disabled={disabled || updating}
             >
@@ -250,7 +259,7 @@ export function LiveUnderstandingPanel({
             </Button>
           ) : null}
         </div>
-      )}
+      ) : null}
     </section>
   );
 }
