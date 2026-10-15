@@ -23,6 +23,10 @@ export interface ConfirmRouteResult {
   overviewUrl: string;
 }
 
+// Un claim `pending` sin proyecto más viejo que esto quedó de un proceso que murió entre el claim
+// y la creación del proyecto: se libera para que el reintento no quede bloqueado para siempre.
+const STALE_CLAIM_MS = 2 * 60 * 1000;
+
 export class RouteConfirmationService {
   constructor(
     private readonly prisma: PrismaClient,
@@ -34,9 +38,20 @@ export class RouteConfirmationService {
     if (!review) throw AppError.notFound('Revisión inicial', 'INITIAL_REVIEW_NOT_FOUND');
     if (review.ownerId !== userId) throw AppError.forbidden('No puedes confirmar esta revisión.', 'INITIAL_REVIEW_FORBIDDEN');
 
-    // Idempotencia (RB-IR-018): si ya hay un Project, devolver el mismo resultado.
+    // Idempotencia (RB-IR-018): si ya hay un Project, devolver el mismo resultado. Si el proyecto
+    // se creó pero la finalización no terminó (auditoría E2E F-04), se completa ahora con el mismo
+    // proyecto en vez de bloquear el reintento o crear otro.
     const existing = await this.prisma.routeConfirmation.findUnique({ where: { reviewId } });
-    if (existing?.createdProjectId) return this.result(existing.id, existing.createdProjectId);
+    if (existing?.createdProjectId) {
+      if (existing.status !== 'initiative_created') {
+        const pendingSnapshot = await this.prisma.initialReviewSnapshot.findFirst({ where: { id: existing.snapshotId, reviewId } });
+        if (pendingSnapshot) await this.finalize(existing.id, existing.createdProjectId, pendingSnapshot, review, userId);
+      }
+      return this.result(existing.id, existing.createdProjectId);
+    }
+    if (existing && this.isStale(existing)) {
+      await this.prisma.routeConfirmation.delete({ where: { id: existing.id } }).catch(() => {});
+    }
 
     const snapshot = snapshotId
       ? await this.prisma.initialReviewSnapshot.findFirst({ where: { id: snapshotId, reviewId } })
@@ -72,19 +87,42 @@ export class RouteConfirmationService {
       throw AppError.badRequest('No pudimos crear la iniciativa.', 'INITIATIVE_CREATE_FAILED', { hint: 'Tu revisión quedó guardada. Intenta nuevamente.' });
     }
 
-    // Finaliza atómicamente: campos de procedencia + prefill + confirmación + estado.
-    await this.prisma.$transaction([
-      this.prisma.project.update({
-        where: { id: project.id },
-        data: { origin: 'from_initial_review', initialReviewSnapshotId: snapshot.id, step0Data: this.buildStep0Prefill(snapshot, review.challengeId) as object },
-      }),
-      this.prisma.routeConfirmation.update({ where: { id: confirmation.id }, data: { createdProjectId: project.id, status: 'initiative_created' } }),
-      this.prisma.initialReview.update({ where: { id: reviewId }, data: { status: 'converted_to_initiative' } }),
-    ]);
+    // Se ata el proyecto al claim apenas existe (status `confirmed` = proyecto creado, falta
+    // finalizar). Si algo falla después, el reintento lo encuentra y termina con este proyecto.
+    try {
+      await this.prisma.routeConfirmation.update({ where: { id: confirmation.id }, data: { createdProjectId: project.id, status: 'confirmed' } });
+    } catch {
+      await this.prisma.routeConfirmation.delete({ where: { id: confirmation.id } }).catch(() => {});
+      throw AppError.badRequest('No pudimos terminar de crear la iniciativa.', 'INITIATIVE_CREATE_FAILED', { hint: 'Tu revisión quedó guardada. Intenta nuevamente.' });
+    }
 
-    await new AdaptiveCoreService(this.prisma).ensureInitialized(project.id, userId, 'participante');
-
+    await this.finalize(confirmation.id, project.id, snapshot, review, userId);
     return this.result(confirmation.id, project.id);
+  }
+
+  /** Campos de procedencia + prefill + estados, atómico. Repetible: sólo escribe valores fijos. */
+  private async finalize(confirmationId: string, projectId: string, snapshot: any, review: { id: string; challengeId?: string | null }, userId: string) {
+    try {
+      await this.prisma.$transaction([
+        this.prisma.project.update({
+          where: { id: projectId },
+          data: { origin: 'from_initial_review', initialReviewSnapshotId: snapshot.id, step0Data: this.buildStep0Prefill(snapshot, review.challengeId) as object },
+        }),
+        this.prisma.routeConfirmation.update({ where: { id: confirmationId }, data: { createdProjectId: projectId, status: 'initiative_created' } }),
+        this.prisma.initialReview.update({ where: { id: review.id }, data: { status: 'converted_to_initiative' } }),
+      ]);
+      await new AdaptiveCoreService(this.prisma).ensureInitialized(projectId, userId, 'participante');
+    } catch (err) {
+      if (err instanceof AppError) throw err;
+      throw AppError.badRequest('La iniciativa se creó pero no terminó de prepararse.', 'INITIATIVE_FINALIZE_FAILED', {
+        hint: 'Vuelve a confirmar la ruta: se completará con la misma iniciativa, sin duplicarla.',
+      });
+    }
+  }
+
+  private isStale(claim: { status: string; createdProjectId?: string | null; updatedAt?: Date | string | null }) {
+    if (claim.status !== 'pending' || claim.createdProjectId || !claim.updatedAt) return false;
+    return Date.now() - new Date(claim.updatedAt).getTime() > STALE_CLAIM_MS;
   }
 
   /** Step0PrefillFromInitialReview (PRD §13) serializado en Project.step0Data. */

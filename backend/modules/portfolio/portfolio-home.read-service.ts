@@ -6,6 +6,7 @@
  * snapshot, not canonical domain state; the returned object is a request-scoped
  * composition for the Home read path.
  */
+import { logger } from '../../shared/utils/logger';
 import { frontScopeWhere, type PortfolioScope } from './portfolio-scope';
 
 export type PortfolioHomePersonView = {
@@ -183,6 +184,8 @@ export type PortfolioHomeReadModel = {
   generatedAt: string;
   /** E2E Job-Driven §23: lo que el portfolio aprendió de las últimas decisiones. */
   learnings: PortfolioLearningView[];
+  /** F-12: true si no se pudieron leer; `learnings: []` deja de significar "no hay" en ese caso. */
+  learningsUnavailable: boolean;
 };
 
 type PrismaLike = {
@@ -245,14 +248,15 @@ export class PortfolioHomeReadService {
       pendingDecisions,
       recommendations: this.mapRecommendations(reading, strategicUnits),
       handoffAssignments,
-      learnings,
+      learnings: learnings.items,
+      learningsUnavailable: learnings.unavailable,
       generatedAt,
     };
   }
 
-  private async loadLearnings(scope: PortfolioScope): Promise<PortfolioLearningView[]> {
+  private async loadLearnings(scope: PortfolioScope): Promise<{ items: PortfolioLearningView[]; unavailable: boolean }> {
     try {
-      if (!this.prisma.portfolioLearning?.findMany) return [];
+      if (!this.prisma.portfolioLearning?.findMany) return { items: [], unavailable: false };
       // Los aprendizajes son un panel secundario: si la tabla no está (schema sin sincronizar),
       // Portfolio Home tiene que seguir cargando.
       const rows = await this.prisma.portfolioLearning.findMany({
@@ -262,7 +266,7 @@ export class PortfolioHomeReadService {
         take: 20,
         include: { project: { select: { name: true } }, challenge: { select: { title: true } } },
       });
-      return (rows ?? []).map((row: any) => ({
+      const items = (rows ?? []).map((row: any) => ({
         decisionId: row.decisionId,
         projectId: row.projectId,
         initiativeName: row.project?.name ?? null,
@@ -277,8 +281,11 @@ export class PortfolioHomeReadService {
         suggestedReformulation: row.suggestedReformulation ?? null,
         decidedAt: toIso(row.decidedAt) ?? new Date(0).toISOString(),
       }));
-    } catch {
-      return [];
+      return { items, unavailable: false };
+    } catch (err) {
+      // El Home sigue cargando, pero un fallo no se presenta como "no hay aprendizajes" (F-12).
+      logger.warn({ err }, '[portfolio-home] no se pudieron leer los aprendizajes');
+      return { items: [], unavailable: true };
     }
   }
 

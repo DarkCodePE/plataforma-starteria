@@ -436,7 +436,7 @@ describe('Adaptive authority in pages', () => {
 
     await waitFor(() => expect(confirmStep0Brief).toHaveBeenCalledTimes(1));
     await waitFor(() =>
-      expect(screen.getAllByText('Step 0 aún no está confirmado en Adaptive Core.').length).toBeGreaterThan(0),
+      expect(screen.getAllByText(/No pudimos confirmar el Step 0 todavía/).length).toBeGreaterThan(0),
     );
     expect(navigate).not.toHaveBeenCalledWith('/projects/p1/step/1');
   });
@@ -450,10 +450,44 @@ describe('Adaptive authority in pages', () => {
     fireEvent.click(advanceButtons[0]);
 
     await waitFor(() =>
-      expect(screen.getAllByText('Step 0 aún no está confirmado en Adaptive Core.').length).toBeGreaterThan(0),
+      expect(screen.getAllByText(/termina los checkpoints del Step 0/).length).toBeGreaterThan(0),
     );
     expect(confirmStep0Brief).not.toHaveBeenCalled();
     expect(navigate).not.toHaveBeenCalledWith('/projects/p1/step/1');
+  });
+
+  // Reportado en prod: con el Step 0 ya confirmado, "Avanzar a Step 1" decía "Step 0 aún no está
+  // confirmado en Adaptive Core" y el resumen mostraba "[pendiente por completar]".
+  it('Step0 ya confirmado: Avanzar a Step 1 navega sin volver a confirmar y sin error', async () => {
+    appState.projects = [{ ...project, step0Data: { ...project.step0Data, alignmentStatus: 'aligned' } }];
+    // Prod: Step 0 confirmado, sin checkpoint activo (el estado que vio quien reportó).
+    const confirmed = {
+      ...serverCoreStep0ReadyForBrief(false),
+      stepOutputs: [{ id: 'step0-ok', step: 0, status: 'confirmed', version: 1, output: { objective: 'Reducir retrabajo', actors: ['Owner comercial'], decisionCriteria: 'Baja 20%', priorityHypothesis: 'H1' } }],
+    };
+    getAdaptiveCore.mockResolvedValue(confirmed);
+
+    render(<Step0Page />);
+    const advanceButtons = await showStep0AdvanceCta();
+    fireEvent.click(advanceButtons[0]);
+
+    await waitFor(() => expect(navigate).toHaveBeenCalledWith('/projects/p1/step/1'));
+    expect(confirmStep0Brief).not.toHaveBeenCalled();
+    expect(screen.queryByText(/Adaptive Core/)).not.toBeInTheDocument();
+  });
+
+  it('Step0: el resumen usa las respuestas confirmadas en vez de "[pendiente por completar]"', async () => {
+    appState.projects = [{ ...project, step0Data: { ...project.step0Data, alignmentStatus: 'aligned', impactWho: '', impacta: [] } }];
+    getAdaptiveCore.mockResolvedValue({
+      ...serverCoreStep0ReadyForBrief(false),
+      stepOutputs: [{ id: 'step0-ok', step: 0, status: 'confirmed', version: 1, output: { actors: ['Owner comercial', 'Owner de operaciones'], decisionCriteria: 'Baja 20%' } }],
+    });
+
+    render(<Step0Page />);
+    await showStep0AdvanceCta();
+
+    expect((await screen.findAllByText('Owner comercial, Owner de operaciones')).length).toBeGreaterThan(0);
+    expect(screen.queryByText(/pendiente por completar/)).not.toBeInTheDocument();
   });
 
   it('Step0 keeps pending feedback non-blocking and continues with Adaptive confirmation', async () => {

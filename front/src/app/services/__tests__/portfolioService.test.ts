@@ -219,3 +219,16 @@ describe('portfolioService — Initiatives, Overlaps, Outputs', () => {
     );
   });
 });
+
+// Auditoría E2E F-12: un fallo leyendo aprendizajes no tiene que mostrarse como "no hay".
+describe('listPortfolioLearnings', () => {
+  it('devuelve los aprendizajes', async () => {
+    (api.get as any).mockResolvedValueOnce({ data: { data: { learnings: [{ decisionId: 'd1' }], learningsUnavailable: false } } });
+    await expect(svc.listPortfolioLearnings()).resolves.toEqual([{ decisionId: 'd1' }]);
+  });
+
+  it('si el servidor no pudo leerlos, falla en vez de devolver una lista vacía', async () => {
+    (api.get as any).mockResolvedValueOnce({ data: { data: { learnings: [], learningsUnavailable: true } } });
+    await expect(svc.listPortfolioLearnings()).rejects.toThrow('LEARNINGS_UNAVAILABLE');
+  });
+});
