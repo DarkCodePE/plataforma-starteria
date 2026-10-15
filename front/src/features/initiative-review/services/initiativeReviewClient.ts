@@ -25,6 +25,8 @@ export interface ReviewSnapshot {
   strategicQuestions: Array<{ id: string; question: string; options: string[]; allowsUnknown: boolean; answer?: string; status: string }>;
   improvedProposal: { suggestedName: string; improvedDescription: string; initialFocus: string; expectedImpact: string; nextRecommendedStep: string };
   routePreview: Array<{ step: number; name: string; whatWillHappen: string; expectedOutput: string; status: string }>;
+  /** F-07: quién la generó. `fallback`/`deterministic` = plantilla, no análisis del modelo. */
+  generationMode?: 'ai' | 'fallback' | 'deterministic' | null;
 }
 
 // ADR-026: cards del snapshot que el diff del backend puede marcar como cambiadas.

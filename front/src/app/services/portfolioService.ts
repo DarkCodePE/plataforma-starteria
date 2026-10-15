@@ -425,6 +425,8 @@ export interface ReconstructionReading {
   sustainableClaims: Array<{ claim: string; evidence: string[] }>;
   availableEvidence: { supports: number; contradicts: number; insufficient: number };
   contradictions: Array<{ supports: string; contradicts: string }>;
+  /** Beneficio y costo sobre temas distintos: a sopesar, no una contradicción. Opcional por compatibilidad. */
+  tradeoffs?: Array<{ benefit: string; cost: string }>;
   gaps: Array<{ step: number; question: string }>;
   gates: Array<{ step: number; question: string; status: 'met' | 'partial' | 'missing' }>;
   nextMaterialUncertainty: string;

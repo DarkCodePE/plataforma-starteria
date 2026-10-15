@@ -30,7 +30,8 @@ export class ResilientInitialReviewGenerator implements InitialReviewGenerator {
         { code: e?.code ?? 'UNKNOWN', requestId: e?.requestId, cause: e?.message },
         'initial-review AI fallback: degradando al generador mock',
       );
-      return this.fallback.generate(input);
+      // La plantilla queda marcada como respaldo, no como análisis (F-07).
+      return { ...(await this.fallback.generate(input)), generationMode: 'fallback' };
     }
   }
 }

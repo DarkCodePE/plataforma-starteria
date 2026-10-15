@@ -63,6 +63,7 @@ export class AiInitialCritiqueService implements InitialReviewGenerator {
     }
 
     return {
+      generationMode: 'ai',
       understandingSummary: this.scrub(understandingSummary),
       suggestedChallengeType: this.coerceType(o.suggestedChallengeType),
       challengeTypeReason: this.scrub(this.str(o.challengeTypeReason) || 'Sugerido por el análisis del input.'),

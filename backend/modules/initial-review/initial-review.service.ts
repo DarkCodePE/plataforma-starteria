@@ -23,10 +23,14 @@ import { calculateContextScore } from '../companies/context-score';
 import {
   InitialReviewGenerator,
   GeneratedReview,
+  GenerationMode,
   StrategicQuestion,
   toDbChallengeType,
   toCanonicalChallengeType,
 } from './initial-review.types';
+
+/** Clave reservada dentro de `snapshot.critique` donde se guarda el GenerationMode (F-07). */
+const GENERATION_MODE_KEY = '__generationMode';
 import { CreateInitialReviewInput, StrategicAnswersInput } from './initial-review.schemas';
 
 const READ_ROLES = new Set(['admin', 'mentor']);
@@ -66,6 +70,8 @@ export interface SnapshotDto {
   improvedProposal: unknown;
   routePreview: unknown;
   companyContext: unknown | null;
+  /** null en snapshots anteriores a F-07: no se sabe quién los generó. */
+  generationMode: GenerationMode | null;
 }
 
 export class InitialReviewService {
@@ -160,7 +166,7 @@ export class InitialReviewService {
       suggestedChallengeType: toCanonicalChallengeType(s.suggestedChallengeType),
       challengeTypeReason: s.challengeTypeReason,
       informationReadiness: (s.informationReadiness ?? undefined) as GeneratedReview['informationReadiness'],
-      critique: s.critique as unknown as GeneratedReview['critique'],
+      critique: this.toSnapshotDto(s).critique as unknown as GeneratedReview['critique'],
       strategicQuestions: s.strategicQuestions as unknown as GeneratedReview['strategicQuestions'],
       improvedProposal: s.improvedProposal as unknown as GeneratedReview['improvedProposal'],
       routePreview: s.routePreview as unknown as GeneratedReview['routePreview'],
@@ -173,7 +179,8 @@ export class InitialReviewService {
    * `questions` y `routePreview` no son refinables (se ignoran → se conserva el previo).
    */
   private spliceForFocus(prev: InitialReviewSnapshot, gen: GeneratedReview, focus: SnapshotSectionId): GeneratedReview {
-    const out: GeneratedReview = this.snapshotToGen(prev);
+    // La sección regenerada viene de `gen`: el modo de la versión nueva es el de esa generación.
+    const out: GeneratedReview = { ...this.snapshotToGen(prev), generationMode: gen.generationMode };
     switch (focus) {
       case 'understanding':
         out.understandingSummary = gen.understandingSummary;
@@ -257,7 +264,9 @@ export class InitialReviewService {
         selectedChallengeType: dbType, // el usuario aún no lo cambió
         challengeTypeReason: gen.challengeTypeReason,
         informationReadiness: gen.informationReadiness ?? null,
-        critique: gen.critique as unknown as object,
+        // F-07: el modo viaja dentro de `critique` (JSON) para no migrar el schema; toSnapshotDto
+        // lo saca de ahí, así no cuenta como cambio de la crítica en diffSections.
+        critique: { ...(gen.critique as object), [GENERATION_MODE_KEY]: gen.generationMode ?? null } as unknown as object,
         strategicQuestions: gen.strategicQuestions as unknown as object,
         improvedProposal: gen.improvedProposal as unknown as object,
         routePreview: gen.routePreview as unknown as object,
@@ -432,6 +441,7 @@ export class InitialReviewService {
   }
 
   private toSnapshotDto(s: InitialReviewSnapshot): SnapshotDto {
+    const { [GENERATION_MODE_KEY]: storedMode, ...critique } = (s.critique ?? {}) as Record<string, unknown>;
     return {
       id: s.id,
       version: s.version,
@@ -440,11 +450,12 @@ export class InitialReviewService {
       selectedChallengeType: toCanonicalChallengeType(s.selectedChallengeType),
       challengeTypeReason: s.challengeTypeReason,
       informationReadiness: s.informationReadiness ?? null,
-      critique: s.critique,
+      critique,
       strategicQuestions: s.strategicQuestions,
       improvedProposal: s.improvedProposal,
       routePreview: s.routePreview,
       companyContext: (s as any).companyContextSelection ?? null,
+      generationMode: (storedMode as GenerationMode | undefined) ?? null,
     };
   }
 }

@@ -41,6 +41,7 @@ export class MockInitialReviewGenerator implements InitialReviewGenerator {
     };
 
     return {
+      generationMode: 'deterministic',
       understandingSummary: `Entiendo que quieres ordenar: "${firstWords}${input.originalInput.trim().split(/\s+/).length > 8 ? '…' : ''}".`,
       suggestedChallengeType: type,
       challengeTypeReason: reasonByType[type],

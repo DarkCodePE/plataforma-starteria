@@ -85,3 +85,17 @@ describe('ResilientInitialReviewGenerator (CC-02)', () => {
     );
   });
 });
+
+// Auditoría E2E F-07: la plantilla de respaldo se presentaba igual que un análisis del modelo.
+describe('ResilientInitialReviewGenerator — modo de generación (F-07)', () => {
+  it('si el primario falla, la salida queda marcada como fallback', async () => {
+    const primary = primaryThat(async () => { throw new Error('503'); });
+    const out = await new ResilientInitialReviewGenerator(primary, new MockInitialReviewGenerator()).generate({ originalInput: 'Mejorar compras' });
+    expect(out.generationMode).toBe('fallback');
+  });
+
+  it('la plantilla sola se marca deterministic', async () => {
+    const out = await new MockInitialReviewGenerator().generate({ originalInput: 'Mejorar compras' });
+    expect(out.generationMode).toBe('deterministic');
+  });
+});
