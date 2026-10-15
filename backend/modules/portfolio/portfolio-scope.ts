@@ -9,10 +9,11 @@
  * - con acceso de portafolio (`portfolio:read`, p. ej. portfolio_lead): su organización primaria
  *   (`User.organizationId`, ADR-022), las organizaciones donde es miembro (`OrganizationMember`) y
  *   las que le dieron acceso de portafolio (`OrganizationPortfolioAccessGrant`).
- * - sin acceso de portafolio (participante, colaborador, mentor…): sin cambios. Esas mismas rutas GET
- *   alimentan la bandeja de retos del participante (ParticipantChallengeDetailPage filtra después
- *   los publicados), y filtrarlas rompería las convocatorias abiertas. Es la deuda declarada de
- *   ADR-028/029, Issue #161: se cierra con un endpoint de participante, no acá.
+ * - sin acceso de portafolio (participante, colaborador, mentor…): las mismas organizaciones,
+ *   resueltas igual. Antes recibían alcance global (deuda #161) porque estas rutas GET alimentan
+ *   la bandeja de retos del participante; eso exponía los frentes de todas las organizaciones a
+ *   cualquier cuenta (auditoría E2E F-01). La bandeja sigue funcionando con los retos de su
+ *   organización y los frentes sin organización.
  *
  * Transición: un frente **sin organización** (datos anteriores a este cambio) sigue visible para
  * cualquiera con acceso al portafolio, igual que antes. Así nadie pierde datos al desplegar; lo que
@@ -29,7 +30,6 @@ type ScopeUser = { id: string; role?: string | null; organizationId?: string | n
 
 export async function resolvePortfolioScope(prisma: any, user: ScopeUser): Promise<PortfolioScope> {
   if (user.role === 'admin') return { all: true, organizationIds: [] };
-  if (user.permissions && !user.permissions.has('portfolio:read')) return { all: true, organizationIds: [] };
   // Sin cliente (p. ej. un servicio de prueba) no hay organizaciones que leer: el alcance queda
   // vacío —sólo frentes sin organización—, nunca abierto.
   if (!prisma) return { all: false, organizationIds: [] };

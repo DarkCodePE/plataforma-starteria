@@ -1,10 +1,11 @@
-import { Router } from 'express';
+import { Router, type RequestHandler } from 'express';
 import { prisma } from '../../shared/db/prisma';
 import { authenticate } from '../auth/auth.middleware';
 import { requirePermission } from '../auth/auth.middleware';
 import { mailer } from '../../shared/mail/mailer';
 import { PortfolioHandoffDeliveryService, type HandoffInvitationDeliveryPort } from './application/portfolio-handoff-delivery.service';
 import { AppError } from '../../shared/errors/AppError';
+import { requirePortfolioResource } from '../portfolio/portfolio-resource-guard';
 import { PortfolioHandoffInvitationService } from './application/portfolio-handoff-invitation.service';
 import { PrismaPortfolioHandoffAssignmentRepository } from './infrastructure/prisma-portfolio-handoff-assignment.repository';
 import { PrismaPortfolioHandoffInvitationRepository } from './infrastructure/prisma-portfolio-handoff-invitation.repository';
@@ -58,9 +59,18 @@ export const portfolioHandoffInvitationRouter = buildPortfolioHandoffInvitationR
   await deliveryService.markHandoffInvitationViewed(token);
 });
 
-export function buildPortfolioHandoffDeliveryRouter(service: PortfolioHandoffDeliveryService, auth = authenticate, write = requirePermission('portfolio:write')): Router {
+// F-03: enviar o revocar la invitación exige además que la asignación sea de una organización de
+// quien escribe; con sólo `portfolio:write` se podía actuar sobre asignaciones de otra organización.
+const ownAssignment = requirePortfolioResource(prisma, { kind: 'handoffAssignment', param: 'assignmentId' });
+
+export function buildPortfolioHandoffDeliveryRouter(
+  service: PortfolioHandoffDeliveryService,
+  auth = authenticate,
+  write = requirePermission('portfolio:write'),
+  owns: RequestHandler = ownAssignment,
+): Router {
   const router = Router();
-  router.post('/:assignmentId/invitation', auth, write, async (req, res, next) => {
+  router.post('/:assignmentId/invitation', auth, write, owns, async (req, res, next) => {
     try {
       const data = await service.sendHandoffInvitation({
         assignmentId: req.params.assignmentId,
@@ -72,7 +82,7 @@ export function buildPortfolioHandoffDeliveryRouter(service: PortfolioHandoffDel
       res.json({ success: true, data });
     } catch (error) { next(error); }
   });
-  router.post('/:assignmentId/invitation/revoke', auth, write, async (req, res, next) => {
+  router.post('/:assignmentId/invitation/revoke', auth, write, owns, async (req, res, next) => {
     try { res.json({ success: true, data: await service.revokeHandoffInvitation(req.params.assignmentId) }); }
     catch (error) { next(error); }
   });

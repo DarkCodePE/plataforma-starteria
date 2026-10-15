@@ -220,7 +220,7 @@ export class PortfolioHomeReadService {
     const [fronts, reading, handoffAssignments, learnings] = await Promise.all([
       this.prisma.strategicFront.findMany({ where: frontScopeWhere(scope), include: READ_INCLUDE, orderBy: { updatedAt: 'desc' } }),
       this.loadLatestReading(userId),
-      this.loadHandoffAssignments(),
+      this.loadHandoffAssignments(scope),
       this.loadLearnings(scope),
     ]);
 
@@ -282,9 +282,14 @@ export class PortfolioHomeReadService {
     }
   }
 
-  private async loadHandoffAssignments() {
+  // F-02: sólo las asignaciones de las organizaciones del alcance. Una proyección sin organización
+  // no se publica fuera del admin: no hay cómo saber de quién es.
+  private async loadHandoffAssignments(scope: PortfolioScope) {
     if (!this.prisma.portfolioHandoffProjection?.findMany) return [];
-    const rows = await this.prisma.portfolioHandoffProjection.findMany({ orderBy: { generatedAt: 'desc' } });
+    const rows = await this.prisma.portfolioHandoffProjection.findMany({
+      where: scope.all ? undefined : { organizationId: { in: scope.organizationIds } },
+      orderBy: { generatedAt: 'desc' },
+    });
     return (rows ?? []).map((row: any) => ({
       assignmentId: row.assignmentId,
       targetKind: row.targetKind,

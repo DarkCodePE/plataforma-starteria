@@ -8,6 +8,7 @@ import { ChallengeSplitService } from './challenge-split.service';
 import { ChallengeCoverageReadService } from './challenge-coverage.read-service';
 import { PortfolioCapacityReadService } from './portfolio-capacity.read-service';
 import { resolvePortfolioScope } from './portfolio-scope';
+import { requirePortfolioResource } from './portfolio-resource-guard';
 import type { AuthenticatedRequest } from '../../shared/types/auth.types';
 import { validate } from '../../shared/middleware/validate';
 import { authenticate, requirePermission } from '../auth/auth.middleware';
@@ -39,6 +40,14 @@ const challengeSplit = new ChallengeSplitService(prisma);
 const challengeCoverage = new ChallengeCoverageReadService(prisma);
 const portfolioCapacity = new PortfolioCapacityReadService(prisma);
 
+// F-03: además del permiso global, cada escritura por ID comprueba que el recurso sea de una
+// organización de quien escribe (portfolio-resource-guard.ts).
+const front = (param = 'id') => requirePortfolioResource(prisma, { kind: 'front', param });
+const challenge = (param = 'id', child?: { param: string; model: 'challengeInvitation' | 'challengeSquadMember' | 'challengeTeamMember' }) =>
+  requirePortfolioResource(prisma, { kind: 'challenge', param, child });
+const initiative = () => requirePortfolioResource(prisma, { kind: 'project', param: 'projectId' });
+const executiveOutput = () => requirePortfolioResource(prisma, { kind: 'executiveOutput', param: 'id' });
+
 export const portfolioRouter = Router();
 
 portfolioRouter.use(authenticate);
@@ -66,6 +75,7 @@ portfolioRouter.post(
 portfolioRouter.patch(
   '/strategic-fronts/:id',
   requirePermission('portfolio:write'),
+  front(),
   validate(updateStrategicFrontSchema),
   controller.updateStrategicFront,
 );
@@ -73,6 +83,7 @@ portfolioRouter.patch(
 portfolioRouter.delete(
   '/strategic-fronts/:id',
   requirePermission('portfolio:write'),
+  front(),
   controller.deleteStrategicFront,
 );
 
@@ -85,6 +96,7 @@ portfolioRouter.get(
 portfolioRouter.post(
   '/strategic-fronts/:frontId/challenges',
   requirePermission('portfolio:write'),
+  front('frontId'),
   validate(createChallengeSchema),
   controller.createChallenge,
 );
@@ -92,6 +104,7 @@ portfolioRouter.post(
 portfolioRouter.patch(
   '/challenges/:id',
   requirePermission('portfolio:write'),
+  challenge(),
   validate(updateChallengeSchema),
   controller.updateChallenge,
 );
@@ -100,12 +113,14 @@ portfolioRouter.patch(
 portfolioRouter.post(
   '/challenges/:id/activate-open-call',
   requirePermission('portfolio:write'),
+  challenge(),
   controller.activateOpenCall,
 );
 
 portfolioRouter.post(
   '/challenges/:id/publish',
   requirePermission('portfolio:write'),
+  challenge(),
   controller.publishChallenge,
 );
 
@@ -113,6 +128,7 @@ portfolioRouter.post(
 portfolioRouter.post(
   '/challenges/:id/invitations',
   requirePermission('portfolio:write'),
+  challenge(),
   validate(addInvitationSchema),
   controller.addInvitation,
 );
@@ -120,6 +136,7 @@ portfolioRouter.post(
 portfolioRouter.patch(
   '/challenges/:id/invitations/:invId',
   requirePermission('portfolio:write'),
+  challenge('id', { param: 'invId', model: 'challengeInvitation' }),
   validate(updateInvitationSchema),
   controller.updateInvitation,
 );
@@ -128,6 +145,7 @@ portfolioRouter.patch(
 portfolioRouter.post(
   '/challenges/:id/squad',
   requirePermission('portfolio:write'),
+  challenge(),
   validate(addSquadMemberSchema),
   controller.addSquadMember,
 );
@@ -135,6 +153,7 @@ portfolioRouter.post(
 portfolioRouter.patch(
   '/challenges/:id/squad/:memberId',
   requirePermission('portfolio:write'),
+  challenge('id', { param: 'memberId', model: 'challengeSquadMember' }),
   validate(updateSquadMemberSchema),
   controller.updateSquadMember,
 );
@@ -148,6 +167,7 @@ portfolioRouter.get(
 portfolioRouter.post(
   '/challenges/:challengeId/team',
   requirePermission('portfolio:write'),
+  challenge('challengeId'),
   validate(addChallengeTeamMemberSchema),
   controller.addChallengeTeamMember,
 );
@@ -155,6 +175,7 @@ portfolioRouter.post(
 portfolioRouter.patch(
   '/challenges/:challengeId/team/:memberId',
   requirePermission('portfolio:write'),
+  challenge('challengeId', { param: 'memberId', model: 'challengeTeamMember' }),
   validate(updateChallengeTeamMemberSchema),
   controller.updateChallengeTeamMember,
 );
@@ -162,6 +183,7 @@ portfolioRouter.patch(
 portfolioRouter.delete(
   '/challenges/:challengeId/team/:memberId',
   requirePermission('portfolio:write'),
+  challenge('challengeId', { param: 'memberId', model: 'challengeTeamMember' }),
   controller.removeChallengeTeamMember,
 );
 
@@ -174,6 +196,7 @@ portfolioRouter.get(
 portfolioRouter.put(
   '/initiatives/:projectId/team/:userId',
   requirePermission('portfolio:write'),
+  initiative(),
   validate(upsertInitiativeTeamMemberSchema),
   controller.upsertInitiativeTeamMember,
 );
@@ -181,6 +204,7 @@ portfolioRouter.put(
 portfolioRouter.delete(
   '/initiatives/:projectId/team/:userId',
   requirePermission('portfolio:write'),
+  initiative(),
   controller.removeInitiativeTeamMember,
 );
 
@@ -198,6 +222,7 @@ portfolioRouter.get(
 portfolioRouter.put(
   '/initiatives/:projectId/meta',
   requirePermission('portfolio:write'),
+  initiative(),
   validate(upsertInitiativeMetaSchema),
   controller.upsertInitiativeMeta,
 );
@@ -208,6 +233,7 @@ portfolioRouter.put(
 portfolioRouter.post(
   '/strategic-fronts/:id/challenge-split-suggestion',
   requirePermission('portfolio:write'),
+  front(),
   async (req, res, next) => {
     try {
       res.json({ success: true, data: await challengeSplit.suggest(req.params.id) });
@@ -220,6 +246,7 @@ portfolioRouter.post(
 portfolioRouter.post(
   '/strategic-fronts/:id/challenge-split-suggestion/confirm',
   requirePermission('portfolio:write'),
+  front(),
   validate(confirmChallengeSplitSchema),
   async (req, res, next) => {
     try {
@@ -248,6 +275,7 @@ portfolioRouter.get('/initiatives/:projectId/governance', async (req, res, next)
 portfolioRouter.put(
   '/initiatives/:projectId/governance',
   requirePermission('portfolio:write'),
+  initiative(),
   validate(assignInitiativeGovernanceSchema),
   async (req, res, next) => {
     try {
@@ -299,6 +327,7 @@ portfolioRouter.get(
 portfolioRouter.post(
   '/challenges/:challengeId/overlaps',
   requirePermission('portfolio:write'),
+  challenge('challengeId'),
   validate(createOverlapSchema),
   controller.createOverlap,
 );
@@ -314,6 +343,7 @@ portfolioRouter.get(
 portfolioRouter.post(
   '/challenges/:challengeId/executive-outputs',
   requirePermission('portfolio:write'),
+  challenge('challengeId'),
   requireEntitlement('exec_export'),
   validate(createExecutiveOutputSchema),
   controller.createExecutiveOutput,
@@ -322,6 +352,7 @@ portfolioRouter.post(
 portfolioRouter.patch(
   '/executive-outputs/:id',
   requirePermission('portfolio:write'),
+  executiveOutput(),
   validate(updateExecutiveOutputSchema),
   controller.updateExecutiveOutput,
 );

@@ -252,3 +252,35 @@ describe('PortfolioHomeReadService — aprendizajes con schema incompleto', () =
     expect(home.learnings).toEqual([]);
   });
 });
+
+// Auditoría E2E F-02: las asignaciones de handoff se leían sin filtro de organización.
+describe('PortfolioHomeReadService — asignaciones de handoff por organización', () => {
+  const projection = (assignmentId: string, organizationId: string | null) => ({
+    assignmentId, organizationId, targetKind: 'CHALLENGE', challengeRef: `ch-${assignmentId}`, handoffState: 'SENT', generatedAt: new Date('2026-10-14T00:00:00Z'),
+  });
+
+  // Simula Prisma: aplica el `where` que recibe, así el test falla si el servicio no filtra.
+  function prismaWithProjections(rows: any[]) {
+    const findMany = vi.fn(async ({ where }: any = {}) => {
+      const allowed = where?.organizationId?.in;
+      return allowed ? rows.filter((row) => allowed.includes(row.organizationId)) : rows;
+    });
+    return { ...makePrisma(), portfolioHandoffProjection: { findMany } };
+  }
+
+  const rows = [projection('a-1', 'org-a'), projection('b-1', 'org-b'), projection('orphan', null)];
+
+  it('un lead de org-A no ve las asignaciones de org-B ni las que no tienen organización', async () => {
+    const prisma = prismaWithProjections(rows);
+    const home = await new PortfolioHomeReadService(prisma as any).getHome('u1', { all: false, organizationIds: ['org-a'] });
+    expect(JSON.stringify(home)).toContain('a-1');
+    expect(JSON.stringify(home)).not.toContain('b-1');
+    expect(JSON.stringify(home)).not.toContain('orphan');
+  });
+
+  it('el admin ve todas', async () => {
+    const prisma = prismaWithProjections(rows);
+    const home = await new PortfolioHomeReadService(prisma as any).getHome('u1', { all: true, organizationIds: [] });
+    expect(JSON.stringify(home)).toContain('b-1');
+  });
+});

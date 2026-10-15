@@ -14,9 +14,12 @@ describe('resolvePortfolioScope', () => {
     expect(await resolvePortfolioScope(prisma(), { id: 'u', role: 'admin' })).toEqual({ all: true, organizationIds: [] });
   });
 
-  it('quien no tiene acceso de portafolio queda como antes (deuda #161: bandeja del participante)', async () => {
+  // Auditoría E2E F-01: antes devolvía { all: true } — sin permiso de portafolio se veía todo.
+  it('quien no tiene acceso de portafolio NO recibe alcance global: sólo sus organizaciones', async () => {
     expect(await resolvePortfolioScope(prisma({ primary: 'org-a' }), { id: 'u', role: 'participante', permissions: new Set(['project:own']) }))
-      .toEqual({ all: true, organizationIds: [] });
+      .toEqual({ all: false, organizationIds: ['org-a'] });
+    expect(await resolvePortfolioScope(prisma(), { id: 'u', role: 'participante', permissions: new Set() }))
+      .toEqual({ all: false, organizationIds: [] });
   });
 
   it('con portfolio:read ve su organización primaria, sus membresías y sus grants, sin repetir', async () => {

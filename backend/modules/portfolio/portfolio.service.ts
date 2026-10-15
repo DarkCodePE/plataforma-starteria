@@ -75,11 +75,13 @@ export class PortfolioService {
 
   // ─── Challenges ──────────────────────────────────────────────────────────────
 
-  async listChallenges(strategicFrontId: string) {
+  async listChallenges(strategicFrontId: string, scope?: PortfolioScope) {
     const front = await this.prisma.strategicFront.findUnique({
       where: { id: strategicFrontId },
     });
-    if (!front) throw AppError.notFound('Frente estratégico', 'FRONT_NOT_FOUND', { hint: 'Confirma el ID del frente.' });
+    // Un frente de otra organización responde igual que uno inexistente (no confirma IDs ajenos).
+    const inScope = !scope || scope.all || front?.organizationId == null || scope.organizationIds.includes(front.organizationId);
+    if (!front || !inScope) throw AppError.notFound('Frente estratégico', 'FRONT_NOT_FOUND', { hint: 'Confirma el ID del frente.' });
 
     return this.prisma.challenge.findMany({
       where: { strategicFrontId },
