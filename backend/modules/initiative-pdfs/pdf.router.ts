@@ -14,6 +14,7 @@ import express, { Router } from 'express';
 import { prisma } from '../../shared/db/prisma';
 import { config } from '../../config';
 import { authenticate } from '../auth/auth.middleware';
+import { requireProjectTeamAccess } from '../projects/project-team-access';
 import { requireEntitlement } from '../billing/entitlement.middleware';
 import { validate } from '../../shared/middleware/validate';
 import { LocalDiskPdfStorage } from './storage.service';
@@ -41,9 +42,16 @@ export const pdfRouter = Router({ mergeParams: true });
 
 pdfRouter.use(authenticate);
 
+// Antes sólo pedía sesión: cualquier usuario logueado podía subir, extraer o confirmar
+// propuestas en una iniciativa ajena con su ID. Leer: el equipo y el Portfolio Lead asignado;
+// subir, extraer y resolver propuestas: OWNER o EDITOR (igual que el resto del trabajo de Steps).
+const canRead = requireProjectTeamAccess(prisma, 'read', 'id');
+const canWrite = requireProjectTeamAccess(prisma, 'write', 'id');
+
 // 1. Upload PDF (multipart-free — body is the raw PDF stream).
 pdfRouter.post(
   '/:id/pdfs',
+  canWrite,
   express.raw({ type: ALLOWED_PDF_MIME, limit: MAX_PDF_BYTES }),
   controller.upload,
 );
@@ -54,16 +62,17 @@ pdfRouter.post(
 // is a future hardening (SPEC-005 §metering).
 pdfRouter.post(
   '/:id/pdfs/:pdfId/extract',
+  canWrite,
   requireEntitlement('pdf_extract'),
   validate(extractRequestSchema),
   controller.startExtraction,
 );
 
 // 3. Poll run state.
-pdfRouter.get('/:id/pdfs/runs/:runId', controller.getRun);
+pdfRouter.get('/:id/pdfs/runs/:runId', canRead, controller.getRun);
 
 // 4. List proposals for a completed run.
-pdfRouter.get('/:id/pdfs/runs/:runId/proposals', controller.listProposals);
+pdfRouter.get('/:id/pdfs/runs/:runId/proposals', canRead, controller.listProposals);
 
 // 4b. Project-scoped proposal listing used by the frontend hydration path.
 //     `?runId=...` (optional) filters to a single run; omit it to fetch
@@ -72,16 +81,18 @@ pdfRouter.get('/:id/pdfs/runs/:runId/proposals', controller.listProposals);
 //     envelope used by internal/test consumers.
 pdfRouter.get(
   '/:id/autofill-proposals',
+  canRead,
   validate(listProposalsQuerySchema, 'query'),
   controller.listProposalsByProject,
 );
 
 // 5. Confirm a proposal (proposedValue → finalValue).
-pdfRouter.post('/:id/pdfs/runs/:runId/proposals/:fieldPath/confirm', controller.confirmProposal);
+pdfRouter.post('/:id/pdfs/runs/:runId/proposals/:fieldPath/confirm', canWrite, controller.confirmProposal);
 
 // 6. Edit a proposal with a founder-supplied finalValue.
 pdfRouter.post(
   '/:id/pdfs/runs/:runId/proposals/:fieldPath/edit',
+  canWrite,
   validate(editProposalSchema),
   controller.editProposal,
 );
@@ -89,6 +100,7 @@ pdfRouter.post(
 // 7. Discard a proposal (status = DISCARDED).
 pdfRouter.post(
   '/:id/pdfs/runs/:runId/proposals/:fieldPath/discard',
+  canWrite,
   controller.discardProposal,
 );
 
