@@ -27,7 +27,7 @@ export function PublicEnterpriseCards() {
         </div>
         <Button
           type="button"
-          className="shrink-0"
+          className="h-auto min-h-11 w-full min-w-0 flex-wrap whitespace-normal break-words px-3 py-2 text-center sm:w-auto sm:shrink"
         >
           <Calendar size={15} />
           Agendar demo enterprise

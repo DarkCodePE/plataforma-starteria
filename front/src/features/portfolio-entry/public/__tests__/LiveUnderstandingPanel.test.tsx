@@ -66,6 +66,28 @@ describe('LiveUnderstandingPanel', () => {
     expect(panel).not.toHaveTextContent('No debe aparecer como insight.');
     expect(panel).not.toHaveTextContent('Tensión inventada.');
     expect(panel).not.toHaveTextContent('Decisión inventada.');
+    expect(panel).not.toHaveTextContent('Lectura provisional');
+    expect(screen.queryByRole('button', { name: /esto no refleja lo que quise decir/i })).not.toBeInTheDocument();
+  });
+
+  it('keeps supported unknowns visible when no insight or reading is available', () => {
+    renderPanel({
+      state: 'no_supported_insight',
+      decisionChangingUnknowns: [{
+        uncertainty: 'Falta confirmar cuándo estará disponible el permiso.',
+        whyItMatters: 'Ese plazo puede cambiar qué evidencia llega al comité.',
+      }],
+    });
+
+    const panel = screen.getByTestId('portfolio-entry-live-understanding');
+    expect(screen.getByTestId('portfolio-entry-live-understanding-no-insight'))
+      .toHaveTextContent('Por ahora Starteria todavía no tiene suficiente base para compartir una lectura útil de la situación.');
+    expect(panel).toHaveTextContent('Qué todavía podría aclararse');
+    expect(panel).toHaveTextContent('Falta confirmar cuándo estará disponible el permiso.');
+    expect(panel).toHaveTextContent('Ese plazo puede cambiar qué evidencia llega al comité.');
+    expect(panel).not.toHaveTextContent('Todavía no hay una lectura disponible para mostrar.');
+    expect(panel).not.toHaveTextContent('Lectura provisional');
+    expect(screen.queryByRole('button', { name: /esto no refleja lo que quise decir/i })).not.toBeInTheDocument();
   });
 
   it('keeps insufficient basis minimal and does not show interpretation or decision', () => {
@@ -83,6 +105,18 @@ describe('LiveUnderstandingPanel', () => {
     expect(panel).not.toHaveTextContent('Tensión oculta.');
     expect(panel).not.toHaveTextContent('Decisión oculta.');
     expect(panel).not.toHaveTextContent('Desconocido oculto.');
+    expect(panel).not.toHaveTextContent('Lectura provisional');
+  });
+
+  it('keeps the insufficient-basis message when the reading field is absent', () => {
+    renderPanel({ state: 'insufficient_basis', decisionChangingUnknowns: [] });
+
+    const panel = screen.getByTestId('portfolio-entry-live-understanding');
+    expect(screen.getByTestId('portfolio-entry-live-understanding-insufficient'))
+      .toHaveTextContent('Todavía falta contexto para ofrecer una lectura útil.');
+    expect(panel).not.toHaveTextContent('Todavía no hay una lectura disponible para mostrar.');
+    expect(panel).not.toHaveTextContent('Lectura provisional');
+    expect(screen.queryByRole('button', { name: /esto no refleja lo que quise decir/i })).not.toBeInTheDocument();
   });
 
   it('keeps a single initiative reading local without adding portfolio framing', () => {
@@ -100,7 +134,7 @@ describe('LiveUnderstandingPanel', () => {
     expect(panel).not.toHaveTextContent(/lo que puede estar en juego/i);
   });
 
-  it('shows a non-fatal synthesis fallback without provider details', () => {
+  it('shows synthesis unavailability without a receipt or a provisional-reading heading', () => {
     renderPanel({
       state: 'synthesis_unavailable',
       decisionChangingUnknowns: [],
@@ -110,9 +144,21 @@ describe('LiveUnderstandingPanel', () => {
     } as unknown as PortfolioEntryLiveUnderstanding);
 
     const panel = screen.getByTestId('portfolio-entry-live-understanding');
-    expect(panel).toHaveTextContent('Tu mensaje se recibió. La aclaración puede continuar.');
+    expect(panel).toHaveTextContent('La lectura no está disponible ahora. Puedes continuar con la aclaración.');
+    expect(panel).not.toHaveTextContent('Tu mensaje se recibió.');
+    expect(panel).not.toHaveTextContent('Lectura provisional');
+    expect(screen.queryByRole('button', { name: /esto no refleja lo que quise decir/i })).not.toBeInTheDocument();
     expect(panel).not.toHaveTextContent(/provider-secret|model-secret|private-error-secret/i);
     expect(panel).not.toHaveTextContent(/reintentar/i);
+  });
+
+  it('does not label an empty supported payload as a reading or offer correction', () => {
+    renderPanel(supportedReading({ reading: '   ' }));
+
+    const panel = screen.getByTestId('portfolio-entry-live-understanding');
+    expect(panel).toHaveTextContent('Todavía no hay una lectura disponible para mostrar.');
+    expect(panel).not.toHaveTextContent('Lectura provisional');
+    expect(screen.queryByRole('button', { name: /esto no refleja lo que quise decir/i })).not.toBeInTheDocument();
   });
 
   it('replaces the old reading with an accessible updating state while a turn is processing', () => {

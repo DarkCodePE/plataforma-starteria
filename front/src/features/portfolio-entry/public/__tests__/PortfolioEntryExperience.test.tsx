@@ -289,6 +289,67 @@ describe('PortfolioEntryExperience', () => {
     vi.clearAllMocks();
   });
 
+  it('shows the approved value promise only before a public first message', () => {
+    render(<MemoryRouter><PortfolioEntryExperience showPublicPromise /></MemoryRouter>);
+
+    expect(screen.getByTestId('portfolio-entry-pre-entry-promise')).toHaveTextContent('Encuentra por dónde empezar con lo que necesitas resolver');
+    expect(screen.getByTestId('portfolio-entry-pre-entry-promise')).toHaveTextContent('Si tenemos suficiente claridad y lo solicitas');
+    expect(screen.getByLabelText('¿Qué necesitas resolver, conseguir o entender?')).toBeInTheDocument();
+    expect(screen.getByText('Puedes expresarlo con tus palabras.')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /analizar mi situación/i })).toBeInTheDocument();
+  });
+
+  it('uses a supported decision as contextual goal and keeps answer actions before the one full reading', async () => {
+    savePortfolioEntryCurrentSession({ sessionId: '11111111-1111-4111-8111-111111111111', credential: 'entry-token' });
+    const session = sessionWithQuestion();
+    const understanding = supportedLiveUnderstanding('La lectura sustentada completa permanece disponible.');
+    understanding.decision.decisionToPrepare = 'Decidir qué iniciativas comparar antes del comité.';
+    serviceMocks.getPortfolioEntrySession.mockResolvedValue(withLiveUnderstanding(session, understanding));
+
+    render(<MemoryRouter><PortfolioEntryExperience showPublicPromise /></MemoryRouter>);
+
+    const goal = await screen.findByTestId('portfolio-entry-contextual-goal');
+    expect(goal).toHaveAttribute('data-source', 'supported_reading.decision');
+    expect(goal).toHaveTextContent('Decidir qué iniciativas comparar antes del comité.');
+    expect(screen.queryByTestId('portfolio-entry-pre-entry-promise')).not.toBeInTheDocument();
+    expect(screen.getByTestId('portfolio-entry-active-question-reason')).toHaveTextContent('Puede cambiar la decisión que necesitas preparar.');
+    const panel = screen.getByTestId('portfolio-entry-conversation-panel');
+    const question = within(panel).getByTestId('portfolio-entry-active-question');
+    const answer = within(panel).getByLabelText('Tu respuesta');
+    const action = within(panel).getByRole('button', { name: /enviar respuesta/i });
+    const reading = within(panel).getByTestId('portfolio-entry-live-understanding');
+    expect(question.compareDocumentPosition(answer) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(answer.compareDocumentPosition(action) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(action.compareDocumentPosition(reading) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(within(panel).getAllByTestId('portfolio-entry-live-understanding')).toHaveLength(1);
+  });
+
+  it.each(['no_supported_insight', 'insufficient_basis', 'synthesis_unavailable'] as const)(
+    'omits an unsupported contextual goal for an explicit portfolio need in %s', async (state) => {
+    savePortfolioEntryCurrentSession({ sessionId: '11111111-1111-4111-8111-111111111111', credential: 'entry-token' });
+    const session = sessionWithQuestion();
+    session.conversation[0]!.userInput = 'Tengo 27 iniciativas y necesito decidir cuáles financiar o pausar antes del comité.';
+    session.semanticProjection.understanding = { value: 'Un inventario extraído no es un objetivo.', source: 'latestAnalysis.extracted_context' };
+    serviceMocks.getPortfolioEntrySession.mockResolvedValue(withLiveUnderstanding(session, {
+      state,
+      decision: { decisionToPrepare: 'Objetivo no sustentado que no debe salir.' },
+      decisionChangingUnknowns: [{ uncertainty: 'Falta confirmar el criterio.', whyItMatters: 'Puede cambiar la decisión.' }],
+    }));
+
+    renderExperience();
+
+    expect(await screen.findByTestId('portfolio-entry-active-question-text')).toBeInTheDocument();
+    expect(screen.queryByTestId('portfolio-entry-contextual-goal')).not.toBeInTheDocument();
+    expect(screen.queryByText(/Todavía no tengo claro qué necesitas resolver/i)).not.toBeInTheDocument();
+    expect(screen.queryByText('Objetivo no sustentado que no debe salir.')).not.toBeInTheDocument();
+    expect(screen.queryByText('Un inventario extraído no es un objetivo.')).not.toBeInTheDocument();
+    expect(screen.getByTestId('portfolio-entry-active-question-reason')).toHaveTextContent('Puede cambiar la decisión que necesitas preparar.');
+    if (state === 'no_supported_insight') {
+      expect(screen.getByTestId('portfolio-entry-live-understanding')).toHaveTextContent('Falta confirmar el criterio. Puede cambiar la decisión.');
+    }
+    expect(screen.queryByRole('button', { name: /esto no refleja lo que quise decir/i })).not.toBeInTheDocument();
+  });
+
   it('waits for auth hydration before recovering a claimed session', async () => {
     const sessionId = '11111111-1111-4111-8111-111111111111';
     saveClaimedPortfolioEntrySession({ sessionId });
@@ -436,9 +497,15 @@ describe('PortfolioEntryExperience', () => {
     });
     fireEvent.click(screen.getByRole('button', { name: /analizar mi situ/i }));
     await screen.findByText(/Aclaraci.*breve/i);
-    const clarificationLabel = await screen.findByText(/Para afinarlo un poco m/i);
+    const clarificationLabel = await screen.findByText('Una pregunta para avanzar');
     const currentClarification = within(clarificationLabel.parentElement as HTMLElement);
     expect(await currentClarification.findByText(/que decision necesitas habilitar/i)).toBeInTheDocument();
+    expect(screen.queryByLabelText('Progreso de aclaración')).not.toBeInTheDocument();
+    expect(screen.queryByText(/Aclaración 1 de hasta 3/i)).not.toBeInTheDocument();
+    expect(screen.getAllByTestId('portfolio-entry-quick-question-budget-note')).toHaveLength(1);
+    expect(screen.getByTestId('portfolio-entry-quick-question-budget-note')).toHaveTextContent(
+      'La aclaración inicial puede requerir hasta tres preguntas, solo si aportan valor. Si después se ofrece profundizar, tú decides; esa exploración es aparte',
+    );
     expect(currentClarification.getByTestId('portfolio-entry-active-question-reason')).toHaveTextContent(
       'Puede cambiar la decisión que necesitas preparar.',
     );
@@ -478,6 +545,35 @@ describe('PortfolioEntryExperience', () => {
         }),
       );
     });
+  });
+
+  it('uses only the current Quick question and keeps the one-time budget note out of later turns', async () => {
+    savePortfolioEntryCurrentSession({ sessionId: '11111111-1111-4111-8111-111111111111', credential: 'entry-token' });
+    const thirdTurn = sessionWithQuestion();
+    thirdTurn.clarification.quickQuestionsAsked = 3;
+    thirdTurn.conversation.push({
+      ...thirdTurn.conversation[0],
+      id: 'turn-3',
+      turnIndex: 2,
+      userInput: 'Ahora hay evidencia adicional.',
+      emittedQuestions: [{
+        ...thirdTurn.conversation[0].emittedQuestions[0],
+        id: 'q-3',
+        question: '¿Quién puede confirmar la evidencia disponible?',
+        reason_to_ask: 'Esto puede cambiar qué se puede concluir.',
+        turn_index: 2,
+      }],
+    });
+    serviceMocks.getPortfolioEntrySession.mockResolvedValue(thirdTurn);
+
+    renderExperience();
+
+    expect(await screen.findByTestId('portfolio-entry-active-question-text')).toHaveTextContent('¿Quién puede confirmar la evidencia disponible?');
+    expect(screen.getByTestId('portfolio-entry-active-question-reason')).toHaveTextContent('Esto puede cambiar qué se puede concluir.');
+    expect(screen.getByRole('textbox', { name: /tu respuesta/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /enviar respuesta/i })).toBeInTheDocument();
+    expect(screen.queryByTestId('portfolio-entry-quick-question-budget-note')).not.toBeInTheDocument();
+    expect(screen.queryByText(/Aclaración 3 de hasta 3/i)).not.toBeInTheDocument();
   });
 
   it('keeps the active clarification as the main next action when basis is insufficient', async () => {
@@ -535,6 +631,7 @@ describe('PortfolioEntryExperience', () => {
 
     expect(await screen.findByTestId('portfolio-entry-live-understanding'))
       .toHaveTextContent('Estamos actualizando esta lectura con tu mensaje.');
+    expect(screen.queryByTestId('portfolio-entry-contextual-goal')).not.toBeInTheDocument();
     expect(screen.getByTestId('portfolio-entry-active-question')).toBeInTheDocument();
     expect(screen.queryByText('Lectura anterior que ya no debe parecer vigente.')).not.toBeInTheDocument();
 
@@ -573,6 +670,8 @@ describe('PortfolioEntryExperience', () => {
     renderExperience();
 
     fireEvent.click(await screen.findByRole('button', { name: /esto no refleja lo que quise decir/i }));
+    expect(screen.queryByTestId('portfolio-entry-contextual-goal')).not.toBeInTheDocument();
+    expect(screen.getByTestId('portfolio-entry-active-question-reason')).toHaveTextContent('Puede cambiar la decisión que necesitas preparar.');
     const correction = screen.getByRole('textbox', { name: /tu corrección/i });
     fireEvent.change(correction, { target: { value: 'La lectura no refleja lo que quise decir: me refiero a esta iniciativa.' } });
     fireEvent.click(screen.getByRole('button', { name: /enviar corrección/i }));
@@ -819,7 +918,7 @@ describe('PortfolioEntryExperience', () => {
     expect(screen.queryByTestId('portfolio-entry-active-question-reason')).not.toBeInTheDocument();
   });
 
-  it('renders structured conversational understanding before an active question', async () => {
+  it('keeps one supported reading and the active question without rendering the extracted-field inventory', async () => {
     savePortfolioEntryCurrentSession({ sessionId: '11111111-1111-4111-8111-111111111111', credential: 'entry-token' });
     serviceMocks.getPortfolioEntrySession.mockResolvedValue(sessionWithQuestion());
     const session = sessionWithQuestion();
@@ -827,11 +926,15 @@ describe('PortfolioEntryExperience', () => {
       value: 'AsÃƒÂ­ estoy entendiendo lo que me dices: portafolio: 40 iniciativas; decisiÃƒÂ³n: priorizar esfuerzo. TambiÃƒÂ©n aparece situaciÃƒÂ³n: comitÃƒÂ© de negocio.',
       source: 'latestAnalysis.extracted_context',
     };
-    serviceMocks.getPortfolioEntrySession.mockResolvedValue(session);
+    serviceMocks.getPortfolioEntrySession.mockResolvedValue(withLiveUnderstanding(session, supportedLiveUnderstanding('La conversación con dirección necesita una base común para comparar los reportes.')));
 
     renderExperience();
 
-    expect(await screen.findByTestId('portfolio-entry-understanding')).toHaveTextContent('40 iniciativas');
+    expect(await screen.findByTestId('portfolio-entry-active-question')).toBeInTheDocument();
+    expect(screen.queryByTestId('portfolio-entry-understanding')).not.toBeInTheDocument();
+    expect(screen.queryByText(/portafolio: 40 iniciativas/i)).not.toBeInTheDocument();
+    expect(screen.getAllByTestId('portfolio-entry-live-understanding')).toHaveLength(1);
+    expect(screen.getByTestId('portfolio-entry-live-understanding')).toHaveTextContent('La conversación con dirección necesita una base común');
     expect(screen.getByTestId('portfolio-entry-active-question')).toBeInTheDocument();
     expect(screen.getByLabelText(/tu respuesta/i)).toBeInTheDocument();
   });
@@ -844,6 +947,7 @@ describe('PortfolioEntryExperience', () => {
 
     expect(await screen.findByTestId('portfolio-entry-active-question')).toBeInTheDocument();
     expect(screen.queryByTestId('portfolio-entry-understanding')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('portfolio-entry-live-understanding')).not.toBeInTheDocument();
     expect(screen.getByLabelText(/tu respuesta/i)).toBeInTheDocument();
   });
 

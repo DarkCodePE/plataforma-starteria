@@ -597,7 +597,7 @@ async function reachCriticalHandoff(page: Page, scenario: Scenario, testInfo: Te
     await page.screenshot({ path: testInfo.outputPath('portfolio-entry-landing.png'), fullPage: true });
   }
 
-  await page.getByLabel(/necesitas conseguir/i).fill(scenario.input);
+  await page.getByLabel('¿Qué necesitas resolver, conseguir o entender?').fill(scenario.input);
   await page.getByRole('button', { name: /Analizar mi situaci[oó]n/i }).click();
 
 
@@ -845,7 +845,7 @@ test.describe('Portfolio Entry 114D Critical Handoff and explicit legacy compati
     await page.evaluate(() => window.sessionStorage.clear());
     await page.goto('/public/start');
 
-    await page.getByLabel(/necesitas conseguir/i).fill('Necesito ordenar mis iniciativas ya.');
+    await page.getByLabel('¿Qué necesitas resolver, conseguir o entender?').fill('Necesito ordenar mis iniciativas ya.');
     await page.getByRole('button', { name: /Analizar mi situaci[oó]n/i }).click();
 
     await expect(page.getByRole('heading', { name: /Aclaraci[oó]n breve/i })).toBeVisible({ timeout: 30_000 });
