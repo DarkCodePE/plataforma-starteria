@@ -1,0 +1,15 @@
+# Disco persistente para los archivos que sube la gente (PDFs de iniciativa y del Feedback IA
+# del Step 4). Sin esto el backend escribía en el disco del contenedor y un reinicio los borraba.
+# ReadWriteOnce alcanza: el backend corre con 1 réplica y strategy Recreate.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: starteria-backend-storage
+  namespace: starteria
+  labels:
+    app: starteria-backend
+spec:
+  accessModes: ["ReadWriteOnce"]
+  resources:
+    requests:
+      storage: 5Gi

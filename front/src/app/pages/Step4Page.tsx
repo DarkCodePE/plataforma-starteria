@@ -36,6 +36,8 @@ import { isPdfAutofillEnabled } from '../services/featureFlags';
 import * as stepService from '../services/stepService';
 import { getById } from '../services/projectService';
 import { LeaderFeedbackStatusCard } from '../components/LeaderFeedbackStatusCard';
+import { DeckFeedbackPanel } from '../components/deck-feedback/DeckFeedbackPanel';
+import type { DeckFeedback } from '../services/deckFeedbackService';
 import { AdaptiveCheckpointWorkspace } from '../../features/adaptive-core/components';
 import { confirmAdaptiveCheckpoint, explainCheckpointError, confirmStep4Output, getAdaptiveCore } from '../../features/adaptive-core/services/adaptiveCoreService';
 import { canNavigateToAdaptiveStep } from '../../features/adaptive-core/domain/adaptiveAuthority';
@@ -90,7 +92,6 @@ type NextStepType =
   | 'Demo Day'
   | 'Solo dejar recomendacion / aprendizajes';
 type MeetingStatus = 'Pendiente' | 'Invitado' | 'Agendado' | 'Confirmado';
-type PdfState = 'none' | 'uploaded' | 'analyzed';
 
 interface DemoItem {
   id: string;
@@ -520,9 +521,9 @@ export function Step4Page() {
     usedIn: '',
   });
 
-  const [pdfState, setPdfState] = useState<PdfState>('uploaded');
-  const [pdfName, setPdfName] = useState('Presentacion-impacto-v1.pdf');
-  const [pdfFeedbackReady, setPdfFeedbackReady] = useState(false);
+  const [deckFeedback, setDeckFeedback] = useState<DeckFeedback | null>(null);
+  const pdfFeedbackReady = !!deckFeedback;
+  const pdfName = deckFeedback?.fileName ?? '';
 
   const [orgContext, setOrgContext] = useState({
     culture: 'TI pide definiciones claras de ownership antes de adoptar cambios operativos.',
@@ -2139,83 +2140,17 @@ ${meetingOwner} / ${meetingRole}
                 title="Deck PDF y analisis con IA"
                 description="Aqui se registra el entregable del modulo A."
                 icon={FileText}
-                badge={<StatusChip status={pdfState === 'analyzed' ? 'Completado' : 'Pendiente'} size="sm" />}
+                badge={<StatusChip status={pdfFeedbackReady ? 'Completado' : 'Pendiente'} size="sm" />}
               >
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="border border-slate-200 rounded-xl p-4 bg-slate-50">
-                    <TextInput
-                      label="Nombre del PDF"
-                      value={pdfName}
-                      onChange={setPdfName}
-                      placeholder="Presentacion-impacto-v1.pdf"
-                    />
-                    <div className="flex gap-2 mt-3">
-                      <button
-                        onClick={() => {
-                          setPdfState('uploaded');
-                          toast.success('PDF registrado en el modulo A.');
-                        }}
-                        className="flex-1 border border-slate-200 bg-white hover:bg-slate-100 rounded-xl py-2 text-sm transition-colors"
-                        style={{ fontWeight: 500 }}
-                      >
-                        Registrar PDF
-                      </button>
-                      <button
-                        onClick={() => {
-                          if (!pdfName.trim()) {
-                            toast.error('Primero registra el nombre del PDF.');
-                            return;
-                          }
-                          setPdfState('analyzed');
-                          setPdfFeedbackReady(true);
-                          toast.success('Analisis IA completado para el deck.');
-                        }}
-                        className="flex-1 bg-violet-600 hover:bg-violet-700 text-white rounded-xl py-2 text-sm transition-colors"
-                        style={{ fontWeight: 500 }}
-                      >
-                        Analizar con IA
-                      </button>
-                    </div>
-                  </div>
-
-                  <div className="border border-slate-200 rounded-xl p-4">
-                    <p className="text-xs text-slate-500 mb-3" style={{ fontWeight: 600 }}>
-                      Feedback IA
-                    </p>
-                    {pdfFeedbackReady ? (
-                      <div className="space-y-3 text-sm">
-                        <div>
-                          <p className="text-emerald-700 text-xs mb-1" style={{ fontWeight: 700 }}>
-                            Que esta bien
-                          </p>
-                          <p className="text-slate-600">
-                            La historia conecta problema, evidencia, decision y pedido final de forma consistente.
-                          </p>
-                        </div>
-                        <div>
-                          <p className="text-amber-700 text-xs mb-1" style={{ fontWeight: 700 }}>
-                            Que falta
-                          </p>
-                          <p className="text-slate-600">
-                            Explicitar mejor como se resolveran los casos especiales y quien tomara ownership.
-                          </p>
-                        </div>
-                        <div>
-                          <p className="text-indigo-700 text-xs mb-1" style={{ fontWeight: 700 }}>
-                            Siguiente accion recomendada
-                          </p>
-                          <p className="text-slate-600">
-                            Ajusta la parte de riesgos organizacionales y asegurate de que el pedido final este en la ultima diapositiva.
-                          </p>
-                        </div>
-                      </div>
-                    ) : (
-                      <p className="text-sm text-slate-500">
-                        Analiza el PDF para revisar claridad, coherencia narrativa, solidez de evidencia y consistencia entre hallazgos, decision y pedido final.
-                      </p>
-                    )}
-                  </div>
-                </div>
+                {project && (
+                  <DeckFeedbackPanel
+                    projectId={project.id}
+                    canEdit={canEdit}
+                    mentorCredits={project.mentorCredits}
+                    onAnalyzed={() => updateProject(project.id, { mentorCredits: Math.max(0, (project.mentorCredits ?? 1) - 1) })}
+                    onFeedbackChange={setDeckFeedback}
+                  />
+                )}
               </SectionCard>
 
               <SectionCard

@@ -14,6 +14,7 @@ import { authRouter } from './modules/auth/auth.router';
 import { projectRouter } from './modules/projects/project.router';
 import { stepRouter } from './modules/steps/step.router';
 import { evidenceRouter } from './modules/evidence/evidence.router';
+import { deckFeedbackRouter } from './modules/deck-feedback/deck-feedback.router';
 import { mentorRouter } from './modules/mentor/mentor.router';
 import { cohortRouter } from './modules/cohort/cohort.router';
 import { userRouter, teamRouter } from './modules/users/user.router';
@@ -65,6 +66,7 @@ export function createApp(options: { portfolioEntryRouter?: ExpressRouter } = {}
   app.use('/api/v1/projects', projectRouter);
   app.use('/api/v1/projects', stepRouter);
   app.use('/api/v1/projects', evidenceRouter);
+  app.use('/api/v1/projects', deckFeedbackRouter);
   app.use('/api/v1/mentor', mentorRouter);
   app.use('/api/v1/admin', cohortRouter);
   app.use('/api/v1/users', userRouter);

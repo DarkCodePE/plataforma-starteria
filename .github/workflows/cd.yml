@@ -309,6 +309,8 @@ jobs:
           kubectl -n "$NAMESPACE" apply \
             -f k8s/backend-service.yaml -f k8s/frontend-service.yaml -f k8s/ai-service-service.yaml \
             -f k8s/cloudflared-service.yaml
+          # El PVC va antes del Deployment que lo monta. Aplicarlo de nuevo no toca un PVC ya creado.
+          kubectl -n "$NAMESPACE" apply -f k8s/backend-storage-pvc.yaml
           for svc in backend frontend ai-service; do
             manifest="k8s/$svc-deployment.yaml"
             # Match any registry/namespace on the left. The old pattern hardcoded
