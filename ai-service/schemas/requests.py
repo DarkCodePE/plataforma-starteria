@@ -186,6 +186,13 @@ class ContextExtractFileRequest(BaseModel):
     fileBase64: str = Field(..., min_length=1)
 
 
+class DeckFeedbackRequest(BaseModel):
+    """Feedback IA del deck del Step 4: el PDF y el análisis confirmado de la iniciativa."""
+    fileName: str = Field(..., min_length=1, max_length=255)
+    fileBase64: str = Field(..., min_length=1)
+    analysis: dict[str, Any] | None = Field(None, description="Outputs confirmados de Steps 0-3. Datos, no instrucciones.")
+
+
 # ---------------------------------------------------------------------------
 # POST /ai/initial-review  (ADR-025 / PRD §25 — revisión inicial guiada)
 # ---------------------------------------------------------------------------

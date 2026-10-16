@@ -687,6 +687,7 @@ model Project {
   sponsorCheckpoints    SponsorCheckpoint[]
   portfolioMeta         InitiativePortfolioMeta[]
   initiativePdfs        InitiativePdf[]
+  deckFeedbacks         DeckFeedback[]
   initialReviewSnapshot InitialReviewSnapshot?      @relation("ProjectFromSnapshot", fields: [initialReviewSnapshotId], references: [id])
   routeConfirmation     RouteConfirmation?          @relation("ProjectRouteConfirmation")
   portfolioEntryConversion PortfolioEntryConversion?
@@ -1955,10 +1956,28 @@ model InitiativePdf {
   updatedAt        DateTime  @updatedAt
 
   extractionRuns PdfExtractionRun[]
+  deckFeedbacks  DeckFeedback[]
 
   @@index([projectId])
   @@index([status])
   @@index([retentionUntil])
+}
+
+/// Feedback IA del deck del Step 4: el PDF subido (InitiativePdf) leído contra los outputs
+/// confirmados de Steps 0-3. Sólo se crea si la IA respondió; en la misma transacción se
+/// descuenta un crédito de mentor del proyecto.
+model DeckFeedback {
+  id          String        @id @default(cuid())
+  projectId   String
+  project     Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  pdfId       String
+  pdf         InitiativePdf @relation(fields: [pdfId], references: [id], onDelete: Cascade)
+  result      Json
+  model       String?
+  createdById String
+  createdAt   DateTime      @default(now())
+
+  @@index([projectId, createdAt])
 }
 
 model PdfExtractionRun {

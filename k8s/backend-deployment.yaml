@@ -17,6 +17,13 @@ spec:
       labels:
         app: starteria-backend
     spec:
+      # appgroup (1001) del Dockerfile.backend: el volumen queda escribible para appuser.
+      securityContext:
+        fsGroup: 1001
+      volumes:
+      - name: storage
+        persistentVolumeClaim:
+          claimName: starteria-backend-storage
       containers:
       - name: backend
         image: orlandogtp/starteria-backend:v2.0.2
@@ -42,6 +49,9 @@ spec:
           value: "https://starter-ia.com"
         - name: LOG_LEVEL
           value: "info"
+        # PDFs subidos (iniciativa y Feedback IA del Step 4), en el volumen persistente.
+        - name: LOCAL_STORAGE_DIR
+          value: "/app/storage"
         # Portfolio Entry uses the backend Responses adapter. Set
         # PORTFOLIO_ENTRY_API_KEY in starteria-backend-secrets (envFrom above).
         # Provider/model/URL/timeouts may be overridden in that Secret too.
@@ -62,6 +72,9 @@ spec:
           value: "false"
         - name: PILOT_LEAD_NOTIFY_TO
           value: "okuanb@gmail.com"
+        volumeMounts:
+        - name: storage
+          mountPath: /app/storage
         resources:
           requests:
             cpu: "200m"

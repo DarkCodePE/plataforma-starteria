@@ -3,6 +3,8 @@
 All endpoints are internal (no auth — Express handles JWT before proxying).
 """
 
+import base64
+import binascii
 import logging
 import os
 import secrets
@@ -18,6 +20,7 @@ from agents.orchestrator import OrchestratorAgent
 from agents.field_refiner import refine_field
 from agents.company_context_extractor import extract_context, extract_file
 from agents.initial_reviewer import generate_initial_review
+from agents.deck_feedback import generate_deck_feedback
 from agents.pdf_extractor import PdfExtractorAgent, get_run_registry
 from agents.research_assistant import ResearchAssistantAgent
 from agents.solution_design import SolutionDesignAgent
@@ -41,6 +44,7 @@ from schemas.requests import (
     ResearchAssistRequest,
     ContextExtractRequest,
     ContextExtractFileRequest,
+    DeckFeedbackRequest,
     InitialReviewRequest,
     DiagnoseRequest,
 )
@@ -567,6 +571,39 @@ async def context_extract_file_endpoint(
         return response
     except Exception as exc:  # noqa: BLE001
         logger.exception("context-extract-file error: %s", exc)
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=ErrorResponse(error=str(exc), code="SERVICE_UNAVAILABLE").model_dump(),
+        ) from exc
+
+
+# ---------------------------------------------------------------------------
+# POST /ai/deck-feedback  (Feedback IA del Step 4)
+#
+# Lee el PDF del deck contra el análisis real de la iniciativa. El backend cobra el
+# crédito de mentor sólo con un 200; cualquier fallo sale como 503 sin cobrar.
+# ---------------------------------------------------------------------------
+
+@router.post("/deck-feedback")
+async def deck_feedback_endpoint(
+    body: DeckFeedbackRequest,
+    x_internal_token: str | None = Header(default=None, alias="X-Internal-Token"),
+) -> dict:
+    _verify_internal_token(x_internal_token)
+    try:
+        pdf_bytes = base64.b64decode(body.fileBase64, validate=True)
+    except (binascii.Error, ValueError) as exc:
+        raise HTTPException(
+            status_code=422,
+            detail=ErrorResponse(error="fileBase64 inválido", code="INVALID_INPUT").model_dump(),
+        ) from exc
+    try:
+        result = await run_in_threadpool(generate_deck_feedback, pdf_bytes, body.fileName, body.analysis)
+        return {**result, "model": os.getenv("DECK_FEEDBACK_MODEL", os.getenv("OPENROUTER_MODEL", "deepseek/deepseek-v4-flash"))}
+    except CostLimitExceededError as exc:
+        _handle_cost_error(exc)
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("deck-feedback error: %s", exc)
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail=ErrorResponse(error=str(exc), code="SERVICE_UNAVAILABLE").model_dump(),
