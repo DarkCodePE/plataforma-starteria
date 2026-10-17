@@ -222,6 +222,34 @@ function ConversationTrace({ session }: { session: PortfolioEntrySessionDto }) {
   );
 }
 
+function RecoveryStatus({ session, verified, onCheck }: { session: PortfolioEntrySessionDto | null; verified: boolean; onCheck: () => void }) {
+  if (!verified || !session) {
+    return <section aria-live="polite" data-testid="portfolio-entry-recovery-status" className="rounded-ds-md border border-status-feedback-warning-border bg-status-feedback-warning-surface p-4 text-sm leading-6 text-status-feedback-warning-text">No puedo verificar ahora qué parte de la conversación permanece en el servidor. Tu texto en esta pantalla sigue disponible para que lo revises. Vuelve a comprobar el estado antes de enviarlo. <Button type="button" variant="outline" size="sm" onClick={onCheck}>Comprobar estado</Button></section>;
+  }
+  const answers = session.conversation.slice(1).filter((turn) => (turn.matchedQuestionIds?.length ?? 0) > 0).length;
+  const reading = session.liveUnderstanding?.state === 'supported_reading'
+    ? 'La lectura actual está disponible para revisar.'
+    : session.liveUnderstanding?.state === 'synthesis_unavailable'
+      ? 'La lectura no está disponible ahora.'
+      : session.liveUnderstanding?.state === 'no_supported_insight' || session.liveUnderstanding?.state === 'insufficient_basis'
+        ? 'La lectura no tiene base suficiente todavía.'
+        : 'No puedo verificar una lectura actual con esta respuesta.';
+  const handoff = session.nextAction === 'review_handoff' || session.nextAction === 'claim_or_close'
+    ? 'La propuesta final está en revisión; comprueba su estado en la sección siguiente.'
+    : session.nextAction === 'generate_handoff'
+      ? 'La propuesta final está pendiente de preparación.'
+      : 'Todavía no hay una propuesta final verificada.';
+  return (
+    <section aria-live="polite" data-testid="portfolio-entry-recovery-status" className="rounded-ds-md border border-border-default bg-background-subtle p-4 text-sm leading-6 text-text-secondary">
+      <h2 className="font-semibold text-text-primary">Estado recuperado del servidor</h2>
+      <p>Sesión terminada en {session.id.slice(-4)} · revisión {session.revision}. El servidor devolvió {session.conversation.length > 0 ? 'la entrada inicial' : 'ninguna entrada inicial verificable'} y {answers} {answers === 1 ? 'respuesta' : 'respuestas'} a preguntas.</p>
+      <p>{reading} {handoff}</p>
+      {session.pendingInput ? <p>Hay una entrada recibida cuyo análisis está {session.pendingInput.status === 'ANALYZED' ? 'completado' : 'pendiente o fallido'}.</p> : null}
+      <p>El historial completo está disponible debajo. Si estabas escribiendo, revisa el texto antes de volver a enviarlo.</p>
+    </section>
+  );
+}
+
 function getEditableFields(handoff: PortfolioEntryHandoff): EditableField[] {
   return [
     {
@@ -286,7 +314,7 @@ function mapError(kind: string): UiError {
       return {
         kind,
         title: 'La sesion avanzo',
-        message: 'Actualizamos la vista con el estado mas reciente. Revisa antes de volver a enviar.',
+        message: 'La revisión cambió. Estamos comprobando el estado del servidor. Tu texto en esta pantalla no se reenviará automáticamente.',
         retryable: false,
       };
     case 'expired':
@@ -422,8 +450,9 @@ function InitialComposer({
             Encuentra por dónde empezar con lo que necesitas resolver
           </h1>
           <p className="text-base leading-7 text-slate-600">
-            Te ayudaré a ordenar lo que sabes y lo que falta para identificar qué necesitas decidir o aclarar y por dónde empezar. Si tenemos suficiente claridad y lo solicitas, podremos preparar una primera propuesta de abordaje para que la revises. Esta orientación es opcional y no crea trabajo en tu portafolio.
+            Cuéntanos qué necesitas resolver. Te ayudaremos a distinguir lo que sabes, lo que falta y por dónde empezar. Podrás revisar una orientación o propuesta provisional con sus incertidumbres antes de decidir si quieres continuar. Esta orientación es opcional y no crea trabajo por sí sola.
           </p>
+          <p className="rounded-ds-md border border-border-default bg-background-subtle p-3 text-sm leading-6 text-text-secondary" data-testid="portfolio-entry-public-steps">Cuéntanos tu situación → responderás hasta tres preguntas si ayudan → revisa una orientación provisional y sus incertidumbres. Si hace falta profundizar después, tú decides.</p>
         </div>
       ) : null}
       <div className="space-y-2">
@@ -468,7 +497,7 @@ function InitialComposer({
       <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center gap-2 text-xs text-text-muted">
           <ShieldCheck size={15} className="text-[var(--status-feedback-success-text)]" />
-          No se crea nada en tu portafolio hasta que lo revises.
+          No se crea trabajo hasta que decidas continuar.
         </div>
         <Button
           type="button"
@@ -629,6 +658,7 @@ function GuidedExplorationOffer({
   liveUnderstandingSurface: React.ReactNode;
   correctionSubmitting: boolean;
 }) {
+  const limitedReading = session.liveUnderstanding?.state !== 'supported_reading';
   return (
     <div className="mx-auto max-w-3xl">
       <div className="mb-4">{liveUnderstandingSurface}</div>
@@ -643,10 +673,15 @@ function GuidedExplorationOffer({
         </section>
       ) : (
         <AISuggestionPanel
-        title={session.clarification.checkpoint === 'guided'
+        className="[&_button]:h-auto [&_button]:max-w-full [&_button]:whitespace-normal [&_button]:py-2 [&_button]:text-center"
+        title={limitedReading
+          ? 'Puedes revisar una propuesta provisional con lo que compartiste'
+          : session.clarification.checkpoint === 'guided'
           ? 'Con lo que acabamos de profundizar, ya puedo convertir esta lectura en una propuesta de abordaje.'
           : 'Ya tengo suficiente claridad para proponerte un primer abordaje'}
-        suggestion={session.clarification.checkpoint === 'guided'
+        suggestion={limitedReading
+          ? 'No hay una lectura personalizada disponible para este checkpoint. Puedes continuar con una propuesta provisional que muestre sus límites, o seguir aclarando si esa opción está disponible.'
+          : session.clarification.checkpoint === 'guided'
           ? 'La exploración guiada queda cerrada y la propuesta seguirá mostrando qué está claro y qué conserva incertidumbre.'
           : 'Entiendo qué estás intentando conseguir, qué está dificultando la decisión y qué aspectos siguen abiertos. Podemos seguir aterrizando algunos puntos o convertir lo que tenemos en una propuesta concreta.'}
         why={['La aclaración puede continuar sin convertirse en una entrevista larga.', 'La propuesta será provisional y conservará la incertidumbre explícita.']}
@@ -1410,6 +1445,8 @@ export function PortfolioEntryExperience({
   const [liveUnderstandingCorrectionDraft, setLiveUnderstandingCorrectionDraft] = useState('');
   const [liveUnderstandingCorrectionSubmitting, setLiveUnderstandingCorrectionSubmitting] = useState(false);
   const [error, setError] = useState<UiError | null>(null);
+  const [recoveryVisible, setRecoveryVisible] = useState(false);
+  const [recoveryVerified, setRecoveryVerified] = useState(false);
   const [correctionDraft, setCorrectionDraft] = useState<Record<string, string>>({});
   const [correctionNotes, setCorrectionNotes] = useState('');
   const [editingCorrection, setEditingCorrection] = useState(false);
@@ -1534,6 +1571,8 @@ export function PortfolioEntryExperience({
     setLiveUnderstandingCorrectionDraft('');
     setLiveUnderstandingCorrectionSubmitting(false);
     setError(null);
+    setRecoveryVisible(false);
+    setRecoveryVerified(false);
     setCorrectionDraft({});
     setCorrectionNotes('');
     setEditingCorrection(false);
@@ -1549,11 +1588,14 @@ export function PortfolioEntryExperience({
     trackPortfolioEntryEvent('portfolio_entry_api_failure', { kind: apiError.kind, status: apiError.status });
 
     if (apiError.kind === 'conflict' && ref) {
+      setRecoveryVisible(true);
+      setRecoveryVerified(false);
       try {
         const latest = await getPortfolioEntrySession(ref.sessionId, ref.credential);
         setSessionDto(latest);
+        setRecoveryVerified(true);
       } catch {
-        // Keep the conflict guidance visible.
+        // Keep the unknown state visible; no semantic request is replayed.
       }
       return;
     }
@@ -1571,6 +1613,27 @@ export function PortfolioEntryExperience({
       clearPortfolioEntryCurrentSession();
       setSessionRef(null);
       if (apiError.kind === 'expired') trackPortfolioEntryEvent('session_expired');
+    }
+  };
+
+  const checkRecovery = async () => {
+    const claimed = readClaimedPortfolioEntrySession();
+    const stored = sessionRef ?? readPortfolioEntryCurrentSession();
+    if (!claimed && !stored) return;
+    setPendingRequest('recovering');
+    setRecoveryVisible(true);
+    setRecoveryVerified(false);
+    try {
+      const latest = claimed
+        ? await getClaimedPortfolioEntrySession(claimed.sessionId)
+        : await getPortfolioEntrySession(stored!.sessionId, stored!.credential);
+      setSessionDto(latest);
+      setRecoveryVerified(true);
+      setError(null);
+    } catch {
+      setRecoveryVerified(false);
+    } finally {
+      setPendingRequest(null);
     }
   };
 
@@ -1644,15 +1707,21 @@ export function PortfolioEntryExperience({
         if (cancelled) return;
         setSessionRef(stored ?? null);
         setSessionDto(session);
+        setRecoveryVisible(true);
+        setRecoveryVerified(true);
         setError(null);
       })
       .catch((err) => {
         if (cancelled) return;
         if (stored) {
+          setRecoveryVisible(true);
+          setRecoveryVerified(false);
           void handleRequestError(err, stored);
           return;
         }
         const apiError = normalizePortfolioEntryApiError(err);
+        setRecoveryVisible(true);
+        setRecoveryVerified(false);
         setError(mapError(apiError.kind));
         trackPortfolioEntryEvent('portfolio_entry_api_failure', { kind: apiError.kind, status: apiError.status });
       })
@@ -1779,7 +1848,6 @@ export function PortfolioEntryExperience({
       trackPortfolioEntryEvent('clarification_answered', { sessionId: next.id });
     } catch (err) {
       await handleRequestError(err);
-      setSessionDto((current) => current ? { ...current, liveUnderstanding: undefined } : current);
     } finally {
       setLiveUnderstandingUpdating(false);
       setPendingRequest(null);
@@ -1880,7 +1948,6 @@ export function PortfolioEntryExperience({
       setSessionDto(next);
     } catch (err) {
       await handleRequestError(err);
-      setSessionDto((current) => current ? { ...current, liveUnderstanding: undefined } : current);
     } finally {
       setLiveUnderstandingUpdating(false);
       setPendingRequest(null);
@@ -2115,7 +2182,7 @@ export function PortfolioEntryExperience({
       const composer = (
         <InitialComposer
           value={currentInput}
-          pending={pending}
+          pending={pending || (recoveryVisible && !recoveryVerified)}
           onChange={setCurrentInput}
           onSubmit={startFlow}
           variant={variant}
@@ -2168,7 +2235,7 @@ export function PortfolioEntryExperience({
           {staleHandoffNotice}
           <GuidedExplorationOffer
             session={sessionDto}
-            pending={pending || liveUnderstandingCorrectionOpen}
+            pending={pending || liveUnderstandingCorrectionOpen || (recoveryVisible && !recoveryVerified)}
             onChoose={chooseGuided}
             liveUnderstandingSurface={liveUnderstandingSurface}
             correctionSubmitting={liveUnderstandingCorrectionSubmitting}
@@ -2207,7 +2274,7 @@ export function PortfolioEntryExperience({
               artifact={criticalArtifact}
               correctionOpen={criticalCorrectionOpen}
               correctionDraft={criticalCorrectionDraft}
-              pending={pending}
+              pending={pending || (recoveryVisible && !recoveryVerified)}
               canContinue={Boolean(sessionRef) && sessionDto.ownership.state === 'ANONYMOUS'}
               canConfirm={sessionDto.ownership.state === 'CLAIMED'}
               onCorrectionDraftChange={setCriticalCorrectionDraft}
@@ -2297,7 +2364,7 @@ export function PortfolioEntryExperience({
         <ConversationPanel
           session={sessionDto}
           value={currentInput}
-          pending={pending}
+          pending={pending || (recoveryVisible && !recoveryVerified)}
           onChange={setCurrentInput}
           onSubmit={submitAnswer}
           liveUnderstandingSurface={liveUnderstandingSurface}
@@ -2324,6 +2391,7 @@ export function PortfolioEntryExperience({
           }
         />
       </div>
+      {recoveryVisible ? <div className="mx-auto max-w-3xl"><RecoveryStatus session={sessionDto} verified={recoveryVerified} onCheck={() => void checkRecovery()} /></div> : null}
       {renderMain()}
     </div>
   );

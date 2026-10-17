@@ -293,10 +293,61 @@ describe('PortfolioEntryExperience', () => {
     render(<MemoryRouter><PortfolioEntryExperience showPublicPromise /></MemoryRouter>);
 
     expect(screen.getByTestId('portfolio-entry-pre-entry-promise')).toHaveTextContent('Encuentra por dónde empezar con lo que necesitas resolver');
-    expect(screen.getByTestId('portfolio-entry-pre-entry-promise')).toHaveTextContent('Si tenemos suficiente claridad y lo solicitas');
+    expect(screen.getByTestId('portfolio-entry-pre-entry-promise')).toHaveTextContent('propuesta provisional con sus incertidumbres');
     expect(screen.getByLabelText('¿Qué necesitas resolver, conseguir o entender?')).toBeInTheDocument();
     expect(screen.getByText('Puedes expresarlo con tus palabras.')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /analizar mi situación/i })).toBeInTheDocument();
+    expect(screen.getByTestId('portfolio-entry-pre-entry-promise')).toHaveTextContent('hasta tres preguntas');
+    expect(screen.getByTestId('portfolio-entry-pre-entry-promise')).not.toHaveTextContent('portafolio');
+  });
+
+  it.each(['synthesis_unavailable', 'no_supported_insight', 'insufficient_basis'] as const)(
+    'recovers three confirmed answers and an honest %s checkpoint using GET only', async (state) => {
+      const sessionId = '11111111-1111-4111-8111-111111111111';
+      savePortfolioEntryCurrentSession({ sessionId, credential: 'entry-token' });
+      const turns = Array.from({ length: 4 }, (_, index) => ({
+        id: `turn-${index}`, turnIndex: index, userInput: `Texto ${index}`,
+        emittedQuestions: [], matchedQuestionIds: index ? [`q-${index}`] : [],
+        respondedResolves: [], createdAt: new Date().toISOString(),
+      }));
+      serviceMocks.getPortfolioEntrySession.mockResolvedValue(withLiveUnderstanding(makeSession({
+        revision: 7, lifecycleStatus: 'CLARIFYING', nextAction: 'offer_guided_exploration',
+        conversation: turns, clarification: { ...makeSession().clarification, quickQuestionsAsked: 3, checkpoint: 'quick' },
+      }), { state, decisionChangingUnknowns: [] }));
+
+      renderExperience();
+
+      const recovery = await screen.findByTestId('portfolio-entry-recovery-status');
+      expect(recovery).toHaveTextContent('3 respuestas');
+      expect(recovery).toHaveTextContent('revisión 7');
+      expect(recovery).toHaveTextContent('lectura');
+      expect(screen.queryByTestId('critical-handoff-correction')).not.toBeInTheDocument();
+      expect(screen.queryByText(/Ya tengo suficiente claridad/i)).not.toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Ver mi propuesta de abordaje' })).toBeInTheDocument();
+      expect(serviceMocks.getPortfolioEntrySession).toHaveBeenCalledTimes(1);
+      expect(serviceMocks.submitPortfolioEntryMessage).not.toHaveBeenCalled();
+      expect(serviceMocks.chooseGuidedExploration).not.toHaveBeenCalled();
+    },
+  );
+
+  it('rehydrates after 409 without losing the draft or inventing a saved answer', async () => {
+    const sessionId = '11111111-1111-4111-8111-111111111111';
+    savePortfolioEntryCurrentSession({ sessionId, credential: 'entry-token' });
+    const initial = sessionWithQuestion();
+    const latest = { ...initial, revision: 3 };
+    serviceMocks.getPortfolioEntrySession.mockResolvedValueOnce(initial).mockResolvedValueOnce(latest);
+    serviceMocks.submitPortfolioEntryMessage.mockRejectedValue({ kind: 'conflict', status: 409 });
+    renderExperience();
+    const answer = await screen.findByRole('textbox', { name: 'Tu respuesta' });
+    fireEvent.change(answer, { target: { value: 'Mi respuesta sin reenviar' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Enviar respuesta' }));
+
+    await waitFor(() => expect(screen.getByTestId('portfolio-entry-recovery-status')).toHaveTextContent('revisión 3'));
+    expect(answer).toHaveValue('Mi respuesta sin reenviar');
+    expect(screen.getByTestId('portfolio-entry-recovery-status')).toHaveTextContent('No puedo verificar');
+    expect(screen.queryByTestId('critical-handoff-correction')).not.toBeInTheDocument();
+    expect(serviceMocks.getPortfolioEntrySession).toHaveBeenCalledTimes(2);
+    expect(serviceMocks.submitPortfolioEntryMessage).toHaveBeenCalledTimes(1);
   });
 
   it('uses a supported decision as contextual goal and keeps answer actions before the one full reading', async () => {
@@ -855,7 +906,7 @@ describe('PortfolioEntryExperience', () => {
 
     renderExperience();
 
-    expect(await screen.findByText(/Con lo que acabamos de profundizar/i)).toBeInTheDocument();
+    expect(await screen.findByText(/Puedes revisar una propuesta provisional con lo que compartiste/i)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /ver mi propuesta de abordaje/i })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /seguir aterrizando mi necesidad/i })).not.toBeInTheDocument();
 
