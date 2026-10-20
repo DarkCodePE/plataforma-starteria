@@ -185,6 +185,13 @@ describe('PortfolioHomeReadService', () => {
     });
   });
 
+  it('exposes an open initiative support signal as Portfolio attention without mutating it', async () => {
+    const result = await new PortfolioHomeReadService(makePrisma([
+      front({ challenges: [challenge({ initiativeMetas: [initiativeMeta(project({ attentionItems: [{ reason: 'Acceso a Data pendiente', severity: 'high', status: 'open' }] }))] })] }),
+    ])).getHome('user-1');
+    expect(result.attention).toEqual([expect.objectContaining({ source: 'attention_item', entity: { type: 'initiative', id: 'project-1' }, summary: 'Acceso a Data pendiente', severity: 'high' })]);
+  });
+
   it('does not infer Decision Authority from Sponsor', async () => {
     const result = await new PortfolioHomeReadService(makePrisma([
       front({ sponsor: 'Sponsor label' }),

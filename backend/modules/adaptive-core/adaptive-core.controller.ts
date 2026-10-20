@@ -25,6 +25,50 @@ export class AdaptiveCoreController {
     }
   };
 
+  getStep0SemanticState = async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+    try {
+      const user = req.user!;
+      const data = await this.service.getStep0SemanticState(req.params.id, user.id, user.role);
+      res.json({ success: true, data });
+    } catch (err) {
+      next(err);
+    }
+  };
+
+  processStep0SemanticInput = async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+    try {
+      const user = req.user!;
+      const data = await this.service.processStep0SemanticInput(req.params.id, user.id, user.role, req.body);
+      res.json({ success: true, data });
+    } catch (err) {
+      next(err);
+    }
+  };
+
+  getSemanticStepState = async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+    try {
+      const user = req.user!;
+      const data = await this.service.getSemanticStepState(req.params.id, user.id, user.role, Number(req.params.step));
+      res.json({ success: true, data });
+    } catch (err) { next(err); }
+  };
+
+  processSemanticStepInput = async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+    try {
+      const user = req.user!;
+      const data = await this.service.processSemanticStepInput(req.params.id, user.id, user.role, Number(req.params.step), req.body);
+      res.json({ success: true, data });
+    } catch (err) { next(err); }
+  };
+
+  signalSupport = async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+    try {
+      const user = req.user!;
+      const data = await this.service.signalSupport(req.params.id, user.id, user.role, req.body);
+      res.status(201).json({ success: true, data });
+    } catch (err) { next(err); }
+  };
+
   registerCriticalChange = async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
     try {
       const user = req.user!;

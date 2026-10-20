@@ -1947,6 +1947,10 @@ model InitiativePdf {
   mimeType         String
   fileSize         Int
   uploadedBy       String
+  // A client-supplied command key makes retrying a completed upload safe. The
+  // fingerprint prevents the same key from being silently reused for another file.
+  idempotencyKey   String?
+  requestFingerprint String?
   uploadedAt       DateTime  @default(now())
   retentionUntil   DateTime?
   deletedAt        DateTime?
@@ -1959,6 +1963,7 @@ model InitiativePdf {
   deckFeedbacks  DeckFeedback[]
 
   @@index([projectId])
+  @@unique([projectId, idempotencyKey])
   @@index([status])
   @@index([retentionUntil])
 }
@@ -3481,6 +3486,9 @@ model InitialReview {
   // Scalar FK suelto (patrón ADR-022) para no acoplar bounded contexts; indexado
   // para "revisiones de este reto".
   challengeId             String?
+  // P6 Route A: reference to a started Assignment. This is pre-Project work;
+  // Project remains the only Initiative identity and is created on confirmation.
+  handoffAssignmentId     String?             @unique
   createdAt               DateTime            @default(now())
   updatedAt               DateTime            @updatedAt
 
@@ -3491,6 +3499,7 @@ model InitialReview {
   @@index([ownerId])
   @@index([status])
   @@index([challengeId])
+  @@index([handoffAssignmentId])
 }
 
 // ADR-026 (IRC-01): historial event-sourced de la conversación del asistente sobre una

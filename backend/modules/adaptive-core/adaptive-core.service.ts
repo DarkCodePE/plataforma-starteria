@@ -12,6 +12,8 @@ import { DecisionAuthorityResolver } from './decision-authority.resolver';
 import { DecisionReadinessResolver } from './decision-readiness.resolver';
 import { InitiativeCompletionResolver } from './initiative-completion.resolver';
 import { AdaptiveCycleService } from './cycle.service';
+import { applyStep0SemanticInput, createStep0SemanticCard, type SemanticSourceRef, type Step0SemanticCard } from './step0-semantic-card';
+import { applySemanticStepInput, createSemanticStepCard, type SemanticStep, type StepSemanticCard } from './step-semantic-engine';
 import type {
   AdaptiveCoreState,
   AdaptiveDepthLevel,
@@ -48,6 +50,9 @@ import type {
   CriticalChangeInput,
   DecisionRequestCreateInput,
   OrganizationalDecisionInput,
+  Step0SemanticInput,
+  SemanticStepInput,
+  SupportSignalInput,
 } from './adaptive-core.schemas';
 
 import {
@@ -319,6 +324,228 @@ const responses = instanceIds.length > 0
       },
       legacyFallback: Boolean(activeConfig?.sourceContextJson?.legacyFallback),
     };
+  }
+
+  /**
+   * P7 read model. It exposes inherited context and the latest structured Step 0
+   * Card without treating a transcript or an AI summary as canonical truth.
+   */
+  async getStep0SemanticState(projectId: string, userId: string, role: Role) {
+    const project = await this.getAccessibleProject(projectId, userId, role);
+    const db = this.prisma as any;
+    const cycle = await this.cycles.getOperationalCycle(projectId);
+    const [configuration, output, sourceRows] = await Promise.all([
+      db.adaptiveStepConfiguration.findFirst({
+        where: { projectId, cycleId: cycle.id, stepNumber: 0 },
+        orderBy: { version: 'desc' },
+      }),
+      db.adaptiveStepOutput.findFirst({
+        where: { projectId, cycleId: cycle.id, stepNumber: 0, outputKey: 'Step0SemanticCard' },
+        orderBy: { version: 'desc' },
+      }),
+      db.sourceRef.findMany({ where: { projectId }, orderBy: { createdAt: 'asc' } }),
+    ]);
+    // A newly created Initiative can be viewed before its adaptive configuration
+    // has been materialized. Recover the same inherited snapshot read-only in that
+    // case; a GET must not fabricate a cycle or discard the Route A/B mandate.
+    const inheritedContext = {
+      ...(configuration?.sourceContextJson ?? this.buildMasterContext(project)),
+      sourceRefs: sourceRows.map((source: any) => ({ id: source.id, reference: source.reference, sourceType: source.sourceType })),
+    };
+    const card = output?.outputJson as Step0SemanticCard | null
+      ?? createStep0SemanticCard(projectId, inheritedContext);
+    return {
+      card,
+      outputVersion: output?.version ?? null,
+      inheritedContext,
+      sourceRefs: sourceRows.map((source: any) => ({ id: source.id, reference: source.reference, sourceType: source.sourceType, validationStatus: 'unvalidated' })),
+    };
+  }
+
+  /** P7 semantic delta command. Replays use the durable adaptation-event receipt. */
+  async processStep0SemanticInput(projectId: string, userId: string, role: Role, input: Step0SemanticInput) {
+    this.assertTeamWorkAccess(await this.getAccessibleProject(projectId, userId, role), userId, role);
+    await this.ensureInitialized(projectId, userId, role);
+    const db = this.prisma as any;
+    const cycle = await this.cycles.ensureActiveCycle(projectId);
+    this.assertCycleMutable(cycle);
+    const existing = await db.adaptiveAdaptationEvent.findUnique({ where: { idempotencyKey: input.idempotencyKey } });
+    if (existing) return this.getStep0SemanticState(projectId, userId, role);
+
+    const sourceRefIds = input.sourceRefIds ?? [];
+    const [configuration, previousOutput, knownSources, allOutputs] = await Promise.all([
+      db.adaptiveStepConfiguration.findFirst({ where: { projectId, cycleId: cycle.id, stepNumber: 0 }, orderBy: { version: 'desc' } }),
+      db.adaptiveStepOutput.findFirst({ where: { projectId, cycleId: cycle.id, stepNumber: 0, outputKey: 'Step0SemanticCard' }, orderBy: { version: 'desc' } }),
+      sourceRefIds.length > 0 ? db.sourceRef.findMany({ where: { id: { in: sourceRefIds }, projectId } }) : Promise.resolve([]),
+      db.adaptiveStepOutput.findMany({ where: { projectId, cycleId: cycle.id, stepNumber: 0 }, select: { version: true } }),
+    ]);
+    if (knownSources.length !== sourceRefIds.length) {
+      throw AppError.badRequest('Alguna fuente no pertenece a la iniciativa.', 'STEP0_SOURCE_REF_INVALID');
+    }
+    const inheritedContext = {
+      ...(configuration?.sourceContextJson ?? {}),
+      sourceRefs: knownSources.map((source: any) => ({ id: source.id, reference: source.reference, sourceType: source.sourceType })),
+    };
+    const previousCard = previousOutput?.outputJson as Step0SemanticCard | null
+      ?? createStep0SemanticCard(projectId, inheritedContext);
+
+    await db.$transaction(async (tx: any) => {
+      const sources: SemanticSourceRef[] = knownSources.map((source: any) => ({
+        id: source.id,
+        reference: source.reference,
+        sourceType: source.sourceType,
+        validationStatus: 'unvalidated',
+      }));
+      if (input.newSource) {
+        const source = await tx.sourceRef.create({
+          data: {
+            projectId,
+            sourceType: 'USER_INPUT',
+            reference: input.newSource.reference,
+            location: input.newSource.location,
+            originActorId: userId,
+            originActorType: 'human',
+            metadataJson: { step: 0, semanticInputIdempotencyKey: input.idempotencyKey, validationStatus: 'unvalidated' },
+          },
+        });
+        sources.push({ id: source.id, reference: source.reference, sourceType: source.sourceType, validationStatus: 'unvalidated' });
+      }
+      const result = applyStep0SemanticInput(previousCard, {
+        content: input.content,
+        fieldHint: input.fieldHint,
+        sourceRefs: sources,
+      });
+      const nextVersion = Math.max(0, ...allOutputs.map((row: any) => Number(row.version ?? 0))) + 1;
+      if (result.changed || sources.length > 0) {
+        const card = result.card;
+        if (!result.changed && sources.length > 0) {
+          card.cardVersion += 1;
+          card.lastDelta = { operation: 'link_source', field: null, reason: 'Fuente vinculada sin convertirla automáticamente en evidencia validada.' };
+        }
+        await tx.adaptiveStepOutput.create({
+          data: {
+            projectId,
+            cycleId: cycle.id,
+            sourceConfigurationId: configuration?.id ?? null,
+            stepNumber: 0,
+            version: nextVersion,
+            status: 'draft',
+            outputKey: 'Step0SemanticCard',
+            outputJson: card,
+            requiresReview: card.requiresReview,
+          },
+        });
+      }
+      await tx.adaptiveAdaptationEvent.create({
+        data: {
+          projectId,
+          eventType: 'step0_semantic_input_processed',
+          eventKey: 'step0-semantic-card',
+          summary: result.card.lastDelta.reason,
+          payloadJson: { field: result.card.lastDelta.field, operation: result.card.lastDelta.operation, changed: result.changed, sourceRefs: sources.map(source => source.id) },
+          createdById: userId,
+          idempotencyKey: input.idempotencyKey,
+        },
+      });
+    });
+    return this.getStep0SemanticState(projectId, userId, role);
+  }
+
+  /**
+   * P8 read model. It recovers the governed configuration and references for a
+   * canonical Step without copying a transcript or replacing its checkpoint output.
+   */
+  async getSemanticStepState(projectId: string, userId: string, role: Role, rawStep: number) {
+    const step = this.assertSemanticStep(rawStep);
+    await this.getAccessibleProject(projectId, userId, role);
+    const db = this.prisma as any;
+    const cycle = await this.cycles.getOperationalCycle(projectId);
+    const [configuration, output, sourceRows] = await Promise.all([
+      db.adaptiveStepConfiguration.findFirst({ where: { projectId, cycleId: cycle.id, stepNumber: step, status: 'active' }, orderBy: { version: 'desc' } }),
+      db.adaptiveStepOutput.findFirst({ where: { projectId, cycleId: cycle.id, stepNumber: step, outputKey: `Step${step}SemanticCard` }, orderBy: { version: 'desc' } }),
+      db.sourceRef.findMany({ where: { projectId }, orderBy: { createdAt: 'asc' } }),
+    ]);
+    if (!configuration) throw AppError.badRequest(`Step ${step} no esta configurado para esta iniciativa.`, 'SEMANTIC_STEP_NOT_CONFIGURED');
+    const context = {
+      ...(configuration.sourceContextJson ?? {}),
+      sourceRefs: sourceRows.map((source: any) => ({ id: source.id, reference: source.reference, sourceType: source.sourceType })),
+    };
+    return {
+      card: (output?.outputJson as StepSemanticCard | null) ?? createSemanticStepCard(step, context),
+      outputVersion: output?.version ?? null,
+      inheritedContext: context,
+      sourceRefs: sourceRows.map((source: any) => ({ id: source.id, reference: source.reference, sourceType: source.sourceType, validationStatus: 'unvalidated' })),
+    };
+  }
+
+  /** P8 shared semantic command. The durable event receipt makes retries safe. */
+  async processSemanticStepInput(projectId: string, userId: string, role: Role, rawStep: number, input: SemanticStepInput) {
+    const step = this.assertSemanticStep(rawStep);
+    this.assertTeamWorkAccess(await this.getAccessibleProject(projectId, userId, role), userId, role);
+    const db = this.prisma as any;
+    const cycle = await this.cycles.getOperationalCycle(projectId);
+    this.assertCycleMutable(cycle);
+    const existing = await db.adaptiveAdaptationEvent.findUnique({ where: { idempotencyKey: input.idempotencyKey } });
+    if (existing) return this.getSemanticStepState(projectId, userId, role, step);
+    const sourceRefIds = input.sourceRefIds ?? [];
+    const [configuration, previousOutput, knownSources, allOutputs] = await Promise.all([
+      db.adaptiveStepConfiguration.findFirst({ where: { projectId, cycleId: cycle.id, stepNumber: step, status: 'active' }, orderBy: { version: 'desc' } }),
+      db.adaptiveStepOutput.findFirst({ where: { projectId, cycleId: cycle.id, stepNumber: step, outputKey: `Step${step}SemanticCard` }, orderBy: { version: 'desc' } }),
+      sourceRefIds.length ? db.sourceRef.findMany({ where: { id: { in: sourceRefIds }, projectId } }) : Promise.resolve([]),
+      db.adaptiveStepOutput.findMany({ where: { projectId, cycleId: cycle.id, stepNumber: step }, select: { version: true } }),
+    ]);
+    if (!configuration) throw AppError.badRequest(`Step ${step} no esta configurado para esta iniciativa.`, 'SEMANTIC_STEP_NOT_CONFIGURED');
+    if (knownSources.length !== sourceRefIds.length) throw AppError.badRequest('Alguna fuente no pertenece a la iniciativa.', 'SEMANTIC_SOURCE_REF_INVALID');
+    const context = { ...(configuration.sourceContextJson ?? {}), sourceRefs: knownSources.map((source: any) => ({ id: source.id, reference: source.reference, sourceType: source.sourceType })) };
+    const prior = (previousOutput?.outputJson as StepSemanticCard | null) ?? createSemanticStepCard(step, context);
+    const next = applySemanticStepInput(prior, { content: input.content, field: input.field, sourceRefs: knownSources.map((source: any) => ({ id: source.id, reference: source.reference })) });
+    const changed = next.version !== prior.version;
+    await db.$transaction(async (tx: any) => {
+      if (changed) {
+        const version = Math.max(0, ...allOutputs.map((row: any) => Number(row.version ?? 0))) + 1;
+        await tx.adaptiveStepOutput.create({ data: {
+          projectId, cycleId: cycle.id, sourceConfigurationId: configuration.id, stepNumber: step, version,
+          status: 'draft', outputKey: `Step${step}SemanticCard`, outputJson: next, requiresReview: next.requiresReview,
+        } });
+        // A material observation/contradiction in Step 3 flags only dependent
+        // earlier outputs. It preserves their history and does not reset the cycle.
+        if (step === 3 && next.contradictions.length > prior.contradictions.length) {
+          await tx.adaptiveStepOutput.updateMany({ where: { projectId, cycleId: cycle.id, stepNumber: { in: [1, 2] }, outputKey: { notIn: ['Step1SemanticCard', 'Step2SemanticCard'] } }, data: { requiresReview: true } });
+          await this.recordEventTx(tx, projectId, 'step_semantic_directed_review', 'Nueva contradiccion de Step 3 requiere revision dirigida de outputs dependientes.', { sourceStep: 3, affectedSteps: [1, 2], contradictions: next.contradictions }, userId, `semantic-directed-review:${input.idempotencyKey}`);
+        }
+      }
+      await tx.adaptiveAdaptationEvent.create({ data: {
+        projectId, eventType: `step${step}_semantic_input_processed`, eventKey: `step${step}-semantic-card`,
+        summary: `Delta semantico de Step ${step}: ${next.lastOperation}.`,
+        payloadJson: { step, field: input.field, operation: next.lastOperation, changed, sourceRefIds },
+        createdById: userId, idempotencyKey: input.idempotencyKey,
+      } });
+    });
+    return this.getSemanticStepState(projectId, userId, role, step);
+  }
+
+  /** P9 owner signal: durable AttentionItem, not a new canonical SupportRequest. */
+  async signalSupport(projectId: string, userId: string, role: Role, input: SupportSignalInput) {
+    this.assertTeamWorkAccess(await this.getAccessibleProject(projectId, userId, role), userId, role);
+    const db = this.prisma as any;
+    const receipt = await db.adaptiveAdaptationEvent.findUnique({ where: { idempotencyKey: input.idempotencyKey } });
+    if (receipt) {
+      const id = (receipt.payloadJson as any)?.attentionItemId;
+      return id ? db.attentionItem.findUnique({ where: { id } }) : receipt;
+    }
+    if (input.sourceRefId) {
+      const source = await db.sourceRef.findFirst({ where: { id: input.sourceRefId, projectId } });
+      if (!source) throw AppError.badRequest('La fuente no pertenece a la iniciativa.', 'SUPPORT_SOURCE_REF_INVALID');
+    }
+    return db.$transaction(async (tx: any) => {
+      const attention = await tx.attentionItem.create({ data: {
+        projectId, objectType: 'initiative_support', objectId: projectId, category: input.category,
+        reason: input.reason, severity: input.severity, sourceRefId: input.sourceRefId,
+        ownerId: userId, exitCondition: input.exitCondition, nextAction: input.nextAction,
+      } });
+      await this.recordEventTx(tx, projectId, 'support_signaled', 'El Initiative Owner solicito atencion externa.', { attentionItemId: attention.id, category: input.category, sourceRefId: input.sourceRefId ?? null }, userId, input.idempotencyKey);
+      return attention;
+    });
   }
 
   async getDecisionReadiness(projectId: string, userId: string, role: Role, decisionType: DecisionType): Promise<DecisionReadinessAssessment> {
@@ -953,10 +1180,24 @@ const sufficiency = this.evaluateCheckpoint(
     if (existingEvent) return this.getState(projectId, userId, role);
     this.assertCycleMutable(cycle);
 
-    const draft = await db.adaptiveStepOutput.findFirst({ where: { projectId, cycleId: cycle.id, stepNumber: 0, status: 'draft' }, orderBy: { version: 'desc' } });
+    const draft = await db.adaptiveStepOutput.findFirst({ where: { projectId, cycleId: cycle.id, stepNumber: 0, status: 'draft', outputKey: 'Step0AlignmentBrief' }, orderBy: { version: 'desc' } });
     if (!draft) throw AppError.badRequest('No existe Alignment Brief para confirmar.', 'STEP0_BRIEF_NOT_READY');
     const step0Config = await db.adaptiveStepConfiguration.findFirst({ where: { projectId, cycleId: cycle.id, stepNumber: 0, status: 'active' }, orderBy: { version: 'desc' } });
     const masterContext = step0Config?.sourceContextJson ?? {};
+    const semanticCardOutput = await db.adaptiveStepOutput.findFirst({
+      where: { projectId, cycleId: cycle.id, stepNumber: 0, outputKey: 'Step0SemanticCard' },
+      orderBy: { version: 'desc' },
+    });
+    const semanticCard = semanticCardOutput?.outputJson as Step0SemanticCard | null;
+    // The human-confirmed Alignment Brief remains Step 1's canonical input. The
+    // semantic Card is transferred only as a narrow, versioned context envelope:
+    // fields, refs, gaps, constraints and contradictions, never transcript prose.
+    const step0SemanticHandoff = semanticCard?.handoff ? {
+      cardVersion: semanticCard.cardVersion,
+      outputVersion: semanticCardOutput?.version ?? null,
+      ...semanticCard.handoff,
+      requiresReview: semanticCard.requiresReview,
+    } : null;
 
     await db.$transaction(async (tx: any) => {
       await tx.adaptiveStepOutput.update({
@@ -978,7 +1219,7 @@ const sufficiency = this.evaluateCheckpoint(
           depthLevel: masterContext.depthLevel ?? 'standard',
           maturity: masterContext.maturity ?? 'problem',
           configurationJson: step1ConfigJson,
-          sourceContextJson: { ...masterContext, step0Output: input.brief },
+          sourceContextJson: { ...masterContext, step0Output: input.brief, step0SemanticHandoff },
         },
       });
       await this.materializeCheckpointTx(tx, projectId, step1Config, 'CP-1.1', [input.brief], userId, `checkpoint_started:${projectId}:CP-1.1:${step1Version}`);
@@ -997,7 +1238,7 @@ const sufficiency = this.evaluateCheckpoint(
         updatedAt: new Date().toISOString(),
       });
       await this.recordEventTx(tx, projectId, 'step_completed', 'Step 0 confirmado por el usuario.', { step: 0, outputId: draft.id }, userId, input.idempotencyKey);
-      await this.recordEventTx(tx, projectId, 'next_step_configured', 'Step 1 configurado desde el Alignment Brief confirmado.', { step: 1, version: step1Version }, userId, `next-step-configured:${projectId}:1:${step1Version}`);
+      await this.recordEventTx(tx, projectId, 'next_step_configured', 'Step 1 configurado desde el Alignment Brief confirmado.', { step: 1, version: step1Version, semanticHandoff: step0SemanticHandoff ? { cardVersion: step0SemanticHandoff.cardVersion, sourceRefIds: step0SemanticHandoff.sourceRefIds, gaps: step0SemanticHandoff.gaps } : null }, userId, `next-step-configured:${projectId}:1:${step1Version}`);
     });
     await syncInitiativeProgress(this.prisma, projectId);
     return this.getState(projectId, userId, role);
@@ -1016,6 +1257,7 @@ const sufficiency = this.evaluateCheckpoint(
     if (!draft) throw AppError.badRequest('No existe output de Step 1 para confirmar.', 'STEP1_OUTPUT_NOT_READY');
     const step1Config = await db.adaptiveStepConfiguration.findFirst({ where: { projectId, cycleId: cycle.id, stepNumber: 1, status: 'active' }, orderBy: { version: 'desc' } });
     if (!step1Config) throw AppError.badRequest('No existe configuracion activa de Step 1.', 'STEP1_CONFIGURATION_MISSING');
+    const step1SemanticCard = await db.adaptiveStepOutput.findFirst({ where: { projectId, cycleId: cycle.id, stepNumber: 1, outputKey: 'Step1SemanticCard' }, orderBy: { version: 'desc' } });
 
     const draftOutput = draft.outputJson ?? {};
     const step1Output = {
@@ -1025,7 +1267,7 @@ const sufficiency = this.evaluateCheckpoint(
       methodologicalSufficiency: (draftOutput as any).methodologicalSufficiency ?? (input.brief as any)?.methodologicalSufficiency,
       sufficiency: this.contractualStep1Sufficiency(draftOutput, input.brief),
     };
-    const nextMasterContext = this.buildStep2MasterContext(step1Config.sourceContextJson ?? {}, step1Output);
+    const nextMasterContext = { ...this.buildStep2MasterContext(step1Config.sourceContextJson ?? {}, step1Output), step1SemanticHandoff: this.semanticHandoffEnvelope(step1SemanticCard) };
     const supportedByTruth = step1Output.truthReadiness?.satisfiesValidatedSupport === true;
 
     await db.$transaction(async (tx: any) => {
@@ -1098,13 +1340,14 @@ const sufficiency = this.evaluateCheckpoint(
     if (!draft) throw AppError.badRequest('No existe output de Step 2 para confirmar.', 'STEP2_OUTPUT_NOT_READY');
     const step2Config = await db.adaptiveStepConfiguration.findFirst({ where: { projectId, cycleId: cycle.id, stepNumber: 2, status: 'active' }, orderBy: { version: 'desc' } });
     if (!step2Config) throw AppError.badRequest('No existe configuracion activa de Step 2.', 'STEP2_CONFIGURATION_MISSING');
+    const step2SemanticCard = await db.adaptiveStepOutput.findFirst({ where: { projectId, cycleId: cycle.id, stepNumber: 2, outputKey: 'Step2SemanticCard' }, orderBy: { version: 'desc' } });
 
     const step2Output = { ...(draft.outputJson ?? {}), ...(input.brief ?? {}) };
     const selectedBetChanged = this.hasSelectedBetChanged(draft.outputJson ?? {}, input.brief ?? {});
     if (selectedBetChanged && !this.hasValue((input.brief as any).changeReason)) {
       throw AppError.badRequest('Registra la razon del cambio de apuesta antes de confirmar Step 2.', 'STEP2_BET_CHANGE_REASON_REQUIRED');
     }
-    const nextMasterContext = this.buildStep3MasterContext(step2Config.sourceContextJson ?? {}, step2Output);
+    const nextMasterContext = { ...this.buildStep3MasterContext(step2Config.sourceContextJson ?? {}, step2Output), step2SemanticHandoff: this.semanticHandoffEnvelope(step2SemanticCard) };
 
     await db.$transaction(async (tx: any) => {
       await tx.adaptiveStepOutput.update({
@@ -1171,12 +1414,13 @@ const sufficiency = this.evaluateCheckpoint(
     if (!draft) throw AppError.badRequest('No existe output de Step 3 para confirmar.', 'STEP3_OUTPUT_NOT_READY');
     const step3Config = await db.adaptiveStepConfiguration.findFirst({ where: { projectId, cycleId: cycle.id, stepNumber: 3, status: 'active' }, orderBy: { version: 'desc' } });
     if (!step3Config) throw AppError.badRequest('No existe configuracion activa de Step 3.', 'STEP3_CONFIGURATION_MISSING');
+    const step3SemanticCard = await db.adaptiveStepOutput.findFirst({ where: { projectId, cycleId: cycle.id, stepNumber: 3, outputKey: 'Step3SemanticCard' }, orderBy: { version: 'desc' } });
 
     const step3Output = { ...(draft.outputJson ?? {}), ...(input.brief ?? {}) };
     if (!this.hasValue((step3Output as any).decision?.decision ?? (step3Output as any).decision)) {
       throw AppError.badRequest('Step 3 requiere una decision confirmada antes de configurar Step 4.', 'STEP3_DECISION_REQUIRED');
     }
-    const nextMasterContext = this.buildStep4MasterContext(step3Config.sourceContextJson ?? {}, step3Output);
+    const nextMasterContext = { ...this.buildStep4MasterContext(step3Config.sourceContextJson ?? {}, step3Output), step3SemanticHandoff: this.semanticHandoffEnvelope(step3SemanticCard) };
 
     await db.$transaction(async (tx: any) => {
       await tx.adaptiveStepOutput.update({
@@ -2074,6 +2318,29 @@ const sufficiency = this.evaluateCheckpoint(
     }
   }
 
+  private assertSemanticStep(step: number): SemanticStep {
+    if (![1, 2, 3, 4].includes(step)) {
+      throw AppError.badRequest('El Card semantico solo existe para Steps 1 a 4.', 'SEMANTIC_STEP_INVALID');
+    }
+    return step as SemanticStep;
+  }
+
+  /** A narrow, versioned projection; canonical confirmed output stays separate. */
+  private semanticHandoffEnvelope(output: any) {
+    const card = output?.outputJson as StepSemanticCard | undefined;
+    if (!card?.handoff) return null;
+    return {
+      cardVersion: card.version,
+      outputVersion: output.version,
+      toStep: card.handoff.toStep,
+      values: card.handoff.values,
+      sourceRefIds: card.handoff.sourceRefIds,
+      gaps: card.handoff.gaps,
+      contradictions: card.handoff.contradictions,
+      requiresReview: Boolean(output.requiresReview || card.requiresReview),
+    };
+  }
+
   private async resolveInitiativeAlignment(project: any, client?: any): Promise<InitiativeAlignmentResult> {
     const db = client ?? this.prisma as any;
     const governance = db.initiativeGovernance?.findUnique
@@ -2676,6 +2943,11 @@ const sufficiency = this.evaluateCheckpoint(
       missingCriticalInformation: this.compact(Array.isArray(raw.pendingQuestions) ? raw.pendingQuestions.map((q: any) => typeof q === 'string' ? q : q.question) : []),
       risks: this.compact([raw.mainRisk]),
       decisions: this.compact([raw.nextRecommendedStep, raw.decisionRequested]),
+      // P6 Route A/B mandate snapshots and reconstructed history are inherited
+      // context. They remain context with provenance; they are not auto-confirmed
+      // Step 0 facts merely because the Card recovered them.
+      handoffMandate: legacy.handoffMandate ?? raw.handoffMandate ?? null,
+      recoveredHistory: legacy.recoveredHistory ?? raw.recoveredHistory ?? null,
       companySnapshot: company,
       challengeSnapshot: portfolioMeta ? {
         id: portfolioMeta.challengeId,

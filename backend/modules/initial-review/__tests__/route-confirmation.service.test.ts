@@ -25,7 +25,7 @@ const SNAPSHOT = {
 };
 
 function makePrisma(overrides: Record<string, any> = {}) {
-  return {
+  const client = {
     initialReview: {
       findUnique: vi.fn(async () => ({ id: 'rev1', ownerId: 'u1', status: 'generated', challengeId: null })),
       update: vi.fn(async () => ({})),
@@ -38,9 +38,14 @@ function makePrisma(overrides: Record<string, any> = {}) {
       delete: vi.fn(async () => ({})),
     },
     project: { update: vi.fn(async () => ({})) },
-    $transaction: vi.fn(async (ops: any[]) => Promise.all(ops)),
+    portfolioHandoffAssignment: {
+      findUnique: vi.fn(async () => null),
+      updateMany: vi.fn(async () => ({ count: 0 })),
+    },
     ...overrides,
   } as any;
+  client.$transaction = vi.fn(async (work: any) => typeof work === 'function' ? work(client) : Promise.all(work));
+  return client;
 }
 
 function fakeProjects(createImpl?: any) {
@@ -100,6 +105,34 @@ describe('RouteConfirmationService.confirmRoute (IR-B4)', () => {
     await expect(svc.confirmRoute('rev1', 'u1')).rejects.toMatchObject({ code: 'INITIATIVE_CREATE_FAILED' });
     expect(prisma.routeConfirmation.delete).toHaveBeenCalledWith({ where: { id: 'rc1' } });
   });
+
+  it('Route A enlaza el único Project confirmado al Assignment STARTED sin que Start lo cree', async () => {
+    const assignment = {
+      id: 'handoff-1', state: 'STARTED', targetKind: 'CHALLENGE', initiativeId: null,
+      members: [{ role: 'OWNER', userId: 'u1' }],
+    };
+    const prisma = makePrisma({
+      initialReview: {
+        findUnique: vi.fn(async () => ({ id: 'rev1', ownerId: 'u1', status: 'generated', challengeId: 'challenge-1', handoffAssignmentId: 'handoff-1' })),
+        update: vi.fn(async () => ({})),
+      },
+      portfolioHandoffAssignment: {
+        findUnique: vi.fn(async () => assignment),
+        updateMany: vi.fn(async ({ where, data }: any) => {
+          expect(where).toMatchObject({ id: 'handoff-1', state: 'STARTED', initiativeId: null });
+          expect(data.initiativeId).toBe('proj1');
+          return { count: 1 };
+        }),
+      },
+    });
+    const svc = new RouteConfirmationService(prisma, fakeProjects());
+
+    const result = await svc.confirmRoute('rev1', 'u1');
+
+    expect(result.initiativeId).toBe('proj1');
+    expect(prisma.portfolioHandoffAssignment.updateMany).toHaveBeenCalledTimes(1);
+    expect(prisma.project.update).toHaveBeenCalledTimes(1);
+  });
 });
 
 // Auditoría E2E F-04: si fallaba la finalización, el proyecto quedaba creado y huérfano y cada
@@ -120,9 +153,10 @@ describe('RouteConfirmationService — recuperación (F-04)', () => {
     prisma.project.update = vi.fn(() => lazy(() => ({})));
     prisma.initialReview.update = vi.fn(() => lazy(() => ({})));
     let failFinalize = true;
-    prisma.$transaction = vi.fn(async (ops: any[]) => {
+    prisma.$transaction = vi.fn(async (work: any) => {
       if (failFinalize) throw new Error('db blip');
-      return ops.map((op) => op.run());
+      if (typeof work === 'function') return work(prisma);
+      return work.map((op: any) => op.run());
     });
     const projects = fakeProjects();
     const svc = new RouteConfirmationService(prisma, projects);

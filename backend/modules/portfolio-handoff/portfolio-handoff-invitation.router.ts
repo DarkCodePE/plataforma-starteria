@@ -16,6 +16,8 @@ import { PortfolioHandoffAssignmentError } from './application/portfolio-handoff
 import { PrismaHandoffSemanticEventRepository, PrismaPortfolioHandoffProjectionRepository } from './infrastructure/prisma-portfolio-handoff-semantic-event.repository';
 import { PortfolioHandoffProjector, DurableHandoffEventPort } from './application/portfolio-handoff-semantic-event.projector';
 import { PrismaPortfolioHandoffAtomicCommandRepository } from './infrastructure/prisma-portfolio-handoff-atomic-command.repository';
+import { PortfolioHandoffReconstructionService } from './application/portfolio-handoff-reconstruction.service';
+import { ProjectService } from '../projects/project.service';
 
 export function buildPortfolioHandoffInvitationRouter(service: PortfolioHandoffInvitationService, auth = authenticate, onViewed?: (token: string) => Promise<void>): Router {
   const router = Router();
@@ -92,8 +94,19 @@ export function buildPortfolioHandoffDeliveryRouter(
 export const portfolioHandoffDeliveryRouter = buildPortfolioHandoffDeliveryRouter(deliveryService);
 
 const responseService = new PortfolioHandoffResponseService(assignmentRepository, invitationRepository, new PrismaPortfolioHandoffResponseCommandRepository(prisma), semanticEventPort, () => new Date(), new PrismaPortfolioHandoffAtomicCommandRepository(prisma));
-export function buildPortfolioHandoffResponseRouter(service: PortfolioHandoffResponseService, auth = authenticate, portfolioWrite = requirePermission('portfolio:write')): Router {
+const reconstructionService = new PortfolioHandoffReconstructionService(prisma, assignmentRepository, new ProjectService(prisma));
+export function buildPortfolioHandoffResponseRouter(service: PortfolioHandoffResponseService, auth = authenticate, portfolioWrite = requirePermission('portfolio:write'), reconstruction = reconstructionService): Router {
   const router = Router();
+  router.get('/:assignmentId/reconstruction', auth, async (req, res, next) => {
+    try {
+      if (!req.user) throw AppError.unauthorized('Autenticacion requerida', 'UNAUTHENTICATED');
+      const data = await reconstruction.readExistingInitiative({
+        assignmentId: req.params.assignmentId,
+        actor: { id: req.user.id, role: req.user.role },
+      });
+      res.json({ success: true, data });
+    } catch (error) { next(error); }
+  });
   router.post('/:assignmentId/accept', auth, async (req, res, next) => {
     try {
       if (!req.user) throw AppError.unauthorized('Autenticacion requerida', 'UNAUTHENTICATED');

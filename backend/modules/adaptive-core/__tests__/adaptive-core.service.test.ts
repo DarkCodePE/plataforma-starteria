@@ -901,6 +901,41 @@ describe('AdaptiveCoreService Step 0 cycle', () => {
     expect(final.activeCheckpoint?.checkpointKey).toBe('CP-1.1');
   });
 
+  it('6a. transfers the governed Step 0 semantic handoff without replacing the human-confirmed Brief', async () => {
+    const store = createStore();
+    const project = seedProject(store);
+    const service = new AdaptiveCoreService(makePrisma(store));
+    await service.ensureInitialized(project.id, 'u1', 'participante');
+    const state = await completeStep0(service, project.id);
+    const brief = state.stepOutputs.find((output: any) => output.step === 0)?.output as Record<string, unknown>;
+    const cycle = store.initiativeCycle[0];
+    const config = store.adaptiveStepConfiguration.find((item) => item.projectId === project.id && item.stepNumber === 0);
+    store.adaptiveStepOutput.push({
+      id: 'semantic-card-v3', projectId: project.id, cycleId: cycle.id, stepNumber: 0, version: 99, status: 'draft',
+      outputKey: 'Step0SemanticCard', sourceConfigurationId: config?.id,
+      outputJson: {
+        cardVersion: 3, requiresReview: false,
+        handoff: {
+          toStep: 1, structured: true,
+          fields: { objective: 'Reducir retrabajo' }, claimIds: ['claim-1'], sourceRefIds: ['source-1'],
+          constraints: ['No usar datos personales'], gaps: ['unknown:actor'], contradictions: [],
+        },
+      },
+    });
+
+    await service.confirmStep0Brief(project.id, 'u1', 'participante', {
+      idempotencyKey: 'brief-semantic-handoff', brief, confirmed: true,
+    });
+
+    const confirmedBrief = store.adaptiveStepOutput.find((item) => item.id !== 'semantic-card-v3' && item.stepNumber === 0 && item.status === 'confirmed');
+    const step1 = store.adaptiveStepConfiguration.find((item) => item.stepNumber === 1);
+    expect(confirmedBrief?.outputKey).toBe('Step0AlignmentBrief');
+    expect(step1?.sourceContextJson.step0Output).toEqual(brief);
+    expect(step1?.sourceContextJson.step0SemanticHandoff).toMatchObject({
+      cardVersion: 3, sourceRefIds: ['source-1'], constraints: ['No usar datos personales'], gaps: ['unknown:actor'],
+    });
+  });
+
   it('7. Portfolio Lead receives an event and updated signal', async () => {
     const store = createStore();
     const project = seedProject(store, {

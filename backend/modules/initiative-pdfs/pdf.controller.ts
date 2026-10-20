@@ -62,6 +62,7 @@ export class PdfController {
         fileName,
         mimeType: ALLOWED_PDF_MIME,
         bytes,
+        idempotencyKey: typeof req.headers['idempotency-key'] === 'string' ? req.headers['idempotency-key'] : undefined,
       });
 
       res.status(201).json({ success: true, data: dto });

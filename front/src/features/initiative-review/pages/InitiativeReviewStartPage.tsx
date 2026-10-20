@@ -3,7 +3,7 @@
  * Crea la revision inicial via API real y navega al resultado guiado.
  */
 import React, { useState } from 'react';
-import { useNavigate } from 'react-router';
+import { useNavigate, useSearchParams } from 'react-router';
 import { SelectedCompanyContext } from '../../../app/components/company-context/CompanyContextSelector';
 import { InitiativeComposer } from '../components/InitiativeComposer';
 import { createReview } from '../services/initiativeReviewClient';
@@ -11,6 +11,8 @@ import { trackInitialReviewEvent } from '../services/initialReviewTelemetry';
 
 export function InitiativeReviewStartPage() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const handoffAssignmentId = searchParams.get('handoffAssignmentId') ?? undefined;
   const [input, setInput] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -26,7 +28,9 @@ export function InitiativeReviewStartPage() {
     setEmptyCompanyMessage(companyContext?.companyId ? null : 'Puedes continuar sin empresa. El analisis tendra un enfoque mas general.');
     try {
       trackInitialReviewEvent('initial_review_started', { source: 'initiatives_new' });
-      const review = await createReview(input.trim(), [], companyContext);
+      const review = handoffAssignmentId
+        ? await createReview(input.trim(), [], companyContext, handoffAssignmentId)
+        : await createReview(input.trim(), [], companyContext);
       trackInitialReviewEvent('initial_review_generated', {
         reviewId: review.id,
         snapshotId: review.snapshot?.id,

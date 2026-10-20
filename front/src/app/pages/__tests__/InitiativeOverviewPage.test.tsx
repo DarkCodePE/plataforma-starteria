@@ -6,9 +6,11 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { InitiativeOverviewPage } from '../InitiativeOverviewPage';
 
 const navigate = vi.fn();
+let search = '';
 vi.mock('react-router', () => ({
   useParams: () => ({ projectId: 'p1' }),
   useNavigate: () => navigate,
+  useSearchParams: () => [new URLSearchParams(search)],
 }));
 
 const getById = vi.fn();
@@ -19,6 +21,11 @@ vi.mock('../../services/projectService', () => ({
 const getAdaptiveCore = vi.fn();
 vi.mock('../../../features/adaptive-core/services/adaptiveCoreService', () => ({
   getAdaptiveCore: (id: string) => getAdaptiveCore(id),
+}));
+
+const getHandoffReconstruction = vi.fn();
+vi.mock('../../../features/portfolio-handoff/services/handoffInvitationService', () => ({
+  getHandoffReconstruction: (assignmentId: string) => getHandoffReconstruction(assignmentId),
 }));
 
 const PROJECT = {
@@ -113,11 +120,13 @@ const SERVER_CORE = {
 
 describe('InitiativeOverviewPage (IR-F2)', () => {
   beforeEach(() => {
+    search = '';
     navigate.mockReset();
     getById.mockReset();
     getById.mockResolvedValue(PROJECT);
     getAdaptiveCore.mockReset();
     getAdaptiveCore.mockResolvedValue(SERVER_CORE);
+    getHandoffReconstruction.mockReset();
   });
 
   it('muestra la iniciativa en Draft con el mapa Step 0–4 (Step 0 activo, 1–4 bloqueados)', async () => {
@@ -212,5 +221,25 @@ describe('InitiativeOverviewPage (IR-F2)', () => {
 
     await waitFor(() => expect(screen.getByText('Configuracion persistida backend')).toBeInTheDocument());
     expect(screen.getAllByText(/CP-SERVER/).length).toBeGreaterThan(0);
+  });
+
+  it('muestra continuidad heredada y bloquea el avance cuando el read model exige revisión', async () => {
+    search = 'handoffAssignmentId=handoff-1&continuity=review';
+    getHandoffReconstruction.mockResolvedValue({
+      assignmentId: 'handoff-1',
+      initiativeId: 'p1',
+      continuityState: 'CONTINUITY_REVIEW_REQUIRED',
+      currentGovernedState: null,
+      recovered: { sourceRefs: 0, evidence: 0, claims: 0, snapshots: 0, outputs: 0, events: 0 },
+      gaps: [{ code: 'ACTIVE_CORE_STATE_UNAVAILABLE', message: 'No hay un ciclo y Step activo persistido que sea seguro continuar.' }],
+    });
+
+    render(<InitiativeOverviewPage />);
+
+    expect(await screen.findByRole('status', { name: /Revisión de continuidad requerida/i })).toBeInTheDocument();
+    expect(screen.getByText(/No hay un ciclo y Step activo persistido/i)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Revisar mi misión y empezar/i })).not.toBeInTheDocument();
+    expect(screen.getByTestId('overview-step-0')).toHaveAttribute('data-state', 'locked');
+    expect(getHandoffReconstruction).toHaveBeenCalledWith('handoff-1');
   });
 });

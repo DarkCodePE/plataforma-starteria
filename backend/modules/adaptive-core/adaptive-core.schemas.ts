@@ -62,6 +62,37 @@ export const confirmBriefSchema = z.object({
   confirmed: z.boolean(),
 });
 
+/** P7: interaction is interpreted into a proposed Step 0 Card delta. */
+export const step0SemanticInputSchema = z.object({
+  idempotencyKey: z.string().min(6),
+  content: z.string().max(5000),
+  fieldHint: z.enum(['objective', 'scope', 'owner', 'priorityHypothesis', 'decisionCriteria']).optional(),
+  sourceRefIds: z.array(z.string().min(1)).max(20).default([]),
+  newSource: z.object({
+    reference: z.string().min(1).max(1000),
+    location: z.string().max(1000).optional(),
+  }).optional(),
+}).strict();
+
+/** P8: a shared, typed delta command for Steps 1–4. */
+export const semanticStepInputSchema = z.object({
+  idempotencyKey: z.string().min(6),
+  content: z.string().min(1).max(5000),
+  field: z.string().min(1).max(80),
+  sourceRefIds: z.array(z.string().min(1)).max(20).default([]),
+}).strict();
+
+/** P9: reuses AttentionItem; it does not establish a SupportRequest aggregate. */
+export const supportSignalSchema = z.object({
+  idempotencyKey: z.string().min(6),
+  category: z.string().min(1).max(100),
+  reason: z.string().min(1).max(5000),
+  severity: z.enum(['low', 'medium', 'high', 'critical']).default('medium'),
+  sourceRefId: z.string().min(1).optional(),
+  exitCondition: z.string().min(1).max(2000),
+  nextAction: z.string().min(1).max(2000),
+}).strict();
+
 export type CheckpointResponseInput = z.infer<typeof checkpointResponseSchema>;
 export type CriticalChangeInput = z.infer<typeof criticalChangeSchema>;
 export type ConfirmCriticalChangeTransitionInput = z.infer<typeof confirmCriticalChangeTransitionSchema>;
@@ -71,6 +102,9 @@ export type DecisionRequestCreateInput = z.infer<typeof decisionRequestCreateSch
 export type OrganizationalDecisionInput = z.infer<typeof organizationalDecisionSchema>;
 export type ApplyDecisionEffectsInput = z.infer<typeof applyDecisionEffectsSchema>;
 export type ConfirmBriefInput = z.infer<typeof confirmBriefSchema>;
+export type Step0SemanticInput = z.infer<typeof step0SemanticInputSchema>;
+export type SemanticStepInput = z.infer<typeof semanticStepInputSchema>;
+export type SupportSignalInput = z.infer<typeof supportSignalSchema>;
 export type ConfirmStep1OutputInput = z.infer<typeof confirmBriefSchema>;
 export type ConfirmStep2OutputInput = z.infer<typeof confirmBriefSchema>;
 export type ConfirmStep3OutputInput = z.infer<typeof confirmBriefSchema>;

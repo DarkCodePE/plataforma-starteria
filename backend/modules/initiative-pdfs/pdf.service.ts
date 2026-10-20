@@ -12,7 +12,7 @@
  * by the central handler.
  */
 
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import type {
   PrismaClient,
   InitiativePdf as PrismaInitiativePdf,
@@ -42,6 +42,7 @@ interface UploadInput {
   fileName: string;
   mimeType: string;
   bytes: Buffer;
+  idempotencyKey?: string;
 }
 
 interface ExtractInput {
@@ -197,6 +198,27 @@ export class PdfService {
       );
     }
 
+    const idempotencyKey = input.idempotencyKey?.trim() || undefined;
+    const requestFingerprint = createHash('sha256')
+      .update(input.mimeType)
+      .update('\0')
+      .update(input.fileName)
+      .update('\0')
+      .update(input.bytes)
+      .digest('hex');
+
+    if (idempotencyKey) {
+      const existing = await this.prisma.initiativePdf.findFirst({
+        where: { projectId: input.projectId, idempotencyKey },
+      });
+      if (existing) {
+        if (existing.requestFingerprint !== requestFingerprint) {
+          throw AppError.conflict('La clave de idempotencia ya fue usada para otro archivo.', 'PDF_IDEMPOTENCY_CONFLICT');
+        }
+        return toPdfDTO(existing);
+      }
+    }
+
     const pdfId = randomUUID();
     const saved = await this.storage.savePdf({
       projectId: input.projectId,
@@ -216,6 +238,8 @@ export class PdfService {
           mimeType: input.mimeType,
           fileSize: saved.fileSize,
           uploadedBy: input.uploadedBy,
+          idempotencyKey,
+          requestFingerprint: idempotencyKey ? requestFingerprint : null,
           status: 'UPLOADED',
         },
       });
@@ -233,9 +257,18 @@ export class PdfService {
       });
 
       return toPdfDTO(row);
-    } catch (err) {
+    } catch (err: any) {
       // Rollback the disk write so we never leave orphaned blobs.
       await this.storage.deletePdf(saved.fileKey).catch(() => undefined);
+      // A concurrent retry can lose the unique-index race after both callers
+      // checked for an existing command. Return the original persisted result.
+      if (idempotencyKey && err?.code === 'P2002') {
+        const existing = await this.prisma.initiativePdf.findFirst({
+          where: { projectId: input.projectId, idempotencyKey },
+        });
+        if (existing?.requestFingerprint === requestFingerprint) return toPdfDTO(existing);
+        if (existing) throw AppError.conflict('La clave de idempotencia ya fue usada para otro archivo.', 'PDF_IDEMPOTENCY_CONFLICT');
+      }
       throw err;
     }
   }

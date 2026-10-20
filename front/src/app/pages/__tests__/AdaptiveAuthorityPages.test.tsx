@@ -15,6 +15,7 @@ vi.mock('react-router', () => ({
 }));
 
 const getAdaptiveCore = vi.fn();
+const getStep0SemanticState = vi.fn();
 const confirmAdaptiveCheckpoint = vi.fn();
 const confirmStep0Brief = vi.fn();
 const confirmStep1Output = vi.fn();
@@ -25,6 +26,7 @@ const getById = vi.fn();
 vi.mock('../../../features/adaptive-core/services/adaptiveCoreService', async (importOriginal) => ({
   explainCheckpointError: (await importOriginal<typeof import('../../../features/adaptive-core/services/adaptiveCoreService')>()).explainCheckpointError,
   getAdaptiveCore: (id: string) => getAdaptiveCore(id),
+  getStep0SemanticState: (id: string) => getStep0SemanticState(id),
   confirmAdaptiveCheckpoint: (...args: any[]) => confirmAdaptiveCheckpoint(...args),
   confirmStep0Brief: (...args: any[]) => confirmStep0Brief(...args),
   confirmStep1Output: (...args: any[]) => confirmStep1Output(...args),
@@ -302,6 +304,8 @@ describe('Adaptive authority in pages', () => {
     navigate.mockReset();
     appState.projects = [project];
     getAdaptiveCore.mockReset();
+getStep0SemanticState.mockReset();
+getStep0SemanticState.mockResolvedValue({ card: { fields: {}, contradictions: [], sources: [], hardGaps: [], softGaps: [], sufficiency: { sufficient: false }, checkpoint: { state: 'not_ready' }, lastDelta: { operation: 'no_change', reason: '' } } });
     confirmStep2Output.mockReset();
     confirmStep1Output.mockReset();
     confirmStep3Output.mockReset();

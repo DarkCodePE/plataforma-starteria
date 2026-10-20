@@ -5,6 +5,27 @@ import { toCanonicalChallengeType } from './initial-review.types';
 type RouteType = 'explore_validate' | 'design_solution' | 'implement_handoff' | 'plan_coordinate' | 'reconstruct_existing';
 type DepthLevel = 'essential' | 'standard' | 'extended';
 
+type ChallengeMandateSnapshot = {
+  capturedAt: string;
+  challenge: {
+    id: string;
+    title: string;
+    knownFacts?: string | null;
+    openQuestions?: string | null;
+    constraints?: string | null;
+    dependencies?: string | null;
+    expectedDecision?: string | null;
+  };
+  strategicFront: {
+    id: string;
+    constraints?: string | null;
+    mainKpi?: string | null;
+    baseline?: string | null;
+    target?: string | null;
+    horizon?: string | null;
+  } | null;
+};
+
 const visibleNameByRoute: Record<RouteType, string> = {
   explore_validate: 'Ordenar contexto y definir que validar',
   design_solution: 'Confirmar oportunidad y condiciones',
@@ -31,6 +52,7 @@ export function buildAdaptiveCorePrefill(input: {
   pendingQuestions: StrategicQuestion[];
   companyContext?: unknown;
   challengeId?: string | null;
+  challengeMandate?: ChallengeMandateSnapshot | null;
 }) {
   const now = new Date().toISOString();
   const challengeType = toCanonicalChallengeType(input.selectedChallengeType);
@@ -60,11 +82,25 @@ export function buildAdaptiveCorePrefill(input: {
           id: `challenge-context-${input.snapshotId}-v1`,
           type: 'challenge',
           label: 'Contexto heredado del reto',
-          source: 'Reto vinculado',
+          source: input.challengeMandate ? 'Snapshot del mandato del reto al confirmar' : 'Reto vinculado',
           coverage: 70,
           confidence: 'medium',
           capturedAt: now,
-          constraints: ['Validar que la contribucion no duplique iniciativas existentes.'],
+          challengeId: input.challengeMandate?.challenge.id ?? input.challengeId,
+          strategicFrontId: input.challengeMandate?.strategicFront?.id ?? null,
+          knownFacts: input.challengeMandate?.challenge.knownFacts ?? null,
+          openQuestions: input.challengeMandate?.challenge.openQuestions ?? null,
+          constraints: [
+            input.challengeMandate?.challenge.constraints,
+            input.challengeMandate?.strategicFront?.constraints,
+            'Validar que la contribucion no duplique iniciativas existentes.',
+          ].filter(isNonEmpty),
+          dependencies: input.challengeMandate?.challenge.dependencies ?? null,
+          expectedDecision: input.challengeMandate?.challenge.expectedDecision ?? null,
+          kpi: input.challengeMandate?.strategicFront?.mainKpi ?? null,
+          baseline: input.challengeMandate?.strategicFront?.baseline ?? null,
+          target: input.challengeMandate?.strategicFront?.target ?? null,
+          horizon: input.challengeMandate?.strategicFront?.horizon ?? null,
           actors: ['Challenge Owner', 'Portfolio Lead'],
           confirmable: true,
         }
@@ -140,6 +176,7 @@ export function buildAdaptiveCorePrefill(input: {
       risks,
       decisions: [input.proposal.nextRecommendedStep || 'Definir decision futura en CP-0.3.'],
       contextSnapshots,
+      handoffMandate: input.challengeMandate ?? null,
       createdAt: now,
     },
     stepConfigurations: [

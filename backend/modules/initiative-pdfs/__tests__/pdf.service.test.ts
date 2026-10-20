@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { createHash } from 'node:crypto';
 import { PdfService } from '../pdf.service';
 import type { IPdfStorage } from '../storage.service';
 import type { AiServiceClient } from '../ai-client';
@@ -139,6 +140,28 @@ describe('PdfService', () => {
       ).rejects.toThrow('db boom');
 
       expect(storage.deletePdf).toHaveBeenCalledWith('initiative-pdfs/p/abc/original.pdf');
+    });
+
+    it('returns the original upload for an identical idempotent retry', async () => {
+      const existing = {
+        id: 'pdf-replay', projectId: 'cproject0000000000000000', fileKey: 'initiative-pdfs/p/replay/original.pdf',
+        fileName: 'plan.pdf', mimeType: 'application/pdf', fileSize: 5, uploadedBy: 'user-1', uploadedAt: new Date(),
+        status: 'UPLOADED', languageDetected: null, retentionUntil: null,
+        idempotencyKey: 'upload-key', requestFingerprint: createHash('sha256').update('application/pdf').update('\0').update('plan.pdf').update('\0').update(Buffer.from('hello')).digest('hex'),
+      };
+      prisma.project.findUnique.mockResolvedValue({ id: 'cproject0000000000000000' });
+      prisma.initiativePdf.findFirst.mockResolvedValue(existing);
+      const dto = await service.uploadPdf({ projectId: existing.projectId, uploadedBy: 'user-1', fileName: 'plan.pdf', mimeType: 'application/pdf', bytes: Buffer.from('hello'), idempotencyKey: 'upload-key' });
+      expect(dto.pdfId).toBe('pdf-replay');
+      expect(storage.savePdf).not.toHaveBeenCalled();
+    });
+
+    it('rejects a reused upload key whose file fingerprint differs', async () => {
+      prisma.project.findUnique.mockResolvedValue({ id: 'cproject0000000000000000' });
+      prisma.initiativePdf.findFirst.mockResolvedValue({ id: 'pdf-replay', requestFingerprint: 'different' });
+      await expect(service.uploadPdf({ projectId: 'cproject0000000000000000', uploadedBy: 'user-1', fileName: 'other.pdf', mimeType: 'application/pdf', bytes: Buffer.from('other'), idempotencyKey: 'upload-key' }))
+        .rejects.toMatchObject({ code: 'PDF_IDEMPOTENCY_CONFLICT' });
+      expect(storage.savePdf).not.toHaveBeenCalled();
     });
   });
 

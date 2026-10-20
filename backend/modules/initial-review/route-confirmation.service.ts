@@ -37,6 +37,7 @@ export class RouteConfirmationService {
     const review = await this.prisma.initialReview.findUnique({ where: { id: reviewId } });
     if (!review) throw AppError.notFound('Revisión inicial', 'INITIAL_REVIEW_NOT_FOUND');
     if (review.ownerId !== userId) throw AppError.forbidden('No puedes confirmar esta revisión.', 'INITIAL_REVIEW_FORBIDDEN');
+    const challengeMandate = await this.readChallengeMandate(review.challengeId);
 
     // Idempotencia (RB-IR-018): si ya hay un Project, devolver el mismo resultado. Si el proyecto
     // se creó pero la finalización no terminó (auditoría E2E F-04), se completa ahora con el mismo
@@ -45,10 +46,11 @@ export class RouteConfirmationService {
     if (existing?.createdProjectId) {
       if (existing.status !== 'initiative_created') {
         const pendingSnapshot = await this.prisma.initialReviewSnapshot.findFirst({ where: { id: existing.snapshotId, reviewId } });
-        if (pendingSnapshot) await this.finalize(existing.id, existing.createdProjectId, pendingSnapshot, review, userId);
+        if (pendingSnapshot) await this.finalize(existing.id, existing.createdProjectId, pendingSnapshot, review, userId, challengeMandate);
       }
       return this.result(existing.id, existing.createdProjectId);
     }
+    await this.assertHandoffMayConfirm(review as any, userId);
     if (existing && this.isStale(existing)) {
       await this.prisma.routeConfirmation.delete({ where: { id: existing.id } }).catch(() => {});
     }
@@ -96,21 +98,33 @@ export class RouteConfirmationService {
       throw AppError.badRequest('No pudimos terminar de crear la iniciativa.', 'INITIATIVE_CREATE_FAILED', { hint: 'Tu revisión quedó guardada. Intenta nuevamente.' });
     }
 
-    await this.finalize(confirmation.id, project.id, snapshot, review, userId);
+    await this.finalize(confirmation.id, project.id, snapshot, review, userId, challengeMandate);
     return this.result(confirmation.id, project.id);
   }
 
   /** Campos de procedencia + prefill + estados, atómico. Repetible: sólo escribe valores fijos. */
-  private async finalize(confirmationId: string, projectId: string, snapshot: any, review: { id: string; challengeId?: string | null }, userId: string) {
+  private async finalize(confirmationId: string, projectId: string, snapshot: any, review: { id: string; challengeId?: string | null; handoffAssignmentId?: string | null }, userId: string, challengeMandate?: any) {
     try {
-      await this.prisma.$transaction([
-        this.prisma.project.update({
+      await this.prisma.$transaction(async (tx) => {
+        if (review.handoffAssignmentId) {
+          const linked = await tx.portfolioHandoffAssignment.updateMany({
+            where: { id: review.handoffAssignmentId, state: 'STARTED', initiativeId: null },
+            data: { initiativeId: projectId, version: { increment: 1 } },
+          });
+          if (!linked.count) {
+            const current = await tx.portfolioHandoffAssignment.findUnique({ where: { id: review.handoffAssignmentId }, select: { initiativeId: true } });
+            if (current?.initiativeId !== projectId) {
+              throw AppError.conflict('El encargo ya tiene otra Initiative o ya no puede confirmarse.', 'HANDOFF_INITIATIVE_LINK_CONFLICT');
+            }
+          }
+        }
+        await tx.project.update({
           where: { id: projectId },
-          data: { origin: 'from_initial_review', initialReviewSnapshotId: snapshot.id, step0Data: this.buildStep0Prefill(snapshot, review.challengeId) as object },
-        }),
-        this.prisma.routeConfirmation.update({ where: { id: confirmationId }, data: { createdProjectId: projectId, status: 'initiative_created' } }),
-        this.prisma.initialReview.update({ where: { id: review.id }, data: { status: 'converted_to_initiative' } }),
-      ]);
+          data: { origin: 'from_initial_review', initialReviewSnapshotId: snapshot.id, step0Data: this.buildStep0Prefill(snapshot, review.challengeId, challengeMandate) as object },
+        });
+        await tx.routeConfirmation.update({ where: { id: confirmationId }, data: { createdProjectId: projectId, status: 'initiative_created' } });
+        await tx.initialReview.update({ where: { id: review.id }, data: { status: 'converted_to_initiative' } });
+      });
       await new AdaptiveCoreService(this.prisma).ensureInitialized(projectId, userId, 'participante');
     } catch (err) {
       if (err instanceof AppError) throw err;
@@ -120,13 +134,28 @@ export class RouteConfirmationService {
     }
   }
 
+  /** Owner confirmation creates an Initiative candidate; it never confirms strategic alignment. */
+  private async assertHandoffMayConfirm(review: { handoffAssignmentId?: string | null }, userId: string) {
+    if (!review.handoffAssignmentId) return;
+    const assignment = await (this.prisma as any).portfolioHandoffAssignment.findUnique({
+      where: { id: review.handoffAssignmentId }, include: { members: true },
+    });
+    const owner = assignment?.members?.find((member: any) => member.role === 'OWNER');
+    if (!assignment || assignment.state !== 'STARTED' || assignment.targetKind !== 'CHALLENGE' || owner?.userId !== userId) {
+      throw AppError.forbidden('Solo el Initiative Owner puede confirmar la formulación de su encargo iniciado.', 'HANDOFF_CONFIRMATION_FORBIDDEN');
+    }
+    if (assignment.initiativeId) {
+      throw AppError.conflict('Este encargo ya está vinculado a una Initiative.', 'HANDOFF_INITIATIVE_ALREADY_LINKED');
+    }
+  }
+
   private isStale(claim: { status: string; createdProjectId?: string | null; updatedAt?: Date | string | null }) {
     if (claim.status !== 'pending' || claim.createdProjectId || !claim.updatedAt) return false;
     return Date.now() - new Date(claim.updatedAt).getTime() > STALE_CLAIM_MS;
   }
 
   /** Step0PrefillFromInitialReview (PRD §13) serializado en Project.step0Data. */
-  private buildStep0Prefill(snapshot: any, challengeId?: string | null) {
+  private buildStep0Prefill(snapshot: any, challengeId?: string | null, challengeMandate?: any) {
     const proposal = (snapshot.improvedProposal ?? {}) as ImprovedProposal;
     const questions = (snapshot.strategicQuestions ?? []) as StrategicQuestion[];
     const critique = (snapshot.critique ?? {}) as { mainRisk?: string };
@@ -153,8 +182,39 @@ export class RouteConfirmationService {
         pendingQuestions: pending,
         companyContext: (snapshot as any).companyContextSelection,
         challengeId,
+        challengeMandate,
       }),
     };
+  }
+
+  /** Captures the already-governed Challenge envelope at the human confirmation boundary. */
+  private async readChallengeMandate(challengeId?: string | null) {
+    if (!challengeId) return null;
+    const challengeDelegate = (this.prisma as any).challenge;
+    if (!challengeDelegate?.findUnique) return null;
+    const challenge = await challengeDelegate.findUnique({
+      where: { id: challengeId },
+      select: {
+        id: true,
+        title: true,
+        knownFacts: true,
+        openQuestions: true,
+        constraints: true,
+        dependencies: true,
+        expectedDecision: true,
+        strategicFront: {
+          select: {
+            id: true,
+            constraints: true,
+            mainKpi: true,
+            baseline: true,
+            target: true,
+            horizon: true,
+          },
+        },
+      },
+    });
+    return challenge ? { capturedAt: new Date().toISOString(), challenge: { ...challenge, strategicFront: undefined }, strategicFront: challenge.strategicFront } : null;
   }
 
   private clampName(name?: string): string {

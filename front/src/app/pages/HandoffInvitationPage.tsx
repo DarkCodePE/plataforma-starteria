@@ -51,7 +51,15 @@ export function HandoffInvitationPage() {
   async function start() {
     if (startBusy || !preview.assignmentId) return;
     setResponseError(null); setStartBusy(true);
-    try { setPreview(await startAssignedWork(preview.assignmentId, preview.version)); }
+    try {
+      const started = await startAssignedWork(preview.assignmentId, preview.version);
+      setPreview(started);
+      if (started.initiativeId) {
+        navigate(`/initiatives/${started.initiativeId}/overview?handoffAssignmentId=${encodeURIComponent(started.assignmentId)}&continuity=review`);
+      } else {
+        navigate(`/initiatives/new?handoffAssignmentId=${encodeURIComponent(started.assignmentId)}`);
+      }
+    }
     catch (reason) { setResponseError(parseApiError(reason).message); }
     finally { setStartBusy(false); }
   }

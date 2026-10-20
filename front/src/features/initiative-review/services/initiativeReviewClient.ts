@@ -77,11 +77,13 @@ export async function createReview(
   originalInput: string,
   addedContext: string[] = [],
   companyContext?: { companyId: string; areaId?: string } | null,
+  handoffAssignmentId?: string,
 ): Promise<InitiativeReview> {
   const payload = {
     originalInput,
     ...(addedContext.length > 0 ? { addedContext } : {}),
     ...(companyContext?.companyId ? { companyContext } : {}),
+    ...(handoffAssignmentId ? { handoffAssignmentId } : {}),
   };
   const { data } = await api.post<ApiEnvelope<InitiativeReview>>('/initial-reviews', payload);
   return data.data;

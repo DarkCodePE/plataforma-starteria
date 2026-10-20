@@ -12,8 +12,54 @@ interface ApiResponse<T> {
   data: T;
 }
 
+export type Step0SemanticField = 'objective' | 'scope' | 'owner' | 'priorityHypothesis' | 'decisionCriteria';
+
+export interface Step0SemanticCard {
+  cardVersion: number;
+  inheritedContext: Record<string, unknown>;
+  fields: Partial<Record<Step0SemanticField, { value: string; kind: string; origin: string; sourceRefIds: string[]; version: number }>>;
+  claims: Array<{ id: string; field: Step0SemanticField; statement: string; kind: string; origin: string; sourceRefIds: string[] }>;
+  unknowns: Array<{ field: Step0SemanticField; reason: string }>;
+  contradictions: Array<{ field: Step0SemanticField; previous: string; proposed: string; sourceRefIds: string[]; status: string }>;
+  sources: Array<{ id: string; reference: string; sourceType: string; validationStatus: 'unvalidated' }>;
+  hardGaps: string[];
+  softGaps: string[];
+  sufficiency: { sufficient: boolean; criticalRequirements: string[]; hardGaps: string[]; softGaps: string[]; reason: string };
+  requiresReview: boolean;
+  checkpoint: { state: 'not_ready' | 'ready_for_human_confirmation'; humanConfirmationRequired: true; openItems: string[] };
+  handoff: { toStep: 1; structured: true; fields: Partial<Record<Step0SemanticField, string>>; claimIds: string[]; sourceRefIds: string[]; gaps: string[] } | null;
+  lastIntervention: 'ask' | 'analyze' | 'review' | 'checkpoint' | 'no_change' | 'unblock';
+  lastDelta: { operation: string; field: Step0SemanticField | null; reason: string };
+}
+
+export interface Step0SemanticState {
+  card: Step0SemanticCard;
+  outputVersion: number | null;
+  inheritedContext: Record<string, unknown>;
+  sourceRefs: Step0SemanticCard['sources'];
+}
+
 export async function getAdaptiveCore(projectId: string): Promise<AdaptiveInitiativeCore> {
   const { data } = await api.get<ApiResponse<AdaptiveInitiativeCore>>(`/projects/${projectId}/adaptive-core`);
+  return data.data;
+}
+
+export async function getStep0SemanticState(projectId: string): Promise<Step0SemanticState> {
+  const { data } = await api.get<ApiResponse<Step0SemanticState>>(`/projects/${projectId}/adaptive-core/step0/semantic-card`);
+  return data.data;
+}
+
+export async function processStep0SemanticInput(
+  projectId: string,
+  input: {
+    idempotencyKey: string;
+    content: string;
+    fieldHint?: Step0SemanticField;
+    sourceRefIds?: string[];
+    newSource?: { reference: string; location?: string };
+  },
+): Promise<Step0SemanticState> {
+  const { data } = await api.post<ApiResponse<Step0SemanticState>>(`/projects/${projectId}/adaptive-core/step0/semantic-input`, input);
   return data.data;
 }
 

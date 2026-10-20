@@ -8,7 +8,7 @@ import { AdaptiveCoreController } from '../adaptive-core/adaptive-core.controlle
 import { AdaptiveCoreService } from '../adaptive-core/adaptive-core.service';
 import { MissionReviewReadService } from '../adaptive-core/mission-review.read-service';
 import { resolveCopilotMode, type CopilotIntentMode } from '../copilot/application/copilot-intent-modes';
-import { checkpointResponseSchema, confirmBriefSchema, confirmCriticalChangeTransitionSchema, criticalChangeSchema, decisionAuthorityQuerySchema, decisionReadinessQuerySchema, decisionRequestCreateSchema, organizationalDecisionSchema } from '../adaptive-core/adaptive-core.schemas';
+import { checkpointResponseSchema, confirmBriefSchema, confirmCriticalChangeTransitionSchema, criticalChangeSchema, decisionAuthorityQuerySchema, decisionReadinessQuerySchema, decisionRequestCreateSchema, organizationalDecisionSchema, semanticStepInputSchema, step0SemanticInputSchema, supportSignalSchema } from '../adaptive-core/adaptive-core.schemas';
 
 import { authenticate } from '../auth/auth.middleware';
 import type { AuthenticatedRequest } from '../../shared/types/auth.types';
@@ -45,6 +45,8 @@ projectRouter.delete('/:id', canManage, controller.archive);
 projectRouter.get('/:id/step0', controller.getStep0);
 projectRouter.patch('/:id/step0', canWrite, validate(updateStep0Schema), controller.updateStep0);
 projectRouter.get('/:id/adaptive-core', adaptiveCoreController.get);
+projectRouter.get('/:id/adaptive-core/step0/semantic-card', adaptiveCoreController.getStep0SemanticState);
+projectRouter.get('/:id/adaptive-core/steps/:step/semantic-card', adaptiveCoreController.getSemanticStepState);
 // Modos del Copilot por intención (E2E Job-Driven §20): lectura del estado persistido, igual en
 // todos los canales.
 projectRouter.get('/:id/copilot-mode/:mode', async (req, res, next) => {
@@ -83,6 +85,9 @@ projectRouter.get('/:id/adaptive-core/decisions', adaptiveCoreController.listDec
 projectRouter.get('/:id/adaptive-core/decisions/:decisionId', adaptiveCoreController.getDecision);
 projectRouter.get('/:id/adaptive-core/continuation-routes', adaptiveCoreController.listContinuationRoutes);
 projectRouter.post('/:id/adaptive-core/checkpoints/confirm', canWrite, validate(checkpointResponseSchema), adaptiveCoreController.confirmCheckpoint);
+projectRouter.post('/:id/adaptive-core/step0/semantic-input', canWrite, validate(step0SemanticInputSchema), adaptiveCoreController.processStep0SemanticInput);
+projectRouter.post('/:id/adaptive-core/steps/:step/semantic-input', canWrite, validate(semanticStepInputSchema), adaptiveCoreController.processSemanticStepInput);
+projectRouter.post('/:id/adaptive-core/support-signals', canWrite, validate(supportSignalSchema), adaptiveCoreController.signalSupport);
 projectRouter.post('/:id/adaptive-core/critical-change', canWrite, validate(criticalChangeSchema), adaptiveCoreController.registerCriticalChange);
 projectRouter.post('/:id/adaptive-core/critical-change/:criticalChangeId/transition/confirm', canWrite, validate(confirmCriticalChangeTransitionSchema), adaptiveCoreController.confirmCriticalChangeTransition);
 projectRouter.post('/:id/adaptive-core/step0/brief/confirm', canWrite, validate(confirmBriefSchema), adaptiveCoreController.confirmStep0Brief);

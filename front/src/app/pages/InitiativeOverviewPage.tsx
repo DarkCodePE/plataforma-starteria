@@ -11,7 +11,7 @@
  * (que consume la API verificada IR-B2/B4). No aprueba Step 0 (AC-OV-008).
  */
 import React, { useEffect, useState } from 'react';
-import { useNavigate, useParams } from 'react-router';
+import { useNavigate, useParams, useSearchParams } from 'react-router';
 import { getById } from '../services/projectService';
 import { enrichProject, useOptionalApp } from '../context/AppContext';
 import { getProjectAccess } from '../authz/projectAccess';
@@ -21,6 +21,7 @@ import { trackInitialReviewEvent } from '../../features/initiative-review/servic
 import { getActiveStepConfiguration } from '../../features/adaptive-core/domain/adaptiveCore';
 import type { AdaptiveInitiativeCore } from '../../features/adaptive-core/domain/types';
 import { getAdaptiveCore } from '../../features/adaptive-core/services/adaptiveCoreService';
+import { getHandoffReconstruction, type HandoffExistingInitiativeReconstruction } from '../../features/portfolio-handoff/services/handoffInvitationService';
 
 const ROUTE_STEPS = [
   { n: 0, name: 'Ordenar contexto' },
@@ -37,6 +38,7 @@ const CHALLENGE_TYPE_LABEL: Record<string, string> = {
 };
 
 type AdaptiveCoreLoadState = 'loading' | 'loaded' | 'error';
+type ReconstructionLoadState = 'idle' | 'loading' | 'loaded' | 'error';
 
 const CHECKPOINT_STATUS_LABEL: Record<string, string> = {
   locked: 'Bloqueado',
@@ -49,11 +51,16 @@ const CHECKPOINT_STATUS_LABEL: Record<string, string> = {
 export function InitiativeOverviewPage() {
   const { projectId } = useParams();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const app = useOptionalApp();
   const [project, setProject] = useState<any | null>(null);
   const [serverAdaptiveCore, setServerAdaptiveCore] = useState<AdaptiveInitiativeCore | null>(null);
   const [adaptiveCoreStatus, setAdaptiveCoreStatus] = useState<AdaptiveCoreLoadState>('loading');
   const [adaptiveCoreError, setAdaptiveCoreError] = useState<string | null>(null);
+  const handoffAssignmentId = searchParams.get('handoffAssignmentId');
+  const [reconstructionStatus, setReconstructionStatus] = useState<ReconstructionLoadState>(handoffAssignmentId ? 'loading' : 'idle');
+  const [reconstruction, setReconstruction] = useState<HandoffExistingInitiativeReconstruction | null>(null);
+  const [reconstructionError, setReconstructionError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showInitialReview, setShowInitialReview] = useState(false);
@@ -113,6 +120,33 @@ export function InitiativeOverviewPage() {
     return cleanup;
   }, [loadAdaptiveCore]);
 
+  useEffect(() => {
+    let cancelled = false;
+    if (!handoffAssignmentId) {
+      setReconstructionStatus('idle');
+      setReconstruction(null);
+      setReconstructionError(null);
+      return () => { cancelled = true; };
+    }
+    setReconstructionStatus('loading');
+    setReconstruction(null);
+    setReconstructionError(null);
+    getHandoffReconstruction(handoffAssignmentId)
+      .then(result => {
+        if (cancelled) return;
+        if (result.initiativeId !== projectId) throw new Error('La continuidad no corresponde a esta iniciativa.');
+        setReconstruction(result);
+        setReconstructionStatus('loaded');
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setReconstructionStatus('error');
+          setReconstructionError('No pudimos recuperar la continuidad heredada. El trabajo Core permanece bloqueado hasta revisar el estado persistido.');
+        }
+      });
+    return () => { cancelled = true; };
+  }, [handoffAssignmentId, projectId]);
+
   const retryAdaptiveCore = () => {
     void loadAdaptiveCore();
   };
@@ -130,22 +164,24 @@ export function InitiativeOverviewPage() {
   const adaptiveCore = adaptiveCoreStatus === 'loaded' ? serverAdaptiveCore : null;
   const activeConfiguration = adaptiveCore ? getActiveStepConfiguration(adaptiveCore) : null;
   const progressSignal = adaptiveCore?.progressSignal;
+  const continuityReviewRequired = reconstruction?.continuityState === 'CONTINUITY_REVIEW_REQUIRED';
+  const continuityPending = Boolean(handoffAssignmentId) && reconstructionStatus !== 'loaded';
   // El avance sale del core del servidor; sin core se muestra como recién creada.
   const currentStep = progressSignal?.step ?? 0;
   const readyForDecision = progressSignal?.health === 'ready_for_decision';
   const started = currentStep > 0 || readyForDecision;
-  const statusLabel = readyForDecision ? 'Lista para decisión' : started ? `En curso · Step ${currentStep}` : 'Draft';
+  const statusLabel = continuityReviewRequired ? 'Revisión de continuidad' : readyForDecision ? 'Lista para decisión' : started ? `En curso · Step ${currentStep}` : 'Draft';
   // Sin sesión en contexto no hay con qué decidir: se pinta como antes y el backend autoriza.
   const { canEdit, readOnlyReason } = app
     ? getProjectAccess(app.user, enrichProject(project, app.user))
     : { canEdit: true, readOnlyReason: null };
-  const stepState = (n: number) => (n < currentStep || readyForDecision ? 'done' : n === currentStep ? 'active' : 'locked');
+  const stepState = (n: number) => (continuityReviewRequired || continuityPending ? 'locked' : n < currentStep || readyForDecision ? 'done' : n === currentStep ? 'active' : 'locked');
 
   return (
     <div className="mx-auto max-w-3xl p-6 md:p-8">
       <header className="border-b border-slate-200 pb-6">
         <h1 className="text-2xl font-semibold text-slate-900">
-          {readyForDecision ? 'Tu iniciativa está lista para decisión' : started ? 'Tu iniciativa está en curso' : 'Tu iniciativa está lista para empezar'}
+          {continuityReviewRequired ? 'Tu iniciativa requiere revisar su continuidad' : readyForDecision ? 'Tu iniciativa está lista para decisión' : started ? 'Tu iniciativa está en curso' : 'Tu iniciativa está lista para empezar'}
         </h1>
         <p className="mt-2 flex items-center gap-2 text-slate-700">
           <span className="font-medium">{project.name}</span>
@@ -154,13 +190,40 @@ export function InitiativeOverviewPage() {
           </span>
         </p>
         <ReadOnlyNotice reason={readOnlyReason} className="mt-4" />
-        {!started && canEdit && (
+        {!started && canEdit && !continuityPending && !continuityReviewRequired && (
           <p className="mt-3 max-w-prose text-sm text-slate-500">
             Starteria ya revisó tu propuesta y preparó una ruta inicial. El siguiente paso es completar el
             Step 0 para aterrizar contexto, alcance, actores y condiciones reales.
           </p>
         )}
       </header>
+
+      {handoffAssignmentId && reconstructionStatus === 'loading' && (
+        <section role="status" aria-label="Recuperando continuidad heredada" className="mt-6 rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700">
+          Recuperando historia, fuentes, evidencia y estado Core de la iniciativa heredada...
+        </section>
+      )}
+      {handoffAssignmentId && reconstructionStatus === 'error' && (
+        <section role="alert" aria-label="Continuidad heredada no disponible" className="mt-6 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+          {reconstructionError}
+        </section>
+      )}
+      {continuityReviewRequired && reconstruction && (
+        <section role="status" aria-label="Revisión de continuidad requerida" className="mt-6 rounded-lg border border-amber-200 bg-amber-50 p-4">
+          <h2 className="text-sm font-semibold text-amber-950">Revisión de continuidad requerida</h2>
+          <p className="mt-1 text-sm text-amber-900">
+            Se recuperó la iniciativa existente sin crear otra. Antes de continuar, revisa los gaps del historial; Starteria no elige ni aprueba un Step por reconstrucción.
+          </p>
+          <dl className="mt-3 grid gap-2 text-sm text-amber-950 sm:grid-cols-3">
+            <div><dt className="text-xs font-semibold uppercase">Fuentes</dt><dd>{reconstruction.recovered.sourceRefs}</dd></div>
+            <div><dt className="text-xs font-semibold uppercase">Evidencia</dt><dd>{reconstruction.recovered.evidence}</dd></div>
+            <div><dt className="text-xs font-semibold uppercase">Outputs</dt><dd>{reconstruction.recovered.outputs}</dd></div>
+          </dl>
+          <ul className="mt-3 list-disc space-y-1 pl-5 text-sm text-amber-900">
+            {reconstruction.gaps.map(gap => <li key={gap.code}>{gap.message}</li>)}
+          </ul>
+        </section>
+      )}
 
       <section aria-label="Ruta Step 0–4" className="mt-6">
         <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">Ruta Step 0–4</h2>
@@ -308,7 +371,7 @@ export function InitiativeOverviewPage() {
       </section>
 
       <div className="mt-8 flex flex-wrap gap-3">
-        {started ? (
+        {continuityPending || continuityReviewRequired ? null : started ? (
           <button
             type="button"
             onClick={() => navigate(`/projects/${projectId}/step/${currentStep}`)}

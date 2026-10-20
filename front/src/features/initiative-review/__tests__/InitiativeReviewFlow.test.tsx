@@ -6,6 +6,7 @@ let params: Record<string, string> = { reviewId: 'rev1' };
 vi.mock('react-router', () => ({
   useParams: () => params,
   useNavigate: () => navigate,
+  useSearchParams: () => [new URLSearchParams(), vi.fn()],
 }));
 
 const companies = [
@@ -56,7 +57,9 @@ const client = {
 };
 vi.mock('../services/initiativeReviewClient', () => ({
   getReview: (id: string) => client.getReview(id),
-  createReview: (t: string, ctx?: string[], companyContext?: { companyId: string; areaId?: string } | null) => client.createReview(t, ctx, companyContext),
+  createReview: (t: string, ctx?: string[], companyContext?: { companyId: string; areaId?: string } | null, handoffAssignmentId?: string) => handoffAssignmentId
+    ? client.createReview(t, ctx, companyContext, handoffAssignmentId)
+    : client.createReview(t, ctx, companyContext),
   addContext: (id: string, context: string, focusSection?: string) => (focusSection ? client.addContext(id, context, focusSection) : client.addContext(id, context)),
   addDocument: (id: string, file: File) => client.addDocument(id, file),
   saveStrategicAnswers: (id: string, answers: Array<{ id: string; answer?: string; unknown?: boolean }>) => client.saveStrategicAnswers(id, answers),

@@ -28,6 +28,7 @@ import {
 import type { Project, Step0Data } from '../context/AppContext';
 import { getStep0Prefill, hasStep0Prefill } from '../../features/public-start/services/publicStep0PrefillService';
 import { AdaptiveCheckpointWorkspace } from '../../features/adaptive-core/components';
+import { Step0SemanticCopilot } from '../../features/adaptive-core/components/Step0SemanticCopilot';
 import {
   getActiveStepConfiguration,
   materializeQuestionsForCheckpoint,
@@ -1195,6 +1196,14 @@ const confirmedStep0Brief = (adaptiveCore?.stepOutputs ?? []).find(
         {readOnlyReason && (
           <div className="border-b border-slate-100 bg-white px-5 py-3">
             <ReadOnlyNotice reason={readOnlyReason} className="mx-auto max-w-[1480px]" />
+          </div>
+        )}
+
+        {projectId && adaptiveCore && (
+          <div className="border-b border-slate-100 bg-white px-5 py-4">
+            <div className="mx-auto max-w-[1480px]">
+              <Step0SemanticCopilot projectId={projectId} readOnly={!canEdit} />
+            </div>
           </div>
         )}
 

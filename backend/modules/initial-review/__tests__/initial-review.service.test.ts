@@ -32,6 +32,7 @@ function makePrisma(overrides: Record<string, any> = {}) {
       create: vi.fn(async ({ data }: any) => ({ id: 'rev1', addedContext: null, sourceFileIds: null, challengeId: null, ...data })),
       update: vi.fn(async ({ where, data }: any) => ({ id: where.id, ownerId: 'u1', originalInput: 'x', addedContext: data.addedContext ?? [], sourceFileIds: null, challengeId: null, status: data.status ?? 'generated' })),
       findUnique: vi.fn(async ({ where }: any) => ({ id: where.id, ownerId: 'u1', status: 'generated', originalInput: 'x', addedContext: [], sourceFileIds: [], challengeId: null })),
+      findFirst: vi.fn(async () => null),
     },
     initialReviewSnapshot: {
       create: vi.fn(async ({ data }: any) => ({ id: 'snap1', informationReadiness: null, ...data })),
@@ -43,6 +44,9 @@ function makePrisma(overrides: Record<string, any> = {}) {
     initialReviewChatEvent: {
       create: vi.fn(async ({ data }: any) => ({ id: 'evt1', snapshotVersion: null, createdAt: new Date('2026-07-18T00:00:00Z'), ...data })),
       findMany: vi.fn(async () => []),
+    },
+    portfolioHandoffAssignment: {
+      findUnique: vi.fn(async () => null),
     },
     ...overrides,
   };
@@ -81,6 +85,35 @@ describe('InitialReviewService — createReview (IR-B2)', () => {
     expect(prisma.initialReview.update).toHaveBeenCalledWith(expect.objectContaining({ data: { status: 'failed' } }));
     // no se creó snapshot
     expect(prisma.initialReviewSnapshot.create).not.toHaveBeenCalled();
+  });
+
+  it('Route A sólo crea formulación para el OWNER del Assignment STARTED y fija su reto heredado', async () => {
+    const prisma = makePrisma({
+      portfolioHandoffAssignment: {
+        findUnique: vi.fn(async () => ({
+          id: 'handoff-1', state: 'STARTED', targetKind: 'CHALLENGE', challengeId: 'challenge-1',
+          members: [{ role: 'OWNER', userId: 'u1' }],
+        })),
+      },
+    });
+    const svc = new InitialReviewService(prisma, fakeGenerator());
+
+    await svc.createReview('u1', { originalInput: 'Quiero ordenar un encargo heredado y sus restricciones operativas.', handoffAssignmentId: 'handoff-1' });
+
+    expect(prisma.initialReview.create.mock.calls[0][0].data).toMatchObject({ handoffAssignmentId: 'handoff-1', challengeId: 'challenge-1' });
+  });
+
+  it('Route A rechaza una formulación si el Assignment no está STARTED o el actor no es el OWNER', async () => {
+    const prisma = makePrisma({
+      portfolioHandoffAssignment: {
+        findUnique: vi.fn(async () => ({
+          id: 'handoff-1', state: 'ACCEPTED', targetKind: 'CHALLENGE', challengeId: 'challenge-1',
+          members: [{ role: 'OWNER', userId: 'other' }],
+        })),
+      },
+    });
+    const svc = new InitialReviewService(prisma, fakeGenerator());
+    await expect(svc.createReview('u1', { originalInput: 'Quiero ordenar un encargo heredado y sus restricciones operativas.', handoffAssignmentId: 'handoff-1' })).rejects.toMatchObject({ code: 'HANDOFF_FORMULATION_FORBIDDEN' });
   });
 });
 

@@ -82,6 +82,24 @@ export class InitialReviewService {
 
   /** POST /initial-reviews — crea la revisión (processing → generated) + snapshot v1. */
   async createReview(userId: string, data: CreateInitialReviewInput): Promise<InitialReviewDto> {
+    if (data.handoffAssignmentId) {
+      const existing = await (this.prisma as any).initialReview.findFirst({ where: { handoffAssignmentId: data.handoffAssignmentId } });
+      if (existing) {
+        if (existing.ownerId !== userId) throw AppError.forbidden('No puedes formular este encargo.', 'HANDOFF_FORMULATION_FORBIDDEN');
+        return this.toDto(existing, await this.latestSnapshot(existing.id), await this.chatEventsFor(existing.id));
+      }
+      const assignment = await (this.prisma as any).portfolioHandoffAssignment.findUnique({
+        where: { id: data.handoffAssignmentId }, include: { members: true },
+      });
+      const owner = assignment?.members?.find((member: any) => member.role === 'OWNER');
+      if (!assignment || assignment.state !== 'STARTED' || assignment.targetKind !== 'CHALLENGE' || owner?.userId !== userId) {
+        throw AppError.forbidden('Solo el Initiative Owner puede formular un encargo iniciado.', 'HANDOFF_FORMULATION_FORBIDDEN');
+      }
+      if (data.challengeId && data.challengeId !== assignment.challengeId) {
+        throw AppError.badRequest('El reto de la formulación no coincide con el encargo.', 'HANDOFF_CHALLENGE_MISMATCH');
+      }
+      data = { ...data, challengeId: assignment.challengeId };
+    }
     const review = await this.prisma.initialReview.create({
       data: {
         ownerId: userId,
@@ -91,6 +109,7 @@ export class InitialReviewService {
         sourceFileIds: data.sourceFileIds ?? undefined,
         companyContextSelection: data.companyContext ?? undefined,
         challengeId: data.challengeId ?? undefined,
+        handoffAssignmentId: data.handoffAssignmentId ?? undefined,
       },
     });
 

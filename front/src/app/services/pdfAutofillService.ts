@@ -99,6 +99,7 @@ export async function uploadPdf(
   initiativeId: string,
   file: File,
   onProgress?: (pct: number) => void,
+  idempotencyKey?: string,
 ): Promise<PdfUploadResult> {
   const buffer = await file.arrayBuffer();
   // Encode filename for safe transport in HTTP header (RFC 8187 — non-ASCII safe).
@@ -110,6 +111,7 @@ export async function uploadPdf(
       headers: {
         'Content-Type': 'application/pdf',
         'X-File-Name': safeName,
+        ...(idempotencyKey ? { 'Idempotency-Key': idempotencyKey } : {}),
       },
       onUploadProgress: (e) => {
         if (onProgress && e.total) {

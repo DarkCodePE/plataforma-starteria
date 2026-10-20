@@ -15,6 +15,15 @@ export type HandoffInvitationPreview = {
   identityClaimStatus: 'UNAUTHENTICATED' | 'MATCHED' | 'MISMATCH' | 'INVALID_INVITATION' | 'EXPIRED' | 'REVOKED';
 };
 
+export type HandoffExistingInitiativeReconstruction = {
+  assignmentId: string;
+  initiativeId: string;
+  continuityState: 'CURRENT_GOVERNED_CORE_STATE' | 'CONTINUITY_REVIEW_REQUIRED';
+  currentGovernedState: { cycleId: string; cycleNumber: number; stepNumber: number } | null;
+  recovered: { sourceRefs: number; evidence: number; claims: number; snapshots: number; outputs: number; events: number };
+  gaps: Array<{ code: string; message: string }>;
+};
+
 const PENDING_HANDOFF_KEY = 'starteria.handoff.pendingInvitation';
 
 export async function readHandoffInvitation(token: string): Promise<HandoffInvitationPreview> {
@@ -52,6 +61,12 @@ export async function startAssignedWork(assignmentId: string, expectedVersion: n
   const idempotencyKey = createIdempotencyKey('start', assignmentId);
   const { data } = await api.post(`/handoff/assignments/${encodeURIComponent(assignmentId)}/start`, { expectedVersion, idempotencyKey }, { headers: { 'Idempotency-Key': idempotencyKey } });
   return { ...data.data, authenticationRequired: true, identityClaimStatus: 'MATCHED' };
+}
+
+/** Route B only: reads the linked Initiative history without selecting a new Step. */
+export async function getHandoffReconstruction(assignmentId: string): Promise<HandoffExistingInitiativeReconstruction> {
+  const { data } = await api.get(`/handoff/assignments/${encodeURIComponent(assignmentId)}/reconstruction`);
+  return data.data;
 }
 
 /** Reads the current response state through the invitation's existing, token-scoped read model. */
