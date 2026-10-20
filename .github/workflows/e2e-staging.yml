@@ -1,0 +1,390 @@
+name: E2E staging P12
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_ref:
+        description: Branch, tag, or full commit SHA to build and certify
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: starteria-e2e-staging
+  cancel-in-progress: false
+
+env:
+  NAMESPACE: starteria-e2e
+  DOCKERHUB_NAMESPACE: orlandogtp
+  ROLLOUT_TIMEOUT: 360s
+
+jobs:
+  resolve:
+    name: Resolve requested release candidate
+    runs-on: ubuntu-latest
+    outputs:
+      sha: ${{ steps.resolve.outputs.sha }}
+      tag: ${{ steps.resolve.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - id: resolve
+        name: Resolve source_ref from this repository
+        env:
+          SOURCE_REF: ${{ inputs.source_ref }}
+        run: |
+          set -euo pipefail
+          [[ -n "$SOURCE_REF" ]] || { echo '::error::source_ref is required'; exit 1; }
+          if [[ ! "$SOURCE_REF" =~ ^[0-9A-Fa-f]{40}$ && ! "$SOURCE_REF" =~ ^[A-Za-z0-9][A-Za-z0-9._/@-]*$ ]]; then
+            echo '::error::source_ref must be a branch, tag, or full commit SHA'; exit 1
+          fi
+          git fetch --force --prune --tags origin '+refs/heads/*:refs/remotes/origin/*'
+          if ! git cat-file -e "${SOURCE_REF}^{commit}" 2>/dev/null; then
+            # Fetch from origin only. This permits a detached commit object without
+            # imposing the production workflow's ancestry-to-main policy.
+            git fetch --no-tags origin "$SOURCE_REF"
+          fi
+          sha=$(git rev-parse --verify "${SOURCE_REF}^{commit}")
+          [[ "$sha" =~ ^[0-9a-f]{40}$ ]] || { echo '::error::could not resolve a full commit SHA'; exit 1; }
+          git cat-file -e "${sha}^{commit}"
+          git checkout --detach "$sha"
+          tag="e2e-${sha:0:12}"
+          printf 'sha=%s\ntag=%s\n' "$sha" "$tag" >> "$GITHUB_OUTPUT"
+
+  quality-gates:
+    name: Release candidate repository gates
+    needs: resolve
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.resolve.outputs.sha }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: front/package-lock.json
+      - name: Install dependencies
+        working-directory: front
+        run: npm ci
+      - name: Typecheck
+        working-directory: front
+        run: npm run typecheck
+      - name: Lint
+        working-directory: front
+        run: npm run lint
+      - name: Build
+        working-directory: front
+        run: npm run build
+
+  build-and-push:
+    name: Build immutable release images
+    needs: resolve
+    runs-on: ubuntu-latest
+    environment: e2e-staging
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.resolve.outputs.sha }}
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: docker.io
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+      - name: Refuse to overwrite an immutable release tag
+        env:
+          IMAGE_TAG: ${{ needs.resolve.outputs.tag }}
+        run: |
+          set -euo pipefail
+          for service in backend frontend ai-service; do
+            image="$DOCKERHUB_NAMESPACE/starteria-$service:$IMAGE_TAG"
+            if docker buildx imagetools inspect "$image" >/dev/null 2>&1; then
+              echo "::error::immutable E2E image tag already exists: $image"
+              exit 1
+            fi
+          done
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile.backend
+          push: true
+          platforms: linux/amd64
+          tags: ${{ env.DOCKERHUB_NAMESPACE }}/starteria-backend:${{ needs.resolve.outputs.tag }}
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile.frontend
+          push: true
+          platforms: linux/amd64
+          build-args: |
+            VITE_GOOGLE_CLIENT_ID=${{ secrets.GOOGLE_CLIENT_ID }}
+          tags: ${{ env.DOCKERHUB_NAMESPACE }}/starteria-frontend:${{ needs.resolve.outputs.tag }}
+      - uses: docker/build-push-action@v6
+        with:
+          context: ./ai-service
+          file: ai-service/Dockerfile
+          push: true
+          platforms: linux/amd64
+          tags: ${{ env.DOCKERHUB_NAMESPACE }}/starteria-ai-service:${{ needs.resolve.outputs.tag }}
+
+  deploy-and-smoke:
+    name: Deploy isolated staging and execute smoke
+    needs: [resolve, quality-gates, build-and-push]
+    runs-on: ubuntu-latest
+    environment: e2e-staging
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.resolve.outputs.sha }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: front/package-lock.json
+      - uses: azure/setup-kubectl@v4
+        with:
+          version: v1.30.0
+      - name: Create artifact directory
+        run: mkdir -p artifacts/e2e-staging
+      - name: Preflight isolated environment configuration
+        env:
+          E2E_STAGING_BASE_URL: ${{ vars.E2E_STAGING_BASE_URL }}
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+          RACKSPACE_REFRESH_TOKEN: ${{ secrets.RACKSPACE_REFRESH_TOKEN }}
+          RACKSPACE_ORG_NAME: ${{ secrets.RACKSPACE_ORG_NAME }}
+          RACKSPACE_CLOUDSPACE_NAME: ${{ secrets.RACKSPACE_CLOUDSPACE_NAME }}
+          E2E_STAGING_DB_PASSWORD: ${{ secrets.E2E_STAGING_DB_PASSWORD }}
+          E2E_STAGING_JWT_SECRET: ${{ secrets.E2E_STAGING_JWT_SECRET }}
+          E2E_STAGING_AI_SERVICE_TOKEN: ${{ secrets.E2E_STAGING_AI_SERVICE_TOKEN }}
+          E2E_STAGING_BRIDGE_SHARED_SECRET: ${{ secrets.E2E_STAGING_BRIDGE_SHARED_SECRET }}
+          E2E_STAGING_CLOUDFLARED_TOKEN: ${{ secrets.E2E_STAGING_CLOUDFLARED_TOKEN }}
+          E2E_STAGING_LEAD_PASSWORD: ${{ secrets.E2E_STAGING_LEAD_PASSWORD }}
+          E2E_STAGING_PARTICIPANT_PASSWORD: ${{ secrets.E2E_STAGING_PARTICIPANT_PASSWORD }}
+          E2E_STAGING_MEMBER_PASSWORD: ${{ secrets.E2E_STAGING_MEMBER_PASSWORD }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          JEV_API_KEY: ${{ secrets.JEV_API_KEY }}
+          PORTFOLIO_ENTRY_API_KEY: ${{ secrets.PORTFOLIO_ENTRY_API_KEY }}
+          GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
+        run: |
+          set -euo pipefail
+          [[ "$NAMESPACE" == starteria-e2e && "$NAMESPACE" != starteria ]] || { echo '::error::unsafe namespace'; exit 1; }
+          [[ "$E2E_STAGING_BASE_URL" == https://* ]] || { echo '::error::vars.E2E_STAGING_BASE_URL must be an https URL'; exit 1; }
+          for name in DOCKERHUB_USERNAME DOCKERHUB_TOKEN RACKSPACE_REFRESH_TOKEN RACKSPACE_ORG_NAME RACKSPACE_CLOUDSPACE_NAME E2E_STAGING_DB_PASSWORD E2E_STAGING_JWT_SECRET E2E_STAGING_AI_SERVICE_TOKEN E2E_STAGING_BRIDGE_SHARED_SECRET E2E_STAGING_CLOUDFLARED_TOKEN E2E_STAGING_LEAD_PASSWORD E2E_STAGING_PARTICIPANT_PASSWORD E2E_STAGING_MEMBER_PASSWORD OPENROUTER_API_KEY JEV_API_KEY PORTFOLIO_ENTRY_API_KEY GOOGLE_CLIENT_ID; do
+            [[ -n "${!name:-}" ]] || { echo "::error::missing e2e-staging secret $name"; exit 1; }
+            echo "::add-mask::${!name}"
+          done
+      - name: Fetch kubeconfig from Rackspace Spot API
+        env:
+          RACKSPACE_REFRESH_TOKEN: ${{ secrets.RACKSPACE_REFRESH_TOKEN }}
+          RACKSPACE_ORG_NAME: ${{ secrets.RACKSPACE_ORG_NAME }}
+          RACKSPACE_CLOUDSPACE_NAME: ${{ secrets.RACKSPACE_CLOUDSPACE_NAME }}
+        run: |
+          set -euo pipefail
+          payload=$(jq -nc --arg org "$RACKSPACE_ORG_NAME" --arg cs "$RACKSPACE_CLOUDSPACE_NAME" --arg rt "$RACKSPACE_REFRESH_TOKEN" '{organization_name:$org, cloudspace_name:$cs, refresh_token:$rt}')
+          status=$(curl -sS -o "$RUNNER_TEMP/spot.json" -w '%{http_code}' -X POST 'https://spot.rackspace.com/apis/auth.ngpc.rxt.io/v1/generate-kubeconfig' -H 'Content-Type: application/json' --data "$payload")
+          [[ "$status" == 200 ]] || { echo "::error::Rackspace API returned HTTP $status"; exit 1; }
+          mkdir -p "$RUNNER_TEMP/kube"
+          jq -er '.data.kubeconfig' "$RUNNER_TEMP/spot.json" > "$RUNNER_TEMP/kube/config"
+          chmod 600 "$RUNNER_TEMP/kube/config"
+          rm -f "$RUNNER_TEMP/spot.json"
+          echo "KUBECONFIG=$RUNNER_TEMP/kube/config" >> "$GITHUB_ENV"
+      - name: Guard and create the isolated namespace
+        run: |
+          set -euo pipefail
+          [[ "$NAMESPACE" == starteria-e2e && "$NAMESPACE" != starteria ]] || { echo '::error::production namespace is forbidden'; exit 1; }
+          kubectl get namespace "$NAMESPACE" >/dev/null 2>&1 || kubectl create namespace "$NAMESPACE"
+          kubectl get namespace "$NAMESPACE" >/dev/null
+      - name: Synchronize isolated runtime secrets
+        env:
+          E2E_STAGING_DB_PASSWORD: ${{ secrets.E2E_STAGING_DB_PASSWORD }}
+          E2E_STAGING_JWT_SECRET: ${{ secrets.E2E_STAGING_JWT_SECRET }}
+          E2E_STAGING_AI_SERVICE_TOKEN: ${{ secrets.E2E_STAGING_AI_SERVICE_TOKEN }}
+          E2E_STAGING_BRIDGE_SHARED_SECRET: ${{ secrets.E2E_STAGING_BRIDGE_SHARED_SECRET }}
+          E2E_STAGING_CLOUDFLARED_TOKEN: ${{ secrets.E2E_STAGING_CLOUDFLARED_TOKEN }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          JEV_API_KEY: ${{ secrets.JEV_API_KEY }}
+          PORTFOLIO_ENTRY_API_KEY: ${{ secrets.PORTFOLIO_ENTRY_API_KEY }}
+          GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
+          LANGSMITH_API_KEY: ${{ secrets.LANGSMITH_API_KEY }}
+        run: |
+          set -euo pipefail
+          [[ "$NAMESPACE" == starteria-e2e && "$NAMESPACE" != starteria ]] || exit 1
+          encoded_password=$(jq -nr --arg v "$E2E_STAGING_DB_PASSWORD" '$v|@uri')
+          database_url="postgresql://starteria:${encoded_password}@starteria-db:5432/starteria_db"
+          kubectl -n "$NAMESPACE" create secret generic starteria-db-secrets --from-literal=POSTGRES_PASSWORD="$E2E_STAGING_DB_PASSWORD" --dry-run=client -o yaml | kubectl apply -f -
+          kubectl -n "$NAMESPACE" create secret generic starteria-backend-secrets \
+            --from-literal=DATABASE_URL="$database_url" --from-literal=JWT_SECRET="$E2E_STAGING_JWT_SECRET" \
+            --from-literal=AI_SERVICE_TOKEN="$E2E_STAGING_AI_SERVICE_TOKEN" --from-literal=AI_SERVICE_URL=http://starteria-ai-service:8001 \
+            --from-literal=BRIDGE_SHARED_SECRET="$E2E_STAGING_BRIDGE_SHARED_SECRET" \
+            --from-literal=PORTFOLIO_ENTRY_API_KEY="$PORTFOLIO_ENTRY_API_KEY" \
+            --from-literal=PORTFOLIO_ENTRY_PROVIDER=openai_responses --from-literal=PORTFOLIO_ENTRY_MODEL=openai/gpt-5.6-luna \
+            --from-literal=PORTFOLIO_ENTRY_BASE_URL=https://openrouter.ai/api/v1 --from-literal=JEV_API_KEY="$JEV_API_KEY" \
+            --from-literal=PORTFOLIO_ENTRY_CLASSIFIER=jev --from-literal=GOOGLE_CLIENT_ID="$GOOGLE_CLIENT_ID" \
+            --dry-run=client -o yaml | kubectl apply -f -
+          kubectl -n "$NAMESPACE" create secret generic starteria-ai-service-secrets \
+            --from-literal=OPENROUTER_API_KEY="$OPENROUTER_API_KEY" --from-literal=JEV_API_KEY="$JEV_API_KEY" \
+            --from-literal=LANGSMITH_API_KEY="${LANGSMITH_API_KEY:-}" \
+            --from-literal=AI_SERVICE_INTERNAL_TOKEN="$E2E_STAGING_AI_SERVICE_TOKEN" --from-literal=BACKEND_WEBHOOK_TOKEN="$E2E_STAGING_AI_SERVICE_TOKEN" \
+            --dry-run=client -o yaml | kubectl apply -f -
+          kubectl -n "$NAMESPACE" create secret generic cloudflared-token --from-literal=token="$E2E_STAGING_CLOUDFLARED_TOKEN" --dry-run=client -o yaml | kubectl apply -f -
+      - name: Render and provision the isolated PostgreSQL 16 database
+        env:
+          E2E_STAGING_BASE_URL: ${{ vars.E2E_STAGING_BASE_URL }}
+          BACKEND_IMAGE: ${{ env.DOCKERHUB_NAMESPACE }}/starteria-backend:${{ needs.resolve.outputs.tag }}
+          FRONTEND_IMAGE: ${{ env.DOCKERHUB_NAMESPACE }}/starteria-frontend:${{ needs.resolve.outputs.tag }}
+          AI_SERVICE_IMAGE: ${{ env.DOCKERHUB_NAMESPACE }}/starteria-ai-service:${{ needs.resolve.outputs.tag }}
+        run: |
+          set -euo pipefail
+          scripts/ci/render-e2e-staging-manifests.sh "$RUNNER_TEMP/e2e-staging-manifests"
+          cp -R "$RUNNER_TEMP/e2e-staging-manifests" artifacts/e2e-staging/rendered-manifests
+          kubectl -n "$NAMESPACE" apply -f "$RUNNER_TEMP/e2e-staging-manifests/postgres-service.yaml" -f "$RUNNER_TEMP/e2e-staging-manifests/postgres-statefulset.yaml"
+          kubectl -n "$NAMESPACE" rollout status statefulset/starteria-db --timeout="$ROLLOUT_TIMEOUT"
+      - name: Install dependencies for migrations and tenant provisioning
+        working-directory: front
+        run: |
+          npm ci
+          npx prisma generate
+          ln -sfn "$GITHUB_WORKSPACE/front/node_modules" "$GITHUB_WORKSPACE/node_modules"
+      - name: Apply and verify Prisma migrations in staging
+        run: |
+          set -o pipefail
+          scripts/ci/prod-db-migrate.sh apply 2>&1 | tee artifacts/e2e-staging/migrate-apply.log
+          scripts/ci/prod-db-migrate.sh verify 2>&1 | tee artifacts/e2e-staging/migrate-verify.log
+      - name: Apply isolated workloads and immutable images
+        run: |
+          set -euo pipefail
+          [[ "$NAMESPACE" == starteria-e2e && "$NAMESPACE" != starteria ]] || exit 1
+          kubectl -n "$NAMESPACE" apply -f "$RUNNER_TEMP/e2e-staging-manifests"
+          for deployment in starteria-backend starteria-frontend starteria-ai-service cloudflared-tunnel; do
+            kubectl -n "$NAMESPACE" rollout status "deployment/$deployment" --timeout="$ROLLOUT_TIMEOUT"
+          done
+          scripts/ci/prod-db-migrate.sh verify 2>&1 | tee artifacts/e2e-staging/migrate-post-rollout-verify.log
+      - name: Wait for public health endpoint
+        env:
+          E2E_STAGING_BASE_URL: ${{ vars.E2E_STAGING_BASE_URL }}
+        run: |
+          set -euo pipefail
+          for attempt in $(seq 1 30); do
+            code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 20 "${E2E_STAGING_BASE_URL%/}/api/health" || true)
+            if [[ "$code" == 200 ]]; then exit 0; fi
+            echo "health attempt $attempt returned ${code:-transport-error}"
+            sleep 10
+          done
+          echo '::error::staging health endpoint did not become ready'; exit 1
+      - name: Provision the isolated E2E tenant
+        working-directory: front
+        env:
+          E2E_STAGING_LEAD_PASSWORD: ${{ secrets.E2E_STAGING_LEAD_PASSWORD }}
+          E2E_STAGING_PARTICIPANT_PASSWORD: ${{ secrets.E2E_STAGING_PARTICIPANT_PASSWORD }}
+          E2E_STAGING_MEMBER_PASSWORD: ${{ secrets.E2E_STAGING_MEMBER_PASSWORD }}
+        run: |
+          set -euo pipefail
+          [[ "$NAMESPACE" == starteria-e2e && "$NAMESPACE" != starteria ]] || exit 1
+          pw=$(kubectl -n "$NAMESPACE" get secret starteria-db-secrets -o jsonpath='{.data.POSTGRES_PASSWORD}' | base64 --decode)
+          echo "::add-mask::$pw"
+          echo "::add-mask::$E2E_STAGING_LEAD_PASSWORD"
+          echo "::add-mask::$E2E_STAGING_PARTICIPANT_PASSWORD"
+          echo "::add-mask::$E2E_STAGING_MEMBER_PASSWORD"
+          kubectl -n "$NAMESPACE" port-forward statefulset/starteria-db 15432:5432 > "$RUNNER_TEMP/e2e-tenant-port-forward.log" 2>&1 &
+          pf=$!; trap 'kill $pf 2>/dev/null || true' EXIT
+          for _ in $(seq 30); do (echo > /dev/tcp/127.0.0.1/15432) 2>/dev/null && break; sleep 1; done
+          (echo > /dev/tcp/127.0.0.1/15432) 2>/dev/null || { echo '::error::staging database port-forward did not become ready'; exit 1; }
+          export DATABASE_URL="postgresql://starteria:$(jq -nr --arg v "$pw" '$v|@uri')@127.0.0.1:15432/starteria_db"
+          export E2E_PROD_LEAD_PASSWORD="$E2E_STAGING_LEAD_PASSWORD"
+          export E2E_PROD_PARTICIPANT_PASSWORD="$E2E_STAGING_PARTICIPANT_PASSWORD"
+          export E2E_PROD_MEMBER_PASSWORD="$E2E_STAGING_MEMBER_PASSWORD"
+          npx tsx ../backend/scripts/e2e-prod-tenant.ts setup --apply 2>&1 | tee "$GITHUB_WORKSPACE/artifacts/e2e-staging/tenant-provision.log"
+      - name: Execute authenticated staging API smoke
+        env:
+          E2E_PROD_BASE_URL: ${{ vars.E2E_STAGING_BASE_URL }}
+          E2E_PROD_LEAD_PASSWORD: ${{ secrets.E2E_STAGING_LEAD_PASSWORD }}
+        run: scripts/ci/e2e-staging-api-smoke.sh 2>&1 | tee artifacts/e2e-staging/api-smoke.log
+      - name: Write deployment identity
+        env:
+          SOURCE_SHA: ${{ needs.resolve.outputs.sha }}
+          IMAGE_TAG: ${{ needs.resolve.outputs.tag }}
+          E2E_STAGING_BASE_URL: ${{ vars.E2E_STAGING_BASE_URL }}
+        run: |
+          set -euo pipefail
+          ai_version=$(sed -nE 's/^version = "([^"]+)"/\1/p' ai-service/pyproject.toml | head -n1)
+          harness_version=$(tr -d '\r\n' < ai-service/harness/config/version.txt)
+          mapfile -t prompt_files < <(git ls-files -- ai-service/prompts ai-service/harness/config/prompts backend/modules/portfolio-entry-runtime/prompts)
+          [[ -n "$ai_version" && -n "$harness_version" && ${#prompt_files[@]} -gt 0 ]] || { echo '::error::cannot derive AI/prompt identity from the selected source'; exit 1; }
+          prompt_hash=$(printf '%s\n' "${prompt_files[@]}" | while IFS= read -r file; do sha256sum "$file"; done | sha256sum | awk '{print $1}')
+          jq -n \
+            --arg source_sha "$SOURCE_SHA" --arg image_tag "$IMAGE_TAG" \
+            --arg frontend_image "$DOCKERHUB_NAMESPACE/starteria-frontend:$IMAGE_TAG" \
+            --arg backend_image "$DOCKERHUB_NAMESPACE/starteria-backend:$IMAGE_TAG" \
+            --arg ai_service_image "$DOCKERHUB_NAMESPACE/starteria-ai-service:$IMAGE_TAG" \
+            --arg ai_service_version "$ai_version" --arg harness_version "$harness_version" \
+            --arg prompt_version_or_hash "sha256:$prompt_hash" --arg namespace "$NAMESPACE" \
+            --arg base_url "$E2E_STAGING_BASE_URL" --arg database "starteria-db.$NAMESPACE.svc.cluster.local/starteria_db" \
+            --arg tenant_id "org-e2e-prod" --arg deployed_at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            '{source_sha:$source_sha,image_tag:$image_tag,frontend_image:$frontend_image,backend_image:$backend_image,ai_service_image:$ai_service_image,ai_service_version:$ai_service_version,harness_version:$harness_version,prompt_version_or_hash:$prompt_version_or_hash,namespace:$namespace,base_url:$base_url,database_environment_id:$database,e2e_tenant_id:$tenant_id,role_actors:["e2e-lead@starteria.test","e2e-participante@starteria.test","e2e-participante-2@starteria.test","e2e-colaborador@starteria.test","e2e-viewer@starteria.test","e2e-sponsor@starteria.test"],feature_flags:{portfolio_entry_runtime_mode:"live",initial_review_ai:"real",pdf_autofill:true},deploy_timestamp:$deployed_at}' \
+            > artifacts/e2e-staging/deployment-identity.json
+      - name: Capture isolated namespace status
+        if: always()
+        run: |
+          if [[ "${NAMESPACE:-}" == starteria-e2e && -n "${KUBECONFIG:-}" && -f "$KUBECONFIG" ]]; then
+            kubectl -n "$NAMESPACE" get deployments,statefulsets,services,pvc,pods -o wide > artifacts/e2e-staging/namespace-status.txt || true
+            kubectl -n "$NAMESPACE" get events --sort-by=.lastTimestamp > artifacts/e2e-staging/namespace-events.txt || true
+          fi
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: e2e-staging-deployment-${{ needs.resolve.outputs.tag }}
+          path: artifacts/e2e-staging/
+          if-no-files-found: warn
+          retention-days: 14
+      - name: Remove kubeconfig
+        if: always()
+        run: rm -f "$RUNNER_TEMP/kube/config" "$RUNNER_TEMP/spot.json"
+
+  p12-e2e:
+    name: Execute P12 Playwright suite on staging
+    needs: [resolve, deploy-and-smoke]
+    runs-on: ubuntu-latest
+    environment: e2e-staging
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.resolve.outputs.sha }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: front/package-lock.json
+      - name: Install Playwright dependencies
+        working-directory: front
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium
+      - name: Execute repository-defined deployed E2E suite
+        working-directory: front
+        env:
+          E2E_PROD_BASE_URL: ${{ vars.E2E_STAGING_BASE_URL }}
+          E2E_PROD_LEAD_PASSWORD: ${{ secrets.E2E_STAGING_LEAD_PASSWORD }}
+          E2E_PROD_PARTICIPANT_PASSWORD: ${{ secrets.E2E_STAGING_PARTICIPANT_PASSWORD }}
+          E2E_PROD_MEMBER_PASSWORD: ${{ secrets.E2E_STAGING_MEMBER_PASSWORD }}
+        run: |
+          set -o pipefail
+          npm run test:e2e:prod 2>&1 | tee "$GITHUB_WORKSPACE/e2e-staging-playwright.log"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: e2e-staging-p12-${{ needs.resolve.outputs.tag }}
+          path: |
+            e2e-staging-playwright.log
+            front/playwright-report/
+            front/test-results/
+          if-no-files-found: warn
+          retention-days: 14
