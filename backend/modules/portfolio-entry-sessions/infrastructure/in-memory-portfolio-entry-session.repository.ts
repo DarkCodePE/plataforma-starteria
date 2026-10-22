@@ -20,6 +20,7 @@ import type {
   ClaimPortfolioEntrySessionOwnershipInput,
   CreatePortfolioEntrySessionInput,
   PortfolioEntrySessionRepository,
+  PublishPortfolioEntryCriticalHandoffInput,
   SavePortfolioEntrySessionStateInput,
 } from '../application/portfolio-entry-session.repository';
 import { PortfolioEntrySessionError } from '../application/portfolio-entry-session-errors';
@@ -136,6 +137,60 @@ export class InMemoryPortfolioEntrySessionRepository implements PortfolioEntrySe
     return cloneHandoff(stored);
   }
 
+  async publishCriticalHandoff(
+    input: PublishPortfolioEntryCriticalHandoffInput,
+  ): Promise<PortfolioEntryCriticalHandoffRecord> {
+    const { handoff, session: nextSession, expectedRevision, criticalHandoff } = input;
+    const session = this.sessions.get(nextSession.id);
+    const handoffs = this.handoffs.get(nextSession.id);
+    const artifacts = this.criticalHandoffs.get(nextSession.id);
+    if (!session || !handoffs || !artifacts) throw PortfolioEntrySessionError.notFound();
+    assertExpectedRevision(session, expectedRevision);
+    if (nextSession.revision !== expectedRevision + 1
+      || handoff.sessionId !== nextSession.id
+      || criticalHandoff.sessionId !== nextSession.id
+      || session.contextRevision !== criticalHandoff.sourceContextRevision) {
+      throw PortfolioEntrySessionError.conflict();
+    }
+    const latestTurn = [...(this.turns.get(nextSession.id) ?? [])]
+      .filter((turn) => turn.inputIntent === 'answer' || turn.inputIntent === 'correction')
+      .sort((left, right) => right.turnIndex - left.turnIndex || right.createdAt.getTime() - left.createdAt.getTime())[0];
+    if (!latestTurn || criticalHandoff.sourceTurnId !== latestTurn.id || handoff.sourceTurnId !== latestTurn.id) {
+      throw PortfolioEntrySessionError.conflict();
+    }
+    if (handoff.version !== (handoffs.at(-1)?.version ?? 0) + 1) throw PortfolioEntrySessionError.conflict();
+    const latestArtifact = artifacts.at(-1);
+    if (latestArtifact?.confirmationState === 'confirmed'
+      && criticalHandoff.sourceContextRevision <= latestArtifact.sourceContextRevision) {
+      throw PortfolioEntrySessionError.conflict();
+    }
+    const payload = parseCriticalHandoffPayload(
+      PORTFOLIO_ENTRY_CRITICAL_HANDOFF_SCHEMA_VERSION,
+      criticalHandoff.payload,
+    );
+    const now = new Date();
+    const artifact: PortfolioEntryCriticalHandoffRecord = {
+      id: randomUUID(),
+      sessionId: nextSession.id,
+      artifactVersion: nextCriticalHandoffArtifactVersion(latestArtifact?.artifactVersion),
+      schemaVersion: PORTFOLIO_ENTRY_CRITICAL_HANDOFF_SCHEMA_VERSION,
+      sourceContextRevision: criticalHandoff.sourceContextRevision,
+      sourceTurnId: latestTurn.id,
+      payload,
+      confirmationState: 'provisional',
+      confirmedAt: null,
+      confirmedByUserId: null,
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    // All validation completes before these synchronous in-memory mutations.
+    handoffs.push(cloneHandoff(handoff));
+    artifacts.push(cloneCriticalHandoff(artifact));
+    this.sessions.set(nextSession.id, cloneSession({ ...nextSession, contextRevision: session.contextRevision }));
+    return cloneCriticalHandoff(artifact);
+  }
+
   async createCriticalHandoff(input: CreatePortfolioEntryCriticalHandoffInput): Promise<PortfolioEntryCriticalHandoffRecord> {
     const session = this.sessions.get(input.sessionId);
     const existing = this.criticalHandoffs.get(input.sessionId);
@@ -158,6 +213,11 @@ export class InMemoryPortfolioEntrySessionRepository implements PortfolioEntrySe
     const latestArtifact = existing.at(-1);
     if (latestArtifact) {
       parseCriticalHandoffLifecycle(latestArtifact.confirmationState, latestArtifact.confirmedAt, latestArtifact.confirmedByUserId);
+    }
+    if (input.expectedSessionRevision !== undefined
+      && latestArtifact?.sourceContextRevision === input.sourceContextRevision
+      && latestArtifact.sourceTurnId === latestTurn?.id) {
+      throw PortfolioEntrySessionError.conflict();
     }
     if (latestArtifact?.confirmationState === 'confirmed'
       && input.sourceContextRevision <= latestArtifact.sourceContextRevision) throw PortfolioEntrySessionError.conflict();

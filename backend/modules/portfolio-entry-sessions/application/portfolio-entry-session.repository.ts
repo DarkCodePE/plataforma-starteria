@@ -26,6 +26,13 @@ export type ClaimPortfolioEntrySessionOwnershipInput = {
   now: Date;
 };
 
+export type PublishPortfolioEntryCriticalHandoffInput = {
+  handoff: PortfolioEntryHandoffRecord;
+  session: PortfolioEntrySession;
+  expectedRevision: number;
+  criticalHandoff: CreatePortfolioEntryCriticalHandoffInput;
+};
+
 export interface PortfolioEntrySessionRepository {
   createSession(input: CreatePortfolioEntrySessionInput): Promise<PortfolioEntrySession>;
   findSessionById(sessionId: string): Promise<PortfolioEntrySession | null>;
@@ -40,6 +47,7 @@ export interface PortfolioEntrySessionRepository {
   ): Promise<PortfolioEntryTurn>;
   appendModelExecution(execution: PortfolioEntryModelExecutionRecord): Promise<PortfolioEntryModelExecutionRecord>;
   saveHandoff(handoff: PortfolioEntryHandoffRecord, session: PortfolioEntrySession, expectedRevision: number): Promise<PortfolioEntryHandoffRecord>;
+  publishCriticalHandoff(input: PublishPortfolioEntryCriticalHandoffInput): Promise<PortfolioEntryCriticalHandoffRecord>;
   createCriticalHandoff(input: CreatePortfolioEntryCriticalHandoffInput): Promise<PortfolioEntryCriticalHandoffRecord>;
   confirmCriticalHandoff(input: ConfirmPortfolioEntryCriticalHandoffInput): Promise<PortfolioEntryCriticalHandoffLatestSnapshot>;
   getLatestCriticalHandoff(sessionId: string): Promise<PortfolioEntryCriticalHandoffLatestSnapshot>;
