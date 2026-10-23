@@ -37,11 +37,12 @@ vi.mock('../../auth/auth.middleware', async (importOriginal) => {
   };
 });
 
-// La guardia por recurso (F-03) resuelve la organización de la iniciativa: una del mismo
-// usuario de prueba, sin organización, así el test sigue midiendo sólo el permiso.
+// La guardia por recurso (F-03) resuelve una pertenencia canónica explícita del
+// mismo tenant, así el test sigue midiendo sólo el permiso sin depender de la
+// compatibilidad legacy fail-closed de ADR-009.
 const fakePrisma = {
-  user: { findUnique: async () => ({ organizationId: null }) },
-  project: { findUnique: async () => ({ owner: { organizationId: null }, portfolioMeta: [] }) },
+  user: { findUnique: async () => ({ organizationId: 'org-test' }) },
+  project: { findUnique: async () => ({ organizationId: 'org-test', owner: { organizationId: 'org-test' }, portfolioMeta: [] }) },
 };
 vi.mock('../../../shared/db/prisma', () => ({ default: fakePrisma, prisma: fakePrisma }));
 
