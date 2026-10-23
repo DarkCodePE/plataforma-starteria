@@ -88,6 +88,7 @@ export class PortfolioHandoffInvitationService {
       targetKind: assignment.targetKind,
       challengeId: assignment.challengeId,
       initiativeId: assignment.initiativeId ?? null,
+      briefVersion: identityMatches ? assignment.briefVersion ?? null : null,
       state: assignment.state,
       version: assignment.version,
       rejectionReason: identityMatches ? assignment.rejectionReason : null,
@@ -100,7 +101,7 @@ export class PortfolioHandoffInvitationService {
   }
 
   private invalid(status: 'INVALID_INVITATION' | 'EXPIRED' | 'REVOKED'): HandoffIdentityClaimResult {
-    return { assignmentId: '', targetKind: 'CHALLENGE', challengeId: '', initiativeId: null, state: 'EXPIRED', version: 0, rejectionReason: null, portfolioResponse: null, acceptedAt: null, rejectedAt: null, authenticationRequired: true, identityClaimStatus: status };
+    return { assignmentId: '', targetKind: 'CHALLENGE', challengeId: '', initiativeId: null, briefVersion: null, state: 'EXPIRED', version: 0, rejectionReason: null, portfolioResponse: null, acceptedAt: null, rejectedAt: null, authenticationRequired: true, identityClaimStatus: status };
   }
 }
 

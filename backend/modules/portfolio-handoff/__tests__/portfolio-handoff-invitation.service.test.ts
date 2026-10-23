@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { InMemoryHandoffReferenceRepository, InMemoryPortfolioHandoffAssignmentRepository } from '../infrastructure/in-memory-portfolio-handoff-assignment.repository';
 import { InMemoryHandoffInvitationAccessRepository } from '../infrastructure/in-memory-portfolio-handoff-invitation.repository';
 import { PortfolioHandoffAssignmentService } from '../application/portfolio-handoff-assignment.service';
@@ -59,6 +59,22 @@ describe('PortfolioHandoffInvitationService / H-TECH-03', () => {
     expect(first.identityClaimStatus).toBe('MATCHED');
     expect(second.identityClaimStatus).toBe('MATCHED');
     expect((await ctx.assignments.findById(ctx.assignment.id))!.members[0].userId).toBe('user-1');
+  });
+
+  it('preserves the exact confirmed BriefVersion projection through invitation read and claim', async () => {
+    const ctx = await createAssignment();
+    const briefVersion = {
+      id: 'brief-version-2', versionNumber: 2, status: 'CONFIRMED' as const,
+      intent: 'Validate the governed mandate', scope: 'One team',
+      strategicContextRefs: { objective: 'Activation' }, inheritedContext: { challengeProblem: 'Drop-off' },
+      constraintsSnapshot: ['legal'], knownGaps: ['baseline'], sourceRefs: [{ source: 'brief' }],
+      provenance: { source: 'HUMAN_CONFIRMED' }, confirmedAt: new Date('2026-10-23T10:00:00.000Z'),
+    };
+    vi.spyOn(ctx.assignments, 'findById').mockResolvedValue({ ...ctx.assignment, briefVersionId: briefVersion.id, briefVersion });
+    const token = await ctx.invitationService.issueInvitationToken(ctx.assignment.id);
+
+    await expect(ctx.invitationService.readInvitationByToken(token)).resolves.toMatchObject({ briefVersion: null });
+    await expect(ctx.invitationService.claimInvitedIdentity(token, { id: 'user-1', email: 'invitee@example.com' })).resolves.toMatchObject({ briefVersion });
   });
 
   it('returns MISMATCH without mutating assignment identity or creating downstream state', async () => {
