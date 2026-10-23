@@ -22,6 +22,7 @@ import {
   FetchStructuredModelAdapter,
   JevClassifier,
   LivePortfolioEntryAgentAdapter,
+  loadCriticalSynthesisProviderConfig,
   loadPortfolioEntryProviderConfig,
   ResilientStructuredModelAdapter,
   portfolioEntryLiveHealth,
@@ -257,9 +258,9 @@ function configuredHandoffMaterializer(): PortfolioEntryHandoffMaterializer {
   return new DeterministicPortfolioEntryHandoffMaterializer();
 }
 
-function configuredLiveUnderstandingSynthesizer(): PortfolioEntryLiveUnderstandingSynthesizer {
+export function configuredLiveUnderstandingSynthesizer(): PortfolioEntryLiveUnderstandingSynthesizer {
   try {
-    const provider = loadPortfolioEntryProviderConfig();
+    const provider = loadCriticalSynthesisProviderConfig();
     const adapter = new CriticalSituationSynthesisAdapter(createResilientModel(provider));
     const generate = (input: Parameters<PortfolioEntryLiveUnderstandingSynthesizer['synthesize']>[0]) => adapter.generate({
       authorized_snapshot: input.authorizedSnapshot,
