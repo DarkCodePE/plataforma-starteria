@@ -200,6 +200,7 @@ enum PortfolioActivationCommandType {
   CREATE_VERSION
   CONFIRM_VERSION
   CREATE_ASSIGNMENT
+  UPDATE_ASSIGNMENT
 }
 
 enum SessionStatus {
@@ -1642,6 +1643,7 @@ model PortfolioHandoffAssignment {
   initiative             Project?                  @relation(fields: [initiativeId], references: [id], onDelete: Restrict)
   briefVersionId         String?
   briefVersion           ChallengeActivationBriefVersion? @relation(fields: [briefVersionId], references: [id], onDelete: Restrict)
+  contextNote            String?
   invitedEmailNormalized String
   invitedIdentityRef     String?
   state                  PortfolioHandoffState     @default(CREATED)

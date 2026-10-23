@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { AlertCircle, CheckCircle2, ChevronDown, FileText, History, LockKeyhole, PencilLine, Sparkles } from 'lucide-react';
+import { AlertCircle, ArrowRight, CheckCircle2, ChevronDown, FileText, History, LockKeyhole, PencilLine, Sparkles } from 'lucide-react';
 import {
   type ActivationBrief,
   type ActivationBriefVersion,
@@ -35,11 +35,19 @@ type Props = {
   onConfirmationChange?: (confirmed: boolean) => void;
   onVersionStateChange?: (state: { briefId: string | null; hasConfirmedVersion: boolean; latestVersionStatus: 'DRAFT' | 'CONFIRMED' | null }) => void;
   onDirtyChange?: (dirty: boolean) => void;
+  onContinueToAssignment?: (target: ChallengeAssignmentTarget) => void;
   /** Compatibility input for the secondary Challenge page while Copilot is the primary PL-05 route. */
   inheritedContext?: string;
   constraints?: string;
   knownGaps?: string;
   sourceRefs?: string[];
+};
+
+export type ChallengeAssignmentTarget = {
+  challengeId: string;
+  briefId: string;
+  briefVersionId: string;
+  challengeName: string;
 };
 
 type EditableBrief = {
@@ -349,7 +357,7 @@ export function ChallengeActivationBriefPanel(props: Props) {
           </div>
 
           {brief ? <div className="mt-5 flex items-center gap-2 rounded-xl bg-slate-50 px-3 py-2.5 text-sm text-slate-600"><History size={16} /><span><b className="text-slate-900">{versions.length} {versions.length === 1 ? 'versión conservada' : 'versiones conservadas'}</b>. Cada guardado añade historia; nunca sobrescribe una versión anterior.</span></div> : null}
-          {current?.status === 'CONFIRMED' && brief ? <section className="mt-5 rounded-xl border border-emerald-200 bg-emerald-50 p-4"><p className="text-xs font-bold uppercase tracking-[0.14em] text-emerald-800">Brief confirmado</p><h4 className="mt-1 font-semibold text-emerald-950">Versión confirmada e inmutable</h4><p className="mt-1 text-sm leading-6 text-emerald-900">El contexto de activación queda preparado para el siguiente checkpoint humano.</p></section> : null}
+          {current?.status === 'CONFIRMED' && brief ? <section className="mt-5 rounded-xl border border-emerald-200 bg-emerald-50 p-4" data-testid="pl06-boundary-enabled"><p className="text-xs font-bold uppercase tracking-[0.14em] text-emerald-800">Brief confirmado</p><h4 className="mt-1 font-semibold text-emerald-950">Listo para preparar la asignación</h4><p className="mt-1 text-sm leading-6 text-emerald-900">Esta versión quedó confirmada e inmutable. El siguiente paso es elegir quién recibirá este encargo y revisar la asignación antes de prepararla.</p>{props.onContinueToAssignment ? <button type="button" onClick={() => props.onContinueToAssignment?.({ challengeId: props.challengeId, briefId: brief.id, briefVersionId: current.id, challengeName: props.challengeName })} className="mt-4 inline-flex items-center gap-2 rounded-xl bg-emerald-800 px-4 py-2.5 text-sm font-semibold text-white hover:bg-emerald-900"><span>Continuar a asignación</span><ArrowRight size={16} /></button> : null}</section> : null}
         </article>
       </div>
     </section>

@@ -10,6 +10,11 @@ import { AppError } from '../../shared/errors/AppError';
 import { authenticate, requirePermission } from '../auth/auth.middleware';
 import { resolvePortfolioScope } from '../portfolio/portfolio-scope';
 import { challengeOrganization, scopeAllows } from '../portfolio/portfolio-resource-guard';
+import { PortfolioHandoffAssignmentService } from './application/portfolio-handoff-assignment.service';
+import { PortfolioHandoffAssignmentError } from './application/portfolio-handoff-assignment.errors';
+import { DurableHandoffEventPort, PortfolioHandoffProjector } from './application/portfolio-handoff-semantic-event.projector';
+import { PrismaPortfolioHandoffAssignmentRepository } from './infrastructure/prisma-portfolio-handoff-assignment.repository';
+import { PrismaHandoffSemanticEventRepository, PrismaPortfolioHandoffProjectionRepository } from './infrastructure/prisma-portfolio-handoff-semantic-event.repository';
 import { assertConfirmableActivationBriefVersion, normalizeActivationBriefEnvelope } from './challenge-activation-brief.service';
 import {
   activationBriefChallengeParamsSchema,
@@ -17,6 +22,9 @@ import {
   activationBriefParamsSchema,
   activationBriefVersionParamsSchema,
   emptyActivationBriefCommandBodySchema,
+  handoffAssignmentParamsSchema,
+  prepareChallengeAssignmentBodySchema,
+  updateChallengeAssignmentBodySchema,
 } from './challenge-activation-brief.schemas';
 
 const write = requirePermission('portfolio:write');
@@ -48,7 +56,7 @@ async function ownVersion(req: any, versionId: string): Promise<any> {
   if (organizationId !== version.organizationId) throw AppError.notFound('Version de Brief', 'ACTIVATION_BRIEF_VERSION_NOT_FOUND');
   return version;
 }
-async function receipt(tx: any, input: { organizationId: string; commandType: 'CREATE_BRIEF'|'CREATE_VERSION'|'CONFIRM_VERSION'; idempotencyKey: string; actorId: string; fingerprint: string }) {
+async function receipt(tx: any, input: { organizationId: string; commandType: 'CREATE_BRIEF'|'CREATE_VERSION'|'CONFIRM_VERSION'|'CREATE_ASSIGNMENT'|'UPDATE_ASSIGNMENT'; idempotencyKey: string; actorId: string; fingerprint: string }) {
   const existing = await tx.portfolioActivationCommandReceipt.findUnique({ where: { organizationId_commandType_idempotencyKey: { organizationId: input.organizationId, commandType: input.commandType, idempotencyKey: input.idempotencyKey } } });
   if (existing && existing.fingerprint !== input.fingerprint) throw AppError.conflict('La idempotency key ya se usÃ³ con otra solicitud', 'ACTIVATION_BRIEF_IDEMPOTENCY_CONFLICT');
   return existing;
@@ -154,6 +162,110 @@ challengeActivationBriefRouter.post('/activation-brief-versions/:versionId/confi
       await tx.portfolioActivationCommandReceipt.create({ data: { organizationId: current.organizationId, commandType: 'CONFIRM_VERSION', idempotencyKey, fingerprint: fp, actorId: req.user.id, resultBriefId: current.briefId, resultVersionId: version.id } }); return { version, idempotent: false };
     }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable, timeout: 10_000 }));
     res.json({ success: true, data });
+  } catch (error) { next(error); }
+});
+
+challengeActivationBriefRouter.post('/challenges/:challengeId/handoff-assignments', authenticate, write, async (req: any, res, next) => {
+  try {
+    const { challengeId } = activationBriefChallengeParamsSchema.parse(req.params);
+    const body = prepareChallengeAssignmentBodySchema.parse(req.body ?? {});
+    const organizationId = await ownChallenge(req, challengeId); const idempotencyKey = idem(req);
+    const members = body.members.map((member) => ({ ...member, identityKey: member.identityKey.trim().toLowerCase(), emailNormalized: member.emailNormalized?.toLowerCase() ?? null, role: member.role! }));
+    const normalizedBody = { ...body, members };
+    const fp = fingerprint({ command: 'CREATE_ASSIGNMENT', challengeId, body: normalizedBody, actorId: req.user.id });
+    const data = await withSerializableRetry(() => prisma.$transaction(async (tx: any) => {
+      // Serialize preparation for this Challenge before reading the durable
+      // receipt so concurrent retries cannot create duplicate Assignments.
+      await tx.$queryRaw(Prisma.sql`SELECT "id" FROM "Challenge" WHERE "id" = ${challengeId} FOR UPDATE`);
+      const prior = await receipt(tx, { organizationId, commandType: 'CREATE_ASSIGNMENT', idempotencyKey, actorId: req.user.id, fingerprint: fp });
+      if (prior) return { assignment: await tx.portfolioHandoffAssignment.findUnique({ where: { id: prior.resultAssignmentId }, include: { members: true } }), idempotent: true };
+      const version = body.briefVersionId ? await tx.challengeActivationBriefVersion.findUnique({ where: { id: body.briefVersionId } }) : null;
+      if (body.briefVersionId && (!version || version.status !== 'CONFIRMED' || version.briefId !== body.briefId || version.challengeId !== challengeId || version.organizationId !== organizationId)) throw AppError.conflict('La Assignment requiere el Brief y la Version confirmada exactos del mismo Reto y tenant', 'ACTIVATION_BRIEF_VERSION_REQUIRED');
+      const duplicate = await tx.portfolioHandoffAssignment.findFirst({ where: {
+        challengeId,
+        organizationId,
+        targetKind: body.targetKind,
+        state: { notIn: ['REJECTED', 'REVOKED', 'EXPIRED'] },
+        ...(body.targetKind === 'EXISTING_INITIATIVE'
+          ? { initiativeId: body.initiativeId }
+          : { briefVersionId: body.briefVersionId, invitedEmailNormalized: body.invitedEmailNormalized }),
+      } });
+      if (duplicate) throw AppError.conflict('Ya existe una Assignment activa con la misma identidad de destino', 'HANDOFF_ASSIGNMENT_DUPLICATE');
+      const assignmentRepository = new PrismaPortfolioHandoffAssignmentRepository(tx);
+      const events = new DurableHandoffEventPort(
+        new PrismaHandoffSemanticEventRepository(tx),
+        new PortfolioHandoffProjector(new PrismaPortfolioHandoffProjectionRepository(tx)),
+      );
+      const service = new PortfolioHandoffAssignmentService(assignmentRepository, assignmentRepository, events);
+      const assignment = await service.createHandoffAssignment({ organizationId, challengeId, targetKind: body.targetKind, initiativeId: body.initiativeId ?? null, briefVersionId: version?.id ?? null, contextNote: body.contextNote ?? null, invitedEmailNormalized: body.invitedEmailNormalized, invitedIdentityRef: body.invitedIdentityRef ?? null, createdByActorId: req.user.id, members });
+      await tx.portfolioActivationCommandReceipt.create({ data: { organizationId, commandType: 'CREATE_ASSIGNMENT', idempotencyKey, fingerprint: fp, actorId: req.user.id, resultBriefId: version?.briefId ?? null, resultVersionId: version?.id ?? null, resultAssignmentId: assignment.id } }); return { assignment, idempotent: false };
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable, timeout: 10_000 }));
+    res.status(data.idempotent ? 200 : 201).json({ success: true, data });
+  } catch (error) { next(error instanceof PortfolioHandoffAssignmentError ? AppError.badRequest(error.message, error.code) : error); }
+});
+
+challengeActivationBriefRouter.patch('/handoff-assignments/:assignmentId/preparation', authenticate, write, async (req: any, res, next) => {
+  try {
+    const { assignmentId } = handoffAssignmentParamsSchema.parse(req.params);
+    const body = updateChallengeAssignmentBodySchema.parse(req.body ?? {});
+    const current = await (prisma as any).portfolioHandoffAssignment.findUnique({ where: { id: assignmentId } });
+    if (!current) throw AppError.notFound('Assignment', 'HANDOFF_ASSIGNMENT_NOT_FOUND');
+    const organizationId = await ownChallenge(req, current.challengeId);
+    if (current.organizationId !== organizationId) throw AppError.notFound('Assignment', 'HANDOFF_ASSIGNMENT_NOT_FOUND');
+    const idempotencyKey = idem(req);
+    const members = body.members.map((member) => ({ ...member, identityKey: member.identityKey.trim().toLowerCase(), emailNormalized: member.emailNormalized?.toLowerCase() ?? null, role: member.role! }));
+    const normalizedBody = { ...body, members };
+    const fp = fingerprint({ command: 'UPDATE_ASSIGNMENT', assignmentId, body: normalizedBody, actorId: req.user.id });
+    const data = await withSerializableRetry(() => prisma.$transaction(async (tx: any) => {
+      await tx.$queryRaw(Prisma.sql`SELECT "id" FROM "PortfolioHandoffAssignment" WHERE "id" = ${assignmentId} FOR UPDATE`);
+      const prior = await receipt(tx, { organizationId, commandType: 'UPDATE_ASSIGNMENT', idempotencyKey, actorId: req.user.id, fingerprint: fp });
+      if (prior) return { assignment: await tx.portfolioHandoffAssignment.findUnique({ where: { id: prior.resultAssignmentId }, include: { members: true, briefVersion: true } }), idempotent: true };
+      const locked = await tx.portfolioHandoffAssignment.findUnique({ where: { id: assignmentId } });
+      if (!locked || locked.organizationId !== organizationId || locked.state !== 'CREATED' || locked.version !== body.expectedVersion) throw AppError.conflict('La Assignment cambiÃ³ o ya no se puede editar', 'HANDOFF_ASSIGNMENT_NOT_EDITABLE');
+      if (locked.targetKind === 'CHALLENGE') {
+        const duplicate = await tx.portfolioHandoffAssignment.findFirst({ where: { id: { not: assignmentId }, challengeId: locked.challengeId, targetKind: 'CHALLENGE', briefVersionId: locked.briefVersionId, invitedEmailNormalized: body.invitedEmailNormalized, state: { notIn: ['REJECTED', 'REVOKED', 'EXPIRED'] } } });
+        if (duplicate) throw AppError.conflict('Ya existe una Assignment activa para este destinatario y Brief', 'HANDOFF_ASSIGNMENT_DUPLICATE');
+      }
+      const assignmentRepository = new PrismaPortfolioHandoffAssignmentRepository(tx);
+      const events = new DurableHandoffEventPort(new PrismaHandoffSemanticEventRepository(tx), new PortfolioHandoffProjector(new PrismaPortfolioHandoffProjectionRepository(tx)));
+      const service = new PortfolioHandoffAssignmentService(assignmentRepository, assignmentRepository, events);
+      const assignment = await service.updateCreatedHandoffAssignment({ assignmentId, expectedVersion: body.expectedVersion, invitedEmailNormalized: body.invitedEmailNormalized, invitedIdentityRef: body.invitedIdentityRef ?? null, contextNote: body.contextNote ?? null, members, actorId: req.user.id });
+      await tx.portfolioActivationCommandReceipt.create({ data: { organizationId, commandType: 'UPDATE_ASSIGNMENT', idempotencyKey, fingerprint: fp, actorId: req.user.id, resultBriefId: null, resultVersionId: locked.briefVersionId, resultAssignmentId: assignment.id } });
+      return { assignment, idempotent: false };
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable, timeout: 10_000 }));
+    res.json({ success: true, data });
+  } catch (error) { next(error instanceof PortfolioHandoffAssignmentError ? AppError.badRequest(error.message, error.code) : error); }
+});
+
+challengeActivationBriefRouter.get('/challenges/:challengeId/assignable-initiatives', authenticate, write, async (req: any, res, next) => {
+  try {
+    const { challengeId } = activationBriefChallengeParamsSchema.parse(req.params);
+    const organizationId = await ownChallenge(req, challengeId);
+    const canonical = await (prisma as any).initiativePortfolioMeta.findMany({
+      where: { challengeId, project: { owner: { organizationId } } },
+      include: { project: { include: { owner: { select: { email: true, name: true } } } } },
+      orderBy: { createdAt: 'asc' },
+    });
+    res.json({ success: true, data: {
+      canonicalInitiatives: canonical.map((meta: any) => ({
+        id: meta.project.id,
+        name: meta.project.name,
+        description: meta.project.description,
+        ownerEmail: meta.project.owner?.email ?? null,
+        ownerName: meta.project.owner?.name ?? null,
+      })),
+    } });
+  } catch (error) { next(error); }
+});
+challengeActivationBriefRouter.get('/challenges/:challengeId/handoff-assignments', authenticate, write, async (req: any, res, next) => {
+  try {
+    const organizationId = await ownChallenge(req, req.params.challengeId);
+    const assignments = await (prisma as any).portfolioHandoffAssignment.findMany({
+      where: { challengeId: req.params.challengeId, organizationId },
+      include: { members: true, briefVersion: true, initiative: { select: { id: true, name: true } } },
+      orderBy: { createdAt: 'desc' },
+    });
+    res.json({ success: true, data: assignments });
   } catch (error) { next(error); }
 });
 

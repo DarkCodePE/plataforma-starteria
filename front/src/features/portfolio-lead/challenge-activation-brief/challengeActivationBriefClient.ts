@@ -1,4 +1,4 @@
-﻿import api, { parseApiError } from '../../../app/services/api';
+import api, { parseApiError } from '../../../app/services/api';
 import { createIdempotencyKey } from '../../portfolio-entry/public/idempotency';
 
 type Envelope<T> = { success: true; data: T };
@@ -8,6 +8,23 @@ export type ActivationBriefVersion = {
   createdAt: string; confirmedAt: string | null;
 };
 export type ActivationBrief = { id: string; challengeId: string; organizationId: string; versions: ActivationBriefVersion[] };
+export type HandoffAssignmentMember = { identityKey: string; emailNormalized?: string | null; label?: string | null; role: 'OWNER' | 'EXECUTOR' | 'OBSERVER' };
+export type HandoffAssignment = {
+  id: string; state: string; version: number; targetKind: 'EXISTING_INITIATIVE' | 'CHALLENGE'; initiativeId: string | null;
+  briefVersionId: string | null; contextNote: string | null; invitedEmailNormalized: string;
+  initiative?: { id: string; name: string } | null;
+  members: HandoffAssignmentMember[]; createdAt?: string;
+};
+export type AssignableInitiatives = {
+  canonicalInitiatives: Array<{
+    id: string; name: string; description?: string | null; ownerEmail: string | null; ownerName: string | null;
+  }>;
+};
+export type AssignmentPreparationInput = {
+  targetKind: 'EXISTING_INITIATIVE' | 'CHALLENGE'; initiativeId: string | null;
+  briefId: string | null; briefVersionId: string | null; contextNote: string | null;
+  invitedEmailNormalized: string; invitedIdentityRef?: string | null; members: HandoffAssignmentMember[];
+};
 export type BriefInput = { intent?: string | null; scope?: string | null; strategicContextRefs?: unknown; inheritedContext?: unknown; constraintsSnapshot?: unknown; knownGaps?: unknown; sourceRefs?: unknown; provenance?: unknown };
 
 async function post<T>(path: string, body: unknown, idempotencyScope: string, idempotencyKey?: string): Promise<T> {
@@ -33,4 +50,21 @@ export async function createActivationBriefVersion(briefId: string, input: Brief
 }
 export async function confirmActivationBriefVersion(versionId: string, idempotencyKey?: string): Promise<{ version: ActivationBriefVersion; idempotent: boolean }> {
   return post(`/portfolio/activation-brief-versions/${encodeURIComponent(versionId)}/confirm`, {}, `activation-brief:confirm:${versionId}`, idempotencyKey);
+}
+export async function createChallengeHandoffAssignment(challengeId: string, input: AssignmentPreparationInput, idempotencyKey?: string): Promise<{ assignment: HandoffAssignment; idempotent: boolean }> {
+  return post(`/portfolio/challenges/${encodeURIComponent(challengeId)}/handoff-assignments`, input, `activation-brief:assignment:${challengeId}:${input.briefVersionId}:${input.invitedEmailNormalized}`, idempotencyKey);
+}
+export async function listChallengeHandoffAssignments(challengeId: string): Promise<HandoffAssignment[]> {
+  try { const { data } = await api.get<Envelope<HandoffAssignment[]>>(`/portfolio/challenges/${encodeURIComponent(challengeId)}/handoff-assignments`); return data.data; }
+  catch (error) { throw parseApiError(error); }
+}
+export async function listAssignableInitiatives(challengeId: string): Promise<AssignableInitiatives> {
+  try { const { data } = await api.get<Envelope<AssignableInitiatives>>(`/portfolio/challenges/${encodeURIComponent(challengeId)}/assignable-initiatives`); return data.data; }
+  catch (error) { throw parseApiError(error); }
+}
+export async function updateChallengeHandoffAssignment(assignmentId: string, input: { expectedVersion: number; contextNote: string | null; invitedEmailNormalized: string; invitedIdentityRef?: string | null; members: HandoffAssignmentMember[] }, idempotencyKey?: string): Promise<{ assignment: HandoffAssignment; idempotent: boolean }> {
+  try {
+    const { data } = await api.patch<Envelope<{ assignment: HandoffAssignment; idempotent: boolean }>>(`/portfolio/handoff-assignments/${encodeURIComponent(assignmentId)}/preparation`, input, { headers: { 'Idempotency-Key': idempotencyKey ?? createIdempotencyKey(`activation-brief:update-assignment:${assignmentId}:${input.expectedVersion}`) } });
+    return data.data;
+  } catch (error) { throw parseApiError(error); }
 }

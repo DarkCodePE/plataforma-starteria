@@ -46,8 +46,8 @@ const draft = {
 };
 const confirmed = { ...draft, status: 'CONFIRMED' as const, confirmedAt: '2026-10-20T01:00:00Z' };
 
-function renderPanel(onConfirmationChange = vi.fn(), briefId?: string | null) {
-  return render(<ChallengeActivationBriefPanel challengeId="challenge-1" challengeName="Reducir barreras de activacion" briefId={briefId} inherited={inherited} onConfirmationChange={onConfirmationChange} />);
+function renderPanel(onConfirmationChange = vi.fn(), briefId?: string | null, onContinueToAssignment = vi.fn()) {
+  return render(<ChallengeActivationBriefPanel challengeId="challenge-1" challengeName="Reducir barreras de activacion" briefId={briefId} inherited={inherited} onConfirmationChange={onConfirmationChange} onContinueToAssignment={onContinueToAssignment} />);
 }
 
 describe('ChallengeActivationBriefPanel - PL-05', () => {
@@ -78,11 +78,11 @@ describe('ChallengeActivationBriefPanel - PL-05', () => {
     expect(screen.queryByText(/Assignment|Invitation|Enviar invitacion/i)).not.toBeInTheDocument();
   });
 
-  it('saves a contextual draft and confirms the exact immutable identity', async () => {
-    const user = userEvent.setup(); const onConfirmationChange = vi.fn();
+  it('saves a contextual draft, confirms it and continues with the exact immutable identity', async () => {
+    const user = userEvent.setup(); const onConfirmationChange = vi.fn(); const onContinueToAssignment = vi.fn();
     api.createActivationBrief.mockResolvedValue({ brief: { id: 'brief-1', challengeId: 'challenge-1', organizationId: 'org-1', versions: [draft] }, idempotent: false });
     api.confirmActivationBriefVersion.mockResolvedValue({ version: confirmed, idempotent: false });
-    renderPanel(onConfirmationChange);
+    renderPanel(onConfirmationChange, undefined, onContinueToAssignment);
     await user.click(await screen.findByRole('button', { name: 'Guardar borrador' }));
     await waitFor(() => expect(api.createActivationBrief).toHaveBeenCalledOnce());
     expect(api.createActivationBrief.mock.calls[0][1]).toMatchObject({
@@ -97,9 +97,13 @@ describe('ChallengeActivationBriefPanel - PL-05', () => {
     expect(onConfirmationChange).toHaveBeenLastCalledWith(true);
     expect(screen.queryByText(/PL-06 habilitado/i)).not.toBeInTheDocument();
     expect(screen.getByText('Brief confirmado')).toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: 'Versión confirmada e inmutable' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Listo para preparar la asignación' })).toBeInTheDocument();
+    expect(screen.getByText(/El siguiente paso es elegir quién recibirá este encargo/i)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Revisar en nueva versión' })).toBeEnabled();
-    expect(screen.queryByRole('button', { name: 'Continuar a asignación' })).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Continuar a asignación' }));
+    expect(onContinueToAssignment).toHaveBeenCalledWith({
+      challengeId: 'challenge-1', briefId: 'brief-1', briefVersionId: 'version-1', challengeName: 'Reducir barreras de activacion',
+    });
   });
 
   it('does not expose assignment from an unconfirmed selected Draft even when the Brief has older confirmed history', async () => {

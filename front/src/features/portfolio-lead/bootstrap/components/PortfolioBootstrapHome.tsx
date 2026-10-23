@@ -13,7 +13,8 @@ import type {
   UpdatePortfolioBootstrapWorkItemInput,
 } from '../services/portfolioBootstrapClient';
 import { suggestPortfolioObjective } from '../services/portfolioObjectiveCopilotClient';
-import { ChallengeActivationBriefPanel, type ChallengeBriefInheritedContext } from '../../challenge-activation-brief/ChallengeActivationBriefPanel';
+import { ChallengeActivationBriefPanel, type ChallengeAssignmentTarget, type ChallengeBriefInheritedContext } from '../../challenge-activation-brief/ChallengeActivationBriefPanel';
+import { ChallengeAssignmentPreparationPanel } from '../../challenge-activation-brief/ChallengeAssignmentPreparationPanel';
 import { listActivationBriefs, type ActivationBrief } from '../../challenge-activation-brief/challengeActivationBriefClient';
 
 export function PortfolioBootstrapHome({
@@ -50,6 +51,8 @@ export function PortfolioBootstrapHome({
   onSaveOrganizationProposal,
   onConfirmOrganizationProposal,
   onNavigate,
+  initialAssignmentTarget = null,
+  onOpenAssignment,
 }: {
   data: PortfolioBootstrapResponse | null;
   status: 'idle' | 'loading' | 'ready' | 'error';
@@ -85,6 +88,8 @@ export function PortfolioBootstrapHome({
   onConfirmOrganizationProposal?: (input: { version: number }) => Promise<PortfolioOrganizationProposal>;
   /** Human navigation only; canonical PL-04 writes use the explicit confirmation command. */
   onNavigate?: (path: string) => void;
+  initialAssignmentTarget?: ChallengeAssignmentTarget | null;
+  onOpenAssignment?: (target: ChallengeAssignmentTarget) => void;
 }) {
   const projection = useMemo(() => data ? projectBootstrapHome(data) : null, [data]);
 
@@ -155,6 +160,8 @@ export function PortfolioBootstrapHome({
       onSaveOrganizationProposal={onSaveOrganizationProposal}
       onConfirmOrganizationProposal={onConfirmOrganizationProposal}
       onNavigate={onNavigate}
+      initialAssignmentTarget={initialAssignmentTarget}
+      onOpenAssignment={onOpenAssignment}
     />
   );
 }
@@ -166,6 +173,7 @@ const FROZEN_SETUP_STAGES = [
   'Análisis',
   'Organización',
   'Briefs',
+  'Asignación',
 ] as const;
 
 type BootstrapProjection = NonNullable<ReturnType<typeof projectBootstrapHome>>;
@@ -206,6 +214,8 @@ function PortfolioCopilotWorkspace({
   onSaveOrganizationProposal,
   onConfirmOrganizationProposal,
   onNavigate,
+  initialAssignmentTarget,
+  onOpenAssignment,
 }: {
   projection: BootstrapProjection;
   onUpdateAnchor: (input: UpdatePortfolioBootstrapAnchorInput) => Promise<void>;
@@ -237,8 +247,11 @@ function PortfolioCopilotWorkspace({
   onSaveOrganizationProposal?: (input: { version: number; payload: PortfolioOrganizationPayload }) => Promise<PortfolioOrganizationProposal>;
   onConfirmOrganizationProposal?: (input: { version: number }) => Promise<PortfolioOrganizationProposal>;
   onNavigate?: (path: string) => void;
+  initialAssignmentTarget: ChallengeAssignmentTarget | null;
+  onOpenAssignment?: (target: ChallengeAssignmentTarget) => void;
 }) {
-  const [selectedStage, setSelectedStage] = useState<number | null>(null);
+  const [selectedStage, setSelectedStage] = useState<number | null>(initialAssignmentTarget ? 6 : null);
+  const [assignmentTarget, setAssignmentTarget] = useState<ChallengeAssignmentTarget | null>(initialAssignmentTarget);
   const [confirmedOrganization, setConfirmedOrganization] = useState<PortfolioOrganizationProposal | null>(
     organizationProposal?.materialization ? organizationProposal : null,
   );
@@ -254,7 +267,7 @@ function PortfolioCopilotWorkspace({
   const inferredStage = frozenStageFrom(projection);
   const organizationIsMaterialized = Boolean(confirmedOrganization?.materialization ?? organizationProposal?.materialization);
   const hasAnalysisHardBlocker = projection.analysisSummary.hardBlockingNow > 0 && !organizationIsMaterialized;
-  const lastAvailableStage = hasAnalysisHardBlocker ? 3 : 5;
+  const lastAvailableStage = hasAnalysisHardBlocker ? 3 : assignmentTarget ? 6 : 5;
   const requestedStage = selectedStage ?? inferredStage;
   const stage = hasAnalysisHardBlocker && requestedStage > 3 ? 3 : requestedStage;
   const selectStage = (nextStage: number) => {
@@ -267,6 +280,16 @@ function PortfolioCopilotWorkspace({
       setSelectedStage(5);
     }
   }, [organizationProposal?.materialization?.id]);
+  useEffect(() => {
+    if (!initialAssignmentTarget) return;
+    setAssignmentTarget(initialAssignmentTarget);
+    setSelectedStage(6);
+  }, [initialAssignmentTarget?.briefVersionId]);
+  const openAssignment = useCallback((target: ChallengeAssignmentTarget) => {
+    setAssignmentTarget(target);
+    setSelectedStage(6);
+    onOpenAssignment?.(target);
+  }, [onOpenAssignment]);
 
   const runtimePanel = (
     <PortfolioBootstrapWorkIntake
@@ -299,7 +322,7 @@ function PortfolioCopilotWorkspace({
   return (
     <section className="space-y-5" data-testid="portfolio-bootstrap-home-a" data-frozen-composition="copilot-first">
       <header className="rounded-2xl border border-slate-200 bg-white px-5 py-5 shadow-sm md:px-7">
-        <p className="text-xs font-bold uppercase tracking-[0.16em] text-violet-700">Configurar con Copilot · {stage + 1} de 6</p>
+        <p className="text-xs font-bold uppercase tracking-[0.16em] text-violet-700">Configurar con Copilot · {stage + 1} de 7</p>
         <h1 className="mt-2 text-2xl font-semibold tracking-tight text-slate-950">{frozenStageTitle(stage)}</h1>
         <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">Copilot construye contigo; las fuentes, inferencias y confirmaciones quedan diferenciadas. No necesitas completar formularios en paralelo.</p>
       </header>
@@ -319,7 +342,8 @@ function PortfolioCopilotWorkspace({
             {stage === 2 ? <FrozenChatStage eyebrow="Incorporar iniciativas" title="¿Qué iniciativas existentes quieres que revisemos?" help="Puedes subir un archivo, pegar una lista o continuar sin iniciativas. No hay una respuesta obligatoria.">{runtimePanel}</FrozenChatStage> : null}
             {stage === 3 ? <FrozenChatStage eyebrow="Análisis explicable" title="¿Qué está contribuyendo, qué se solapa y qué requiere revisión?" help="Cada lectura conserva su fuente, evidencia, vacíos y estado de revisión humana.">{runtimePanel}</FrozenChatStage> : null}
             {stage === 4 ? <FrozenOrganizationStage projection={projection} proposal={organizationProposal} status={organizationStatus} error={organizationError} onSave={onSaveOrganizationProposal} onConfirm={onConfirmOrganizationProposal} onComplete={(confirmed) => { setConfirmedOrganization(confirmed); setSelectedStage(5); }} /> : null}
-            {stage === 5 ? <FrozenBriefStage projection={projection} confirmedOrganization={confirmedOrganization} onBriefConfirmationChange={handleBriefConfirmationChange} /> : null}
+            {stage === 5 ? <FrozenBriefStage projection={projection} confirmedOrganization={confirmedOrganization} onBriefConfirmationChange={handleBriefConfirmationChange} onContinueToAssignment={openAssignment} /> : null}
+            {stage === 6 && assignmentTarget ? <FrozenAssignmentStage target={assignmentTarget} /> : null}
           </div>
         </main>
         <FrozenProgress stage={stage} onSelect={selectStage} blockedAfterStage={lastAvailableStage} />
@@ -1349,10 +1373,12 @@ function FrozenBriefStage({
   projection,
   confirmedOrganization,
   onBriefConfirmationChange,
+  onContinueToAssignment,
 }: {
   projection: BootstrapProjection;
   confirmedOrganization: PortfolioOrganizationProposal | null;
   onBriefConfirmationChange: (challengeId: string, confirmed: boolean) => void;
+  onContinueToAssignment: (target: ChallengeAssignmentTarget) => void;
 }) {
   const [selectedBrief, setSelectedBrief] = useState<{ challengeCandidateId: string; briefId: string | null } | null>(null);
   const [briefEditorDirty, setBriefEditorDirty] = useState<Record<string, boolean>>({});
@@ -1485,6 +1511,7 @@ function FrozenBriefStage({
                   briefId={selected.briefId}
                   inherited={inherited}
                   onDirtyChange={(dirty) => setBriefEditorDirty((current) => ({ ...current, [challenge.candidateId]: dirty }))}
+                  onContinueToAssignment={onContinueToAssignment}
                   onVersionStateChange={({ briefId }) => {
                     if (briefId) setSelectedBrief({ challengeCandidateId: challenge.candidateId, briefId });
                     void refreshChallengeBriefs(challenge.candidateId, canonicalId);
@@ -1499,15 +1526,16 @@ function FrozenBriefStage({
     </section>
   </>;
 }
+function FrozenAssignmentStage({ target }: { target: ChallengeAssignmentTarget }) { return <ChallengeAssignmentPreparationPanel target={target} />; }
 function AssistantBubble({ children }: { children: React.ReactNode }) { return <div className="flex items-start gap-3"><span className="mt-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-violet-100 text-violet-800"><Sparkles size={15} /></span><div className="max-w-3xl rounded-2xl rounded-tl-sm border border-violet-100 bg-white px-4 py-3 text-sm leading-6 text-slate-800">{children}</div></div>; }
 function UserBubble({ children }: { children: React.ReactNode }) { return <div className="ml-auto max-w-3xl rounded-2xl rounded-tr-sm bg-slate-900 px-4 py-3 text-sm leading-6 text-white">{children}</div>; }
 function FocusedQuestion({ eyebrow, title, help }: { eyebrow: string; title: string; help: string }) { return <section className="ml-0 rounded-xl border border-violet-200 bg-violet-50 p-4 md:ml-11"><p className="text-xs font-bold uppercase tracking-[0.14em] text-violet-800">{eyebrow}</p><h3 className="mt-1 text-lg font-semibold text-slate-950">{title}</h3><p className="mt-1 text-sm leading-6 text-slate-700">{help}</p></section>; }
 function FrozenProgress({ stage, onSelect, blockedAfterStage }: { stage: number; onSelect: (stage: number) => void; blockedAfterStage: number | null }) {
-  const notes = ['Prompt de diagnóstico externo recibido', 'Conversación: resultado, contexto, señal, condiciones y decisión', 'Subir archivos, pegar iniciativas o continuar sin ellas', 'Comparar fuentes, detectar solapamientos y confirmar o posponer vínculos', 'Organizar retos cuando ayuden a orientar y coordinar', 'Preparar Brief de convocatoria o de iniciativa existente'];
-  return <aside className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm xl:sticky xl:top-6" aria-label="Tu avance"><div className="flex items-center justify-between"><h2 className="font-semibold text-slate-950">Tu avance</h2><span className="rounded-full bg-violet-100 px-2 py-1 text-xs font-bold text-violet-800">{stage + 1} de 6</span></div><div className="mt-3 h-2 overflow-hidden rounded-full bg-slate-100"><span className="block h-full rounded-full bg-violet-600" style={{ width: `${((stage + 1) / 6) * 100}%` }} /></div><ol className="mt-5 space-y-3">{FROZEN_SETUP_STAGES.map((name, index) => { const blocked = blockedAfterStage !== null && index > blockedAfterStage; return <li key={name}><button type="button" disabled={blocked} onClick={() => onSelect(index)} className={`flex w-full gap-3 text-left ${blocked ? 'cursor-not-allowed text-slate-400' : index === stage ? 'text-slate-950' : 'text-slate-500'}`}><span className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[11px] font-bold ${index < stage ? 'bg-emerald-100 text-emerald-700' : index === stage ? 'bg-violet-600 text-white' : 'bg-slate-100 text-slate-500'}`}>{index < stage ? '✓' : index + 1}</span><span><b className="text-sm">{name}</b><small className="mt-0.5 block text-xs leading-4">{blocked ? 'Bloqueado hasta resolver el punto crítico del análisis' : index === stage ? notes[index] : index < stage ? 'Revisado o completado' : 'Todavía no necesario'}</small></span></button></li>; })}</ol><div className="mt-5 rounded-xl bg-violet-50 p-3 text-sm text-violet-950"><b>Lo importante ahora</b><p className="mt-1">{notes[stage]}</p></div><p className="mt-3 text-xs leading-5 text-slate-500">Los checks representan avance de configuración, no cumplimiento del objetivo de negocio.</p></aside>;
+  const notes = ['Prompt de diagnóstico externo recibido', 'Conversación: resultado, contexto, señal, condiciones y decisión', 'Subir archivos, pegar iniciativas o continuar sin ellas', 'Comparar fuentes, detectar solapamientos y confirmar o posponer vínculos', 'Organizar retos cuando ayuden a orientar y coordinar', 'Preparar Brief de convocatoria o de iniciativa existente', 'Preparar encargos independientes; un responsable y hasta dos colaboradores por encargo'];
+  return <aside className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm xl:sticky xl:top-6" aria-label="Tu avance"><div className="flex items-center justify-between"><h2 className="font-semibold text-slate-950">Tu avance</h2><span className="rounded-full bg-violet-100 px-2 py-1 text-xs font-bold text-violet-800">{stage + 1} de 7</span></div><div className="mt-3 h-2 overflow-hidden rounded-full bg-slate-100"><span className="block h-full rounded-full bg-violet-600" style={{ width: `${((stage + 1) / 7) * 100}%` }} /></div><ol className="mt-5 space-y-3">{FROZEN_SETUP_STAGES.map((name, index) => { const blocked = blockedAfterStage !== null && index > blockedAfterStage; const blockedReason = index === 6 && blockedAfterStage === 5 ? 'Disponible al continuar desde una versión de Brief confirmada' : 'Bloqueado hasta resolver el punto crítico del análisis'; return <li key={name}><button type="button" disabled={blocked} onClick={() => onSelect(index)} className={`flex w-full gap-3 text-left ${blocked ? 'cursor-not-allowed text-slate-400' : index === stage ? 'text-slate-950' : 'text-slate-500'}`}><span className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[11px] font-bold ${index < stage ? 'bg-emerald-100 text-emerald-700' : index === stage ? 'bg-violet-600 text-white' : 'bg-slate-100 text-slate-500'}`}>{index < stage ? '✓' : index + 1}</span><span><b className="text-sm">{name}</b><small className="mt-0.5 block text-xs leading-4">{blocked ? blockedReason : index === stage ? notes[index] : index < stage ? 'Revisado o completado' : 'Todavía no necesario'}</small></span></button></li>; })}</ol><div className="mt-5 rounded-xl bg-violet-50 p-3 text-sm text-violet-950"><b>Lo importante ahora</b><p className="mt-1">{notes[stage]}</p></div><p className="mt-3 text-xs leading-5 text-slate-500">Los checks representan avance de configuración, no cumplimiento del objetivo de negocio.</p></aside>;
 }
 function frozenStageFrom(projection: BootstrapProjection): number { if (!projection.anchor.contextSummary?.trim()) return 0; if (projection.anchor.status !== 'anchor_confirmed') return 1; if (projection.existingWorkStatus === 'unknown') return 2; if (projection.existingWorkStatus === 'has_work' && (!projection.latestAnalysisRun || !projection.analysisSummary.materialReviewComplete)) return 3; return 4; }
-function frozenStageTitle(stage: number): string { return ['Empecemos con el contexto', 'Conversemos para definir qué queremos lograr', '¿Qué está haciendo hoy tu organización?', 'Analizar evidencias y relaciones', 'Estructurar retos solo si ayudan', 'Convertir necesidades en encargos claros'][stage] ?? 'Configurar con Copilot'; }
+function frozenStageTitle(stage: number): string { return ['Empecemos con el contexto', 'Conversemos para definir qué queremos lograr', '¿Qué está haciendo hoy tu organización?', 'Analizar evidencias y relaciones', 'Estructurar retos solo si ayudan', 'Convertir necesidades en encargos claros', 'Activar equipos y dar seguimiento'][stage] ?? 'Configurar con Copilot'; }
 
 function PortfolioBootstrapHomeA({
   projection,

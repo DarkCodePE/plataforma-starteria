@@ -48,8 +48,8 @@ import { Badge } from '../components/ui/badge';
 import { Button } from '../components/ui/button';
 import { Progress } from '../components/ui/progress';
 import { PortfolioLeadBreadcrumbs } from '../components/portfolio/PortfolioLeadPageElements';
-import { buildLegacyChallengeProjectPath } from '../routes/legacy-route-boundary';
 import { ChallengeCoverageReadingPanel } from '../../features/portfolio-lead/components/cards/ChallengeCoverageReadingPanel';
+import { ChallengeActivationBriefPanel } from '../../features/portfolio-lead/challenge-activation-brief/ChallengeActivationBriefPanel';
 
 type TabKey = 'all' | 'ready' | 'active' | 'blocked' | 'with_initiatives' | 'decision';
 type DrawerMode = 'create' | 'edit' | null;
@@ -567,8 +567,6 @@ export function PortfolioLeadChallengesPage() {
                   expanded={isExpanded}
                   onToggleDetail={() => setExpandedChallengeId(current => (current === challenge.id ? null : challenge.id))}
                   onExplore={() => navigate(`/portfolio/iniciativas?challengeId=${encodeURIComponent(card.id)}`)}
-                  // KEEP_COMPAT: legacy Challenge -> Project consumer; not canonical Handoff.
-                  onCreateInitiative={() => navigate(buildLegacyChallengeProjectPath(challenge.id))}
                   onEdit={() => openEditDrawer(card.id)}
                   onChangeStatus={(nextStatus) => updateChallenge(challenge.id, { status: nextStatus })}
                   onChangeOwnerStatus={(status) => updateChallengeStakeholderStatus(challenge.id, 'challengeOwnerStatus', status)}
@@ -714,7 +712,6 @@ function ChallengeListItem({
   expanded,
   onToggleDetail,
   onExplore,
-  onCreateInitiative,
   onEdit,
   onChangeStatus,
   onChangeOwnerStatus,
@@ -729,7 +726,6 @@ function ChallengeListItem({
   expanded: boolean;
   onToggleDetail: () => void;
   onExplore: () => void;
-  onCreateInitiative: () => void;
   onEdit: () => void;
   onChangeStatus: (status: ChallengeStatus) => void;
   onChangeOwnerStatus: (status: StakeholderStatus) => void;
@@ -824,13 +820,8 @@ function ChallengeListItem({
               Ver iniciativas
               <ArrowRight size={15} />
             </Button>
-            <Button
-              type="button"
-              variant="secondary"
-              onClick={onCreateInitiative}
-              data-testid="create-initiative-from-challenge"
-            >
-              Crear iniciativa{challenge.assignedSquad.length > 0 ? ' con este squad' : ''}
+            <Button type="button" variant="secondary" onClick={onToggleDetail} data-testid="prepare-brief-from-challenge">
+              Preparar Brief y Assignment
               <ArrowRight size={15} />
             </Button>
             <details className="group relative">
@@ -869,7 +860,6 @@ function ChallengeListItem({
           onExploreInitiative={onExploreInitiative}
           onEdit={onEdit}
           onExplore={onExplore}
-          onCreateInitiative={onCreateInitiative}
         />
       ) : null}
     </article>
@@ -888,7 +878,6 @@ function ChallengeAccordionDetail({
   onExploreInitiative,
   onEdit,
   onExplore,
-  onCreateInitiative,
 }: {
   card: ReturnType<typeof getChallengeCards>[number];
   challenge: Challenge;
@@ -901,7 +890,6 @@ function ChallengeAccordionDetail({
   onExploreInitiative: (initiativeId: string) => void;
   onEdit: () => void;
   onExplore: () => void;
-  onCreateInitiative: () => void;
 }) {
   const sponsor = getChallengeSponsor(challenge, front);
   const statusTags = [
@@ -975,7 +963,6 @@ function ChallengeAccordionDetail({
           front={front}
           recommendation={recommendation}
           initiatives={initiatives}
-          onCreateInitiative={onCreateInitiative}
           onEdit={onEdit}
         />
 
@@ -1167,7 +1154,6 @@ function ActivationInvitationHandoffPanel({
   front,
   recommendation,
   initiatives,
-  onCreateInitiative,
   onEdit,
 }: {
   card: ReturnType<typeof getChallengeCards>[number];
@@ -1175,7 +1161,6 @@ function ActivationInvitationHandoffPanel({
   front: StrategicFront | null;
   recommendation: ReturnType<typeof getChallengeActivationRecommendation> | null;
   initiatives: ReturnType<typeof getInitiativesByChallengeId>;
-  onCreateInitiative: () => void;
   onEdit: () => void;
 }) {
   const invitationCounts = summarizeInvitations(challenge.selectedPeople);
@@ -1263,11 +1248,20 @@ function ActivationInvitationHandoffPanel({
         />
       ) : null}
 
+      <ChallengeActivationBriefPanel
+        challengeId={challenge.id}
+        challengeName={challenge.name}
+        inheritedContext={[challenge.objective, challenge.whatWeWantToMove, front?.strategicObjective].filter(Boolean).join(' · ')}
+        constraints={[challenge.constraints, challenge.dependencies, front?.constraints].filter(Boolean).join(' · ')}
+        knownGaps={challenge.openQuestions ?? ''}
+        sourceRefs={[`challenge:${challenge.id}`, ...(front ? [`strategic_front:${front.id}`] : [])]}
+      />
+
       <NextAction
         className="mt-4"
         eyebrow="Handoff"
-        title="Crear iniciativa desde este reto"
-        description="Usa el flujo existente para convertir este reto en una iniciativa. La aceptacion o creacion no confirma Step 0 ni completa la alineacion estrategica."
+        title="Enviar una Assignment confirmada"
+        description="Confirma primero un Brief versionado. El destinatario recibirá, aceptará y empezará el encargo; Start no crea una Initiative ni activa un Step."
         context={
           <div className="space-y-2">
             <p>{'Ruta explicativa posterior: Overview -> Step 0 -> Step 1 -> Step 2 -> Step 3 -> Step 4.'}</p>
@@ -1276,13 +1270,13 @@ function ActivationInvitationHandoffPanel({
         }
         status={<Badge variant="neutral">{invitationCounts.label}</Badge>}
         primaryAction={{
-          id: 'create-initiative-from-handoff',
-          label: challenge.assignedSquad.length > 0 ? 'Crear iniciativa con este squad' : 'Crear iniciativa',
-          ariaLabel: `Crear iniciativa desde ${challenge.name}`,
+          id: 'review-brief-handoff',
+          label: 'Preparar Brief y Assignment',
+          ariaLabel: `Preparar Brief y Assignment para ${challenge.name}`,
         }}
         secondaryAction={{ id: 'edit-activation', label: 'Revisar activacion', tone: 'secondary' }}
         onAction={actionId => {
-          if (actionId === 'create-initiative-from-handoff') onCreateInitiative();
+          if (actionId === 'review-brief-handoff') document.querySelector('[data-testid="challenge-activation-brief-panel"]')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
           if (actionId === 'edit-activation') onEdit();
         }}
       />

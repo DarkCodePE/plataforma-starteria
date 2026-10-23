@@ -17,6 +17,8 @@ const navigateMock = vi.hoisted(() => vi.fn());
 const usePortfolioLeadMock = vi.hoisted(() => vi.fn());
 const updateChallengeMock = vi.hoisted(() => vi.fn());
 const updateStakeholderStatusMock = vi.hoisted(() => vi.fn());
+const listActivationBriefsMock = vi.hoisted(() => vi.fn().mockResolvedValue([]));
+const listChallengeAssignmentsMock = vi.hoisted(() => vi.fn().mockResolvedValue([]));
 
 vi.mock('sonner', () => ({
   toast: {
@@ -38,6 +40,15 @@ vi.mock('../../../features/portfolio-lead', async (importOriginal) => {
   return {
     ...actual,
     usePortfolioLead: () => usePortfolioLeadMock(),
+  };
+});
+
+vi.mock('../../../features/portfolio-lead/challenge-activation-brief/challengeActivationBriefClient', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../../features/portfolio-lead/challenge-activation-brief/challengeActivationBriefClient')>();
+  return {
+    ...actual,
+    listActivationBriefs: (...args: unknown[]) => listActivationBriefsMock(...args),
+    listChallengeHandoffAssignments: (...args: unknown[]) => listChallengeAssignmentsMock(...args),
   };
 });
 
@@ -63,6 +74,8 @@ describe('DS-08 Challenge activation and invitation handoff pilot', () => {
     navigateMock.mockClear();
     updateChallengeMock.mockClear();
     updateStakeholderStatusMock.mockClear();
+    listActivationBriefsMock.mockResolvedValue([]);
+    listChallengeAssignmentsMock.mockResolvedValue([]);
     usePortfolioLeadMock.mockReturnValue(portfolioLeadContext());
   });
 
@@ -105,7 +118,7 @@ describe('DS-08 Challenge activation and invitation handoff pilot', () => {
     expect(screen.getByTestId('challenge-initiative-teams-summary')).toHaveTextContent('6 personas en 2 iniciativas');
   });
 
-  it('keeps handoff CTA navigation and activation edit action wired to existing handlers', async () => {
+  it('routes a Challenge through the governed Brief/Assignment boundary instead of creating an Initiative directly', async () => {
     const user = userEvent.setup();
 
     render(
@@ -114,13 +127,12 @@ describe('DS-08 Challenge activation and invitation handoff pilot', () => {
       </MemoryRouter>,
     );
 
-    const handoff = screen.getByRole('heading', { name: 'Crear iniciativa desde este reto' }).closest('[data-slot="card"]');
-    expect(handoff).toBeTruthy();
+    expect(await screen.findByRole('heading', { name: 'Prepara el Brief que recibirá tu equipo' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Guardar borrador' })).toBeInTheDocument();
+    expect(screen.getByText('Confirmar este Brief todavía no asigna personas ni inicia trabajo.')).toBeInTheDocument();
+    expect(navigateMock).not.toHaveBeenCalledWith('/projects/new?challengeId=challenge-invite');
 
-    await user.click(within(handoff as HTMLElement).getByRole('button', { name: 'Crear iniciativa desde Mejorar adopcion de tableros comerciales' }));
-    expect(navigateMock).toHaveBeenCalledWith('/projects/new?challengeId=challenge-invite');
-
-    await user.click(within(handoff as HTMLElement).getByRole('button', { name: 'Revisar activacion' }));
+    await user.click(screen.getAllByRole('button', { name: 'Revisar activacion' })[0]);
     expect(screen.getByRole('heading', { name: 'Editar reto' })).toBeInTheDocument();
   });
 });

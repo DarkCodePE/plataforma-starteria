@@ -14,7 +14,8 @@ const observer = (n: number) => ({ identityKey: `observer-${n}@example.com`, rol
 function setup() {
   const refs = new InMemoryHandoffReferenceRepository();
   refs.addChallenge({ id: 'challenge-1', organizationId: 'org-1' });
-  refs.addInitiative({ id: 'project-1', organizationId: 'org-1' });
+  refs.addInitiative({ id: 'project-1', organizationId: 'org-1', challengeIds: ['challenge-1'] });
+  refs.addInitiative({ id: 'project-unlinked', organizationId: 'org-1', challengeIds: ['challenge-other'] });
   const repository = new InMemoryPortfolioHandoffAssignmentRepository();
   return { service: new PortfolioHandoffAssignmentService(repository, refs), repository };
 }
@@ -41,6 +42,14 @@ describe('PortfolioHandoffAssignmentService / H-TECH-02', () => {
     await fails(service.createHandoffAssignment(input({ targetKind: 'EXISTING_INITIATIVE' })), 'EXISTING_INITIATIVE requires initiative_ref');
     const assignment = await service.createHandoffAssignment(input({ targetKind: 'EXISTING_INITIATIVE', initiativeId: 'project-1' }));
     expect(assignment.initiativeId).toBe('project-1');
+  });
+
+  it('requires the canonical Project to be linked to this Challenge through InitiativePortfolioMeta', async () => {
+    const { service } = setup();
+    await fails(
+      service.createHandoffAssignment(input({ targetKind: 'EXISTING_INITIATIVE', initiativeId: 'project-unlinked' })),
+      'initiative_ref must reference a canonical Project linked to this Challenge',
+    );
   });
 
   it('rejects a nonexistent initiative and a challenge with an initiative ref', async () => {
@@ -87,5 +96,40 @@ describe('PortfolioHandoffAssignmentService / H-TECH-02', () => {
     expect(assignment.state).toBe('CREATED');
     expect(await service.getHandoffAssignment(assignment.id)).toMatchObject({ initiativeId: null, version: 1 });
     expect(await repository.findById(assignment.id)).not.toBeNull();
+  });
+
+  it('persists contextual preparation and allows optimistic editing only while CREATED', async () => {
+    const { service, repository } = setup();
+    const assignment = await service.createHandoffAssignment(input({ contextNote: 'Validar la barrera con clientes activos.' }));
+    expect(assignment.contextNote).toBe('Validar la barrera con clientes activos.');
+
+    const updated = await service.updateCreatedHandoffAssignment({
+      assignmentId: assignment.id,
+      expectedVersion: 1,
+      invitedEmailNormalized: 'new-owner@example.com',
+      contextNote: 'Priorizar evidencia de las dos primeras semanas.',
+      members: [{ identityKey: 'new-owner@example.com', emailNormalized: 'new-owner@example.com', role: 'OWNER' }],
+      actorId: 'portfolio-lead-1',
+    });
+    expect(updated).toMatchObject({ version: 2, state: 'CREATED', invitedEmailNormalized: 'new-owner@example.com', contextNote: 'Priorizar evidencia de las dos primeras semanas.' });
+
+    await fails(service.updateCreatedHandoffAssignment({
+      assignmentId: assignment.id,
+      expectedVersion: 1,
+      invitedEmailNormalized: 'stale@example.com',
+      contextNote: null,
+      members: [{ identityKey: 'stale@example.com', emailNormalized: 'stale@example.com', role: 'OWNER' }],
+      actorId: 'portfolio-lead-1',
+    }), 'assignment changed or is no longer editable in CREATED');
+
+    await repository.transitionState({ assignmentId: assignment.id, from: ['CREATED'], to: 'SENT' });
+    await fails(service.updateCreatedHandoffAssignment({
+      assignmentId: assignment.id,
+      expectedVersion: 3,
+      invitedEmailNormalized: 'late@example.com',
+      contextNote: null,
+      members: [{ identityKey: 'late@example.com', emailNormalized: 'late@example.com', role: 'OWNER' }],
+      actorId: 'portfolio-lead-1',
+    }), 'assignment changed or is no longer editable in CREATED');
   });
 });

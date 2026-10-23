@@ -30,6 +30,7 @@ import { PortfolioSetupHomeArrivalPage } from '../../features/portfolio-entry/ho
 
 import { PortfolioCapacityPanel } from '../../features/portfolio-lead/components/cards/PortfolioCapacityPanel';
 import { PortfolioLearningsPanel } from '../../features/portfolio-lead/components/cards/PortfolioLearningsPanel';
+import type { ChallengeAssignmentTarget } from '../../features/portfolio-lead/challenge-activation-brief/ChallengeActivationBriefPanel';
 
 
 export function PortfolioLeadHomePage() {
@@ -48,8 +49,36 @@ function OrdinaryPortfolioLeadHomePage() {
     const params = new URLSearchParams(location.search);
     return params.get('portfolioEntryContinuationId');
   }, [location.search]);
+  const assignmentTarget = useMemo<ChallengeAssignmentTarget | null>(() => {
+    const params = new URLSearchParams(location.search);
+    const challengeId = params.get('challengeId');
+    const briefId = params.get('briefId');
+    const briefVersionId = params.get('briefVersionId');
+    if (params.get('stage') !== 'assignment' || !challengeId || !briefId || !briefVersionId) return null;
+    return { challengeId, briefId, briefVersionId, challengeName: params.get('challengeName') ?? 'Reto confirmado' };
+  }, [location.search]);
+  const openAssignment = (target: ChallengeAssignmentTarget) => {
+    const params = new URLSearchParams(location.search);
+    params.set('stage', 'assignment');
+    params.set('challengeId', target.challengeId);
+    params.set('briefId', target.briefId);
+    params.set('briefVersionId', target.briefVersionId);
+    params.set('challengeName', target.challengeName);
+    navigate(`${location.pathname}?${params.toString()}`);
+  };
   const entryContext = usePortfolioHomeEntryContext(entryContinuationId);
-  const bootstrap = usePortfolioBootstrap(entryContext.status === 'ready' ? entryContinuationId : null);
+  // Established structure may have been created by PL-04 while PL-05 remains
+  // unfinished. Resume reads the existing Copilot workspace without creating
+  // a blank Bootstrap for an already-established Portfolio.
+  const hasEstablishedPortfolio = portfolioState.strategicFronts.length > 0
+    || portfolioState.challenges.length > 0
+    || portfolioState.initiatives.length > 0;
+  const bootstrap = usePortfolioBootstrap(
+    entryContext.status === 'ready' ? entryContinuationId : null,
+    'legacy',
+    entryContinuationId ? 'continuation' : hasEstablishedPortfolio ? 'resume' : 'direct',
+  );
+  const hasMaterializedOrganization = Boolean(bootstrap.organizationProposal?.materialization);
 
   const firstName = 'Ana';
 
@@ -86,6 +115,7 @@ function OrdinaryPortfolioLeadHomePage() {
           onRemoveWorkItem={bootstrap.removeWorkItem}
           onAnalyzeWorkItems={bootstrap.analyzeWorkItems}
           onConfirmProposedMutation={bootstrap.confirmProposedMutation}
+          onReopenProposedMutationReview={bootstrap.reopenProposedMutationReview}
           onCorrectProposedMutation={bootstrap.correctProposedMutation}
           onRejectProposedMutation={bootstrap.rejectProposedMutation}
           onLeaveProposedMutationPending={bootstrap.leaveProposedMutationPending}
@@ -97,6 +127,58 @@ function OrdinaryPortfolioLeadHomePage() {
           importStatus={bootstrap.importStatus}
           importError={bootstrap.importError}
           activeImport={bootstrap.activeImport}
+          organizationProposal={bootstrap.organizationProposal}
+          organizationStatus={bootstrap.organizationStatus}
+          organizationError={bootstrap.organizationError}
+          onSaveOrganizationProposal={bootstrap.saveOrganizationProposal}
+          onConfirmOrganizationProposal={bootstrap.confirmOrganizationProposal}
+          onNavigate={navigate}
+          initialAssignmentTarget={assignmentTarget}
+          onOpenAssignment={openAssignment}
+        />
+      </div>
+    );
+  }
+
+  if (hasMaterializedOrganization || (!hasEstablishedPortfolio && (bootstrap.status !== 'ready' || !bootstrap.data?.latestReading))) {
+    return (
+      <div className="mx-auto max-w-7xl space-y-6 p-6 md:p-8">
+        <PortfolioBootstrapHome
+          data={bootstrap.data}
+          status={bootstrap.status}
+          error={bootstrap.error}
+          onRetry={bootstrap.retry}
+          onUpdateAnchor={bootstrap.updateAnchor}
+          onConfirmAnchor={bootstrap.confirmAnchor}
+          onPasteWorkItems={bootstrap.pasteWorkItems}
+          onUploadImportFile={bootstrap.uploadImportFile}
+          onCommitImportBatch={bootstrap.commitImportBatch}
+          onAddManualWorkItem={bootstrap.addManualWorkItem}
+          onDeclareNoExistingWork={bootstrap.declareNoExistingWork}
+          onUpdateWorkItem={bootstrap.updateWorkItem}
+          onRemoveWorkItem={bootstrap.removeWorkItem}
+          onAnalyzeWorkItems={bootstrap.analyzeWorkItems}
+          onConfirmProposedMutation={bootstrap.confirmProposedMutation}
+          onReopenProposedMutationReview={bootstrap.reopenProposedMutationReview}
+          onCorrectProposedMutation={bootstrap.correctProposedMutation}
+          onRejectProposedMutation={bootstrap.rejectProposedMutation}
+          onLeaveProposedMutationPending={bootstrap.leaveProposedMutationPending}
+          onPublishFirstReading={bootstrap.publishFirstReading}
+          analysisStatus={bootstrap.analysisStatus}
+          analysisError={bootstrap.analysisError}
+          publishStatus={bootstrap.publishStatus}
+          publishError={bootstrap.publishError}
+          importStatus={bootstrap.importStatus}
+          importError={bootstrap.importError}
+          activeImport={bootstrap.activeImport}
+          organizationProposal={bootstrap.organizationProposal}
+          organizationStatus={bootstrap.organizationStatus}
+          organizationError={bootstrap.organizationError}
+          onSaveOrganizationProposal={bootstrap.saveOrganizationProposal}
+          onConfirmOrganizationProposal={bootstrap.confirmOrganizationProposal}
+          onNavigate={navigate}
+          initialAssignmentTarget={assignmentTarget}
+          onOpenAssignment={openAssignment}
         />
       </div>
     );
@@ -122,6 +204,33 @@ function OrdinaryPortfolioLeadHomePage() {
         onAction={handleAction}
         density="compact"
       />
+
+      {false ? (
+        <section className="rounded-ds-lg border border-indigo-200 bg-indigo-50/60 p-5" data-testid="portfolio-setup-home-arrival">
+          <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+            <div className="max-w-3xl">
+              <p className="text-xs font-semibold uppercase tracking-wide text-indigo-800">Setup de Portfolio confirmado</p>
+              <h2 className="mt-1 text-xl font-semibold text-text-primary">{bootstrap.data.anchor?.outcomeStatement ?? 'Punto de partida confirmado'}</h2>
+              <p className="mt-2 text-sm text-text-secondary">
+                Esta Home es la capa estratégica posterior al setup. Conserva la lectura y sus fuentes; organizar Frentes, Retos y Assignments sigue requiriendo acciones humanas separadas.
+              </p>
+              <dl className="mt-3 grid gap-3 text-sm sm:grid-cols-3">
+                <div><dt className="font-medium text-text-muted">Contexto</dt><dd>{bootstrap.data.anchor?.contextSummary ?? 'Desconocido'}</dd></div>
+                <div><dt className="font-medium text-text-muted">Señal</dt><dd>{bootstrap.data.anchor?.businessSignalValue ?? 'Desconocida'}</dd></div>
+                <div><dt className="font-medium text-text-muted">Lectura</dt><dd>v{bootstrap.data.latestReading.version}</dd></div>
+              </dl>
+            </div>
+            <div className="flex flex-wrap gap-2 md:justify-end">
+              <button type="button" onClick={() => navigate(`/portfolio/frentes-estrategicos?bootstrapSessionId=${encodeURIComponent(bootstrap.data!.bootstrapSession.id)}`)} className="rounded-ds-sm bg-brand-primary px-3 py-2 text-sm font-semibold text-text-inverse">
+                Organizar Portfolio
+              </button>
+              <button type="button" onClick={() => navigate('/portfolio/decisiones')} className="rounded-ds-sm border border-border-default bg-surface-default px-3 py-2 text-sm font-semibold text-text-primary">
+                Ver decisiones
+              </button>
+            </div>
+          </div>
+        </section>
+      ) : null}
 
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_320px] xl:items-start">
         <main className="space-y-6">

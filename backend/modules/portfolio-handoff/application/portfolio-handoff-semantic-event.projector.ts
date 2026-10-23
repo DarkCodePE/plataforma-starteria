@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import type { HandoffAssignment } from '../domain/portfolio-handoff-assignment.types';
 import type { HandoffSemanticEvent, HandoffSemanticEventRepository, PortfolioHandoffProjection, PortfolioHandoffProjectionRepository } from '../domain/portfolio-handoff-semantic-event.types';
 
-const MATERIAL = new Set(['assignment_created','invitation_sent','invitation_viewed','assignment_accepted','assignment_rejected','portfolio_response_recorded','handoff_assignment_started','assignment_revoked','assignment_expired','initiative_linked_to_handoff_assignment']);
+const MATERIAL = new Set(['assignment_created','assignment_preparation_updated','invitation_sent','invitation_viewed','assignment_accepted','assignment_rejected','portfolio_response_recorded','handoff_assignment_started','assignment_revoked','assignment_expired','initiative_linked_to_handoff_assignment']);
 
 export function eventFromAssignment(assignment: HandoffAssignment, eventType: HandoffSemanticEvent['eventType'], input: { eventId?: string; actorId?: string | null; interactionChannel?: HandoffSemanticEvent['interactionChannel']; occurredAt?: Date; payload?: Record<string, unknown> } = {}): HandoffSemanticEvent {
   const occurredAt = input.occurredAt ?? new Date();
