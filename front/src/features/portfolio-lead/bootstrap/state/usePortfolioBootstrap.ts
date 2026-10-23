@@ -4,28 +4,36 @@ import {
   analyzePortfolioBootstrapWork,
   commitPortfolioBootstrapImport,
   confirmPortfolioBootstrapAnchor,
+  confirmPortfolioOrganizationProposal,
   confirmPortfolioBootstrapProposedMutation,
   correctPortfolioBootstrapProposedMutation,
+  createOrReuseDirectPortfolioBootstrapSession,
   createOrReusePortfolioBootstrapSession,
   createOrReusePortfolioSetupBootstrapSession,
   declareNoExistingPortfolioBootstrapWork,
+  getCurrentPortfolioBootstrapSession,
   getPortfolioBootstrapSession,
+  getPortfolioOrganizationProposal,
   leavePortfolioBootstrapProposedMutationPending,
   pastePortfolioBootstrapWorkItems,
   PortfolioBootstrapClientError,
   publishPortfolioBootstrapFirstReading,
+  reopenPortfolioBootstrapProposedMutationReview as reopenPortfolioBootstrapProposedMutationReviewClient,
   rejectPortfolioBootstrapProposedMutation,
   removePortfolioBootstrapWorkItem,
   type PortfolioBootstrapResponse,
   type PortfolioBootstrapImportBatch,
   type PortfolioBootstrapImportMapping,
   type ManualPortfolioBootstrapWorkItemInput,
+  type PortfolioOrganizationPayload,
+  type PortfolioOrganizationProposal,
   type UpdatePortfolioBootstrapAnchorInput,
   type UpdatePortfolioBootstrapWorkItemInput,
   updatePortfolioBootstrapAnchor,
   updatePortfolioBootstrapImportMapping,
   updatePortfolioBootstrapWorkItem,
   uploadPortfolioBootstrapImport,
+  savePortfolioOrganizationProposal,
 } from '../services/portfolioBootstrapClient';
 
 export type PortfolioBootstrapLoadStatus = 'idle' | 'loading' | 'ready' | 'error';
@@ -33,7 +41,11 @@ export type PortfolioBootstrapAnalysisStatus = 'idle' | 'processing' | 'error';
 export type PortfolioBootstrapPublishStatus = 'idle' | 'processing' | 'error';
 export type PortfolioBootstrapImportStatus = 'idle' | 'uploading' | 'committing' | 'error';
 
-export function usePortfolioBootstrap(portfolioEntryContinuationId: string | null, mode: 'legacy' | '114F' = 'legacy') {
+export function usePortfolioBootstrap(
+  portfolioEntryContinuationId: string | null,
+  mode: 'legacy' | '114F' = 'legacy',
+  entryMode: 'continuation' | 'direct' | 'resume' | 'disabled' = 'continuation',
+) {
   const [data, setData] = useState<PortfolioBootstrapResponse | null>(null);
   const [status, setStatus] = useState<PortfolioBootstrapLoadStatus>('idle');
   const [error, setError] = useState<string | null>(null);
@@ -44,9 +56,12 @@ export function usePortfolioBootstrap(portfolioEntryContinuationId: string | nul
   const [importStatus, setImportStatus] = useState<PortfolioBootstrapImportStatus>('idle');
   const [importError, setImportError] = useState<string | null>(null);
   const [activeImport, setActiveImport] = useState<PortfolioBootstrapImportBatch | null>(null);
+  const [organizationProposal, setOrganizationProposal] = useState<PortfolioOrganizationProposal | null>(null);
+  const [organizationStatus, setOrganizationStatus] = useState<'idle' | 'loading' | 'saving' | 'confirming' | 'error'>('idle');
+  const [organizationError, setOrganizationError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
-    if (!portfolioEntryContinuationId) {
+    if (entryMode === 'disabled' || (!portfolioEntryContinuationId && entryMode !== 'direct' && entryMode !== 'resume')) {
       setData(null);
       setStatus('idle');
       setError(null);
@@ -62,7 +77,13 @@ export function usePortfolioBootstrap(portfolioEntryContinuationId: string | nul
     setStatus('loading');
     setError(null);
     try {
-      const result = mode === '114F'
+      const result = entryMode === 'resume'
+        ? await getCurrentPortfolioBootstrapSession()
+        : entryMode === 'direct'
+        ? data?.bootstrapSession?.id
+          ? await getPortfolioBootstrapSession(data.bootstrapSession.id)
+          : await createOrReuseDirectPortfolioBootstrapSession()
+        : mode === '114F'
         ? await createOrReusePortfolioSetupBootstrapSession(portfolioEntryContinuationId)
         : data?.bootstrapSession?.id
         ? await getPortfolioBootstrapSession(data.bootstrapSession.id)
@@ -76,11 +97,11 @@ export function usePortfolioBootstrap(portfolioEntryContinuationId: string | nul
         ? err.apiError.message
         : 'No pudimos cargar el Bootstrap de Portfolio.');
     }
-  }, [portfolioEntryContinuationId, data?.bootstrapSession?.id, mode]);
+  }, [portfolioEntryContinuationId, data?.bootstrapSession?.id, entryMode, mode]);
 
   useEffect(() => {
     let cancelled = false;
-    if (!portfolioEntryContinuationId) {
+    if (entryMode === 'disabled' || (!portfolioEntryContinuationId && entryMode !== 'direct' && entryMode !== 'resume')) {
       setData(null);
       setStatus('idle');
       setError(null);
@@ -98,8 +119,13 @@ export function usePortfolioBootstrap(portfolioEntryContinuationId: string | nul
 
     setStatus('loading');
     setError(null);
-    (mode === '114F' ? createOrReusePortfolioSetupBootstrapSession(portfolioEntryContinuationId)
-      : createOrReusePortfolioBootstrapSession(portfolioEntryContinuationId))
+    (entryMode === 'resume'
+      ? getCurrentPortfolioBootstrapSession()
+      : entryMode === 'direct'
+      ? createOrReuseDirectPortfolioBootstrapSession()
+      : mode === '114F'
+        ? createOrReusePortfolioSetupBootstrapSession(portfolioEntryContinuationId!)
+        : createOrReusePortfolioBootstrapSession(portfolioEntryContinuationId!))
       .then((result) => {
         if (!cancelled) {
           setData(result);
@@ -119,7 +145,33 @@ export function usePortfolioBootstrap(portfolioEntryContinuationId: string | nul
     return () => {
       cancelled = true;
     };
-  }, [portfolioEntryContinuationId, mode]);
+  }, [portfolioEntryContinuationId, entryMode, mode]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const sessionId = data?.bootstrapSession.id;
+    if (!sessionId) {
+      setOrganizationProposal(null);
+      setOrganizationStatus('idle');
+      setOrganizationError(null);
+      return () => { cancelled = true; };
+    }
+    setOrganizationStatus('loading');
+    getPortfolioOrganizationProposal(sessionId)
+      .then((proposal) => {
+        if (!cancelled) {
+          setOrganizationProposal(proposal);
+          setOrganizationStatus('idle');
+        }
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          setOrganizationStatus('error');
+          setOrganizationError(err instanceof PortfolioBootstrapClientError ? err.apiError.message : 'No pudimos recuperar la propuesta de organización.');
+        }
+      });
+    return () => { cancelled = true; };
+  }, [data?.bootstrapSession.id]);
 
   const updateAnchor = useCallback(async (input: UpdatePortfolioBootstrapAnchorInput) => {
     if (!data?.bootstrapSession.id) return;
@@ -245,6 +297,12 @@ export function usePortfolioBootstrap(portfolioEntryContinuationId: string | nul
     await reloadCurrentSession();
   }, [data?.bootstrapSession.id, reloadCurrentSession]);
 
+  const reopenProposedMutationReview = useCallback(async (mutationId: string, reviewNote?: string) => {
+    if (!data?.bootstrapSession.id) return;
+    await reopenPortfolioBootstrapProposedMutationReviewClient(data.bootstrapSession.id, mutationId, reviewNote);
+    await reloadCurrentSession();
+  }, [data?.bootstrapSession.id, reloadCurrentSession]);
+
   const correctProposedMutation = useCallback(async (mutationId: string, proposedValue: unknown, reviewNote?: string) => {
     if (!data?.bootstrapSession.id) return;
     await correctPortfolioBootstrapProposedMutation(data.bootstrapSession.id, mutationId, proposedValue, reviewNote);
@@ -279,11 +337,44 @@ export function usePortfolioBootstrap(portfolioEntryContinuationId: string | nul
     }
   }, [data?.bootstrapSession.id, reloadCurrentSession]);
 
+  const saveOrganizationProposal = useCallback(async (input: { version: number; payload: PortfolioOrganizationPayload }) => {
+    if (!data?.bootstrapSession.id) throw new Error('Bootstrap session unavailable');
+    setOrganizationStatus('saving');
+    setOrganizationError(null);
+    try {
+      const saved = await savePortfolioOrganizationProposal(data.bootstrapSession.id, input.version, input.payload);
+      setOrganizationProposal(saved);
+      setOrganizationStatus('idle');
+      return saved;
+    } catch (err) {
+      setOrganizationStatus('error');
+      setOrganizationError(err instanceof PortfolioBootstrapClientError ? err.apiError.message : 'No pudimos guardar la revisión.');
+      throw err;
+    }
+  }, [data?.bootstrapSession.id]);
+
+  const confirmOrganizationProposal = useCallback(async (input: { version: number }) => {
+    if (!data?.bootstrapSession.id) throw new Error('Bootstrap session unavailable');
+    setOrganizationStatus('confirming');
+    setOrganizationError(null);
+    try {
+      const confirmed = await confirmPortfolioOrganizationProposal(data.bootstrapSession.id, input.version);
+      setOrganizationProposal(confirmed);
+      setOrganizationStatus('idle');
+      return confirmed;
+    } catch (err) {
+      setOrganizationStatus('error');
+      setOrganizationError(err instanceof PortfolioBootstrapClientError ? err.apiError.message : 'No pudimos confirmar la organización.');
+      throw err;
+    }
+  }, [data?.bootstrapSession.id]);
+
   return useMemo(() => ({
     analysisError,
     analysisStatus,
     analyzeWorkItems,
     confirmProposedMutation,
+    reopenProposedMutationReview,
     correctProposedMutation,
     data,
     status,
@@ -306,6 +397,11 @@ export function usePortfolioBootstrap(portfolioEntryContinuationId: string | nul
     publishFirstReading,
     publishStatus,
     publishError,
+    organizationProposal,
+    organizationStatus,
+    organizationError,
+    saveOrganizationProposal,
+    confirmOrganizationProposal,
   }), [
     addManualWorkItem,
     analysisError,
@@ -313,6 +409,7 @@ export function usePortfolioBootstrap(portfolioEntryContinuationId: string | nul
     analyzeWorkItems,
     confirmAnchor,
     confirmProposedMutation,
+    reopenProposedMutationReview,
     correctProposedMutation,
     data,
     declareNoExistingWork,
@@ -329,6 +426,11 @@ export function usePortfolioBootstrap(portfolioEntryContinuationId: string | nul
     publishFirstReading,
     publishStatus,
     publishError,
+    organizationProposal,
+    organizationStatus,
+    organizationError,
+    saveOrganizationProposal,
+    confirmOrganizationProposal,
     status,
     updateAnchor,
     updateWorkItem,

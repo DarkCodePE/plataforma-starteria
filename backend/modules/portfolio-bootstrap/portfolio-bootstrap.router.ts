@@ -3,10 +3,12 @@ import { prisma } from '../../shared/db/prisma';
 import { authenticate } from '../auth/auth.middleware';
 import { PortfolioBootstrapController } from './portfolio-bootstrap.controller';
 import { PortfolioBootstrapService } from './portfolio-bootstrap.service';
+import { PortfolioOrganizationService } from './portfolio-organization.service';
 
 export interface PortfolioBootstrapRouterDeps {
   authenticate?: RequestHandler;
   service?: PortfolioBootstrapService;
+  organizationService?: PortfolioOrganizationService;
 }
 
 export function buildPortfolioBootstrapRouter(deps: PortfolioBootstrapRouterDeps = {}): Router {
@@ -14,8 +16,11 @@ export function buildPortfolioBootstrapRouter(deps: PortfolioBootstrapRouterDeps
   const auth = deps.authenticate ?? authenticate;
   const controller = new PortfolioBootstrapController(
     deps.service ?? new PortfolioBootstrapService(prisma),
+    deps.organizationService ?? new PortfolioOrganizationService(prisma),
   );
 
+  router.post('/sessions/direct', auth, controller.createOrReuseDirect);
+  router.get('/sessions/current', auth, controller.getCurrent);
   router.post('/sessions/from-continuation', auth, controller.createOrReuseFromContinuation);
   router.post('/sessions/from-portfolio-setup-continuity', auth, controller.createOrReuseFromPortfolioSetup);
   router.get('/sessions/:sessionId', auth, controller.getSession);
@@ -36,10 +41,14 @@ export function buildPortfolioBootstrapRouter(deps: PortfolioBootstrapRouterDeps
   router.get('/sessions/:sessionId/proposed-mutations', auth, controller.listProposedMutations);
   router.patch('/sessions/:sessionId/proposed-mutations/:mutationId', auth, controller.correctProposedMutation);
   router.post('/sessions/:sessionId/proposed-mutations/:mutationId/confirm', auth, controller.confirmProposedMutation);
+  router.post('/sessions/:sessionId/proposed-mutations/:mutationId/reopen-review', auth, controller.reopenProposedMutationReview);
   router.post('/sessions/:sessionId/proposed-mutations/:mutationId/reject', auth, controller.rejectProposedMutation);
   router.post('/sessions/:sessionId/proposed-mutations/:mutationId/review', auth, controller.leaveProposedMutationPending);
   router.post('/sessions/:sessionId/readings', auth, controller.publishFirstReading);
   router.get('/sessions/:sessionId/readings/latest', auth, controller.getLatestReading);
+  router.get('/sessions/:sessionId/organization-proposal', auth, controller.getOrganizationProposal);
+  router.put('/sessions/:sessionId/organization-proposal', auth, controller.saveOrganizationProposal);
+  router.post('/sessions/:sessionId/organization-proposal/confirm', auth, controller.confirmOrganizationProposal);
 
   return router;
 }

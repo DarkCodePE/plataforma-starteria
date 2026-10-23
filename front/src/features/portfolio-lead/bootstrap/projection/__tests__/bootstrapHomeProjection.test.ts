@@ -46,8 +46,25 @@ describe('projectBootstrapHome', () => {
     expect(projection?.analysisSummary.total).toBe(2);
     expect(projection?.analysisSummary.strategicConnections).toBe(1);
     expect(projection?.analysisSummary.advancementConditions).toBe(1);
+    expect(projection?.analysisSummary.hardBlockingNow).toBe(0);
+    expect(projection?.analysisSummary.reviewLater).toBe(1);
+    expect(projection?.analysisSummary.carryToBrief).toBe(1);
     expect(projection?.proposedMutations.every((mutation) => mutation.status === 'proposed')).toBe(true);
     expect(JSON.stringify(projection)).not.toContain('confirmed_alignment');
+  });
+
+  it('distinguishes an explicit hard blocker from review-later gaps', () => {
+    const data = makeBootstrapWithProposedMutations();
+    data.proposedMutations[1] = {
+      ...data.proposedMutations[1],
+      proposedValue: { ...(data.proposedMutations[1].proposedValue as Record<string, unknown>), severity: 'blocking' },
+    };
+
+    const projection = projectBootstrapHome(data);
+
+    expect(projection?.analysisSummary.hardBlockingNow).toBe(1);
+    expect(projection?.analysisSummary.carryToBrief).toBe(0);
+    expect(projection?.analysisSummary.reviewLater).toBe(1);
   });
 
   it('maps explicit no-existing-work to HOME_C-ready state without fake items', () => {

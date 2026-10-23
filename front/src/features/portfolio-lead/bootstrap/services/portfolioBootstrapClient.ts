@@ -280,12 +280,71 @@ export type PortfolioBootstrapReadingPublishResponse = {
   nextBestAction: string;
 };
 
+export type PortfolioOrganizationChallengeCandidate = {
+  candidateId: string;
+  title: string;
+  problem: string;
+  rationale: string;
+  relatedInitiativeIds: string[];
+  evidence: string[];
+  gaps: string[];
+  overlaps: string[];
+};
+
+export type PortfolioOrganizationFrontCandidate = {
+  candidateId: string;
+  name: string;
+  focus: string;
+  rationale: string;
+  coverage: string;
+  challenges: PortfolioOrganizationChallengeCandidate[];
+};
+
+export type PortfolioOrganizationPayload = {
+  summary: string;
+  fronts: PortfolioOrganizationFrontCandidate[];
+  crossCuttingInitiativeIds: string[];
+  outsideObjectiveInitiativeIds: string[];
+  ungroupedInitiativeIds: string[];
+};
+
+export type PortfolioOrganizationMaterialization = {
+  id: string;
+  proposalVersion: number;
+  canonicalMappings: {
+    fronts: Array<{ candidateId: string; canonicalId: string }>;
+    challenges: Array<{ candidateId: string; canonicalId: string; relatedInitiativeIds: string[] }>;
+    specialDestinations?: {
+      crossCuttingInitiativeIds: string[];
+      outsideObjectiveInitiativeIds: string[];
+      ungroupedInitiativeIds: string[];
+    };
+  };
+  confirmedBy: string;
+  confirmedAt: string;
+};
+
+export type PortfolioOrganizationProposal = {
+  id: string;
+  version: number;
+  status: 'reviewed' | 'superseded' | 'materialized';
+  sourceVersion: string;
+  payload: PortfolioOrganizationPayload;
+  sourceRefs: unknown;
+  provenance: unknown;
+  reviewedBy: string;
+  reviewedAt: string;
+  materialization: PortfolioOrganizationMaterialization | null;
+};
+
 export type UpdatePortfolioBootstrapAnchorInput = {
   outcomeStatement?: string;
   contextSummary?: string | null;
   decisionToEnable?: string | null;
   businessSignalStatus?: PortfolioBootstrapAnchor['businessSignalStatus'];
   businessSignalValue?: string | null;
+  /** Source/provenance envelope retained by the provisional Anchor. */
+  sourceRefs?: unknown;
 };
 
 export type ManualPortfolioBootstrapWorkItemInput = {
@@ -320,6 +379,31 @@ export async function createOrReusePortfolioBootstrapSession(
   }
 }
 
+/** Opens the existing provisional bootstrap workflow from normal Portfolio Lead entry. */
+export async function createOrReuseDirectPortfolioBootstrapSession(): Promise<PortfolioBootstrapResponse> {
+  try {
+    const { data } = await api.post<ApiResponse<PortfolioBootstrapResponse>>(
+      '/portfolio-bootstrap/sessions/direct',
+      {},
+    );
+    return data.data;
+  } catch (err) {
+    throw new PortfolioBootstrapClientError(parseApiError(err));
+  }
+}
+
+/** Reads an existing Copilot workspace without provisioning a new session. */
+export async function getCurrentPortfolioBootstrapSession(): Promise<PortfolioBootstrapResponse | null> {
+  try {
+    const { data } = await api.get<ApiResponse<PortfolioBootstrapResponse | null>>(
+      '/portfolio-bootstrap/sessions/current',
+    );
+    return data.data;
+  } catch (err) {
+    throw new PortfolioBootstrapClientError(parseApiError(err));
+  }
+}
+
 export async function createOrReusePortfolioSetupBootstrapSession(snapshotId: string): Promise<PortfolioBootstrapResponse> {
   try {
     const { data } = await api.post<ApiResponse<PortfolioBootstrapResponse>>(
@@ -334,6 +418,49 @@ export async function getPortfolioBootstrapSession(sessionId: string): Promise<P
   try {
     const { data } = await api.get<ApiResponse<PortfolioBootstrapResponse>>(
       `/portfolio-bootstrap/sessions/${encodeURIComponent(sessionId)}`,
+    );
+    return data.data;
+  } catch (err) {
+    throw new PortfolioBootstrapClientError(parseApiError(err));
+  }
+}
+
+export async function getPortfolioOrganizationProposal(sessionId: string): Promise<PortfolioOrganizationProposal | null> {
+  try {
+    const { data } = await api.get<ApiResponse<PortfolioOrganizationProposal | null>>(
+      `/portfolio-bootstrap/sessions/${encodeURIComponent(sessionId)}/organization-proposal`,
+    );
+    return data.data;
+  } catch (err) {
+    throw new PortfolioBootstrapClientError(parseApiError(err));
+  }
+}
+
+export async function savePortfolioOrganizationProposal(
+  sessionId: string,
+  version: number,
+  payload: PortfolioOrganizationPayload,
+): Promise<PortfolioOrganizationProposal> {
+  try {
+    const { data } = await api.put<ApiResponse<PortfolioOrganizationProposal>>(
+      `/portfolio-bootstrap/sessions/${encodeURIComponent(sessionId)}/organization-proposal`,
+      { expectedVersion: version, payload },
+    );
+    return data.data;
+  } catch (err) {
+    throw new PortfolioBootstrapClientError(parseApiError(err));
+  }
+}
+
+export async function confirmPortfolioOrganizationProposal(
+  sessionId: string,
+  version: number,
+): Promise<PortfolioOrganizationProposal> {
+  try {
+    const { data } = await api.post<ApiResponse<PortfolioOrganizationProposal>>(
+      `/portfolio-bootstrap/sessions/${encodeURIComponent(sessionId)}/organization-proposal/confirm`,
+      { proposalVersion: version },
+      { headers: { 'Idempotency-Key': stableClientIdempotencyKey('confirm-organization', `${sessionId}:${version}`) } },
     );
     return data.data;
   } catch (err) {
@@ -545,6 +672,22 @@ export async function confirmPortfolioBootstrapProposedMutation(
   mutationId: string,
 ): Promise<PortfolioBootstrapMutationReviewResponse> {
   return reviewPortfolioBootstrapProposedMutation(sessionId, mutationId, 'confirm');
+}
+
+export async function reopenPortfolioBootstrapProposedMutationReview(
+  sessionId: string,
+  mutationId: string,
+  reviewNote?: string,
+): Promise<PortfolioBootstrapMutationReviewResponse> {
+  try {
+    const { data } = await api.post<ApiResponse<PortfolioBootstrapMutationReviewResponse>>(
+      `/portfolio-bootstrap/sessions/${encodeURIComponent(sessionId)}/proposed-mutations/${encodeURIComponent(mutationId)}/reopen-review`,
+      reviewNote ? { reviewNote } : {},
+    );
+    return data.data;
+  } catch (err) {
+    throw new PortfolioBootstrapClientError(parseApiError(err));
+  }
 }
 
 export async function rejectPortfolioBootstrapProposedMutation(

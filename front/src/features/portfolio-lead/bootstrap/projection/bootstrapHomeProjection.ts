@@ -9,6 +9,7 @@ import {
 import type { PortfolioBootstrapResponse } from '../services/portfolioBootstrapClient';
 
 export type BootstrapHomeProjection = {
+  bootstrapSessionId: string;
   homeState: HomeState;
   nextAction: NextBestPortfolioAction;
   anchor: NonNullable<PortfolioBootstrapResponse['anchor']>;
@@ -30,6 +31,10 @@ export type BootstrapHomeProjection = {
     confirmed: number;
     rejected: number;
     pending: number;
+    hardBlockingNow: number;
+    reviewLater: number;
+    carryToBrief: number;
+    contextual: number;
     materialReviewComplete: boolean;
   };
   missingContext: string[];
@@ -65,6 +70,7 @@ export function projectBootstrapHome(response: PortfolioBootstrapResponse): Boot
   const homeState = response.latestReading?.homeState ?? resolvePortfolioHomeState(portfolioState);
 
   return {
+    bootstrapSessionId: response.bootstrapSession.id,
     homeState,
     nextAction: resolveNextBestPortfolioAction(portfolioState),
     anchor,
@@ -88,6 +94,26 @@ function deriveAnalysisSummary(proposedMutations: PortfolioBootstrapResponse['pr
   const advancementConditions = proposedMutations.filter((mutation) => mutation.targetType === 'advancement_condition');
   const materialRequired = proposedMutations.filter((mutation) => mutation.materiality === 'material' && mutation.confirmationRequired);
   const unresolved = materialRequired.filter((mutation) => mutation.status === 'proposed' || (mutation.status === 'reviewed' && mutation.correctedAt));
+  const pending = proposedMutations.filter((mutation) => mutation.status === 'proposed' || mutation.status === 'reviewed');
+  const hardBlockingNow = pending.filter((mutation) => {
+    const value = mutation.proposedValue as { severity?: string } | null;
+    return value?.severity === 'blocking';
+  });
+  const carryToBrief = pending.filter((mutation) => {
+    if (hardBlockingNow.some((blocker) => blocker.id === mutation.id)) return false;
+    const value = mutation.proposedValue as { type?: string } | null;
+    return ['business_signal', 'ownership_visibility', 'required_context', 'critical_dependency'].includes(value?.type ?? '');
+  });
+  const reviewLater = pending.filter((mutation) => (
+    !hardBlockingNow.some((blocker) => blocker.id === mutation.id)
+    && !carryToBrief.some((carry) => carry.id === mutation.id)
+    && mutation.targetType === 'strategic_connection'
+  ));
+  const contextual = pending.filter((mutation) => (
+    !hardBlockingNow.some((blocker) => blocker.id === mutation.id)
+    && !carryToBrief.some((carry) => carry.id === mutation.id)
+    && !reviewLater.some((later) => later.id === mutation.id)
+  ));
   return {
     total: proposedMutations.filter((mutation) => mutation.status === 'proposed').length,
     strategicConnections: proposedMutations.filter((mutation) => mutation.targetType === 'strategic_connection' && mutation.status === 'proposed').length,
@@ -100,7 +126,11 @@ function deriveAnalysisSummary(proposedMutations: PortfolioBootstrapResponse['pr
     reviewed: proposedMutations.filter((mutation) => mutation.status === 'reviewed').length,
     confirmed: proposedMutations.filter((mutation) => mutation.status === 'confirmed').length,
     rejected: proposedMutations.filter((mutation) => mutation.status === 'rejected').length,
-    pending: unresolved.length,
+    pending: pending.length,
+    hardBlockingNow: hardBlockingNow.length,
+    reviewLater: reviewLater.length,
+    carryToBrief: carryToBrief.length,
+    contextual: contextual.length,
     materialReviewComplete: materialRequired.length > 0 && unresolved.length === 0,
   };
 }

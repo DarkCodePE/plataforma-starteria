@@ -2624,6 +2624,12 @@ enum PortfolioBootstrapExistingWorkStatus {
   no_existing_work
 }
 
+enum PortfolioOrganizationProposalStatus {
+  reviewed
+  superseded
+  materialized
+}
+
   enum PortfolioBootstrapWorkItemSourceType {
     pasted_text
     manual_entry
@@ -2942,6 +2948,8 @@ model PortfolioBootstrapSession {
   strategicConnections PortfolioStrategicConnection[]
   advancementConditions PortfolioAdvancementCondition[]
   readings             PortfolioReading[]
+  organizationProposals PortfolioOrganizationProposal[]
+  organizationMaterializations PortfolioOrganizationMaterialization[]
 
   @@unique([userId, sourceContinuationId])
   @@index([userId])
@@ -2949,6 +2957,54 @@ model PortfolioBootstrapSession {
   @@index([status])
   @@index([bootstrapPhase])
   @@index([existingWorkStatus])
+}
+
+// PL-04/KAN-154: immutable reviewed proposal versions. These rows are
+// provisional; no StrategicFront or Challenge is created until the explicit
+// materialization checkpoint succeeds.
+model PortfolioOrganizationProposal {
+  id                 String                               @id @default(cuid())
+  bootstrapSessionId String
+  organizationId     String
+  version            Int
+  status             PortfolioOrganizationProposalStatus @default(reviewed)
+  sourceVersion      String
+  payloadHash        String
+  payload            Json
+  sourceRefs         Json
+  provenance         Json
+  reviewedBy         String
+  reviewedAt         DateTime                             @default(now())
+
+  bootstrapSession PortfolioBootstrapSession             @relation(fields: [bootstrapSessionId], references: [id], onDelete: Cascade)
+  materialization  PortfolioOrganizationMaterialization?
+
+  @@unique([bootstrapSessionId, version])
+  @@index([organizationId])
+  @@index([bootstrapSessionId, status])
+}
+
+// Durable idempotency/audit boundary for the exact human-approved PL-04
+// structure. canonicalMappings retains candidate -> canonical identities and
+// work-item relationships without creating Project/Initiative entities.
+model PortfolioOrganizationMaterialization {
+  id                  String   @id @default(cuid())
+  proposalId          String   @unique
+  bootstrapSessionId  String   @unique
+  organizationId      String
+  proposalVersion     Int
+  approvalFingerprint String
+  idempotencyKey      String
+  canonicalMappings   Json
+  confirmedBy         String
+  confirmedAt         DateTime @default(now())
+
+  proposal         PortfolioOrganizationProposal @relation(fields: [proposalId], references: [id], onDelete: Restrict)
+  bootstrapSession PortfolioBootstrapSession      @relation(fields: [bootstrapSessionId], references: [id], onDelete: Restrict)
+
+  @@unique([organizationId, idempotencyKey])
+  @@index([organizationId])
+  @@index([bootstrapSessionId, proposalVersion])
 }
 
 enum StrategicFramingProvisionalSourceMode {
