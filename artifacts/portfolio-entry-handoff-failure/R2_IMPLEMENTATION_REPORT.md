@@ -1,6 +1,6 @@
 # KAN-167 — Portfolio Entry Critical Handoff R2 Frontend
 
-Fecha: 2026-10-22  
+Fecha: 2026-10-22
 Estado: implementación verificada; cierre mediante commit local autorizado en Jira KAN-167, comentario 10442. Integración/publicación pendiente de aprobación humana posterior.
 
 ## 1. Baseline y autorización

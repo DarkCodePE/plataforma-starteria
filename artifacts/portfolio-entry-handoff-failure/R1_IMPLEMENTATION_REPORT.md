@@ -1,8 +1,8 @@
 # KAN-164 — Portfolio Entry Critical Handoff R1 Backend
 
-Fecha de implementación local: 2026-10-22  
-Rama: `fix/portfolio-entry-critical-handoff-r1`  
-HEAD base: `6518cbf87c80df3b9bc66632381deebac27a812b`  
+Fecha de implementación local: 2026-10-22
+Rama: `fix/portfolio-entry-critical-handoff-r1`
+HEAD base: `6518cbf87c80df3b9bc66632381deebac27a812b`
 Worktree: `starteria-critical-handoff-r1`
 
 ## 1. Baseline del repositorio
