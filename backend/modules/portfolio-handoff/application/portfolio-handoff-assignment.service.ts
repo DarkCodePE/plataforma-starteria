@@ -72,7 +72,7 @@ function validateMembers(members: CreateHandoffAssignmentInput['members']): void
 }
 
 function assertScope(expected: string | null | undefined, actual: string | null | undefined, ref: string): void {
-  if (expected && actual && expected !== actual) throw invalid(`${ref} is outside the assignment organization/scope`);
+  if (expected && actual !== expected) throw invalid(`${ref} is outside the assignment organization/scope`);
 }
 
 function invalid(message: string): PortfolioHandoffAssignmentError {

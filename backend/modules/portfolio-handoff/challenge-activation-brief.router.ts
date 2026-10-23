@@ -1,4 +1,4 @@
-﻿/**
+/**
  * ADR-008 bounded Portfolio API. Canonical Brief versions remain server-side;
  * this router deliberately does not expose mutation to an assignment recipient.
  */
@@ -16,6 +16,7 @@ import { DurableHandoffEventPort, PortfolioHandoffProjector } from './applicatio
 import { PrismaPortfolioHandoffAssignmentRepository } from './infrastructure/prisma-portfolio-handoff-assignment.repository';
 import { PrismaHandoffSemanticEventRepository, PrismaPortfolioHandoffProjectionRepository } from './infrastructure/prisma-portfolio-handoff-semantic-event.repository';
 import { assertConfirmableActivationBriefVersion, normalizeActivationBriefEnvelope } from './challenge-activation-brief.service';
+import { ImportedInitiativeCanonicalizationService } from './imported-initiative-canonicalization.service';
 import {
   activationBriefChallengeParamsSchema,
   activationBriefDraftBodySchema,
@@ -23,7 +24,10 @@ import {
   activationBriefVersionParamsSchema,
   emptyActivationBriefCommandBodySchema,
   handoffAssignmentParamsSchema,
+  importedInitiativeParamsSchema,
+  linkImportedInitiativeBodySchema,
   prepareChallengeAssignmentBodySchema,
+  registerImportedInitiativeBodySchema,
   updateChallengeAssignmentBodySchema,
 } from './challenge-activation-brief.schemas';
 
@@ -58,7 +62,7 @@ async function ownVersion(req: any, versionId: string): Promise<any> {
 }
 async function receipt(tx: any, input: { organizationId: string; commandType: 'CREATE_BRIEF'|'CREATE_VERSION'|'CONFIRM_VERSION'|'CREATE_ASSIGNMENT'|'UPDATE_ASSIGNMENT'; idempotencyKey: string; actorId: string; fingerprint: string }) {
   const existing = await tx.portfolioActivationCommandReceipt.findUnique({ where: { organizationId_commandType_idempotencyKey: { organizationId: input.organizationId, commandType: input.commandType, idempotencyKey: input.idempotencyKey } } });
-  if (existing && existing.fingerprint !== input.fingerprint) throw AppError.conflict('La idempotency key ya se usÃ³ con otra solicitud', 'ACTIVATION_BRIEF_IDEMPOTENCY_CONFLICT');
+  if (existing && existing.fingerprint !== input.fingerprint) throw AppError.conflict('La idempotency key ya se usó con otra solicitud', 'ACTIVATION_BRIEF_IDEMPOTENCY_CONFLICT');
   return existing;
 }
 
@@ -81,6 +85,7 @@ async function withSerializableRetry<T>(operation: () => Promise<T>, maxAttempts
 }
 
 export const challengeActivationBriefRouter = Router();
+const importedInitiativeService = new ImportedInitiativeCanonicalizationService(prisma);
 
 challengeActivationBriefRouter.post('/challenges/:challengeId/activation-briefs', authenticate, write, async (req: any, res, next) => {
   try {
@@ -157,7 +162,7 @@ challengeActivationBriefRouter.post('/activation-brief-versions/:versionId/confi
       const prior = await receipt(tx, { organizationId: current.organizationId, commandType: 'CONFIRM_VERSION', idempotencyKey, actorId: req.user.id, fingerprint: fp });
       if (prior) return { version: await tx.challengeActivationBriefVersion.findUnique({ where: { id: prior.resultVersionId } }), idempotent: true };
       const versionInTransaction = await tx.challengeActivationBriefVersion.findUnique({ where: { id: current.id } });
-      if (!versionInTransaction || versionInTransaction.status !== 'DRAFT') throw AppError.conflict('La Version ya estÃ¡ confirmada', 'ACTIVATION_BRIEF_VERSION_NOT_DRAFT');
+      if (!versionInTransaction || versionInTransaction.status !== 'DRAFT') throw AppError.conflict('La Version ya está confirmada', 'ACTIVATION_BRIEF_VERSION_NOT_DRAFT');
       const version = await tx.challengeActivationBriefVersion.update({ where: { id: versionInTransaction.id }, data: { status: 'CONFIRMED', confirmedByActorId: req.user.id, confirmedAt: new Date() } });
       await tx.portfolioActivationCommandReceipt.create({ data: { organizationId: current.organizationId, commandType: 'CONFIRM_VERSION', idempotencyKey, fingerprint: fp, actorId: req.user.id, resultBriefId: current.briefId, resultVersionId: version.id } }); return { version, idempotent: false };
     }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable, timeout: 10_000 }));
@@ -221,7 +226,7 @@ challengeActivationBriefRouter.patch('/handoff-assignments/:assignmentId/prepara
       const prior = await receipt(tx, { organizationId, commandType: 'UPDATE_ASSIGNMENT', idempotencyKey, actorId: req.user.id, fingerprint: fp });
       if (prior) return { assignment: await tx.portfolioHandoffAssignment.findUnique({ where: { id: prior.resultAssignmentId }, include: { members: true, briefVersion: true } }), idempotent: true };
       const locked = await tx.portfolioHandoffAssignment.findUnique({ where: { id: assignmentId } });
-      if (!locked || locked.organizationId !== organizationId || locked.state !== 'CREATED' || locked.version !== body.expectedVersion) throw AppError.conflict('La Assignment cambiÃ³ o ya no se puede editar', 'HANDOFF_ASSIGNMENT_NOT_EDITABLE');
+      if (!locked || locked.organizationId !== organizationId || locked.state !== 'CREATED' || locked.version !== body.expectedVersion) throw AppError.conflict('La Assignment cambió o ya no se puede editar', 'HANDOFF_ASSIGNMENT_NOT_EDITABLE');
       if (locked.targetKind === 'CHALLENGE') {
         const duplicate = await tx.portfolioHandoffAssignment.findFirst({ where: { id: { not: assignmentId }, challengeId: locked.challengeId, targetKind: 'CHALLENGE', briefVersionId: locked.briefVersionId, invitedEmailNormalized: body.invitedEmailNormalized, state: { notIn: ['REJECTED', 'REVOKED', 'EXPIRED'] } } });
         if (duplicate) throw AppError.conflict('Ya existe una Assignment activa para este destinatario y Brief', 'HANDOFF_ASSIGNMENT_DUPLICATE');
@@ -237,26 +242,113 @@ challengeActivationBriefRouter.patch('/handoff-assignments/:assignmentId/prepara
   } catch (error) { next(error instanceof PortfolioHandoffAssignmentError ? AppError.badRequest(error.message, error.code) : error); }
 });
 
+challengeActivationBriefRouter.post('/challenges/:challengeId/imported-initiatives/:workItemId/register', authenticate, write, async (req: any, res, next) => {
+  try {
+    const { challengeId, workItemId } = importedInitiativeParamsSchema.parse(req.params);
+    const body = registerImportedInitiativeBodySchema.parse(req.body ?? {});
+    const organizationId = await ownChallenge(req, challengeId);
+    const data = await importedInitiativeService.execute({
+      expectedWorkItemUpdatedAt: body.expectedWorkItemUpdatedAt!,
+      identityConfirmed: true,
+      alignmentConfirmed: true,
+      name: body.name,
+      description: body.description,
+      organizationId,
+      challengeId,
+      workItemId,
+      mode: 'REGISTER_EXISTING',
+      actorId: req.user.id,
+      idempotencyKey: idem(req),
+    });
+    res.status(data.idempotent ? 200 : 201).json({ success: true, data });
+  } catch (error) { next(error); }
+});
+
+challengeActivationBriefRouter.post('/challenges/:challengeId/imported-initiatives/:workItemId/link', authenticate, write, async (req: any, res, next) => {
+  try {
+    const { challengeId, workItemId } = importedInitiativeParamsSchema.parse(req.params);
+    const body = linkImportedInitiativeBodySchema.parse(req.body ?? {});
+    const organizationId = await ownChallenge(req, challengeId);
+    const data = await importedInitiativeService.execute({
+      expectedWorkItemUpdatedAt: body.expectedWorkItemUpdatedAt!,
+      identityConfirmed: true,
+      alignmentConfirmed: true,
+      projectId: body.projectId!,
+      organizationId,
+      challengeId,
+      workItemId,
+      mode: 'LINK_EXISTING',
+      actorId: req.user.id,
+      idempotencyKey: idem(req),
+    });
+    res.status(data.idempotent ? 200 : 201).json({ success: true, data });
+  } catch (error) { next(error); }
+});
+
 challengeActivationBriefRouter.get('/challenges/:challengeId/assignable-initiatives', authenticate, write, async (req: any, res, next) => {
   try {
     const { challengeId } = activationBriefChallengeParamsSchema.parse(req.params);
     const organizationId = await ownChallenge(req, challengeId);
     const canonical = await (prisma as any).initiativePortfolioMeta.findMany({
-      where: { challengeId, project: { owner: { organizationId } } },
+      where: { challengeId, project: { organizationId } },
       include: { project: { include: { owner: { select: { email: true, name: true } } } } },
       orderBy: { createdAt: 'asc' },
     });
+    const materializations = await (prisma as any).portfolioOrganizationMaterialization.findMany({ where: { organizationId }, select: { canonicalMappings: true } });
+    const importedIds = new Set<string>();
+    const otherImportedCategories = new Map<string, 'cross_cutting' | 'outside_objective' | 'ungrouped'>();
+    for (const item of materializations) {
+      const mappings = item.canonicalMappings as any;
+      for (const challenge of Array.isArray(mappings?.challenges) ? mappings.challenges : []) {
+        if (challenge?.canonicalId !== challengeId) continue;
+        for (const id of Array.isArray(challenge.relatedInitiativeIds) ? challenge.relatedInitiativeIds : []) importedIds.add(String(id));
+        const destinations = mappings?.specialDestinations ?? {};
+        for (const id of Array.isArray(destinations.crossCuttingInitiativeIds) ? destinations.crossCuttingInitiativeIds : []) otherImportedCategories.set(String(id), 'cross_cutting');
+        for (const id of Array.isArray(destinations.outsideObjectiveInitiativeIds) ? destinations.outsideObjectiveInitiativeIds : []) otherImportedCategories.set(String(id), 'outside_objective');
+        for (const id of Array.isArray(destinations.ungroupedInitiativeIds) ? destinations.ungroupedInitiativeIds : []) otherImportedCategories.set(String(id), 'ungrouped');
+      }
+    }
+    for (const id of importedIds) otherImportedCategories.delete(id);
+    const documentaryIds = [...new Set([...importedIds, ...otherImportedCategories.keys()])];
+    const documentaryRecords = documentaryIds.length ? await (prisma as any).portfolioBootstrapWorkItem.findMany({
+      where: { id: { in: documentaryIds } },
+      select: {
+        id: true,
+        rawLabel: true,
+        proposedName: true,
+        proposedPurpose: true,
+        currentStateHint: true,
+        ownerCandidate: true,
+        updatedAt: true,
+        sourceType: true,
+        sourceRefs: true,
+        importBatch: { select: { fileName: true } },
+      },
+      orderBy: { createdAt: 'asc' },
+    }) : [];
+    const linkedWorkItems = documentaryIds.length ? new Set((await (prisma as any).portfolioImportedInitiativeLink.findMany({
+      where: { organizationId, workItemId: { in: documentaryIds }, status: 'ACTIVE' },
+      select: { workItemId: true },
+    })).map((item: any) => item.workItemId)) : new Set<string>();
+    const toDocumentaryRecord = (item: any) => ({
+      id: item.id,
+      label: item.proposedName || item.rawLabel,
+      purpose: item.proposedPurpose,
+      currentState: item.currentStateHint,
+      ownerCandidate: item.ownerCandidate,
+      sourceType: item.sourceType,
+      sourceLabel: item.importBatch?.fileName || (item.sourceType === 'manual_entry' ? 'Registro incorporado manualmente' : 'Fuente documental del portafolio'),
+      sourceRefs: item.sourceRefs,
+      sourceVersion: item.updatedAt.toISOString(),
+    });
     res.json({ success: true, data: {
-      canonicalInitiatives: canonical.map((meta: any) => ({
-        id: meta.project.id,
-        name: meta.project.name,
-        description: meta.project.description,
-        ownerEmail: meta.project.owner?.email ?? null,
-        ownerName: meta.project.owner?.name ?? null,
-      })),
+      canonicalInitiatives: canonical.map((meta: any) => ({ id: meta.project.id, name: meta.project.name, description: meta.project.description, ownerEmail: meta.project.owner?.email ?? null, ownerName: meta.project.owner?.name ?? null, activationStatus: meta.project.activationStatus ?? null, retrospectiveAssessmentStatus: meta.project.retrospectiveAssessmentStatus ?? null })),
+      importedRecords: documentaryRecords.filter((item: any) => importedIds.has(item.id) && !linkedWorkItems.has(item.id)).map((item: any) => ({ ...toDocumentaryRecord(item), reason: 'IMPORTED_RECORD_NOT_CANONICAL' })),
+      otherImportedRecords: documentaryRecords.filter((item: any) => otherImportedCategories.has(item.id)).map((item: any) => ({ ...toDocumentaryRecord(item), category: otherImportedCategories.get(item.id), reason: 'NOT_RELATED_TO_CHALLENGE' })),
     } });
   } catch (error) { next(error); }
 });
+
 challengeActivationBriefRouter.get('/challenges/:challengeId/handoff-assignments', authenticate, write, async (req: any, res, next) => {
   try {
     const organizationId = await ownChallenge(req, req.params.challengeId);
@@ -268,4 +360,3 @@ challengeActivationBriefRouter.get('/challenges/:challengeId/handoff-assignments
     res.json({ success: true, data: assignments });
   } catch (error) { next(error); }
 });
-

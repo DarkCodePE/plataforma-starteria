@@ -53,7 +53,13 @@ async function preparePortfolio(api: APIRequestContext, lead: Awaited<ReturnType
   const payload = { summary: 'Organización confirmada.', fronts: [{ candidateId: frontCandidateId, name: 'Activación sostenible', focus: 'Aumentar activación.', rationale: 'Agrupa decisiones.', coverage: '5 registros relacionados', challenges: [{ candidateId: challengeCandidateId, title: 'Reducir barreras de activación', problem: 'No sabemos qué barrera priorizar.', rationale: 'Permite decidir.', relatedInitiativeIds: importedIds.slice(0, 5), evidence: [], gaps: ['Falta línea base.'], overlaps: [] }] }], crossCuttingInitiativeIds: [importedIds[5]], outsideObjectiveInitiativeIds: [importedIds[6]], ungroupedInitiativeIds: [importedIds[7]] };
   const proposal = await prisma.portfolioOrganizationProposal.create({ data: { bootstrapSessionId: sessionId, organizationId: lead.organizationId, version: 1, status: 'materialized', sourceVersion: `pl06a-${lead.stamp}`, payloadHash: `pl06a-${lead.stamp}`, payload, sourceRefs: { source: 'runtime' }, provenance: { source: 'HUMAN_CONFIRMED' }, reviewedBy: lead.userId } });
   await prisma.portfolioOrganizationMaterialization.create({ data: { proposalId: proposal.id, bootstrapSessionId: sessionId, organizationId: lead.organizationId, proposalVersion: 1, approvalFingerprint: `approval-${lead.stamp}`, idempotencyKey: `materialize-${lead.stamp}`, canonicalMappings: { fronts: [{ candidateId: frontCandidateId, canonicalId: frontId }], challenges: [{ candidateId: challengeCandidateId, canonicalId: challengeId, relatedInitiativeIds: importedIds.slice(0, 5) }], specialDestinations: { crossCuttingInitiativeIds: [importedIds[5]], outsideObjectiveInitiativeIds: [importedIds[6]], ungroupedInitiativeIds: [importedIds[7]] } }, confirmedBy: lead.userId } });
-  const initiative = await prisma.project.create({ data: { name: 'Onboarding B2B asistido', ownerId: lead.userId } });
+  const initiative = await prisma.project.create({
+    data: {
+      name: 'Onboarding B2B asistido',
+      ownerId: lead.userId,
+      organizationId: lead.organizationId,
+    },
+  });
   await prisma.initiativePortfolioMeta.create({ data: { projectId: initiative.id, challengeId, teamOwner: lead.email } });
   return { challengeId, initiativeId: initiative.id };
 }

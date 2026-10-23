@@ -1,4 +1,4 @@
-﻿import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -6,6 +6,8 @@ const api = vi.hoisted(() => ({
   getActivationBrief: vi.fn(),
   listChallengeHandoffAssignments: vi.fn(),
   listAssignableInitiatives: vi.fn(),
+  registerImportedInitiative: vi.fn(),
+  linkImportedInitiative: vi.fn(),
   createChallengeHandoffAssignment: vi.fn(),
   updateChallengeHandoffAssignment: vi.fn(),
 }));
@@ -15,33 +17,33 @@ import { ChallengeAssignmentPreparationPanel } from '../ChallengeAssignmentPrepa
 
 const confirmedVersion = {
   id: 'version-5', versionNumber: 5, status: 'CONFIRMED' as const,
-  intent: 'Reducir la principal barrera de activaciÃ³n.', scope: 'Contrastar onboarding y diagnÃ³stico.',
-  strategicContextRefs: { objective: 'Mejorar activaciÃ³n' },
-  inheritedContext: { expectedDeliverable: 'RecomendaciÃ³n priorizada con evidencia.', decisionToEnable: 'Elegir la primera barrera.' },
-  constraintsSnapshot: ['RevisiÃ³n legal'], knownGaps: ['Falta lÃ­nea base'], sourceRefs: ['ImportaciÃ³n Q3'], provenance: { source: 'PL05_COPILOT' },
+  intent: 'Reducir la principal barrera de activación.', scope: 'Contrastar onboarding y diagnóstico.',
+  strategicContextRefs: { objective: 'Mejorar activación' },
+  inheritedContext: { expectedDeliverable: 'Recomendación priorizada con evidencia.', decisionToEnable: 'Elegir la primera barrera.' },
+  constraintsSnapshot: ['Revisión legal'], knownGaps: ['Falta línea base'], sourceRefs: ['Importación Q3'], provenance: { source: 'PL05_COPILOT' },
   createdAt: '2026-10-22T00:00:00.000Z', confirmedAt: '2026-10-22T01:00:00.000Z',
 };
 const brief = { id: 'brief-a', challengeId: 'challenge-1', organizationId: 'org-1', versions: [confirmedVersion] };
-const target = { challengeId: 'challenge-1', briefId: 'brief-a', briefVersionId: 'version-5', challengeName: 'Reducir fricciÃ³n' };
+const target = { challengeId: 'challenge-1', briefId: 'brief-a', briefVersionId: 'version-5', challengeName: 'Reducir fricción' };
 
 describe('ChallengeAssignmentPreparationPanel - PL-06A multiple preparation', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     api.getActivationBrief.mockResolvedValue(brief);
     api.listChallengeHandoffAssignments.mockResolvedValue([]);
-    api.listAssignableInitiatives.mockResolvedValue({ canonicalInitiatives: [] });
+    api.listAssignableInitiatives.mockResolvedValue({ canonicalInitiatives: [], importedRecords: [{ id: 'work-1', label: 'Onboarding guiado', reason: 'IMPORTED_RECORD_NOT_CANONICAL' }], otherImportedRecords: [] });
   });
 
   it('uses Add assignment as the primary CTA and updates the canonical unassigned indicator after saving', async () => {
     const user = userEvent.setup();
     api.listAssignableInitiatives.mockResolvedValue({
-      canonicalInitiatives: [{ id: 'project-1', name: 'ActivaciÃ³n guiada', description: 'Reducir abandonos durante el alta.', ownerEmail: 'initiative-owner@starteria.test', ownerName: 'Initiative Owner' }],
+      canonicalInitiatives: [{ id: 'project-1', name: 'Activación guiada', description: 'Reducir abandonos durante el alta.', ownerEmail: 'initiative-owner@starteria.test', ownerName: 'Initiative Owner' }],
       importedRecords: [],
       otherImportedRecords: [],
     });
     api.createChallengeHandoffAssignment.mockResolvedValue({ assignment: {
       id: 'assignment-project-1', state: 'CREATED', version: 1, targetKind: 'EXISTING_INITIATIVE', initiativeId: 'project-1',
-      briefVersionId: null, contextNote: '', invitedEmailNormalized: 'initiative-owner@starteria.test', initiative: { id: 'project-1', name: 'ActivaciÃ³n guiada' },
+      briefVersionId: null, contextNote: '', invitedEmailNormalized: 'initiative-owner@starteria.test', initiative: { id: 'project-1', name: 'Activación guiada' },
       members: [{ identityKey: 'initiative-owner@starteria.test', emailNormalized: 'initiative-owner@starteria.test', role: 'OWNER' }],
     }, idempotent: false });
 
@@ -49,25 +51,81 @@ describe('ChallengeAssignmentPreparationPanel - PL-06A multiple preparation', ()
 
     expect(await screen.findByRole('heading', { name: 'Prepara las asignaciones de este reto' })).toBeInTheDocument();
     expect(screen.getByText('1 iniciativa asignable sin encargo')).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /Asignar responsable a ActivaciÃ³n guiada/i })).not.toBeInTheDocument();
-    await user.click(screen.getByRole('button', { name: 'Agregar asignaciÃ³n' }));
+    expect(screen.queryByRole('button', { name: /Asignar responsable a Activación guiada/i })).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Agregar asignación' }));
     await user.click(screen.getByRole('button', { name: 'Continuar una iniciativa existente' }));
     await user.selectOptions(screen.getByLabelText('Iniciativa a continuar'), 'project-1');
     expect(screen.getByLabelText('Iniciativa a continuar')).toHaveValue('project-1');
     expect(screen.getByLabelText('Persona responsable')).toHaveValue('initiative-owner@starteria.test');
-    await user.click(screen.getByRole('button', { name: 'Revisar asignaciÃ³n' }));
-    await user.click(screen.getByRole('button', { name: 'Guardar asignaciÃ³n' }));
+    await user.click(screen.getByRole('button', { name: 'Revisar asignación' }));
+    await user.click(screen.getByRole('button', { name: 'Guardar asignación' }));
     await waitFor(() => expect(screen.getByText('0 iniciativas asignables sin encargo')).toBeInTheDocument());
-    expect(screen.getByRole('button', { name: 'Agregar otra asignaciÃ³n' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Agregar otra asignación' })).toBeInTheDocument();
   });
 
-  it('recovers the exact Brief and does not create on entry or review', async () => {
+  it('reviews and confirms a documentary initiative before continuing to the existing assignment form', async () => {
+    const user = userEvent.setup();
+    api.listAssignableInitiatives.mockResolvedValue({
+      canonicalInitiatives: [],
+      importedRecords: [
+        {
+          id: 'work-1',
+          label: 'Onboarding guiado',
+          purpose: 'Reducir abandono en los primeros siete días.',
+          currentState: 'En validación con clientes.',
+          sourceLabel: 'Documento de iniciativas Q3.xlsx',
+          sourceRefs: [{ sheet: 'Iniciativas', row: 7 }],
+          sourceVersion: '2026-10-23T08:00:00.000Z',
+          reason: 'IMPORTED_RECORD_NOT_CANONICAL',
+        },
+        ...[2, 3, 4, 5].map((index) => ({ id: `work-${index}`, label: `Registro relacionado ${index}`, reason: 'IMPORTED_RECORD_NOT_CANONICAL' as const })),
+      ],
+      otherImportedRecords: [
+        { id: 'work-6', label: 'Programa transversal', category: 'cross_cutting', reason: 'NOT_RELATED_TO_CHALLENGE' },
+        { id: 'work-7', label: 'Mejora fuera de objetivo', category: 'outside_objective', reason: 'NOT_RELATED_TO_CHALLENGE' },
+        { id: 'work-8', label: 'Pendiente de clasificar', category: 'ungrouped', reason: 'NOT_RELATED_TO_CHALLENGE' },
+      ],
+    });
+    api.registerImportedInitiative.mockResolvedValue({
+      idempotent: false,
+      link: { id: 'link-1', mode: 'REGISTER_EXISTING', workItemId: 'work-1', projectId: 'project-imported-1', challengeId: 'challenge-1', status: 'ACTIVE' },
+      project: { id: 'project-imported-1', name: 'Onboarding guiado', description: 'Reducir abandono en los primeros siete días.', ownerEmail: null, ownerName: null, activationStatus: 'OWNER_PENDING', retrospectiveAssessmentStatus: 'PENDING_RETROACTIVE_ASSESSMENT' },
+    });
+
+    render(<ChallengeAssignmentPreparationPanel target={target} />);
+
+    expect(await screen.findByRole('button', { name: 'Agregar asignación' })).toBeInTheDocument();
+    expect(screen.queryByText('Onboarding guiado')).not.toBeInTheDocument();
+    expect(api.createChallengeHandoffAssignment).not.toHaveBeenCalled();
+    await user.click(screen.getByRole('button', { name: 'Agregar asignación' }));
+    await user.click(screen.getByRole('button', { name: 'Continuar una iniciativa existente' }));
+    expect(screen.getByRole('heading', { name: 'Elige una iniciativa existente' })).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Revisar iniciativa documental Onboarding guiado' }));
+    expect(screen.getByText('Documento de iniciativas Q3.xlsx')).toBeInTheDocument();
+    expect(screen.getByText(/fila 7/i)).toBeInTheDocument();
+    expect(api.registerImportedInitiative).not.toHaveBeenCalled();
+    await user.click(screen.getByRole('button', { name: 'Incorporar como iniciativa existente' }));
+    expect(screen.getByText(/confirmas que este registro representa una iniciativa preexistente/i)).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Confirmar incorporación' }));
+    await waitFor(() => expect(api.registerImportedInitiative).toHaveBeenCalledWith('challenge-1', 'work-1', expect.objectContaining({
+      expectedWorkItemUpdatedAt: '2026-10-23T08:00:00.000Z',
+      identityConfirmed: true,
+      alignmentConfirmed: true,
+    }), expect.any(String)));
+    expect(screen.getByRole('heading', { name: 'Asigna responsable y equipo' })).toBeInTheDocument();
+    expect(screen.getByLabelText('Iniciativa a continuar')).toHaveValue('project-imported-1');
+    expect(screen.getByLabelText('Persona responsable')).toHaveValue('');
+    expect(screen.getByText(/responsable operativo pendiente/i)).toBeInTheDocument();
+    expect(api.createChallengeHandoffAssignment).not.toHaveBeenCalled();
+  });
+
+  it('recovers the exact Brief, reports noncanonical imports and does not create on entry or review', async () => {
     const user = userEvent.setup();
     render(<ChallengeAssignmentPreparationPanel target={target} />);
     expect(await screen.findByRole('heading', { name: 'Prepara las asignaciones de este reto' })).toBeInTheDocument();
-    expect(screen.getByText(/puedes dejar otras para despuÃ©s/i)).toBeInTheDocument();
+    expect(screen.getByText(/puedes dejar otras para después/i)).toBeInTheDocument();
     expect(screen.getByText(/una persona responsable por encargo y hasta dos colaboradores/i)).toBeInTheDocument();
-    expect(screen.getByText('VersiÃ³n 5 Â· Confirmada e inmutable')).toBeInTheDocument();
+    expect(screen.getByText('Versión 5 · Confirmada e inmutable')).toBeInTheDocument();
     expect(screen.queryByText(confirmedVersion.intent)).not.toBeInTheDocument();
     const disclosure = screen.getByRole('button', { name: 'Ver contenido del Brief' });
     expect(disclosure).toHaveAttribute('aria-expanded', 'false');
@@ -75,14 +133,15 @@ describe('ChallengeAssignmentPreparationPanel - PL-06A multiple preparation', ()
     await user.keyboard('{Enter}');
     expect(screen.getByRole('button', { name: 'Ocultar contenido del Brief' })).toHaveAttribute('aria-expanded', 'true');
     expect(screen.getByText(confirmedVersion.intent)).toBeInTheDocument();
-    expect(screen.getByText('ImportaciÃ³n Q3')).toBeInTheDocument();
+    expect(screen.getByText('Importación Q3')).toBeInTheDocument();
+    expect(screen.getByText('Información sobre iniciativas documentales')).toBeInTheDocument();
     expect(api.createChallengeHandoffAssignment).not.toHaveBeenCalled();
-    await user.click(screen.getByRole('button', { name: 'Agregar asignaciÃ³n' }));
+    await user.click(screen.getByRole('button', { name: 'Agregar asignación' }));
     expect(screen.getByRole('heading', { name: 'Define este encargo' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Agregar otra asignaciÃ³n' })).toBeDisabled();
-    expect(screen.getByText(/termina o cancela la acciÃ³n abierta antes de preparar otro encargo/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Agregar otra asignación' })).toBeDisabled();
+    expect(screen.getByText(/termina o cancela la acción abierta antes de preparar otro encargo/i)).toBeInTheDocument();
     await user.type(screen.getByLabelText('Persona responsable'), 'owner@starteria.test');
-    await user.click(screen.getByRole('button', { name: 'Revisar asignaciÃ³n' }));
+    await user.click(screen.getByRole('button', { name: 'Revisar asignación' }));
     expect(screen.getByRole('heading', { name: 'Revisa este encargo' })).toBeInTheDocument();
     expect(api.createChallengeHandoffAssignment).not.toHaveBeenCalled();
   });
@@ -91,8 +150,8 @@ describe('ChallengeAssignmentPreparationPanel - PL-06A multiple preparation', ()
     const user = userEvent.setup();
     api.listAssignableInitiatives.mockResolvedValue({
       canonicalInitiatives: [
-        { id: 'project-1', name: 'ActivaciÃ³n guiada', ownerEmail: 'one@starteria.test', ownerName: 'One' },
-        { id: 'project-2', name: 'RecuperaciÃ³n temprana', ownerEmail: 'two@starteria.test', ownerName: 'Two' },
+        { id: 'project-1', name: 'Activación guiada', ownerEmail: 'one@starteria.test', ownerName: 'One' },
+        { id: 'project-2', name: 'Recuperación temprana', ownerEmail: 'two@starteria.test', ownerName: 'Two' },
       ],
       importedRecords: [
         { id: 'work-1', label: 'Onboarding guiado', reason: 'IMPORTED_RECORD_NOT_CANONICAL' },
@@ -109,8 +168,8 @@ describe('ChallengeAssignmentPreparationPanel - PL-06A multiple preparation', ()
 
     expect(await screen.findByText('1 iniciativa asignable sin encargo')).toBeInTheDocument();
     expect(screen.queryByRole('region', { name: 'Resumen de cobertura' })).not.toBeInTheDocument();
-    expect(screen.queryByText('ActivaciÃ³n guiada')).not.toBeInTheDocument();
-    expect(screen.queryByText('RecuperaciÃ³n temprana')).not.toBeInTheDocument();
+    expect(screen.queryByText('Activación guiada')).not.toBeInTheDocument();
+    expect(screen.queryByText('Recuperación temprana')).not.toBeInTheDocument();
     expect(screen.queryByText('Onboarding guiado')).not.toBeInTheDocument();
     expect(screen.queryByText('Seguimiento manual')).not.toBeInTheDocument();
     expect(document.body).not.toHaveTextContent(/%|pendientes obligatorias|todas asignadas/i);
@@ -122,21 +181,21 @@ describe('ChallengeAssignmentPreparationPanel - PL-06A multiple preparation', ()
       .mockResolvedValueOnce({ assignment: { id: 'assignment-1', state: 'CREATED', version: 1, targetKind: 'CHALLENGE', initiativeId: null, contextNote: 'Validar onboarding.', briefVersionId: 'version-5', invitedEmailNormalized: 'owner@starteria.test', members: [{ identityKey: 'owner@starteria.test', emailNormalized: 'owner@starteria.test', role: 'OWNER' }] }, idempotent: false })
       .mockResolvedValueOnce({ assignment: { id: 'assignment-2', state: 'CREATED', version: 1, targetKind: 'CHALLENGE', initiativeId: null, contextNote: '', briefVersionId: 'version-5', invitedEmailNormalized: 'second@starteria.test', members: [{ identityKey: 'second@starteria.test', emailNormalized: 'second@starteria.test', role: 'OWNER' }] }, idempotent: false });
     render(<ChallengeAssignmentPreparationPanel target={target} />);
-    await user.click(await screen.findByRole('button', { name: 'Agregar asignaciÃ³n' }));
+    await user.click(await screen.findByRole('button', { name: 'Agregar asignación' }));
     await user.type(screen.getByLabelText('Persona responsable'), 'OWNER@Starteria.test');
-    await user.type(screen.getByLabelText('Contexto especÃ­fico del encargo'), 'Validar onboarding.');
-    await user.click(screen.getByRole('button', { name: 'Revisar asignaciÃ³n' }));
-    await user.click(screen.getByRole('button', { name: 'Guardar asignaciÃ³n' }));
+    await user.type(screen.getByLabelText('Contexto específico del encargo'), 'Validar onboarding.');
+    await user.click(screen.getByRole('button', { name: 'Revisar asignación' }));
+    await user.click(screen.getByRole('button', { name: 'Guardar asignación' }));
     await waitFor(() => expect(api.createChallengeHandoffAssignment).toHaveBeenCalledWith('challenge-1', {
       targetKind: 'CHALLENGE', initiativeId: null, briefId: 'brief-a', briefVersionId: 'version-5', contextNote: 'Validar onboarding.', invitedEmailNormalized: 'owner@starteria.test',
       members: [{ identityKey: 'owner@starteria.test', emailNormalized: 'owner@starteria.test', role: 'OWNER' }],
     }, expect.any(String)));
     expect(screen.getByRole('heading', { name: 'Asignaciones preparadas' })).toBeInTheDocument();
-    expect(screen.getByText('Preparada, aÃºn no enviada')).toBeInTheDocument();
-    await user.click(screen.getByRole('button', { name: 'Agregar otra asignaciÃ³n' }));
+    expect(screen.getByText('Preparada, aún no enviada')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Agregar otra asignación' }));
     await user.type(screen.getByLabelText('Persona responsable'), 'second@starteria.test');
-    await user.click(screen.getByRole('button', { name: 'Revisar asignaciÃ³n' }));
-    await user.click(screen.getByRole('button', { name: 'Guardar asignaciÃ³n' }));
+    await user.click(screen.getByRole('button', { name: 'Revisar asignación' }));
+    await user.click(screen.getByRole('button', { name: 'Guardar asignación' }));
     await waitFor(() => expect(api.createChallengeHandoffAssignment).toHaveBeenCalledTimes(2));
     expect(screen.getByText('owner@starteria.test')).toBeInTheDocument();
     expect(screen.getByText('second@starteria.test')).toBeInTheDocument();
@@ -147,7 +206,7 @@ describe('ChallengeAssignmentPreparationPanel - PL-06A multiple preparation', ()
     api.listChallengeHandoffAssignments.mockResolvedValue([
       { id: 'assignment-existing', state: 'CREATED', version: 1, targetKind: 'CHALLENGE', initiativeId: null, contextNote: 'Validar onboarding.', briefVersionId: 'version-5', invitedEmailNormalized: 'owner@starteria.test', members: [{ identityKey: 'owner@starteria.test', emailNormalized: 'owner@starteria.test', role: 'OWNER' }] },
       { id: 'assignment-existing', state: 'CREATED', version: 1, targetKind: 'CHALLENGE', initiativeId: null, contextNote: 'Validar onboarding.', briefVersionId: 'version-5', invitedEmailNormalized: 'owner@starteria.test', members: [{ identityKey: 'owner@starteria.test', emailNormalized: 'owner@starteria.test', role: 'OWNER' }] },
-      { id: 'assignment-second', state: 'CREATED', version: 1, targetKind: 'CHALLENGE', initiativeId: null, contextNote: 'Contrastar activaciÃ³n.', briefVersionId: 'version-5', invitedEmailNormalized: 'second@starteria.test', members: [{ identityKey: 'second@starteria.test', emailNormalized: 'second@starteria.test', role: 'OWNER' }] },
+      { id: 'assignment-second', state: 'CREATED', version: 1, targetKind: 'CHALLENGE', initiativeId: null, contextNote: 'Contrastar activación.', briefVersionId: 'version-5', invitedEmailNormalized: 'second@starteria.test', members: [{ identityKey: 'second@starteria.test', emailNormalized: 'second@starteria.test', role: 'OWNER' }] },
       { id: 'assignment-other', state: 'CREATED', version: 1, targetKind: 'CHALLENGE', initiativeId: null, contextNote: '', briefVersionId: 'other-version', invitedEmailNormalized: 'other@starteria.test', members: [] },
     ]);
     render(<ChallengeAssignmentPreparationPanel target={target} />);
@@ -159,14 +218,14 @@ describe('ChallengeAssignmentPreparationPanel - PL-06A multiple preparation', ()
   });
 
   it('offers Existing Initiative only for canonical linked Projects in the reusable assignment form', async () => {
-    api.listAssignableInitiatives.mockResolvedValue({ canonicalInitiatives: [{ id: 'project-1', name: 'ActivaciÃ³n guiada', ownerEmail: 'initiative-owner@starteria.test' }], importedRecords: [] });
+    api.listAssignableInitiatives.mockResolvedValue({ canonicalInitiatives: [{ id: 'project-1', name: 'Activación guiada', ownerEmail: 'initiative-owner@starteria.test' }], importedRecords: [] });
     const user = userEvent.setup();
     render(<ChallengeAssignmentPreparationPanel target={target} />);
-    await user.click(await screen.findByRole('button', { name: 'Agregar asignaciÃ³n' }));
+    await user.click(await screen.findByRole('button', { name: 'Agregar asignación' }));
     await user.click(screen.getByRole('button', { name: 'Continuar una iniciativa existente' }));
     await user.selectOptions(screen.getByLabelText('Iniciativa a continuar'), 'project-1');
-    expect(screen.getByText(/Iniciativa vÃ¡lida y vinculada a este reto/i)).toBeInTheDocument();
-    expect(screen.getByLabelText('Adjuntar tambiÃ©n este Brief confirmado')).not.toBeChecked();
+    expect(screen.getByText(/Iniciativa válida y vinculada a este reto/i)).toBeInTheDocument();
+    expect(screen.getByLabelText('Adjuntar también este Brief confirmado')).not.toBeChecked();
   });
 
   it('edits a CREATED assignment with optimistic versioning', async () => {
@@ -174,10 +233,10 @@ describe('ChallengeAssignmentPreparationPanel - PL-06A multiple preparation', ()
     api.updateChallengeHandoffAssignment.mockResolvedValue({ assignment: { id: 'assignment-existing', state: 'CREATED', version: 4, targetKind: 'CHALLENGE', initiativeId: null, contextNote: 'Contexto ajustado.', briefVersionId: 'version-5', invitedEmailNormalized: 'owner@starteria.test', members: [{ identityKey: 'owner@starteria.test', emailNormalized: 'owner@starteria.test', role: 'OWNER' }] }, idempotent: false });
     const user = userEvent.setup();
     render(<ChallengeAssignmentPreparationPanel target={target} />);
-    await user.click(await screen.findByRole('button', { name: 'Editar asignaciÃ³n para owner@starteria.test' }));
-    await user.clear(screen.getByLabelText('Contexto especÃ­fico del encargo'));
-    await user.type(screen.getByLabelText('Contexto especÃ­fico del encargo'), 'Contexto ajustado.');
-    await user.click(screen.getByRole('button', { name: 'Revisar asignaciÃ³n' }));
+    await user.click(await screen.findByRole('button', { name: 'Editar asignación para owner@starteria.test' }));
+    await user.clear(screen.getByLabelText('Contexto específico del encargo'));
+    await user.type(screen.getByLabelText('Contexto específico del encargo'), 'Contexto ajustado.');
+    await user.click(screen.getByRole('button', { name: 'Revisar asignación' }));
     await user.click(screen.getByRole('button', { name: 'Guardar cambios' }));
     await waitFor(() => expect(api.updateChallengeHandoffAssignment).toHaveBeenCalledWith('assignment-existing', expect.objectContaining({ expectedVersion: 3, contextNote: 'Contexto ajustado.' }), expect.any(String)));
   });
@@ -185,12 +244,11 @@ describe('ChallengeAssignmentPreparationPanel - PL-06A multiple preparation', ()
   it('rejects duplicated people before persistence', async () => {
     const user = userEvent.setup();
     render(<ChallengeAssignmentPreparationPanel target={target} />);
-    await user.click(await screen.findByRole('button', { name: 'Agregar asignaciÃ³n' }));
+    await user.click(await screen.findByRole('button', { name: 'Agregar asignación' }));
     await user.type(screen.getByLabelText('Persona responsable'), 'same@starteria.test');
     await user.type(screen.getByLabelText('Colaborador 1'), 'SAME@starteria.test');
-    await user.click(screen.getByRole('button', { name: 'Revisar asignaciÃ³n' }));
+    await user.click(screen.getByRole('button', { name: 'Revisar asignación' }));
     expect(screen.getByRole('alert')).toHaveTextContent(/cada persona debe aparecer una sola vez/i);
     expect(api.createChallengeHandoffAssignment).not.toHaveBeenCalled();
   });
 });
-

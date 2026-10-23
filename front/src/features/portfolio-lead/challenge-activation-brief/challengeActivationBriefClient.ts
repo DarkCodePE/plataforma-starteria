@@ -15,10 +15,39 @@ export type HandoffAssignment = {
   initiative?: { id: string; name: string } | null;
   members: HandoffAssignmentMember[]; createdAt?: string;
 };
+export type ImportedInitiativeRecord = {
+  id: string;
+  label: string;
+  purpose?: string | null;
+  currentState?: string | null;
+  ownerCandidate?: string | null;
+  sourceType?: string;
+  sourceLabel?: string;
+  sourceRefs?: unknown;
+  sourceVersion: string;
+  reason: 'IMPORTED_RECORD_NOT_CANONICAL';
+};
 export type AssignableInitiatives = {
   canonicalInitiatives: Array<{
     id: string; name: string; description?: string | null; ownerEmail: string | null; ownerName: string | null;
+    activationStatus?: 'OWNER_PENDING' | 'OWNER_CONFIRMED' | null;
+    retrospectiveAssessmentStatus?: 'PENDING_RETROACTIVE_ASSESSMENT' | 'IN_REVIEW' | 'ASSESSED' | null;
   }>;
+  importedRecords: ImportedInitiativeRecord[];
+  otherImportedRecords: Array<Omit<ImportedInitiativeRecord, 'reason'> & {
+    category: 'cross_cutting' | 'outside_objective' | 'ungrouped';
+    reason: 'NOT_RELATED_TO_CHALLENGE';
+  }>;
+};
+export type ImportedInitiativeCommandInput = {
+  expectedWorkItemUpdatedAt: string;
+  identityConfirmed: true;
+  alignmentConfirmed: true;
+};
+export type ImportedInitiativeCommandResult = {
+  idempotent: boolean;
+  link: { id: string; mode: 'LINK_EXISTING' | 'REGISTER_EXISTING'; workItemId: string; projectId: string; challengeId: string; status: 'ACTIVE' | 'REVOKED' };
+  project: { id: string; name: string; description: string | null; ownerEmail: string | null; ownerName: string | null; activationStatus: 'OWNER_PENDING' | 'OWNER_CONFIRMED' | null; retrospectiveAssessmentStatus: 'PENDING_RETROACTIVE_ASSESSMENT' | 'IN_REVIEW' | 'ASSESSED' | null };
 };
 export type AssignmentPreparationInput = {
   targetKind: 'EXISTING_INITIATIVE' | 'CHALLENGE'; initiativeId: string | null;
@@ -61,6 +90,12 @@ export async function listChallengeHandoffAssignments(challengeId: string): Prom
 export async function listAssignableInitiatives(challengeId: string): Promise<AssignableInitiatives> {
   try { const { data } = await api.get<Envelope<AssignableInitiatives>>(`/portfolio/challenges/${encodeURIComponent(challengeId)}/assignable-initiatives`); return data.data; }
   catch (error) { throw parseApiError(error); }
+}
+export async function registerImportedInitiative(challengeId: string, workItemId: string, input: ImportedInitiativeCommandInput & { name?: string; description?: string | null }, idempotencyKey?: string): Promise<ImportedInitiativeCommandResult> {
+  return post(`/portfolio/challenges/${encodeURIComponent(challengeId)}/imported-initiatives/${encodeURIComponent(workItemId)}/register`, input, `imported-initiative:register:${challengeId}:${workItemId}`, idempotencyKey);
+}
+export async function linkImportedInitiative(challengeId: string, workItemId: string, input: ImportedInitiativeCommandInput & { projectId: string }, idempotencyKey?: string): Promise<ImportedInitiativeCommandResult> {
+  return post(`/portfolio/challenges/${encodeURIComponent(challengeId)}/imported-initiatives/${encodeURIComponent(workItemId)}/link`, input, `imported-initiative:link:${challengeId}:${workItemId}:${input.projectId}`, idempotencyKey);
 }
 export async function updateChallengeHandoffAssignment(assignmentId: string, input: { expectedVersion: number; contextNote: string | null; invitedEmailNormalized: string; invitedIdentityRef?: string | null; members: HandoffAssignmentMember[] }, idempotencyKey?: string): Promise<{ assignment: HandoffAssignment; idempotent: boolean }> {
   try {

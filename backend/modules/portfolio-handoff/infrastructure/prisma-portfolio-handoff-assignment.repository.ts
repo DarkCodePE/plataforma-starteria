@@ -101,8 +101,8 @@ export class PrismaPortfolioHandoffAssignmentRepository implements HandoffAssign
   }
 
   async findInitiative(id: string): Promise<HandoffReference | null> {
-    const record = await this.prisma.project.findUnique({ where: { id }, select: { id: true, owner: { select: { organizationId: true } }, portfolioMeta: { select: { challengeId: true } } } });
-    return record ? { id: record.id, organizationId: record.owner.organizationId, challengeIds: record.portfolioMeta.map((meta) => meta.challengeId) } : null;
+    const record = await this.prisma.project.findUnique({ where: { id }, select: { id: true, organizationId: true, portfolioMeta: { select: { challengeId: true } } } });
+    return record ? { id: record.id, organizationId: record.organizationId, challengeIds: record.portfolioMeta.map((meta) => meta.challengeId) } : null;
   }
 }
 

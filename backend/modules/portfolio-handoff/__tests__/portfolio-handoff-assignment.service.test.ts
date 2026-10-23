@@ -16,6 +16,8 @@ function setup() {
   refs.addChallenge({ id: 'challenge-1', organizationId: 'org-1' });
   refs.addInitiative({ id: 'project-1', organizationId: 'org-1', challengeIds: ['challenge-1'] });
   refs.addInitiative({ id: 'project-unlinked', organizationId: 'org-1', challengeIds: ['challenge-other'] });
+  refs.addInitiative({ id: 'project-legacy-p12r1-http-org', organizationId: null, challengeIds: ['challenge-1'] });
+  refs.addInitiative({ id: 'project-legacy-p6-runtime-org', organizationId: null, challengeIds: ['challenge-1'] });
   const repository = new InMemoryPortfolioHandoffAssignmentRepository();
   return { service: new PortfolioHandoffAssignmentService(repository, refs), repository };
 }
@@ -51,6 +53,17 @@ describe('PortfolioHandoffAssignmentService / H-TECH-02', () => {
       'initiative_ref must reference a canonical Project linked to this Challenge',
     );
   });
+
+  it.each(['project-legacy-p12r1-http-org', 'project-legacy-p6-runtime-org'])(
+    'rejects legacy Project %s without explicit canonical organization',
+    async (initiativeId) => {
+      const { service } = setup();
+      await fails(
+        service.createHandoffAssignment(input({ targetKind: 'EXISTING_INITIATIVE', initiativeId })),
+        'initiative is outside the assignment organization/scope',
+      );
+    },
+  );
 
   it('rejects a nonexistent initiative and a challenge with an initiative ref', async () => {
     const { service } = setup();

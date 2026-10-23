@@ -30,6 +30,26 @@ export const handoffAssignmentParamsSchema = z.object({
   assignmentId: z.string().trim().min(1),
 });
 
+export const importedInitiativeParamsSchema = z.object({
+  challengeId: z.string().trim().min(1),
+  workItemId: z.string().trim().min(1),
+});
+
+const importedInitiativeCheckpointSchema = z.object({
+  expectedWorkItemUpdatedAt: z.string().datetime({ offset: true }),
+  identityConfirmed: z.literal(true),
+  alignmentConfirmed: z.literal(true),
+});
+
+export const registerImportedInitiativeBodySchema = importedInitiativeCheckpointSchema.extend({
+  name: z.string().trim().min(1).max(200).optional(),
+  description: z.string().trim().max(2000).nullable().optional(),
+}).strict();
+
+export const linkImportedInitiativeBodySchema = importedInitiativeCheckpointSchema.extend({
+  projectId: z.string().trim().min(1),
+}).strict();
+
 export const emptyActivationBriefCommandBodySchema = z.object({}).strict();
 
 const handoffMemberSchema = z.object({

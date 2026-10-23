@@ -10,11 +10,20 @@ import request from 'supertest';
 import { errorHandler } from '../../../shared/errors/error-handler';
 
 const db = {
-  users: { 'lead-a': 'org-a', 'lead-b': 'org-b', 'owner-a': 'org-a', 'owner-b': 'org-b' } as Record<string, string | null>,
+  users: {
+    'lead-a': 'org-a', 'lead-b': 'org-b', 'owner-a': 'org-a', 'owner-b': 'org-b',
+    'owner-p12-orphan': 'p12r1-http-org', 'owner-p6-orphan': null,
+  } as Record<string, string | null>,
   fronts: { 'front-a': 'org-a', 'front-b': 'org-b', 'front-legacy': null } as Record<string, string | null>,
   challenges: { 'ch-a': 'front-a', 'ch-b': 'front-b' } as Record<string, string>,
   invitations: { 'inv-a': 'ch-a', 'inv-b': 'ch-b' } as Record<string, string>,
-  projects: { 'p-a': { owner: 'owner-a', challenge: 'ch-a' }, 'p-b': { owner: 'owner-b', challenge: 'ch-b' }, 'p-indep-b': { owner: 'owner-b', challenge: null } } as Record<string, { owner: string; challenge: string | null }>,
+  projects: {
+    'p-a': { organizationId: 'org-a', owner: 'owner-a', challenge: 'ch-a' },
+    'p-b': { organizationId: 'org-b', owner: 'owner-b', challenge: 'ch-b' },
+    'p-indep-b': { organizationId: 'org-b', owner: 'owner-b', challenge: null },
+    'p-legacy-p12r1-http-org': { organizationId: null, owner: 'owner-p12-orphan', challenge: null },
+    'p-legacy-p6-runtime-org': { organizationId: null, owner: 'owner-p6-orphan', challenge: 'ch-a' },
+  } as Record<string, { organizationId: string | null; owner: string; challenge: string | null }>,
   outputs: { 'out-b': 'ch-b' } as Record<string, string>,
   assignments: { 'asg-b': { organizationId: null, challengeId: 'ch-b' } } as Record<string, { organizationId: string | null; challengeId: string }>,
 };
@@ -36,6 +45,7 @@ const fakePrisma: any = {
       const p = db.projects[where.id];
       if (!p) return null;
       return {
+        organizationId: p.organizationId,
         owner: { organizationId: db.users[p.owner] },
         portfolioMeta: p.challenge ? [{ challenge: { strategicFront: frontOrg(db.challenges[p.challenge]) } }] : [],
       };
@@ -110,6 +120,16 @@ describe('escrituras de portafolio por ID respetan la organización (F-03)', () 
     expect((await request(app()).delete('/api/v1/portfolio/strategic-fronts/front-a')).status).toBe(200);
     expect(ok).toHaveBeenCalled();
   });
+
+  it.each(['p-legacy-p12r1-http-org', 'p-legacy-p6-runtime-org'])(
+    'un Project legacy %s sin organización canónica falla cerrado aunque owner o reto sugieran tenant',
+    async (projectId) => {
+      const res = await request(app()).put(`/api/v1/portfolio/initiatives/${projectId}/meta`).send({ challengeId: 'ch-a', status: 'en_step_1' });
+      expect(res.status).toBe(404);
+      expect(res.body?.error?.code).toBe('PORTFOLIO_RESOURCE_NOT_FOUND');
+      expect(ok).not.toHaveBeenCalled();
+    },
+  );
 
   it('un frente sin organización (datos anteriores) sigue editable, igual que en la lectura', async () => {
     expect((await request(app()).delete('/api/v1/portfolio/strategic-fronts/front-legacy')).status).toBe(200);

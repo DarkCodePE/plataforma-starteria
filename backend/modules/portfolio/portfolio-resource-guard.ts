@@ -40,22 +40,17 @@ export async function challengeOrganization(prisma: any, challengeId: string): P
 }
 
 /**
- * Una iniciativa es de la organización de su reto. Si no tiene reto (independiente), de la
- * organización de su owner: tratarla como "sin organización" la dejaría escribible desde
- * cualquier organización.
+ * ADR-009 makes Project.organizationId the only canonical tenant boundary.
+ * Historical owner/front scalar references may point to organizations that do not exist;
+ * a Project without an explicit canonical organization therefore fails closed.
  */
 export async function projectOrganization(prisma: any, projectId: string): Promise<Resolved> {
   const project = await prisma.project.findUnique({
     where: { id: projectId },
-    select: {
-      owner: { select: { organizationId: true } },
-      portfolioMeta: { select: { challenge: { select: { strategicFront: { select: { organizationId: true } } } } }, take: 1 },
-    },
+    select: { organizationId: true },
   });
-  if (!project) return NOT_FOUND;
-  const meta = project.portfolioMeta?.[0];
-  if (meta?.challenge) return at(meta.challenge.strategicFront?.organizationId);
-  return at(project.owner?.organizationId);
+  if (!project?.organizationId) return NOT_FOUND;
+  return at(project.organizationId);
 }
 
 export async function executiveOutputOrganization(prisma: any, outputId: string): Promise<Resolved> {

@@ -31,6 +31,8 @@ suite('P12-R1 ADR-008 HTTP lifecycle', () => {
     await prisma.challengeActivationBrief.deleteMany({ where: { challengeId: { in: [ids.challenge, ids.pl05Challenge, ids.multiBriefChallenge] } } });
     await prisma.challenge.deleteMany({ where: { id: { in: [ids.challenge, ids.pl05Challenge, ids.multiBriefChallenge] } } });
     await prisma.strategicFront.deleteMany({ where: { id: ids.front } });
+    await prisma.organization.upsert({ where: { id: 'p12r1-http-org' }, update: {}, create: { id: 'p12r1-http-org', name: 'P12 HTTP organization', slug: 'p12r1-http-org' } });
+    await prisma.organization.upsert({ where: { id: 'p12r1-http-other-org' }, update: {}, create: { id: 'p12r1-http-other-org', name: 'P12 HTTP other organization', slug: 'p12r1-http-other-org' } });
     await prisma.user.upsert({ where: { id: ids.lead }, update: { role: 'portfolio_lead', roles: ['portfolio_lead'], organizationId: 'p12r1-http-org' }, create: { id: ids.lead, email: 'p12r1-http-lead@starteria.test', name: 'P12 HTTP Lead', role: 'portfolio_lead', roles: ['portfolio_lead'], initials: 'PH', skills: [], organizationId: 'p12r1-http-org' } });
     await prisma.user.upsert({ where: { id: ids.otherLead }, update: { role: 'portfolio_lead', roles: ['portfolio_lead'], organizationId: 'p12r1-http-other-org' }, create: { id: ids.otherLead, email: 'p12r1-http-other-lead@starteria.test', name: 'P12 HTTP Other Lead', role: 'portfolio_lead', roles: ['portfolio_lead'], initials: 'PO', skills: [], organizationId: 'p12r1-http-other-org' } });
     await prisma.user.upsert({ where: { id: ids.recipient }, update: { role: 'participante', roles: ['participante'], organizationId: 'p12r1-http-org' }, create: { id: ids.recipient, email: 'p12r1-http-recipient@starteria.test', name: 'P12 HTTP Recipient', role: 'participante', roles: ['participante'], initials: 'PR', skills: [], organizationId: 'p12r1-http-org' } });
@@ -49,8 +51,8 @@ suite('P12-R1 ADR-008 HTTP lifecycle', () => {
     const version = brief.versions[0];
     await request(app).post(`/api/v1/portfolio/activation-brief-versions/${version.id}/confirm`).set(auth).set('Idempotency-Key', 'p12r1-pl06a-confirm').send({}).expect(200);
     await prisma.project.createMany({ data: [
-      { id: ids.initiative, name: 'Canonical related initiative', ownerId: ids.recipient },
-      { id: ids.unlinkedInitiative, name: 'Canonical but unrelated initiative', ownerId: ids.recipient },
+      { id: ids.initiative, name: 'Canonical related initiative', ownerId: ids.recipient, organizationId: 'p12r1-http-org' },
+      { id: ids.unlinkedInitiative, name: 'Canonical but unrelated initiative', ownerId: ids.recipient, organizationId: 'p12r1-http-org' },
     ] });
     await prisma.initiativePortfolioMeta.create({ data: { projectId: ids.initiative, challengeId: ids.challenge, teamOwner: 'p12r1-http-recipient@starteria.test' } });
 

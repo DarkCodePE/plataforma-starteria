@@ -310,6 +310,7 @@ enum ChallengeOpenCallStatus {
 }
 
 enum InitiativePortfolioStatus {
+  pending_retroactive_assessment
   en_step_0
   en_step_1
   en_step_2
@@ -323,6 +324,27 @@ enum InitiativePortfolioStatus {
   paused
   closed
   cerrada
+}
+
+enum ImportedInitiativeMode {
+  LINK_EXISTING
+  REGISTER_EXISTING
+}
+
+enum ImportedInitiativeLinkStatus {
+  ACTIVE
+  REVOKED
+}
+
+enum ImportedInitiativeActivationStatus {
+  OWNER_PENDING
+  OWNER_CONFIRMED
+}
+
+enum RetrospectiveAssessmentStatus {
+  PENDING_RETROACTIVE_ASSESSMENT
+  IN_REVIEW
+  ASSESSED
 }
 
 enum InitiativeContributionType {
@@ -628,6 +650,8 @@ model User {
   activationBriefVersionsCreated ChallengeActivationBriefVersion[] @relation("ChallengeActivationBriefVersionCreatedBy")
   activationBriefVersionsConfirmed ChallengeActivationBriefVersion[] @relation("ChallengeActivationBriefVersionConfirmedBy")
   activationCommandReceipts PortfolioActivationCommandReceipt[] @relation("PortfolioActivationCommandActor")
+  importedInitiativeLinksConfirmed PortfolioImportedInitiativeLink[] @relation("ImportedInitiativeConfirmedBy")
+  importedInitiativeLinksRevoked PortfolioImportedInitiativeLink[] @relation("ImportedInitiativeRevokedBy")
   handoffMemberIdentities  PortfolioHandoffMember[] @relation("HandoffMemberUser")
   teamMemberships          TeamMember[]
   challengeTeamMemberships ChallengeTeamMember[] // ADR-023: reto-scoped team membership
@@ -683,11 +707,16 @@ model Project {
   // originó (nullable → additivo, seguro para `prisma db push`).
   origin                  InitiativeOrigin? @default(from_scratch)
   initialReviewSnapshotId String?
+  // ADR-009: tenant ownership is explicit and independent from an operational owner.
+  organizationId          String?
+  activationStatus        ImportedInitiativeActivationStatus?
+  retrospectiveAssessmentStatus RetrospectiveAssessmentStatus?
   createdAt               DateTime          @default(now())
   lastModified            DateTime          @updatedAt
 
-  ownerId  String
-  owner    User    @relation(fields: [ownerId], references: [id])
+  ownerId  String?
+  owner    User?   @relation(fields: [ownerId], references: [id])
+  organization Organization? @relation(fields: [organizationId], references: [id], onDelete: Restrict)
   cohortId String?
   cohort   Cohort? @relation(fields: [cohortId], references: [id])
 
@@ -727,8 +756,10 @@ model Project {
   scalingHandoffs ScalingHandoff[]
   closureSummaries ClosureSummary[]
   handoffAssignments PortfolioHandoffAssignment[]
+  importedInitiativeLinks PortfolioImportedInitiativeLink[]
 
   @@index([ownerId])
+  @@index([organizationId])
   @@index([cohortId])
   @@index([status])
   @@index([pilotLeadId])
@@ -1591,6 +1622,7 @@ model Challenge {
   handoffAssignments PortfolioHandoffAssignment[]
   activationBriefs ChallengeActivationBrief[]
   activationBriefVersions ChallengeActivationBriefVersion[]
+  importedInitiativeLinks PortfolioImportedInitiativeLink[]
 
   @@index([strategicFrontId])
   @@index([status])
@@ -2552,6 +2584,8 @@ model Organization {
   subscriptions Subscription[]
   members       OrganizationMember[]
   portfolioAccessGrants OrganizationPortfolioAccessGrant[]
+  projects        Project[]
+  importedInitiativeLinks PortfolioImportedInitiativeLink[]
 
   @@index([cohortId])
 }
@@ -3041,6 +3075,7 @@ model PortfolioBootstrapSession {
     workIntakeSources    PortfolioBootstrapWorkIntakeSource[]
     importBatches        PortfolioBootstrapImportBatch[]
     workItems            PortfolioBootstrapWorkItem[]
+    importedInitiativeLinks PortfolioImportedInitiativeLink[]
   analysisRuns         PortfolioBootstrapAnalysisRun[]
   proposedMutations    PortfolioBootstrapProposedMutation[]
   strategicConnections PortfolioStrategicConnection[]
@@ -3294,6 +3329,7 @@ model PortfolioAnchorHistory {
     importBatch        PortfolioBootstrapImportBatch?          @relation(fields: [importBatchId], references: [id], onDelete: Restrict)
     strategicConnections PortfolioStrategicConnection[]
   advancementConditions PortfolioAdvancementCondition[]
+  importedInitiativeLinks PortfolioImportedInitiativeLink[]
 
     @@index([bootstrapSessionId])
     @@index([sourceId])
@@ -3302,6 +3338,48 @@ model PortfolioAnchorHistory {
   @@index([status])
   @@index([createdBy])
   @@index([createdAt])
+}
+
+// ADR-009: durable human-confirmed documentary lineage. The nullable unique
+// activeWorkItemKey allows history after revocation while enforcing one active
+// Project correspondence for each organization/work-item pair.
+model PortfolioImportedInitiativeLink {
+  id                    String                         @id @default(cuid())
+  organizationId        String
+  organization          Organization                   @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  bootstrapSessionId    String
+  bootstrapSession      PortfolioBootstrapSession      @relation(fields: [bootstrapSessionId], references: [id], onDelete: Restrict)
+  workItemId            String
+  workItem              PortfolioBootstrapWorkItem     @relation(fields: [workItemId], references: [id], onDelete: Restrict)
+  projectId             String
+  project               Project                        @relation(fields: [projectId], references: [id], onDelete: Restrict)
+  challengeId           String
+  challenge             Challenge                      @relation(fields: [challengeId], references: [id], onDelete: Restrict)
+  mode                   ImportedInitiativeMode
+  status                 ImportedInitiativeLinkStatus   @default(ACTIVE)
+  activeWorkItemKey      String?                        @unique
+  sourceVersion          DateTime
+  fingerprint            String
+  idempotencyKey         String
+  decisionVersion        Int                            @default(1)
+  identitySnapshot       Json
+  sourceSnapshot         Json
+  alignmentDecision      Json
+  confirmedByActorId     String
+  confirmedByActor       User                           @relation("ImportedInitiativeConfirmedBy", fields: [confirmedByActorId], references: [id], onDelete: Restrict)
+  confirmedAt            DateTime                       @default(now())
+  revokedByActorId       String?
+  revokedByActor         User?                          @relation("ImportedInitiativeRevokedBy", fields: [revokedByActorId], references: [id], onDelete: Restrict)
+  revokedAt              DateTime?
+  revocationReason       String?
+  createdAt              DateTime                       @default(now())
+  updatedAt              DateTime                       @updatedAt
+
+  @@unique([organizationId, idempotencyKey])
+  @@index([organizationId, workItemId, status])
+  @@index([organizationId, projectId, status])
+  @@index([challengeId, status])
+  @@index([bootstrapSessionId])
 }
 
 model PortfolioBootstrapAnalysisRun {
