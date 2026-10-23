@@ -14,6 +14,7 @@ export type PortfolioEntryIdempotencyRecord = {
 };
 
 export type CreatePortfolioEntryIdempotencyInput = {
+  id?: string;
   operation: string;
   scope: string;
   sessionId?: string | null;

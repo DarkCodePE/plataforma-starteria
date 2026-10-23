@@ -28,6 +28,8 @@ import { PortfolioEntrySessionError } from '../../portfolio-entry-sessions/appli
 import type { PortfolioEntrySession, PortfolioEntryTurn, PortfolioEntryTurnInputIntent } from '../../portfolio-entry-sessions/domain/portfolio-entry-session.types';
 import { isCriticalHandoffCurrent } from '../../portfolio-entry-sessions/domain/portfolio-entry-critical-handoff.types';
 import type { PortfolioEntryModelExecutionRecord } from '../../portfolio-entry-sessions/observability/portfolio-entry-execution-metadata';
+import type { ModelExecutionResult } from '../../portfolio-entry-runtime/model/model-execution-types';
+import { logger } from '../../../shared/utils/logger';
 import {
   toPortfolioEntryAuthenticatedProvisionalContinuationDto,
   toCriticalHandoffClientDto,
@@ -62,6 +64,15 @@ type RequestContext = {
   idempotencyRecordId?: string;
 };
 type Operation = 'submit_message' | 'guided_exploration_choice' | 'materialize_handoff' | 'materialize_critical_handoff' | 'confirm_handoff' | 'confirm_critical_handoff' | 'claim_session' | 'abandon_session';
+type CriticalHandoffFailureClass =
+  | 'provider_authentication'
+  | 'provider_timeout'
+  | 'provider_failure'
+  | 'empty_output'
+  | 'schema_invalid'
+  | 'projection_failure'
+  | 'persistence_failure'
+  | 'revision_conflict';
 const USER_CONFIRMABLE_FIELDS = new Set([
   'understood_need', 'understanding', 'desired_outcome', 'decision_to_enable', 'known_context',
   'unresolved_context', 'evidence_or_clarity_needed', 'recommended_approach',
@@ -99,6 +110,10 @@ export type PortfolioEntryLiveUnderstandingSynthesisRequest = {
 
 export interface PortfolioEntryLiveUnderstandingSynthesizer {
   synthesize(input: PortfolioEntryLiveUnderstandingSynthesisRequest): Promise<CriticalSituationSynthesis | null>;
+  synthesizeDetailed?(input: PortfolioEntryLiveUnderstandingSynthesisRequest): Promise<{
+    synthesis: CriticalSituationSynthesis | null;
+    modelExecution: ModelExecutionResult<CriticalSituationSynthesis>;
+  }>;
 }
 
 export class PortfolioEntryExperimentalSessionService {
@@ -384,25 +399,12 @@ export class PortfolioEntryExperimentalSessionService {
     const initial = await this.authorize(sessionId, context);
     assertNotConverted(initial);
     const existing = await this.sessionService.getLatestCriticalHandoff(sessionId);
-    if (!isCurrentCriticalHandoffSession(initial) && !existing) {
+    if (!isCurrentCriticalHandoffSession(initial) && !existing?.isCurrent) {
       throw PortfolioEntrySessionError.invalidTransition('Critical Handoff materialization requires the current Portfolio Entry checkpoint.');
     }
 
     return this.withIdempotency('materialize_critical_handoff', sessionId, { expectedRevision }, context, async () => {
-      this.assertExpectedRevision(initial, expectedRevision);
-      const session = await this.authorize(sessionId, context);
-      assertNotConverted(session);
-      const existingAtRun = await this.sessionService.getLatestCriticalHandoff(sessionId);
-      if (!isCurrentCriticalHandoffSession(session) && !existingAtRun) {
-        throw PortfolioEntrySessionError.invalidTransition('Critical Handoff materialization requires the current Portfolio Entry checkpoint.');
-      }
-
-      const completed = await this.performHandoffMaterialization(
-        sessionId,
-        expectedRevision,
-        context,
-        'materialize_critical_handoff',
-      );
+      const completed = await this.performCriticalHandoffMaterialization(sessionId, expectedRevision, context);
       return this.criticalHandoffMaterializationDto(completed);
     }, (record) => this.recoverCriticalHandoffMaterialization(sessionId, record, expectedRevision));
   }
@@ -470,41 +472,13 @@ export class PortfolioEntryExperimentalSessionService {
     expectedRevision: number,
     turns: PortfolioEntryTurn[],
   ): Promise<void> {
-    if (session.semanticState.pendingInput?.status === 'ANALYSIS_PENDING') {
-      throw PortfolioEntrySessionError.conflict();
-    }
+    const existing = await this.sessionService.getLatestCriticalHandoff(session.id);
     const sourceTurn = latestAnalyzedContextTurn(turns);
     if (!sourceTurn) throw PortfolioEntrySessionError.invalidTransition('No analyzed user context is available for Critical Handoff.');
-
-    const existing = await this.sessionService.getLatestCriticalHandoff(session.id);
     if (existing?.isCurrent
       && existing.artifact.sourceContextRevision === session.contextRevision
       && existing.artifact.sourceTurnId === sourceTurn.id) return;
-
-    let projection: CriticalHandoffProjection;
-    try {
-      const authorizedSnapshot = buildAuthorizedSynthesisSnapshot(
-        session.id,
-        session.contextRevision,
-        turns,
-        sourceTurn,
-      );
-      const synthesis = await this.liveUnderstandingSynthesizer.synthesize({
-        purpose: 'critical_handoff',
-        sessionId: session.id,
-        sessionRevision: expectedRevision,
-        contextRevision: session.contextRevision,
-        turnIndex: sourceTurn.turnIndex,
-        sourceTurnId: sourceTurn.id,
-        authorizedSnapshot,
-      });
-      if (!synthesis) throw new Error('KAN-114 returned no synthesis.');
-      const validated = criticalSituationSynthesisSchema.parse(synthesis);
-      projection = this.criticalHandoffProjector(validated);
-    } catch (error) {
-      await this.recordFailure(session.id, error);
-      throw PortfolioEntryApiError.criticalHandoffSynthesisUnavailable();
-    }
+    const projection = await this.synthesizeCriticalHandoff(session, expectedRevision, turns, sourceTurn);
 
     await this.sessionService.createCriticalHandoff({
       sessionId: session.id,
@@ -513,6 +487,70 @@ export class PortfolioEntryExperimentalSessionService {
       sourceTurnId: sourceTurn.id,
       payload: projection,
     });
+  }
+
+  private async synthesizeCriticalHandoff(
+    session: PortfolioEntrySession,
+    sessionRevision: number,
+    turns: PortfolioEntryTurn[],
+    sourceTurn = latestAnalyzedContextTurn(turns),
+  ): Promise<CriticalHandoffProjection> {
+    if (session.semanticState.pendingInput?.status === 'ANALYSIS_PENDING') {
+      throw PortfolioEntrySessionError.conflict();
+    }
+    if (!sourceTurn) throw PortfolioEntrySessionError.invalidTransition('No analyzed user context is available for Critical Handoff.');
+    const authorizedSnapshot = buildAuthorizedSynthesisSnapshot(
+      session.id,
+      session.contextRevision,
+      turns,
+      sourceTurn,
+    );
+    const request: PortfolioEntryLiveUnderstandingSynthesisRequest = {
+        purpose: 'critical_handoff',
+        sessionId: session.id,
+        sessionRevision,
+        contextRevision: session.contextRevision,
+        turnIndex: sourceTurn.turnIndex,
+        sourceTurnId: sourceTurn.id,
+        authorizedSnapshot,
+    };
+    let synthesis: CriticalSituationSynthesis | null;
+    let nullFailureClass: CriticalHandoffFailureClass = 'empty_output';
+    try {
+      if (this.liveUnderstandingSynthesizer.synthesizeDetailed) {
+        const detailed = await this.liveUnderstandingSynthesizer.synthesizeDetailed(request);
+        await this.recordExecution(session.id, detailed.modelExecution, true);
+        synthesis = detailed.synthesis;
+        if (!synthesis) nullFailureClass = classifyModelExecutionFailure(detailed.modelExecution);
+      } else {
+        synthesis = await this.liveUnderstandingSynthesizer.synthesize(request);
+      }
+    } catch (error) {
+      await this.recordFailure(session.id, error, true);
+      this.logCriticalHandoffFailure(session.id, 'provider', classifyThrownSynthesisFailure(error));
+      throw PortfolioEntryApiError.criticalHandoffSynthesisUnavailable();
+    }
+    if (!synthesis) {
+      this.logCriticalHandoffFailure(
+        session.id,
+        nullFailureClass === 'schema_invalid' ? 'validation' : 'provider',
+        nullFailureClass,
+      );
+      throw PortfolioEntryApiError.criticalHandoffSynthesisUnavailable();
+    }
+    let validated: CriticalSituationSynthesis;
+    try {
+      validated = criticalSituationSynthesisSchema.parse(synthesis);
+    } catch {
+      this.logCriticalHandoffFailure(session.id, 'validation', 'schema_invalid');
+      throw PortfolioEntryApiError.criticalHandoffSynthesisUnavailable();
+    }
+    try {
+      return this.criticalHandoffProjector(validated);
+    } catch {
+      this.logCriticalHandoffFailure(session.id, 'projection', 'projection_failure');
+      throw PortfolioEntryApiError.criticalHandoffSynthesisUnavailable();
+    }
   }
 
   async abandonConfirmedSession(sessionId: string, expectedRevision: number, context: RequestContext) {
@@ -621,6 +659,97 @@ export class PortfolioEntryExperimentalSessionService {
     return session;
   }
 
+  private async performCriticalHandoffMaterialization(
+    sessionId: string,
+    expectedRevision: number,
+    context: RequestContext,
+  ): Promise<PortfolioEntrySession> {
+    const session = await this.authorize(sessionId, context);
+    assertNotConverted(session);
+    const turns = await this.sessionRepository.listTurns(sessionId);
+    const sourceTurn = latestAnalyzedContextTurn(turns);
+    if (!sourceTurn) throw PortfolioEntrySessionError.invalidTransition('No analyzed user context is available for Critical Handoff.');
+    const existing = await this.sessionService.getLatestCriticalHandoff(sessionId);
+    if (existing?.isCurrent
+      && existing.artifact.sourceContextRevision === session.contextRevision
+      && existing.artifact.sourceTurnId === sourceTurn.id) {
+      if (expectedRevision !== session.revision && expectedRevision !== session.revision - 1) {
+        throw PortfolioEntrySessionError.conflict();
+      }
+      return session;
+    }
+
+    const isRecoverablePartial = session.lifecycleStatus === 'HANDOFF_READY'
+      && Boolean(session.latestHandoff)
+      && isCurrentCriticalHandoffSession(session);
+    if (isRecoverablePartial) {
+      if (expectedRevision !== session.revision && expectedRevision !== session.revision - 1) {
+        throw PortfolioEntrySessionError.conflict();
+      }
+    } else {
+      this.assertExpectedRevision(session, expectedRevision);
+      if (!isCriticalHandoffCheckpoint(session)) {
+        throw PortfolioEntrySessionError.invalidTransition('Critical Handoff materialization requires the current Portfolio Entry checkpoint.');
+      }
+    }
+
+    // The external synthesis finishes before either publication path opens a
+    // database transaction. sourceContextRevision/sourceTurnId are rechecked
+    // by the repository CAS at publication time.
+    const projection = await this.synthesizeCriticalHandoff(session, session.revision, turns, sourceTurn);
+    await this.storeRecovery(context, {
+      kind: 'portfolio-entry-recovery',
+      operation: 'materialize_critical_handoff',
+      expectedRevision,
+    });
+
+    try {
+      if (isRecoverablePartial) {
+        await this.sessionService.createCriticalHandoff({
+          sessionId,
+          expectedSessionRevision: session.revision,
+          sourceContextRevision: session.contextRevision,
+          sourceTurnId: sourceTurn.id,
+          payload: projection,
+        });
+        return this.requireSession(sessionId);
+      }
+
+      const materialized = await this.handoffMaterializer.materialize({
+        sessionId,
+        runId: context.requestId ?? randomUUID(),
+        analysis: session.latestAnalysis!,
+        context: contextFromSession(session),
+      });
+      if (materialized.modelExecution) await this.recordExecution(sessionId, materialized.modelExecution);
+      await this.sessionService.publishCriticalHandoff({
+        sessionId,
+        handoff: materialized.handoff,
+        sourceTurnId: sourceTurn.id,
+        expectedRevision: session.revision,
+        sourceContextRevision: session.contextRevision,
+        criticalHandoff: projection,
+        now: this.now(),
+      });
+      return this.requireSession(sessionId);
+    } catch (error) {
+      if (error instanceof PortfolioEntrySessionError
+        && error.code === 'PORTFOLIO_ENTRY_SESSION_CONFLICT') {
+        const currentSession = await this.requireSession(sessionId);
+        const current = await this.sessionService.getLatestCriticalHandoff(sessionId);
+        if (current?.isCurrent
+          && current.artifact.sourceContextRevision === currentSession.contextRevision
+          && current.artifact.sourceTurnId === sourceTurn.id) {
+          return currentSession;
+        }
+        this.logCriticalHandoffFailure(sessionId, 'publication', 'revision_conflict');
+        throw error;
+      }
+      this.logCriticalHandoffFailure(sessionId, 'publication', 'persistence_failure');
+      throw PortfolioEntryApiError.criticalHandoffSynthesisUnavailable();
+    }
+  }
+
   private async performHandoffMaterialization(
     sessionId: string,
     expectedRevision: number,
@@ -690,9 +819,12 @@ export class PortfolioEntryExperimentalSessionService {
     const hint = recoveryHint(record, 'materialize_critical_handoff', expectedRevision);
     if (!hint) return null;
     const session = await this.requireSession(sessionId);
-    if (session.revision !== expectedRevision + 1) return null;
+    // Fresh publication advances the session revision; conclusion-only
+    // recovery publishes against the already-materialized legacy checkpoint
+    // and deliberately leaves that revision unchanged.
+    if (session.revision !== expectedRevision && session.revision !== expectedRevision + 1) return null;
     const latest = await this.sessionService.getLatestCriticalHandoff(sessionId);
-    if (!latest) return null;
+    if (!latest?.isCurrent) return null;
     return this.criticalHandoffMaterializationDto(session);
   }
 
@@ -767,7 +899,9 @@ export class PortfolioEntryExperimentalSessionService {
       }
       throw PortfolioEntryApiError.idempotencyInProgress();
     }
+    const candidateId = randomUUID();
     const record = await this.idempotencyRepository.create({
+      id: candidateId,
       operation,
       scope: sessionId,
       sessionId,
@@ -775,6 +909,16 @@ export class PortfolioEntryExperimentalSessionService {
       requestPayloadHash: hash,
       expiresAt: new Date(now.getTime() + this.config.idempotencyTtlMs),
     });
+    if (record.id !== candidateId) {
+      if (record.requestPayloadHash !== hash) throw PortfolioEntryApiError.idempotencyConflict();
+      if (record.status === 'COMPLETED') return record.responseSnapshot as T;
+      const recovered = await recover(record);
+      if (recovered !== null) {
+        await this.idempotencyRepository.complete({ id: record.id, responseSnapshot: recovered });
+        return recovered;
+      }
+      if (record.status !== 'FAILED') throw PortfolioEntryApiError.idempotencyInProgress();
+    }
     context.idempotencyRecordId = record.id;
     try {
       const result = await run();
@@ -835,13 +979,17 @@ export class PortfolioEntryExperimentalSessionService {
     return this.toProvisionalDto(session);
   }
 
-  private async recordFailure(sessionId: string, error: unknown): Promise<void> {
+  private async recordFailure(sessionId: string, error: unknown, sanitize = false): Promise<void> {
     if (!(error instanceof LiveModelExecutionError)) return;
     const result = error.result;
-    await this.recordExecution(sessionId, result);
+    await this.recordExecution(sessionId, result, sanitize);
   }
 
-  private async recordExecution(sessionId: string, result: import('../../portfolio-entry-runtime').ModelExecutionResult<unknown>): Promise<void> {
+  private async recordExecution(
+    sessionId: string,
+    result: import('../../portfolio-entry-runtime').ModelExecutionResult<unknown>,
+    sanitize = false,
+  ): Promise<void> {
     const metadata = result.execution_metadata;
     const execution: PortfolioEntryModelExecutionRecord = {
       id: randomUUID(),
@@ -853,13 +1001,30 @@ export class PortfolioEntryExperimentalSessionService {
       callId: metadata.call_id,
       durationMs: metadata.duration_ms,
       retryCount: metadata.retry_count,
-      technicalError: result.technical_error,
-      schemaErrors: result.schema_errors,
+      technicalError: sanitize && result.technical_error
+        ? classifyModelExecutionFailure(result)
+        : result.technical_error,
+      schemaErrors: sanitize
+        ? sanitizeCriticalHandoffSchemaErrors(result)
+        : result.schema_errors,
       parsedOutputPresent: result.parsed_output !== null,
       validatedOutputPresent: result.validated_output !== null,
       createdAt: this.now(),
     };
     await this.sessionService.appendModelExecution(execution).catch(() => undefined);
+  }
+
+  private logCriticalHandoffFailure(
+    sessionId: string,
+    stage: 'provider' | 'validation' | 'projection' | 'publication',
+    failureClass: CriticalHandoffFailureClass,
+  ): void {
+    logger.warn({
+      event: 'portfolio_entry_critical_handoff_failure',
+      sessionId,
+      stage,
+      failureClass,
+    }, 'Critical Handoff materialization failed.');
   }
 }
 
@@ -976,6 +1141,55 @@ function isCriticalHandoffCheckpoint(session: PortfolioEntrySession): boolean {
 
 function isCurrentCriticalHandoffSession(session: PortfolioEntrySession): boolean {
   return session.semanticState.userExplorationChoice === 'provisional_route';
+}
+
+function classifyModelExecutionFailure(result: ModelExecutionResult<unknown>): CriticalHandoffFailureClass {
+  const technical = result.technical_error?.toLowerCase() ?? '';
+  if (/timeout|timed out|abort/.test(technical)) return 'provider_timeout';
+  if (/\b401\b|\b403\b|auth|unauthori[sz]ed|api.?key|credential/.test(technical)) {
+    return 'provider_authentication';
+  }
+  // FetchStructuredModelAdapter reports extraction failures as SCHEMA_ERROR.
+  // Preserve the operational distinction between an absent/blank response and
+  // a non-empty response that violates the schema without persisting raw text.
+  if (hasEmptyProviderOutput(result)) return 'empty_output';
+  if (result.error_type === 'SCHEMA_ERROR' || result.error_type === 'CONTRACT_FAILURE') return 'schema_invalid';
+  return 'provider_failure';
+}
+
+function hasEmptyProviderOutput(result: ModelExecutionResult<unknown>): boolean {
+  if (result.parsed_output !== null || result.validated_output !== null) return false;
+  const raw = result.provider_raw;
+  if (raw === null || raw === undefined) return true;
+  if (typeof raw === 'string') return raw.trim() === '';
+  if (!raw || typeof raw !== 'object') return false;
+  const record = raw as Record<string, unknown>;
+  if (typeof record.output_text === 'string') return record.output_text.trim() === '';
+  if (!Array.isArray(record.output)) return false;
+  const texts: string[] = [];
+  for (const item of record.output) {
+    if (!item || typeof item !== 'object') continue;
+    const content = (item as Record<string, unknown>).content;
+    if (!Array.isArray(content)) continue;
+    for (const child of content) {
+      if (!child || typeof child !== 'object') continue;
+      const childRecord = child as Record<string, unknown>;
+      if (childRecord.type === 'output_text' && typeof childRecord.text === 'string') texts.push(childRecord.text);
+    }
+  }
+  return texts.length === 0 || texts.every((text) => text.trim() === '');
+}
+
+function sanitizeCriticalHandoffSchemaErrors(result: ModelExecutionResult<unknown>): string[] {
+  if (result.schema_errors.length === 0) return [];
+  return [classifyModelExecutionFailure(result)];
+}
+
+function classifyThrownSynthesisFailure(error: unknown): CriticalHandoffFailureClass {
+  if (error instanceof LiveModelExecutionError) return classifyModelExecutionFailure(error.result);
+  const name = error instanceof Error ? error.name.toLowerCase() : '';
+  if (name.includes('timeout') || name.includes('abort')) return 'provider_timeout';
+  return 'provider_failure';
 }
 
 function assertMessageInputAllowed(

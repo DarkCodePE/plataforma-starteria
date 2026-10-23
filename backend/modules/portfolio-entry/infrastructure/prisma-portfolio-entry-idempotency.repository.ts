@@ -23,6 +23,7 @@ export class PrismaPortfolioEntryIdempotencyRepository implements PortfolioEntry
     try {
       const row = await this.prisma.portfolioEntryApiIdempotency.create({
         data: {
+          id: input.id,
           operation: input.operation,
           scope: input.scope,
           sessionId: input.sessionId ?? null,

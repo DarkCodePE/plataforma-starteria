@@ -216,9 +216,10 @@ async function expectNoLegacyFallback(page: Page) {
   await expect(page.getByTestId('portfolio-entry-confirmed-brief-actions')).toHaveCount(0);
 }
 
-async function installExplorationJourneyMocks(page: Page) {
-  const requests: Array<{ path: string; method: string; body?: Record<string, unknown> }> = [];
+async function installExplorationJourneyMocks(page: Page, options: { failFirstMaterialization?: boolean; recoveryRevision?: number } = {}) {
+  const requests: Array<{ path: string; method: string; body?: Record<string, unknown>; idempotencyKey?: string }> = [];
   let criticalReadCount = 0;
+  let materializationCount = 0;
   const checkpoint = sessionDto({
     lifecycleStatus: 'CLARIFYING',
     revision: 1,
@@ -262,7 +263,12 @@ async function installExplorationJourneyMocks(page: Page) {
     const pathname = new URL(request.url()).pathname;
     let body: Record<string, unknown> | undefined;
     try { body = request.postDataJSON() as Record<string, unknown> | undefined; } catch { body = undefined; }
-    requests.push({ path: pathname, method: request.method(), body });
+    requests.push({
+      path: pathname,
+      method: request.method(),
+      body,
+      idempotencyKey: request.headers()['idempotency-key'],
+    });
 
     if (pathname.endsWith('/auth/refresh') || pathname.endsWith('/auth/me')) {
       await route.fulfill({ status: 401, json: { success: false } });
@@ -280,9 +286,21 @@ async function installExplorationJourneyMocks(page: Page) {
       await route.fulfill({ json: { success: true, data: eligible } });
       return;
     }
-    if (pathname === `/api/v1/public/portfolio-entry/sessions/${SESSION_ID}/critical-handoff` && request.method() === 'POST') {
+    if (pathname === `/api/v1/public/portfolio-entry/sessions/${SESSION_ID}` && request.method() === 'GET') {
       await route.fulfill({ json: { success: true, data: {
-        sessionRevision: 3,
+        ...eligible,
+        revision: options.recoveryRevision ?? eligible.revision,
+      } } });
+      return;
+    }
+    if (pathname === `/api/v1/public/portfolio-entry/sessions/${SESSION_ID}/critical-handoff` && request.method() === 'POST') {
+      materializationCount += 1;
+      if (options.failFirstMaterialization && materializationCount === 1) {
+        await route.fulfill({ status: 503, json: { success: false, error: { code: 'UNAVAILABLE' } } });
+        return;
+      }
+      await route.fulfill({ json: { success: true, data: {
+        sessionRevision: (options.recoveryRevision ?? 2) + 1,
         criticalHandoff: {
           id: 'artifact-journey',
           version: 2,
@@ -392,6 +410,36 @@ test('exploration close creates the legacy handoff, loads the Critical Handoff, 
   expect(requests.filter((request) => request.method === 'POST' && request.path.endsWith('/messages'))[1]?.body)
     .toMatchObject({ intent: 'correction', message: 'La disponibilidad cambia antes del comité.' });
   expect(requests.some((request) => /\/handoff\/confirmation|\/continue-portfolio|\/convert/.test(request.path))).toBe(false);
+});
+
+test('503 recovery survives reload and retries only the Critical Handoff conclusion', async ({ page }) => {
+  const requests = await installExplorationJourneyMocks(page, { failFirstMaterialization: true, recoveryRevision: 3 });
+  await page.goto('/public/start');
+  await page.getByLabel(/necesitas resolver, conseguir o entender/i).fill('Necesito decidir qué iniciativa puede avanzar antes del comité.');
+  await page.getByRole('button', { name: /analizar mi situaci[oó]n/i }).click();
+  await page.getByRole('button', { name: /ver mi propuesta de abordaje/i }).click();
+
+  await expect(page.getByTestId('portfolio-entry-conclusion-failed')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Reintentar conclusión' })).toBeVisible();
+  await expect(page.getByTestId('portfolio-entry-inconsistent-state')).toHaveCount(0);
+  expect(requests.filter((request) => request.method === 'POST' && request.path.endsWith('/messages'))).toHaveLength(1);
+  expect(requests.filter((request) => request.method === 'POST' && request.path.endsWith('/critical-handoff'))).toHaveLength(1);
+
+  await page.reload();
+  await expect(page.getByTestId('portfolio-entry-conclusion-failed')).toBeVisible();
+  expect(requests.filter((request) => request.method === 'POST' && request.path.endsWith('/critical-handoff'))).toHaveLength(1);
+
+  await page.getByRole('button', { name: 'Reintentar conclusión' }).click();
+  await expect(page.getByTestId('critical-handoff-review')).toBeVisible();
+
+  const conclusionPosts = requests.filter((request) => request.method === 'POST' && request.path.endsWith('/critical-handoff'));
+  expect(conclusionPosts).toHaveLength(2);
+  expect(conclusionPosts.map((request) => request.body?.expectedRevision)).toEqual([2, 3]);
+  expect(conclusionPosts[0]?.idempotencyKey).toBeTruthy();
+  expect(conclusionPosts[1]?.idempotencyKey).toBeTruthy();
+  expect(conclusionPosts[1]?.idempotencyKey).not.toBe(conclusionPosts[0]?.idempotencyKey);
+  expect(requests.filter((request) => request.method === 'POST' && request.path.endsWith('/messages'))).toHaveLength(1);
+  expect(requests.some((request) => request.method === 'POST' && request.path.endsWith('/handoff'))).toBe(false);
 });
 
 test('supported review remains readable on mobile with long content and no horizontal overflow', async ({ page }) => {

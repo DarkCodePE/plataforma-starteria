@@ -23,7 +23,7 @@ export class InMemoryPortfolioEntryIdempotencyRepository implements PortfolioEnt
       if (existing.expiresAt > new Date()) return clone(existing);
     }
     const record: PortfolioEntryIdempotencyRecord = {
-      id: randomUUID(),
+      id: input.id ?? randomUUID(),
       operation: input.operation,
       scope: input.scope,
       sessionId: input.sessionId ?? null,

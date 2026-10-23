@@ -21,6 +21,7 @@ import type {
   ClaimPortfolioEntrySessionOwnershipInput,
   CreatePortfolioEntrySessionInput,
   PortfolioEntrySessionRepository,
+  PublishPortfolioEntryCriticalHandoffInput,
   SavePortfolioEntrySessionStateInput,
 } from '../application/portfolio-entry-session.repository';
 import type { PortfolioEntryModelExecutionRecord } from '../observability/portfolio-entry-execution-metadata';
@@ -149,6 +150,93 @@ export class PrismaPortfolioEntrySessionRepository implements PortfolioEntrySess
     }
   }
 
+  async publishCriticalHandoff(
+    input: PublishPortfolioEntryCriticalHandoffInput,
+  ): Promise<PortfolioEntryCriticalHandoffRecord> {
+    const { handoff, session: nextSession, expectedRevision, criticalHandoff } = input;
+    assertSameSession(handoff.sessionId, nextSession.id);
+    assertSameSession(criticalHandoff.sessionId, nextSession.id);
+    assertNextRevision(nextSession, expectedRevision);
+    assertContextRevision(criticalHandoff.sourceContextRevision);
+    const payload = parseCriticalHandoffPayload(
+      PORTFOLIO_ENTRY_CRITICAL_HANDOFF_SCHEMA_VERSION,
+      criticalHandoff.payload,
+    );
+    try {
+      const row = await this.prisma.$transaction(async (tx) => {
+        const current = await tx.portfolioEntrySession.findUnique({
+          where: { id: nextSession.id },
+          select: { revision: true, contextRevision: true },
+        });
+        if (!current) throw PortfolioEntrySessionError.notFound();
+        if (current.revision !== expectedRevision
+          || current.contextRevision !== criticalHandoff.sourceContextRevision) {
+          throw PortfolioEntrySessionError.conflict();
+        }
+        const latestTurn = await tx.portfolioEntryTurn.findFirst({
+          where: { sessionId: nextSession.id, inputIntent: { in: ['answer', 'correction'] } },
+          orderBy: [{ turnIndex: 'desc' }, { createdAt: 'desc' }],
+          select: { id: true },
+        });
+        if (!latestTurn
+          || latestTurn.id !== criticalHandoff.sourceTurnId
+          || latestTurn.id !== handoff.sourceTurnId) {
+          throw PortfolioEntrySessionError.conflict();
+        }
+        const latestArtifact = await tx.portfolioEntryCriticalHandoff.findFirst({
+          where: { sessionId: nextSession.id },
+          orderBy: { artifactVersion: 'desc' },
+          select: {
+            artifactVersion: true,
+            sourceContextRevision: true,
+            sourceTurnId: true,
+            confirmationState: true,
+            confirmedAt: true,
+            confirmedByUserId: true,
+          },
+        });
+        if (latestArtifact) {
+          parseCriticalHandoffLifecycle(
+            latestArtifact.confirmationState,
+            latestArtifact.confirmedAt,
+            latestArtifact.confirmedByUserId,
+          );
+        }
+        if (latestArtifact?.confirmationState === 'confirmed'
+          && criticalHandoff.sourceContextRevision <= latestArtifact.sourceContextRevision) {
+          throw PortfolioEntrySessionError.conflict();
+        }
+        const updated = await tx.portfolioEntrySession.updateMany({
+          where: { id: nextSession.id, revision: expectedRevision, contextRevision: current.contextRevision },
+          data: this.mapper.sessionMutableData(nextSession),
+        });
+        if (updated.count !== 1) throw PortfolioEntrySessionError.conflict();
+        await tx.portfolioEntryHandoff.create({ data: this.mapper.handoffCreateData(handoff) });
+        const now = new Date();
+        const artifact: PortfolioEntryCriticalHandoffRecord = {
+          id: randomUUID(),
+          sessionId: nextSession.id,
+          artifactVersion: nextCriticalHandoffArtifactVersion(latestArtifact?.artifactVersion),
+          schemaVersion: PORTFOLIO_ENTRY_CRITICAL_HANDOFF_SCHEMA_VERSION,
+          sourceContextRevision: criticalHandoff.sourceContextRevision,
+          sourceTurnId: latestTurn.id,
+          payload,
+          confirmationState: 'provisional',
+          confirmedAt: null,
+          confirmedByUserId: null,
+          createdAt: now,
+          updatedAt: now,
+        };
+        return tx.portfolioEntryCriticalHandoff.create({
+          data: this.mapper.criticalHandoffCreateData(artifact),
+        });
+      }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+      return this.mapper.toCriticalHandoff(row as PrismaPortfolioEntryCriticalHandoffRow);
+    } catch (err) {
+      throw mapPrismaConflict(err);
+    }
+  }
+
   async createCriticalHandoff(
     input: CreatePortfolioEntryCriticalHandoffInput,
   ): Promise<PortfolioEntryCriticalHandoffRecord> {
@@ -184,6 +272,7 @@ export class PrismaPortfolioEntrySessionRepository implements PortfolioEntrySess
           select: {
             artifactVersion: true,
             sourceContextRevision: true,
+            sourceTurnId: true,
             confirmationState: true,
             confirmedAt: true,
             confirmedByUserId: true,
@@ -191,6 +280,11 @@ export class PrismaPortfolioEntrySessionRepository implements PortfolioEntrySess
         });
         if (latest) {
           parseCriticalHandoffLifecycle(latest.confirmationState, latest.confirmedAt, latest.confirmedByUserId);
+        }
+        if (input.expectedSessionRevision !== undefined
+          && latest?.sourceContextRevision === input.sourceContextRevision
+          && latest.sourceTurnId === sourceTurnId) {
+          throw PortfolioEntrySessionError.conflict();
         }
         if (latest?.confirmationState === 'confirmed'
           && input.sourceContextRevision <= latest.sourceContextRevision) throw PortfolioEntrySessionError.conflict();

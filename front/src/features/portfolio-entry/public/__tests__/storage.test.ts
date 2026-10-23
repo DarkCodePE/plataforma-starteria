@@ -5,14 +5,17 @@ import {
   clearPortfolioEntryAnonymousState,
   clearPortfolioEntryCurrentSession,
   clearCriticalHandoffReviewSession,
+  clearCriticalHandoffMaterializationAttempt,
   hasCriticalHandoffReviewSession,
   markCriticalHandoffReviewSession,
+  readCriticalHandoffMaterializationAttempt,
   readClaimedPortfolioEntrySession,
   readClaimedPortfolioEntryBriefIdentity,
   readPendingPortfolioEntryClaim,
   readPortfolioEntryClaimedNotice,
   readPortfolioEntryCurrentSession,
   saveClaimedPortfolioEntrySession,
+  saveCriticalHandoffMaterializationAttempt,
   savePendingPortfolioEntryClaim,
   savePortfolioEntryClaimedNotice,
   savePortfolioEntryCurrentSession,
@@ -66,6 +69,17 @@ describe('Portfolio Entry public storage', () => {
 
     clearCriticalHandoffReviewSession();
     expect(hasCriticalHandoffReviewSession('session-critical')).toBe(false);
+  });
+
+  it('persists only the Critical Handoff attempt identity needed for reload recovery', () => {
+    saveCriticalHandoffMaterializationAttempt({ sessionId: 'session-critical', revision: 7 });
+
+    expect(readCriticalHandoffMaterializationAttempt()).toEqual({ sessionId: 'session-critical', revision: 7 });
+    expect(window.sessionStorage.getItem('starteria.portfolioEntry.criticalHandoffMaterializationAttempt'))
+      .toBe('{"sessionId":"session-critical","revision":7}');
+
+    clearCriticalHandoffMaterializationAttempt();
+    expect(readCriticalHandoffMaterializationAttempt()).toBeNull();
   });
 
   it('clears anonymous credentials after claim or expiry', () => {

@@ -6,6 +6,12 @@ const PENDING_CLAIM_KEY = 'starteria.portfolioEntry.pendingClaim';
 const CLAIMED_NOTICE_KEY = 'starteria.portfolioEntry.claimedNotice';
 const CLAIMED_SESSION_KEY = 'starteria.portfolioEntry.claimedSession';
 const CRITICAL_HANDOFF_REVIEW_SESSION_KEY = 'starteria.portfolioEntry.criticalHandoffReviewSession';
+const CRITICAL_HANDOFF_MATERIALIZATION_ATTEMPT_KEY = 'starteria.portfolioEntry.criticalHandoffMaterializationAttempt';
+
+export type CriticalHandoffMaterializationAttempt = {
+  sessionId: string;
+  revision: number;
+};
 
 type ClaimedNotice = {
   sessionId: string;
@@ -53,6 +59,28 @@ export function hasCriticalHandoffReviewSession(sessionId: string): boolean {
 
 export function clearCriticalHandoffReviewSession(): void {
   getSessionStorage()?.removeItem(CRITICAL_HANDOFF_REVIEW_SESSION_KEY);
+}
+
+export function saveCriticalHandoffMaterializationAttempt(attempt: CriticalHandoffMaterializationAttempt): void {
+  getSessionStorage()?.setItem(CRITICAL_HANDOFF_MATERIALIZATION_ATTEMPT_KEY, JSON.stringify(attempt));
+}
+
+export function readCriticalHandoffMaterializationAttempt(): CriticalHandoffMaterializationAttempt | null {
+  const raw = getSessionStorage()?.getItem(CRITICAL_HANDOFF_MATERIALIZATION_ATTEMPT_KEY);
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw) as Partial<CriticalHandoffMaterializationAttempt>;
+    if (typeof parsed.sessionId === 'string' && Number.isInteger(parsed.revision) && Number(parsed.revision) >= 0) {
+      return { sessionId: parsed.sessionId, revision: Number(parsed.revision) };
+    }
+  } catch {
+    return null;
+  }
+  return null;
+}
+
+export function clearCriticalHandoffMaterializationAttempt(): void {
+  getSessionStorage()?.removeItem(CRITICAL_HANDOFF_MATERIALIZATION_ATTEMPT_KEY);
 }
 
 export function savePendingPortfolioEntryClaim(ref: PendingPortfolioEntryClaim): void {
@@ -135,6 +163,7 @@ export function clearClaimedPortfolioEntrySession(): void {
 export function clearPortfolioEntryAnonymousState(): void {
   clearPortfolioEntryCurrentSession();
   clearPendingPortfolioEntryClaim();
+  clearCriticalHandoffMaterializationAttempt();
 }
 
 export function clearPortfolioEntryConversionState(): void {
