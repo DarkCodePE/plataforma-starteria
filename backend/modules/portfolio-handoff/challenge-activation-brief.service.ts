@@ -60,3 +60,21 @@ export function assertConfirmableActivationBriefVersion(version: ActivationBrief
     );
   }
 }
+
+/**
+ * Prisma may surface a concurrent append to the same Brief as either a
+ * serialization failure or the final `(briefId, versionNumber)` unique guard.
+ * Only that expected sequence race is safe to retry; unrelated P2002 errors
+ * remain contract conflicts and must not be hidden.
+ */
+export function isRetryableActivationBriefWriteConflict(error: unknown, retryVersionSequenceConflict: boolean): boolean {
+  if (!error || typeof error !== 'object') return false;
+  const prismaCode = 'code' in error ? error.code : null;
+  const meta = 'meta' in error && error.meta && typeof error.meta === 'object'
+    ? error.meta as { code?: unknown; target?: unknown }
+    : null;
+  if (prismaCode === 'P2034' || (prismaCode === 'P2010' && meta?.code === '40001')) return true;
+  if (!retryVersionSequenceConflict || prismaCode !== 'P2002') return false;
+  const target = Array.isArray(meta?.target) ? meta.target.map(String) : typeof meta?.target === 'string' ? [meta.target] : [];
+  return target.some((field) => field.includes('briefId')) && target.some((field) => field.includes('versionNumber'));
+}

@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { assertConfirmableActivationBriefVersion, normalizeActivationBriefEnvelope } from '../challenge-activation-brief.service';
+import {
+  assertConfirmableActivationBriefVersion,
+  isRetryableActivationBriefWriteConflict,
+  normalizeActivationBriefEnvelope,
+} from '../challenge-activation-brief.service';
 
 describe('ChallengeActivationBrief service', () => {
   it('normalizes the governed PL-05 envelope without inventing sources or gaps', () => {
@@ -18,5 +22,12 @@ describe('ChallengeActivationBrief service', () => {
     });
     expect(() => assertConfirmableActivationBriefVersion(complete)).not.toThrow();
     expect(() => assertConfirmableActivationBriefVersion(normalizeActivationBriefEnvelope({ intent: 'Only an intent', scope: 'Some scope' }))).toThrowError(/contexto mínimo/i);
+  });
+  it('retries only the expected BriefVersion sequence race and not unrelated unique conflicts', () => {
+    expect(isRetryableActivationBriefWriteConflict({ code: 'P2002', meta: { target: ['briefId', 'versionNumber'] } }, true)).toBe(true);
+    expect(isRetryableActivationBriefWriteConflict({ code: 'P2002', meta: { target: ['organizationId', 'commandType', 'idempotencyKey'] } }, true)).toBe(false);
+    expect(isRetryableActivationBriefWriteConflict({ code: 'P2002', meta: { target: ['briefId', 'versionNumber'] } }, false)).toBe(false);
+    expect(isRetryableActivationBriefWriteConflict({ code: 'P2034' }, false)).toBe(true);
+    expect(isRetryableActivationBriefWriteConflict({ code: 'P2010', meta: { code: '40001' } }, false)).toBe(true);
   });
 });

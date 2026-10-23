@@ -15,7 +15,7 @@ import { PortfolioHandoffAssignmentError } from './application/portfolio-handoff
 import { DurableHandoffEventPort, PortfolioHandoffProjector } from './application/portfolio-handoff-semantic-event.projector';
 import { PrismaPortfolioHandoffAssignmentRepository } from './infrastructure/prisma-portfolio-handoff-assignment.repository';
 import { PrismaHandoffSemanticEventRepository, PrismaPortfolioHandoffProjectionRepository } from './infrastructure/prisma-portfolio-handoff-semantic-event.repository';
-import { assertConfirmableActivationBriefVersion, normalizeActivationBriefEnvelope } from './challenge-activation-brief.service';
+import { assertConfirmableActivationBriefVersion, isRetryableActivationBriefWriteConflict, normalizeActivationBriefEnvelope } from './challenge-activation-brief.service';
 import { ImportedInitiativeCanonicalizationService } from './imported-initiative-canonicalization.service';
 import {
   activationBriefChallengeParamsSchema,
@@ -66,18 +66,15 @@ async function receipt(tx: any, input: { organizationId: string; commandType: 'C
   return existing;
 }
 
-async function withSerializableRetry<T>(operation: () => Promise<T>, maxAttempts = 3): Promise<T> {
+async function withSerializableRetry<T>(operation: () => Promise<T>, options: { maxAttempts?: number; retryVersionSequenceConflict?: boolean } = {}): Promise<T> {
+  const maxAttempts = options.maxAttempts ?? 3;
   let lastError: unknown;
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
     try {
       return await operation();
     } catch (error) {
       lastError = error;
-      const prismaCode = error && typeof error === 'object' && 'code' in error ? error.code : null;
-      const meta = error && typeof error === 'object' && 'meta' in error && error.meta && typeof error.meta === 'object'
-        ? error.meta as { code?: unknown }
-        : null;
-      const retryable = prismaCode === 'P2034' || (prismaCode === 'P2010' && meta?.code === '40001');
+      const retryable = isRetryableActivationBriefWriteConflict(error, options.retryVersionSequenceConflict ?? false);
       if (!retryable || attempt === maxAttempts) throw error;
     }
   }
@@ -144,7 +141,7 @@ challengeActivationBriefRouter.post('/activation-briefs/:briefId/versions', auth
       const last = await tx.challengeActivationBriefVersion.findFirst({ where: { briefId: brief.id }, orderBy: { versionNumber: 'desc' }, select: { versionNumber: true } });
       const version = await tx.challengeActivationBriefVersion.create({ data: { ...body, organizationId, briefId: brief.id, challengeId: brief.challengeId, versionNumber: (last?.versionNumber ?? 0) + 1, createdByActorId: req.user.id } });
       await tx.portfolioActivationCommandReceipt.create({ data: { organizationId, commandType: 'CREATE_VERSION', idempotencyKey, fingerprint: fp, actorId: req.user.id, resultBriefId: brief.id, resultVersionId: version.id } }); return { version, idempotent: false };
-    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable, timeout: 10_000 }));
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable, timeout: 10_000 }), { retryVersionSequenceConflict: true });
     res.status(data.idempotent ? 200 : 201).json({ success: true, data });
   } catch (error) { next(error); }
 });
