@@ -190,6 +190,18 @@ enum PortfolioHandoffMemberRole {
   OBSERVER
 }
 
+enum ChallengeActivationBriefVersionStatus {
+  DRAFT
+  CONFIRMED
+}
+
+enum PortfolioActivationCommandType {
+  CREATE_BRIEF
+  CREATE_VERSION
+  CONFIRM_VERSION
+  CREATE_ASSIGNMENT
+}
+
 enum SessionStatus {
   PENDING_SCHEDULE
   SCHEDULED
@@ -611,6 +623,10 @@ model User {
 
   projects                 Project[]
   handoffAssignments       PortfolioHandoffAssignment[] @relation("HandoffCreatedBy")
+  activationBriefsCreated  ChallengeActivationBrief[] @relation("ChallengeActivationBriefCreatedBy")
+  activationBriefVersionsCreated ChallengeActivationBriefVersion[] @relation("ChallengeActivationBriefVersionCreatedBy")
+  activationBriefVersionsConfirmed ChallengeActivationBriefVersion[] @relation("ChallengeActivationBriefVersionConfirmedBy")
+  activationCommandReceipts PortfolioActivationCommandReceipt[] @relation("PortfolioActivationCommandActor")
   handoffMemberIdentities  PortfolioHandoffMember[] @relation("HandoffMemberUser")
   teamMemberships          TeamMember[]
   challengeTeamMemberships ChallengeTeamMember[] // ADR-023: reto-scoped team membership
@@ -1572,6 +1588,8 @@ model Challenge {
   overlaps         InitiativeOverlap[]
   executiveOutputs ExecutiveOutput[]
   handoffAssignments PortfolioHandoffAssignment[]
+  activationBriefs ChallengeActivationBrief[]
+  activationBriefVersions ChallengeActivationBriefVersion[]
 
   @@index([strategicFrontId])
   @@index([status])
@@ -1622,6 +1640,8 @@ model PortfolioHandoffAssignment {
   targetKind             PortfolioHandoffTargetKind
   initiativeId           String?
   initiative             Project?                  @relation(fields: [initiativeId], references: [id], onDelete: Restrict)
+  briefVersionId         String?
+  briefVersion           ChallengeActivationBriefVersion? @relation(fields: [briefVersionId], references: [id], onDelete: Restrict)
   invitedEmailNormalized String
   invitedIdentityRef     String?
   state                  PortfolioHandoffState     @default(CREATED)
@@ -1656,6 +1676,82 @@ model PortfolioHandoffAssignment {
   @@index([initiativeId])
   @@index([organizationId])
   @@index([createdByActorId])
+  @@index([briefVersionId])
+}
+
+// ADR-008: canonical Portfolio mandate for Challenge-targeted handoff. The
+// tenant is explicit because Challenge derives its tenant through StrategicFront.
+model ChallengeActivationBrief {
+  id               String    @id @default(cuid())
+  organizationId   String
+  challengeId      String
+  challenge        Challenge @relation(fields: [challengeId], references: [id], onDelete: Restrict)
+  createdByActorId String
+  createdByActor   User      @relation("ChallengeActivationBriefCreatedBy", fields: [createdByActorId], references: [id], onDelete: Restrict)
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  versions ChallengeActivationBriefVersion[]
+
+  @@unique([id, organizationId])
+  @@index([organizationId])
+  @@index([challengeId])
+  @@index([createdByActorId])
+}
+
+// A payload is immutable from creation. Editing creates a later row; only the
+// DRAFT -> CONFIRMED checkpoint transition is allowed by migration trigger.
+model ChallengeActivationBriefVersion {
+  id                    String                                @id @default(cuid())
+  organizationId        String
+  briefId               String
+  brief                 ChallengeActivationBrief             @relation(fields: [briefId, organizationId], references: [id, organizationId], onDelete: Restrict)
+  challengeId           String
+  challenge             Challenge                            @relation(fields: [challengeId], references: [id], onDelete: Restrict)
+  versionNumber         Int
+  status                ChallengeActivationBriefVersionStatus @default(DRAFT)
+  intent                String?
+  scope                 String?
+  strategicContextRefs  Json
+  inheritedContext      Json
+  constraintsSnapshot   Json
+  knownGaps             Json
+  sourceRefs            Json
+  provenance            Json
+  createdByActorId      String
+  createdByActor        User                                  @relation("ChallengeActivationBriefVersionCreatedBy", fields: [createdByActorId], references: [id], onDelete: Restrict)
+  confirmedByActorId    String?
+  confirmedByActor      User?                                 @relation("ChallengeActivationBriefVersionConfirmedBy", fields: [confirmedByActorId], references: [id], onDelete: Restrict)
+  createdAt             DateTime                              @default(now())
+  confirmedAt           DateTime?
+
+  assignments PortfolioHandoffAssignment[]
+
+  @@unique([briefId, versionNumber])
+  @@unique([id, organizationId, challengeId])
+  @@index([organizationId])
+  @@index([challengeId])
+  @@index([briefId, versionNumber])
+  @@index([status])
+}
+
+// ADR-008 bounded durable receipt for commands which occur before an Assignment
+// exists. Send still uses PortfolioHandoffDeliveryAttempt.
+model PortfolioActivationCommandReceipt {
+  id                 String                         @id @default(cuid())
+  organizationId     String
+  commandType        PortfolioActivationCommandType
+  idempotencyKey     String
+  fingerprint        String
+  actorId            String
+  actor              User                           @relation("PortfolioActivationCommandActor", fields: [actorId], references: [id], onDelete: Restrict)
+  resultBriefId      String?
+  resultVersionId    String?
+  resultAssignmentId String?
+  createdAt          DateTime                       @default(now())
+
+  @@unique([organizationId, commandType, idempotencyKey])
+  @@index([organizationId, createdAt])
 }
 
 model PortfolioHandoffSemanticEvent {

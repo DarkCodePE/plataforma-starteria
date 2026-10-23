@@ -3,6 +3,7 @@
 **Estado:** CANDIDATE FOR FREEZE  
 **Versión:** v0.1  
 **Fecha:** 2026-09-28  
+**Enmienda acotada:** 2026-10-22 — PL-06A / KAN-160 y KAN-161  
 **Vertical:** Portfolio Lead → Initiative Owner Handoff  
 **Jira:** KAN-49  
 **Scope:** integración semántica entre Portfolio/Handoff y el workstream downstream de Initiative/Steps  
@@ -70,6 +71,107 @@ Este contrato gobierna sobre:
 - wiring Portfolio ↔ downstream.
 
 No redefine Step 0–4 ni Initiative Core.
+
+## 1.1. Enmienda PL-06A — commands y guards de preparación
+
+Esta enmienda conserva `v0.1` y su historial. Añade el contrato de integración anterior a
+`Send` para una bandeja incremental de N Assignments por Challenge. No autoriza delivery,
+Accept, Reject, Start ni creación de Initiative/Project/Step.
+
+### Read capabilities
+
+```text
+listAssignableInitiatives(challengeId)
+listHandoffAssignments(challengeId)
+getHandoffAssignment(assignmentId)
+```
+
+`listAssignableInitiatives` devuelve únicamente Projects canónicos relacionados mediante
+`InitiativePortfolioMeta(projectId, challengeId)` y dentro del mismo tenant autorizado. Debe
+distinguir, sin convertirlos, los work records importados que carecen de `ProjectId`. Estos
+registros pueden aparecer como contexto documental, nunca como targets `EXISTING_INITIATIVE`.
+
+`listHandoffAssignments` devuelve N Assignments y conserva, por fila:
+
+```text
+assignment_id
+target_kind
+challenge_id
+initiative_id?
+brief_version_id?
+recipient_identity
+owner + execution team
+context_note?
+state + version
+created_at + updated_at
+```
+
+Re-entry se resuelve desde este read model. Ningún consumidor puede seleccionar una sola fila
+mediante `find` por BriefVersion o sustituir la identidad solicitada por `latest`.
+
+### Preparation commands
+
+```text
+createHandoffAssignment(input, idempotencyKey, fingerprint)
+updateCreatedHandoffAssignment(assignmentId, patch, expectedVersion, idempotencyKey, fingerprint)
+revokeCreatedHandoffAssignment(assignmentId, expectedVersion, idempotencyKey)
+```
+
+`createHandoffAssignment` requiere acción humana explícita y crea solamente estado `CREATED`.
+`updateCreatedHandoffAssignment` puede cambiar recipient/Owner, execution team y `context_note`
+sin mutar Challenge, Initiative, BriefVersion ni sus fuentes canónicas. Incrementa `version` y
+registra actor/canal/timestamp mediante el audit/event boundary. Si el estado ya no es `CREATED`
+o `expectedVersion` es stale, falla sin cambios parciales.
+
+`revokeCreatedHandoffAssignment` preserva lineage mediante `REVOKED`; no hace hard-delete. El
+nombre concreto de ruta puede variar, pero no se debe reutilizar una operación que presuponga
+que ya existió delivery.
+
+### Target guards
+
+Para `EXISTING_INITIATIVE`:
+
+```text
+initiative_id required
+Project exists
+InitiativePortfolioMeta(projectId, challengeId) exists
+Project + Challenge + optional BriefVersion belong to same tenant
+brief_version_id optional
+```
+
+Cuando `brief_version_id` está presente debe ser `CONFIRMED`, pertenecer al mismo Challenge y
+tenant y conservarse exactamente. Su presencia no se vuelve requisito universal, conforme a
+ADR-008.
+
+Para `CHALLENGE`:
+
+```text
+initiative_id = null
+brief_version_id required + CONFIRMED
+BriefVersion belongs to exact Challenge + tenant
+```
+
+### Duplicate guards
+
+La creación se serializa por Challenge y rechaza duplicados no terminales:
+
+- `EXISTING_INITIATIVE`: misma organización + Challenge + Initiative;
+- `CHALLENGE`: misma organización + Challenge + BriefVersion + recipient normalizado.
+
+Una resolución humana trazable de la Assignment anterior habilita una creación posterior. La
+integración no sobrescribe silenciosamente la fila existente ni el Owner canónico de Project.
+
+### Event delta
+
+`handoff_assignment_created` añade `brief_version_id?` y una referencia/redacción de
+`context_note` cuando corresponda. Una actualización material publica
+`handoff_assignment_preparation_updated`; la revocación usa el evento canónico existente.
+El payload no duplica texto sensible completo cuando basta una referencia o fingerprint.
+
+### PL-06B reservado
+
+La selección y el envío por lote, SMTP y los outcomes `sent/failed/skipped/no action` pertenecen
+a KAN-162/KAN-163. No se implementan como un bucle de POST desde PL-06A.
 
 ---
 
@@ -236,6 +338,8 @@ Technical Design puede mapear nombres concretos distintos, pero debe preservar e
 
 ```text
 createHandoffAssignment()
+updateCreatedHandoffAssignment(expectedVersion)
+revokeCreatedHandoffAssignment(expectedVersion)
 sendHandoffInvitation()
 acceptHandoffAssignment()
 rejectHandoffAssignment(reason)
@@ -262,6 +366,7 @@ Eventos semánticos mínimos:
 
 ```text
 handoff_assignment_created
+handoff_assignment_preparation_updated
 handoff_invitation_sent
 handoff_invitation_viewed
 handoff_assignment_accepted
@@ -1043,6 +1148,52 @@ When Portfolio Lead records a response
 Then rejection history remains
 And Initiative Owner does not change
 And assignment does not become accepted
+```
+
+## INT-HO-008 — Multiple preparation and re-entry
+
+```text
+Given a Challenge with several saved Assignments
+When Portfolio Lead re-enters PL-06A
+Then every Assignment is returned with its exact target, BriefVersion and version
+And no Assignment or Invitation is created by the read
+```
+
+## INT-HO-009 — Existing Initiative canonical identity
+
+```text
+Given a work record without canonical ProjectId
+When assignable initiatives are listed
+Then the record is not selectable as EXISTING_INITIATIVE
+And no Project or InitiativePortfolioMeta is fabricated
+```
+
+## INT-HO-010 — Existing Initiative optional Brief
+
+```text
+Given a canonical Initiative linked to the Challenge
+When an Assignment is created from PL-05 with a confirmed BriefVersion
+Then the exact optional brief_version_id is retained
+And the Initiative identity and canonical context remain authoritative
+```
+
+## INT-HO-011 — CREATED-only edit
+
+```text
+Given a CREATED Assignment at version N
+When an authorized actor updates owner, team or context with expectedVersion N
+Then version becomes N+1 and audit provenance is recorded
+And BriefVersion and target identity do not change
+But a stale version or non-CREATED state changes nothing
+```
+
+## INT-HO-012 — Duplicate guard
+
+```text
+Given a non-terminal Assignment with the same target duplicate key
+When create is requested again with a different command key
+Then the command conflicts without creating another Assignment
+But an idempotent retry with the same key and fingerprint returns the original result
 ```
 
 ---

@@ -1,4 +1,4 @@
-﻿import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AlertTriangle, CheckCircle2, ChevronRight, Eye, FileText, FileUp, MessageSquareText, Pencil, Plus, RotateCw, Send, Sparkles, Trash2, Users } from 'lucide-react';
 import { projectBootstrapHome } from '../projection/bootstrapHomeProjection';
 import type {
@@ -13,6 +13,8 @@ import type {
   UpdatePortfolioBootstrapWorkItemInput,
 } from '../services/portfolioBootstrapClient';
 import { suggestPortfolioObjective } from '../services/portfolioObjectiveCopilotClient';
+import { ChallengeActivationBriefPanel, type ChallengeBriefInheritedContext } from '../../challenge-activation-brief/ChallengeActivationBriefPanel';
+import { listActivationBriefs, type ActivationBrief } from '../../challenge-activation-brief/challengeActivationBriefClient';
 
 export function PortfolioBootstrapHome({
   data,
@@ -160,9 +162,10 @@ export function PortfolioBootstrapHome({
 const FROZEN_SETUP_STAGES = [
   'Contexto',
   'Objetivo',
-  'IncorporaciÃ³n',
-  'AnÃ¡lisis',
-  'OrganizaciÃ³n',
+  'Incorporación',
+  'Análisis',
+  'Organización',
+  'Briefs',
 ] as const;
 
 type BootstrapProjection = NonNullable<ReturnType<typeof projectBootstrapHome>>;
@@ -239,10 +242,19 @@ function PortfolioCopilotWorkspace({
   const [confirmedOrganization, setConfirmedOrganization] = useState<PortfolioOrganizationProposal | null>(
     organizationProposal?.materialization ? organizationProposal : null,
   );
+  const [briefConfirmedChallengeIds, setBriefConfirmedChallengeIds] = useState<Set<string>>(new Set());
+  const handleBriefConfirmationChange = useCallback((challengeId: string, confirmed: boolean) => {
+    setBriefConfirmedChallengeIds((current) => {
+      if (current.has(challengeId) === confirmed) return current;
+      const next = new Set(current);
+      if (confirmed) next.add(challengeId); else next.delete(challengeId);
+      return next;
+    });
+  }, []);
   const inferredStage = frozenStageFrom(projection);
   const organizationIsMaterialized = Boolean(confirmedOrganization?.materialization ?? organizationProposal?.materialization);
   const hasAnalysisHardBlocker = projection.analysisSummary.hardBlockingNow > 0 && !organizationIsMaterialized;
-  const lastAvailableStage = hasAnalysisHardBlocker ? 3 : 4;
+  const lastAvailableStage = hasAnalysisHardBlocker ? 3 : 5;
   const requestedStage = selectedStage ?? inferredStage;
   const stage = hasAnalysisHardBlocker && requestedStage > 3 ? 3 : requestedStage;
   const selectStage = (nextStage: number) => {
@@ -252,7 +264,7 @@ function PortfolioCopilotWorkspace({
   useEffect(() => {
     if (organizationProposal?.materialization) {
       setConfirmedOrganization(organizationProposal);
-      setSelectedStage(4);
+      setSelectedStage(5);
     }
   }, [organizationProposal?.materialization?.id]);
 
@@ -287,26 +299,27 @@ function PortfolioCopilotWorkspace({
   return (
     <section className="space-y-5" data-testid="portfolio-bootstrap-home-a" data-frozen-composition="copilot-first">
       <header className="rounded-2xl border border-slate-200 bg-white px-5 py-5 shadow-sm md:px-7">
-        <p className="text-xs font-bold uppercase tracking-[0.16em] text-violet-700">Configurar con Copilot Â· {stage + 1} de 5</p>
+        <p className="text-xs font-bold uppercase tracking-[0.16em] text-violet-700">Configurar con Copilot · {stage + 1} de 6</p>
         <h1 className="mt-2 text-2xl font-semibold tracking-tight text-slate-950">{frozenStageTitle(stage)}</h1>
         <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">Copilot construye contigo; las fuentes, inferencias y confirmaciones quedan diferenciadas. No necesitas completar formularios en paralelo.</p>
       </header>
 
       <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_310px] xl:items-start">
-        <main className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm" aria-label="ConversaciÃ³n con Copilot">
+        <main className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm" aria-label="Conversación con Copilot">
           <div className="flex items-start justify-between gap-4 border-b border-slate-200 px-5 py-4 md:px-6">
             <div className="flex items-center gap-3">
               <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-violet-100 text-violet-800"><Sparkles size={18} /></span>
-              <div><h2 className="text-base font-semibold text-slate-950">ConversaciÃ³n con Copilot</h2><p className="text-sm text-slate-500">Tu espacio principal para construir el portafolio</p></div>
+              <div><h2 className="text-base font-semibold text-slate-950">Conversación con Copilot</h2><p className="text-sm text-slate-500">Tu espacio principal para construir el portafolio</p></div>
             </div>
-            <span className="rounded-full border border-violet-200 bg-violet-50 px-2.5 py-1 text-xs font-semibold text-violet-800">GuÃ­a interactiva</span>
+            <span className="rounded-full border border-violet-200 bg-violet-50 px-2.5 py-1 text-xs font-semibold text-violet-800">Guía interactiva</span>
           </div>
           <div className="space-y-5 bg-slate-50/60 px-5 py-6 md:px-7">
             {stage === 0 ? <FrozenContextConversation anchor={projection.anchor} onSave={onUpdateAnchor} /> : null}
             {stage === 1 ? <FrozenObjectiveConversation projection={projection} onSave={onUpdateAnchor} onConfirm={onConfirmAnchor} /> : null}
-            {stage === 2 ? <FrozenChatStage eyebrow="Incorporar iniciativas" title="Â¿QuÃ© iniciativas existentes quieres que revisemos?" help="Puedes subir un archivo, pegar una lista o continuar sin iniciativas. No hay una respuesta obligatoria.">{runtimePanel}</FrozenChatStage> : null}
-            {stage === 3 ? <FrozenChatStage eyebrow="AnÃ¡lisis explicable" title="Â¿QuÃ© estÃ¡ contribuyendo, quÃ© se solapa y quÃ© requiere revisiÃ³n?" help="Cada lectura conserva su fuente, evidencia, vacÃ­os y estado de revisiÃ³n humana.">{runtimePanel}</FrozenChatStage> : null}
-            {stage === 4 ? <FrozenOrganizationStage projection={projection} proposal={organizationProposal} status={organizationStatus} error={organizationError} onSave={onSaveOrganizationProposal} onConfirm={onConfirmOrganizationProposal} onComplete={setConfirmedOrganization} /> : null}
+            {stage === 2 ? <FrozenChatStage eyebrow="Incorporar iniciativas" title="¿Qué iniciativas existentes quieres que revisemos?" help="Puedes subir un archivo, pegar una lista o continuar sin iniciativas. No hay una respuesta obligatoria.">{runtimePanel}</FrozenChatStage> : null}
+            {stage === 3 ? <FrozenChatStage eyebrow="Análisis explicable" title="¿Qué está contribuyendo, qué se solapa y qué requiere revisión?" help="Cada lectura conserva su fuente, evidencia, vacíos y estado de revisión humana.">{runtimePanel}</FrozenChatStage> : null}
+            {stage === 4 ? <FrozenOrganizationStage projection={projection} proposal={organizationProposal} status={organizationStatus} error={organizationError} onSave={onSaveOrganizationProposal} onConfirm={onConfirmOrganizationProposal} onComplete={(confirmed) => { setConfirmedOrganization(confirmed); setSelectedStage(5); }} /> : null}
+            {stage === 5 ? <FrozenBriefStage projection={projection} confirmedOrganization={confirmedOrganization} onBriefConfirmationChange={handleBriefConfirmationChange} /> : null}
           </div>
         </main>
         <FrozenProgress stage={stage} onSelect={selectStage} blockedAfterStage={lastAvailableStage} />
@@ -320,17 +333,17 @@ function FrozenContextConversation({ anchor, onSave }: { anchor: PortfolioBootst
   const [saving, setSaving] = useState(false);
   const hasContext = Boolean(anchor.contextSummary?.trim());
   return <>
-    <AssistantBubble>Si ya acordaron trabajar el objetivo con <b>Portfolio Lead</b>, pega el prompt elaborado a partir del Decision Brief externo. <b>Ese diagnÃ³stico no se repite aquÃ­.</b> Lo usaremos como contexto inicial y podrÃ¡s corregir cualquier interpretaciÃ³n.</AssistantBubble>
+    <AssistantBubble>Si ya acordaron trabajar el objetivo con <b>Portfolio Lead</b>, pega el prompt elaborado a partir del Decision Brief externo. <b>Ese diagnóstico no se repite aquí.</b> Lo usaremos como contexto inicial y podrás corregir cualquier interpretación.</AssistantBubble>
     {hasContext ? <UserBubble>{anchor.contextSummary}</UserBubble> : null}
-    <FocusedQuestion eyebrow="Punto de partida" title="Â¿QuÃ© quieres lograr con StarterÃ­a?" help="Pega el texto de referencia. No necesitas conocer quÃ© son frentes, retos o Steps." />
+    <FocusedQuestion eyebrow="Punto de partida" title="¿Qué quieres lograr con Startería?" help="Pega el texto de referencia. No necesitas conocer qué son frentes, retos o Steps." />
     <form className="rounded-xl border border-slate-200 bg-white p-4" onSubmit={async (event) => {
       event.preventDefault(); const text = answer.trim(); if (!text) return; setSaving(true);
       const prior = anchor.sourceRefs && typeof anchor.sourceRefs === 'object' && !Array.isArray(anchor.sourceRefs) ? anchor.sourceRefs as Record<string, unknown> : { priorSourceRefs: anchor.sourceRefs };
       try { await onSave({ contextSummary: anchor.contextSummary?.trim() || text, sourceRefs: { ...prior, externalContext: { kind: 'external_decision_brief_prompt', disposition: 'user_declared_source', text, recordedAt: new Date().toISOString(), reviewStatus: 'provisional' } } }); setAnswer(''); } finally { setSaving(false); }
     }}>
-      <label className="text-sm font-semibold text-slate-800">Tu respuesta al Copilot<textarea value={answer} onChange={(event) => setAnswer(event.target.value)} rows={5} placeholder="Pega aquÃ­ el prompt elaborado fuera de StarterÃ­aâ€¦" className="mt-2 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm font-normal text-slate-950" /></label>
-      <div className="mt-3 flex flex-wrap gap-2"><button type="button" onClick={() => setAnswer('Quiero recuperar el contexto acordado y preparar decisiones de continuidad sin repetir el diagnÃ³stico externo.')} className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700">Usar una guÃ­a de redacciÃ³n</button><button type="submit" disabled={saving || !answer.trim()} className="inline-flex items-center gap-2 rounded-lg bg-slate-950 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"><Send size={15} />{saving ? 'Guardandoâ€¦' : 'Continuar la conversaciÃ³n'}</button></div>
-      <p className="mt-3 text-xs text-slate-500">El contexto queda como fuente declarada y provisional; no es una decisiÃ³n ni un diagnÃ³stico revalidado.</p>
+      <label className="text-sm font-semibold text-slate-800">Tu respuesta al Copilot<textarea value={answer} onChange={(event) => setAnswer(event.target.value)} rows={5} placeholder="Pega aquí el prompt elaborado fuera de Startería…" className="mt-2 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm font-normal text-slate-950" /></label>
+      <div className="mt-3 flex flex-wrap gap-2"><button type="button" onClick={() => setAnswer('Quiero recuperar el contexto acordado y preparar decisiones de continuidad sin repetir el diagnóstico externo.')} className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700">Usar una guía de redacción</button><button type="submit" disabled={saving || !answer.trim()} className="inline-flex items-center gap-2 rounded-lg bg-slate-950 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"><Send size={15} />{saving ? 'Guardando…' : 'Continuar la conversación'}</button></div>
+      <p className="mt-3 text-xs text-slate-500">El contexto queda como fuente declarada y provisional; no es una decisión ni un diagnóstico revalidado.</p>
     </form>
   </>;
 }
@@ -338,14 +351,14 @@ function FrozenContextConversation({ anchor, onSave }: { anchor: PortfolioBootst
 function FrozenObjectiveConversation({ projection, onSave, onConfirm }: { projection: BootstrapProjection; onSave: (input: UpdatePortfolioBootstrapAnchorInput) => Promise<void>; onConfirm: () => Promise<void> }) {
   const anchor = projection.anchor;
   return <>
-    <AssistantBubble>He recibido tu contexto inicial. No voy a inventar KPIs o causas. <b>Conversaremos para aclarar el resultado de negocio, su contexto y la decisiÃ³n que necesitas tomar.</b> Si algo no lo sabes, quedarÃ¡ pendiente.</AssistantBubble>
+    <AssistantBubble>He recibido tu contexto inicial. No voy a inventar KPIs o causas. <b>Conversaremos para aclarar el resultado de negocio, su contexto y la decisión que necesitas tomar.</b> Si algo no lo sabes, quedará pendiente.</AssistantBubble>
     {anchor.contextSummary ? <UserBubble>{anchor.contextSummary}</UserBubble> : null}
-    <FocusedQuestion eyebrow="Alinear con negocio" title="Primero entendamos el objetivo, antes de diseÃ±ar trabajo" help="Una conversaciÃ³n breve para construir una ficha estratÃ©gica Ãºtil; no un formulario de ocho campos." />
+    <FocusedQuestion eyebrow="Alinear con negocio" title="Primero entendamos el objetivo, antes de diseñar trabajo" help="Una conversación breve para construir una ficha estratégica útil; no un formulario de ocho campos." />
     <ObjectiveConversation anchor={anchor} onSave={onSave} canConfirm={projection.canConfirm} onConfirm={onConfirm} />
   </>;
 }
 
-function FrozenChatStage({ eyebrow, title, help, children }: { eyebrow: string; title: string; help: string; children: React.ReactNode }) { return <><AssistantBubble>Seguimos con la informaciÃ³n disponible. No convertirÃ© una fuente o inferencia en una decisiÃ³n confirmada.</AssistantBubble><FocusedQuestion eyebrow={eyebrow} title={title} help={help} />{children}</>; }
+function FrozenChatStage({ eyebrow, title, help, children }: { eyebrow: string; title: string; help: string; children: React.ReactNode }) { return <><AssistantBubble>Seguimos con la información disponible. No convertiré una fuente o inferencia en una decisión confirmada.</AssistantBubble><FocusedQuestion eyebrow={eyebrow} title={title} help={help} />{children}</>; }
 function FrozenOrganizationStage({
   projection, proposal, status, error, onSave, onConfirm, onComplete,
 }: {
@@ -383,7 +396,7 @@ function FrozenOrganizationStage({
   const organizationOptedOut = isOrganizationOptedOut(draft, workItemIds);
   const reviewLocked = operationLocked || status === 'saving' || status === 'confirming';
   const challengeOptions = draft.fronts.flatMap((front) => front.challenges).map((challenge, index) => ({
-    value: challenge.candidateId, label: `Reto ${index + 1} Â· ${challenge.title}`,
+    value: challenge.candidateId, label: `Reto ${index + 1} · ${challenge.title}`,
   }));
   const destinationOptions = [
     ...challengeOptions,
@@ -421,7 +434,7 @@ function FrozenOrganizationStage({
     })) })),
   }));
   const persistDraft = async (payload: PortfolioOrganizationPayload) => {
-    if (!onSave) throw new Error('La persistencia de la revisiÃ³n no estÃ¡ disponible.');
+    if (!onSave) throw new Error('La persistencia de la revisión no está disponible.');
     const saved = await onSave({ version: current?.version ?? 0, payload });
     const savedReview = { ...saved, payload: saved.payload ?? payload };
     setCurrent(savedReview);
@@ -435,12 +448,12 @@ function FrozenOrganizationStage({
     setLocalError(null);
     try {
       await persistDraft(draft);
-    } catch (cause) { setLocalError(cause instanceof Error ? cause.message : 'No pudimos guardar la revisiÃ³n.'); }
+    } catch (cause) { setLocalError(cause instanceof Error ? cause.message : 'No pudimos guardar la revisión.'); }
     finally { mutationLockedRef.current = false; setOperationLocked(false); }
   };
   const confirm = async () => {
-    if (!onConfirm) return setLocalError('La confirmaciÃ³n no estÃ¡ disponible.');
-    if (organizationOptedOut) return setLocalError('Has elegido no organizar todavÃ­a. Puedes guardar esta decisiÃ³n y volver mÃ¡s adelante.');
+    if (!onConfirm) return setLocalError('La confirmación no está disponible.');
+    if (organizationOptedOut) return setLocalError('Has elegido no organizar todavía. Puedes guardar esta decisión y volver más adelante.');
     if (reviewLocked) return;
     mutationLockedRef.current = true;
     setOperationLocked(true);
@@ -452,16 +465,16 @@ function FrozenOrganizationStage({
       const materialized = { ...confirmed, payload: confirmed.payload ?? reviewToConfirm };
       setCurrent(materialized);
       onComplete(materialized);
-    } catch (cause) { setLocalError(cause instanceof Error ? cause.message : 'No pudimos confirmar la organizaciÃ³n.'); }
+    } catch (cause) { setLocalError(cause instanceof Error ? cause.message : 'No pudimos confirmar la organización.'); }
     finally { mutationLockedRef.current = false; setOperationLocked(false); }
   };
   const reviewNeedsSaving = dirty || !current;
   const confirmationUnavailableReason = organizationOptedOut
-    ? 'Has elegido no organizar todavÃ­a. Guarda esta revisiÃ³n para continuar despuÃ©s; no se crearÃ¡ ninguna estructura canÃ³nica.'
+    ? 'Has elegido no organizar todavía. Guarda esta revisión para continuar después; no se creará ninguna estructura canónica.'
     : !onConfirm
-    ? 'La confirmaciÃ³n no estÃ¡ disponible en esta sesiÃ³n.'
+    ? 'La confirmación no está disponible en esta sesión.'
     : reviewNeedsSaving && !onSave
-      ? 'Tienes cambios sin guardar, pero el guardado no estÃ¡ disponible en esta sesiÃ³n.'
+      ? 'Tienes cambios sin guardar, pero el guardado no está disponible en esta sesión.'
       : null;
   const insightFor = (
     id: string,
@@ -470,14 +483,14 @@ function FrozenOrganizationStage({
     relatedIds: string[] = [],
   ) => organizationInitiativeInsight(id, projection, placement, overlaps, relatedIds);
   return <>
-    <AssistantBubble>StarterÃ­a propone una forma de ordenar las iniciativas para que puedas comparar el trabajo alrededor del objetivo. <b>Nada se convierte en estructura del Portfolio hasta que revises y confirmes la propuesta.</b></AssistantBubble>
+    <AssistantBubble>Startería propone una forma de ordenar las iniciativas para que puedas comparar el trabajo alrededor del objetivo. <b>Nada se convierte en estructura del Portfolio hasta que revises y confirmes la propuesta.</b></AssistantBubble>
     <OrganizationStageIntro />
     <section className="space-y-6 rounded-2xl border border-violet-200 bg-white p-4 shadow-sm md:p-6" data-testid="portfolio-organization-proposal" aria-busy={reviewLocked}>
       <fieldset disabled={reviewLocked} className="m-0 min-w-0 space-y-6 border-0 p-0">
       <div className="border-b border-slate-200 pb-5">
-        <p className="text-xs font-bold uppercase tracking-[0.14em] text-violet-800">Propuesta de organizaciÃ³n Â· revisable</p>
+        <p className="text-xs font-bold uppercase tracking-[0.14em] text-violet-800">Propuesta de organización · revisable</p>
         <h3 className="mt-2 max-w-3xl text-xl font-semibold tracking-tight text-slate-950">{draft.summary}</h3>
-        <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">La lectura va del resultado de negocio a los problemas que conviene resolver y, despuÃ©s, al trabajo que ya existe. Puedes cambiar cualquier agrupaciÃ³n antes de confirmar.</p>
+        <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">La lectura va del resultado de negocio a los problemas que conviene resolver y, después, al trabajo que ya existe. Puedes cambiar cualquier agrupación antes de confirmar.</p>
       </div>
 
       <div className="space-y-6" data-testid="portfolio-organization-cascade">
@@ -485,22 +498,22 @@ function FrozenOrganizationStage({
           <div className="border-b border-violet-200 bg-gradient-to-br from-violet-100/80 via-white to-white p-5 md:p-6">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div className="max-w-3xl">
-                <p className="text-xs font-extrabold tracking-[0.14em] text-violet-800">FRENTE ESTRATÃ‰GICO PROPUESTO</p>
+                <p className="text-xs font-extrabold tracking-[0.14em] text-violet-800">FRENTE ESTRATÉGICO PROPUESTO</p>
                 <h3 className="mt-2 text-2xl font-semibold tracking-tight text-slate-950">{front.name}</h3>
               </div>
-              <span className="rounded-full border border-violet-200 bg-white px-3 py-1 text-xs font-bold text-violet-800">Cobertura Â· {front.coverage}</span>
+              <span className="rounded-full border border-violet-200 bg-white px-3 py-1 text-xs font-bold text-violet-800">Cobertura · {front.coverage}</span>
             </div>
             <dl className="mt-5 grid gap-px overflow-hidden rounded-xl border border-violet-100 bg-violet-100 md:grid-cols-2">
               <OrganizationDefinition label="Resultado de negocio" value={front.focus} />
-              <OrganizationDefinition label="KPI / seÃ±al" value={projection.anchor.businessSignalValue ?? 'Por confirmar'} />
-              <OrganizationDefinition label="DecisiÃ³n que ayuda a tomar" value={projection.anchor.decisionToEnable ?? 'Por confirmar'} />
-              <OrganizationDefinition label="Por quÃ© conviene organizarlo asÃ­" value={front.rationale} />
+              <OrganizationDefinition label="KPI / señal" value={projection.anchor.businessSignalValue ?? 'Por confirmar'} />
+              <OrganizationDefinition label="Decisión que ayuda a tomar" value={projection.anchor.decisionToEnable ?? 'Por confirmar'} />
+              <OrganizationDefinition label="Por qué conviene organizarlo así" value={front.rationale} />
             </dl>
             <details className="mt-4 rounded-lg border border-violet-200 bg-white/80 p-3">
-              <summary className="cursor-pointer text-sm font-semibold text-violet-900">Editar frente estratÃ©gico</summary>
+              <summary className="cursor-pointer text-sm font-semibold text-violet-900">Editar frente estratégico</summary>
               <div className="mt-3 grid gap-3 md:grid-cols-2">
-                <label className="text-sm font-semibold text-slate-800">Nombre del frente estratÃ©gico<input aria-label="Nombre del frente estratÃ©gico" value={front.name} onChange={(event) => mutate((value) => updateFront(value, front.candidateId, { name: event.target.value }))} className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 font-normal" /></label>
-                <label className="text-sm font-semibold text-slate-800">Resultado / foco que organiza<textarea aria-label="Foco del frente estratÃ©gico" value={front.focus} onChange={(event) => mutate((value) => updateFront(value, front.candidateId, { focus: event.target.value }))} rows={2} className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 font-normal" /></label>
+                <label className="text-sm font-semibold text-slate-800">Nombre del frente estratégico<input aria-label="Nombre del frente estratégico" value={front.name} onChange={(event) => mutate((value) => updateFront(value, front.candidateId, { name: event.target.value }))} className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 font-normal" /></label>
+                <label className="text-sm font-semibold text-slate-800">Resultado / foco que organiza<textarea aria-label="Foco del frente estratégico" value={front.focus} onChange={(event) => mutate((value) => updateFront(value, front.candidateId, { focus: event.target.value }))} rows={2} className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 font-normal" /></label>
               </div>
             </details>
           </div>
@@ -518,8 +531,8 @@ function FrozenOrganizationStage({
               </div>
               <dl className="mt-4 grid gap-4 text-sm md:grid-cols-2">
                 <OrganizationDefinition label="Problema o incertidumbre" value={challenge.problem} compact />
-                <OrganizationDefinition label="DecisiÃ³n que ayuda a tomar" value={challengeDecision(challenge)} compact />
-                <OrganizationDefinition label="Por quÃ© estas iniciativas estÃ¡n juntas" value={challengeGroupingRationale(challenge)} compact />
+                <OrganizationDefinition label="Decisión que ayuda a tomar" value={challengeDecision(challenge)} compact />
+                <OrganizationDefinition label="Por qué estas iniciativas están juntas" value={challengeGroupingRationale(challenge)} compact />
               </dl>
               <SpecificOverlapSummary comparisons={specificChallengeComparisons(challenge, workById)} />
               <div className="mt-5 border-l-2 border-sky-200 pl-3 md:pl-5">
@@ -533,21 +546,21 @@ function FrozenOrganizationStage({
                   insightFor={(id) => insightFor(id, 'challenge', challenge.overlaps, challenge.relatedInitiativeIds)}
                   onMoveStart={setMovingInitiativeId}
                   onMove={(id, destination) => { placeInitiative(id, destination); setMovingInitiativeId(null); }}
-                  empty="Este reto no tiene iniciativas. Puedes combinarlo o dejarlo como hipÃ³tesis durante la revisiÃ³n."
+                  empty="Este reto no tiene iniciativas. Puedes combinarlo o dejarlo como hipótesis durante la revisión."
                 />
               </div>
               <ChallengeGapSignal gaps={challenge.gaps} />
               <ChallengeClosingSummary challenge={challenge} projection={projection} />
             </section>)}
-            {frontIndex === 0 && draft.fronts.length === 1 ? <p className="ml-3 text-xs leading-5 text-slate-600 md:ml-8">Se propone un solo frente porque las iniciativas incluidas persiguen el mismo resultado. Los retos sÃ³lo deben separar problemas o decisiones realmente distintos.</p> : null}
+            {frontIndex === 0 && draft.fronts.length === 1 ? <p className="ml-3 text-xs leading-5 text-slate-600 md:ml-8">Se propone un solo frente porque las iniciativas incluidas persiguen el mismo resultado. Los retos sólo deben separar problemas o decisiones realmente distintos.</p> : null}
           </div>
         </article>)}
       </div>
 
       <section className="space-y-3 border-t border-slate-200 pt-6" aria-labelledby="other-destinations-heading">
-        <div><p className="text-xs font-bold uppercase tracking-[0.14em] text-slate-500">Otros destinos posibles</p><h3 id="other-destinations-heading" className="mt-1 text-lg font-semibold text-slate-950">El trabajo no tiene que encajar a la fuerza</h3><p className="mt-1 text-sm text-slate-600">Estas opciones tambiÃ©n forman parte de la propuesta y conservan la trazabilidad de cada movimiento.</p></div>
-        <OrganizationBucket title="Apoyo transversal" description="Contribuyen a varios retos sin pertenecer exclusivamente a uno." ids={draft.crossCuttingInitiativeIds} workById={workById} movingInitiativeId={movingInitiativeId} destinationOptions={destinationOptions} placementFor={placementFor} insightFor={(id) => insightFor(id, 'cross-cutting')} onMoveStart={setMovingInitiativeId} onMove={(id, destination) => { placeInitiative(id, destination); setMovingInitiativeId(null); }} empty="Ninguna iniciativa estÃ¡ marcada como apoyo transversal." />
-        <OrganizationBucket title="Sin agrupar" description="Permanecen disponibles mientras falta informaciÃ³n o no encajan todavÃ­a en un problema comÃºn." ids={draft.ungroupedInitiativeIds} workById={workById} movingInitiativeId={movingInitiativeId} destinationOptions={destinationOptions} placementFor={placementFor} insightFor={(id) => insightFor(id, 'ungrouped')} onMoveStart={setMovingInitiativeId} onMove={(id, destination) => { placeInitiative(id, destination); setMovingInitiativeId(null); }} empty="Ninguna iniciativa queda sin agrupar." />
+        <div><p className="text-xs font-bold uppercase tracking-[0.14em] text-slate-500">Otros destinos posibles</p><h3 id="other-destinations-heading" className="mt-1 text-lg font-semibold text-slate-950">El trabajo no tiene que encajar a la fuerza</h3><p className="mt-1 text-sm text-slate-600">Estas opciones también forman parte de la propuesta y conservan la trazabilidad de cada movimiento.</p></div>
+        <OrganizationBucket title="Apoyo transversal" description="Contribuyen a varios retos sin pertenecer exclusivamente a uno." ids={draft.crossCuttingInitiativeIds} workById={workById} movingInitiativeId={movingInitiativeId} destinationOptions={destinationOptions} placementFor={placementFor} insightFor={(id) => insightFor(id, 'cross-cutting')} onMoveStart={setMovingInitiativeId} onMove={(id, destination) => { placeInitiative(id, destination); setMovingInitiativeId(null); }} empty="Ninguna iniciativa está marcada como apoyo transversal." />
+        <OrganizationBucket title="Sin agrupar" description="Permanecen disponibles mientras falta información o no encajan todavía en un problema común." ids={draft.ungroupedInitiativeIds} workById={workById} movingInitiativeId={movingInitiativeId} destinationOptions={destinationOptions} placementFor={placementFor} insightFor={(id) => insightFor(id, 'ungrouped')} onMoveStart={setMovingInitiativeId} onMove={(id, destination) => { placeInitiative(id, destination); setMovingInitiativeId(null); }} empty="Ninguna iniciativa queda sin agrupar." />
         <OrganizationBucket title="Fuera del objetivo actual" description="Se conservan en Portfolio, pero no forman parte de este objetivo por ahora." ids={draft.outsideObjectiveInitiativeIds} workById={workById} movingInitiativeId={movingInitiativeId} destinationOptions={destinationOptions} placementFor={placementFor} insightFor={(id) => insightFor(id, 'outside')} onMoveStart={setMovingInitiativeId} onMove={(id, destination) => { placeInitiative(id, destination); setMovingInitiativeId(null); }} empty="Ninguna iniciativa se mantiene fuera del objetivo." />
       </section>
       {splitReview ? <ChallengeSplitReview
@@ -605,7 +618,7 @@ function FrozenOrganizationStage({
       {(localError || error) ? <p role="alert" className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-900">{localError || error}</p> : null}
       <OrganizationValueExplainer onOptOut={() => setOptOutReviewOpen(true)} />
       <OrganizationConfirmationSummary draft={draft} reviewNeedsSaving={reviewNeedsSaving} unavailableReason={confirmationUnavailableReason} optedOut={organizationOptedOut} />
-      <div className="flex flex-wrap gap-2"><button type="button" onClick={save} disabled={!dirty || !onSave || reviewLocked} className="rounded-lg border border-violet-300 bg-white px-4 py-2.5 text-sm font-semibold text-violet-950 disabled:opacity-50">{reviewLocked && status !== 'confirming' ? 'Guardandoâ€¦' : 'Guardar y continuar despuÃ©s'}</button><button type="button" aria-describedby="organization-confirmation-state" onClick={confirm} disabled={Boolean(confirmationUnavailableReason) || reviewLocked} className="rounded-lg bg-slate-950 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50">{status === 'confirming' ? 'Confirmandoâ€¦' : reviewLocked ? 'Guardando revisiÃ³nâ€¦' : 'Confirmar estructura estratÃ©gica'}</button></div>
+      <div className="flex flex-wrap gap-2"><button type="button" onClick={save} disabled={!dirty || !onSave || reviewLocked} className="rounded-lg border border-violet-300 bg-white px-4 py-2.5 text-sm font-semibold text-violet-950 disabled:opacity-50">{reviewLocked && status !== 'confirming' ? 'Guardando…' : 'Guardar y continuar después'}</button><button type="button" aria-describedby="organization-confirmation-state" onClick={confirm} disabled={Boolean(confirmationUnavailableReason) || reviewLocked} className="rounded-lg bg-slate-950 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50">{status === 'confirming' ? 'Confirmando…' : reviewLocked ? 'Guardando revisión…' : 'Confirmar estructura estratégica'}</button></div>
       </fieldset>
     </section>
   </>;
@@ -613,9 +626,9 @@ function FrozenOrganizationStage({
 
 function OrganizationStageIntro() {
   return <section className="ml-0 overflow-hidden rounded-2xl border border-violet-200 bg-white md:ml-11" aria-labelledby="organization-stage-title">
-    <div className="bg-violet-50 px-5 py-4 md:px-6"><p className="text-xs font-bold uppercase tracking-[0.14em] text-violet-800">PL-04 Â· OrganizaciÃ³n propuesta</p><h3 id="organization-stage-title" className="mt-1 text-xl font-semibold tracking-tight text-slate-950">Define la estructura estratÃ©gica del objetivo</h3><p className="mt-2 text-sm leading-6 text-slate-700">AquÃ­ estÃ¡s definiendo la estructura estratÃ©gica con la que darÃ¡s seguimiento al objetivo.</p></div>
+    <div className="bg-violet-50 px-5 py-4 md:px-6"><p className="text-xs font-bold uppercase tracking-[0.14em] text-violet-800">PL-04 · Organización propuesta</p><h3 id="organization-stage-title" className="mt-1 text-xl font-semibold tracking-tight text-slate-950">Define la estructura estratégica del objetivo</h3><p className="mt-2 text-sm leading-6 text-slate-700">Aquí estás definiendo la estructura estratégica con la que darás seguimiento al objetivo.</p></div>
     <div className="grid gap-px bg-slate-200 md:grid-cols-3">
-      <OrganizationConcept step="01" title="Frente estratÃ©gico" description="El resultado de negocio que quieres mover." />
+      <OrganizationConcept step="01" title="Frente estratégico" description="El resultado de negocio que quieres mover." />
       <OrganizationConcept step="02" title="Reto" description="El problema o foco principal que conviene abordar dentro de ese frente." />
       <OrganizationConcept step="03" title="Iniciativas" description="Los trabajos existentes que aportan, se solapan o quedan fuera." />
     </div>
@@ -634,10 +647,10 @@ function OrganizationDefinition({ label, value, compact = false }: { label: stri
 function FrontChallengeTransition({ challengeCount }: { challengeCount: number }) {
   const challengeLabel = challengeCount === 1 ? '1 reto principal' : `${challengeCount} retos principales`;
   return <section className="ml-3 border-l-2 border-violet-300 py-1 pl-4 md:ml-8 md:pl-5" data-testid="front-challenge-transition">
-    <p className="text-sm font-semibold text-slate-950">{`Dentro de este frente StarterÃ­a identificÃ³ ${challengeLabel}.`}</p>
+    <p className="text-sm font-semibold text-slate-950">{`Dentro de este frente Startería identificó ${challengeLabel}.`}</p>
     <p className="mt-1 max-w-3xl text-sm leading-6 text-slate-600">Separar retos hace visibles problemas o decisiones diferentes, permite comparar mejor las iniciativas y evita priorizarlas como si respondieran a la misma incertidumbre.</p>
-    {challengeCount === 1 ? <p className="mt-2 text-sm leading-6 text-sky-950">Las iniciativas parecen concentrarse en un Ãºnico problema principal; no hace falta dividirlo salvo que identifiques problemas o decisiones distintas.</p> : null}
-    <p className="mt-3 rounded-lg bg-slate-100 px-3 py-2 text-center text-xs font-bold tracking-wide text-slate-700">Objetivo â†’ Frente estratÃ©gico â†’ {challengeCount === 1 ? 'Reto' : 'Retos'} â†’ Iniciativas</p>
+    {challengeCount === 1 ? <p className="mt-2 text-sm leading-6 text-sky-950">Las iniciativas parecen concentrarse en un único problema principal; no hace falta dividirlo salvo que identifiques problemas o decisiones distintas.</p> : null}
+    <p className="mt-3 rounded-lg bg-slate-100 px-3 py-2 text-center text-xs font-bold tracking-wide text-slate-700">Objetivo → Frente estratégico → {challengeCount === 1 ? 'Reto' : 'Retos'} → Iniciativas</p>
   </section>;
 }
 
@@ -657,22 +670,22 @@ function ChallengeSplitReview({
   const total = challenge?.relatedInitiativeIds.length ?? 0;
   const firstCount = Math.ceil(total / 2);
   const secondCount = total - firstCount;
-  return <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 p-4" role="dialog" aria-modal="true" aria-label="Revisar separaciÃ³n del reto">
+  return <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 p-4" role="dialog" aria-modal="true" aria-label="Revisar separación del reto">
     <section className="w-full max-w-xl rounded-2xl border border-slate-200 bg-white p-5 shadow-xl md:p-6">
-      <div className="flex items-start justify-between gap-4"><div><p className="text-xs font-bold uppercase tracking-[0.14em] text-violet-700">DecisiÃ³n guiada</p><h3 className="mt-1 text-lg font-semibold text-slate-950">Â¿CuÃ¡ndo puede tener sentido separar este reto?</h3></div><button type="button" onClick={onCancel} className="text-sm font-semibold text-slate-600">Cerrar</button></div>
-      <p className="mt-3 text-sm font-medium leading-6 text-slate-800">No necesitas crear mÃ¡s retos por completar estructura.</p>
+      <div className="flex items-start justify-between gap-4"><div><p className="text-xs font-bold uppercase tracking-[0.14em] text-violet-700">Decisión guiada</p><h3 className="mt-1 text-lg font-semibold text-slate-950">¿Cuándo puede tener sentido separar este reto?</h3></div><button type="button" onClick={onCancel} className="text-sm font-semibold text-slate-600">Cerrar</button></div>
+      <p className="mt-3 text-sm font-medium leading-6 text-slate-800">No necesitas crear más retos por completar estructura.</p>
       <p className="mt-1 text-sm leading-6 text-slate-600">Puede valer la pena si:</p>
       <ul className="mt-2 space-y-2 text-sm leading-5 text-slate-700">
-        <li>â€¢ Las iniciativas intentan resolver problemas claramente distintos.</li>
-        <li>â€¢ Requieren decisiones diferentes.</li>
-        <li>â€¢ Requieren equipos o capacidades diferentes.</li>
-        <li>â€¢ Una parte puede avanzar independientemente de la otra.</li>
-        <li>â€¢ Existen grupos con evidencia o estado muy diferente.</li>
-        <li>â€¢ Identificas una distinciÃ³n que StarterÃ­a no detectÃ³.</li>
+        <li>• Las iniciativas intentan resolver problemas claramente distintos.</li>
+        <li>• Requieren decisiones diferentes.</li>
+        <li>• Requieren equipos o capacidades diferentes.</li>
+        <li>• Una parte puede avanzar independientemente de la otra.</li>
+        <li>• Existen grupos con evidencia o estado muy diferente.</li>
+        <li>• Identificas una distinción que Startería no detectó.</li>
       </ul>
-      <p className="mt-3 text-xs leading-5 text-slate-500">Abrir esta ayuda no modifica la propuesta. Crear un segundo reto sÃ³lo cambia el borrador revisable; nada se materializa antes de confirmar la estructura.</p>
-      {suggestionVisible ? <div className="mt-4 rounded-xl border border-sky-200 bg-sky-50 p-4" data-testid="challenge-split-preview"><p className="text-sm font-semibold text-sky-950">{`Vista previa: las ${total} iniciativas quedarÃ­an repartidas en grupos de ${firstCount} y ${secondCount}.`}</p><div className="mt-3 grid gap-2 sm:grid-cols-2"><p className="rounded-lg bg-white p-3 text-sm text-slate-700"><b>{challenge?.title}</b><br />{firstCount} iniciativas</p><p className="rounded-lg bg-white p-3 text-sm text-slate-700"><b>Segundo reto por precisar</b><br />{secondCount} iniciativas</p></div><p className="mt-3 text-xs leading-5 text-sky-900">La sugerencia sÃ³lo reparte el trabajo para facilitar la revisiÃ³n. El nombre, el problema y las iniciativas del segundo reto siguen bajo decisiÃ³n humana.</p></div> : null}
-      <div className="mt-5 flex flex-wrap gap-2"><button type="button" onClick={onSuggest} className="rounded-lg border border-sky-300 bg-white px-4 py-2 text-sm font-semibold text-sky-900">Proponer una separaciÃ³n</button><button type="button" onClick={onCreate} disabled={!challenge || total < 2} className="rounded-lg bg-slate-950 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">Crear segundo reto</button><button type="button" onClick={onCancel} className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700">Cancelar / volver sin cambios</button></div>
+      <p className="mt-3 text-xs leading-5 text-slate-500">Abrir esta ayuda no modifica la propuesta. Crear un segundo reto sólo cambia el borrador revisable; nada se materializa antes de confirmar la estructura.</p>
+      {suggestionVisible ? <div className="mt-4 rounded-xl border border-sky-200 bg-sky-50 p-4" data-testid="challenge-split-preview"><p className="text-sm font-semibold text-sky-950">{`Vista previa: las ${total} iniciativas quedarían repartidas en grupos de ${firstCount} y ${secondCount}.`}</p><div className="mt-3 grid gap-2 sm:grid-cols-2"><p className="rounded-lg bg-white p-3 text-sm text-slate-700"><b>{challenge?.title}</b><br />{firstCount} iniciativas</p><p className="rounded-lg bg-white p-3 text-sm text-slate-700"><b>Segundo reto por precisar</b><br />{secondCount} iniciativas</p></div><p className="mt-3 text-xs leading-5 text-sky-900">La sugerencia sólo reparte el trabajo para facilitar la revisión. El nombre, el problema y las iniciativas del segundo reto siguen bajo decisión humana.</p></div> : null}
+      <div className="mt-5 flex flex-wrap gap-2"><button type="button" onClick={onSuggest} className="rounded-lg border border-sky-300 bg-white px-4 py-2 text-sm font-semibold text-sky-900">Proponer una separación</button><button type="button" onClick={onCreate} disabled={!challenge || total < 2} className="rounded-lg bg-slate-950 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">Crear segundo reto</button><button type="button" onClick={onCancel} className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700">Cancelar / volver sin cambios</button></div>
     </section>
   </div>;
 }
@@ -681,7 +694,7 @@ type OrganizationChallenge = PortfolioOrganizationPayload['fronts'][number]['cha
 type ChallengeReviewMode = 'menu' | 'rationale' | 'edit' | 'add' | 'merge' | 'remove' | 'disagree';
 type ChallengeRemovalDisposition = 'ungrouped' | 'move' | 'individual';
 type AddChallengeInput = { title: string; problem: string; decision: string; relatedInitiativeIds: string[] };
-const ORGANIZATION_OPT_OUT_SUMMARY = 'OrganizaciÃ³n pospuesta por decisiÃ³n del Portfolio Lead.';
+const ORGANIZATION_OPT_OUT_SUMMARY = 'Organización pospuesta por decisión del Portfolio Lead.';
 
 function ChallengeProposalReview({
   front,
@@ -739,11 +752,11 @@ function ChallengeProposalReview({
   const disagreementAction = disagreement === 'incorrect-problem'
     ? 'Corregir el problema'
     : disagreement === 'multiple-problems'
-      ? 'Revisar una separaciÃ³n'
+      ? 'Revisar una separación'
       : disagreement === 'wrong-group'
         ? 'Dejar estas iniciativas sin agrupar'
         : disagreement === 'missing-challenge'
-          ? 'AÃ±adir el reto que falta'
+          ? 'Añadir el reto que falta'
           : disagreement === 'not-now'
             ? 'Mantener todo sin organizar'
             : 'Continuar';
@@ -756,74 +769,74 @@ function ChallengeProposalReview({
       </header>
       <div className="p-5 md:p-6">
         {mode === 'menu' ? <div className="space-y-5">
-          <div><h4 className="font-semibold text-slate-950">Â¿QuÃ© quieres revisar?</h4><p className="mt-1 text-sm leading-6 text-slate-600">Nada se materializa mientras trabajas aquÃ­. Todos los cambios afectan Ãºnicamente a la propuesta provisional.</p></div>
+          <div><h4 className="font-semibold text-slate-950">¿Qué quieres revisar?</h4><p className="mt-1 text-sm leading-6 text-slate-600">Nada se materializa mientras trabajas aquí. Todos los cambios afectan únicamente a la propuesta provisional.</p></div>
           <div className="grid gap-2 sm:grid-cols-2">
-            <ReviewAction label="Entender por quÃ© StarterÃ­a lo propone" description="Revisar el patrÃ³n, las fuentes, los vacÃ­os y la decisiÃ³n." onClick={() => setMode('rationale')} />
-            <ReviewAction label="Editar reto" description="Corregir el nombre, el problema o la decisiÃ³n." onClick={() => setMode('edit')} />
-            <ReviewAction label="+ AÃ±adir otro reto" description="Incorporar un problema que falta en la propuesta." onClick={() => setMode('add')} />
-            <ReviewAction label="Separar en dos retos" description="Evaluar si aquÃ­ conviven problemas distintos." onClick={onSplit} />
+            <ReviewAction label="Entender por qué Startería lo propone" description="Revisar el patrón, las fuentes, los vacíos y la decisión." onClick={() => setMode('rationale')} />
+            <ReviewAction label="Editar reto" description="Corregir el nombre, el problema o la decisión." onClick={() => setMode('edit')} />
+            <ReviewAction label="+ Añadir otro reto" description="Incorporar un problema que falta en la propuesta." onClick={() => setMode('add')} />
+            <ReviewAction label="Separar en dos retos" description="Evaluar si aquí conviven problemas distintos." onClick={onSplit} />
             <ReviewAction label="Combinar con otro reto" description={otherChallenges.length > 0 ? 'Reunir dos propuestas que explican el mismo problema.' : 'Necesitas otro reto en la propuesta para combinarlos.'} onClick={() => setMode('merge')} disabled={otherChallenges.length === 0} />
             <ReviewAction label="Quitar este reto de la propuesta" description="Retirarlo sin borrar iniciativas ni fuentes." onClick={() => setMode('remove')} />
           </div>
-          <button type="button" aria-label="No estoy de acuerdo con esta propuesta" onClick={() => setMode('disagree')} className="w-full rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-left text-sm font-semibold text-amber-950">No estoy de acuerdo con esta propuesta<span className="mt-1 block text-xs font-normal leading-5 text-amber-900">Explica quÃ© no encaja y elige cÃ³mo quieres cambiar el borrador.</span></button>
+          <button type="button" aria-label="No estoy de acuerdo con esta propuesta" onClick={() => setMode('disagree')} className="w-full rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-left text-sm font-semibold text-amber-950">No estoy de acuerdo con esta propuesta<span className="mt-1 block text-xs font-normal leading-5 text-amber-900">Explica qué no encaja y elige cómo quieres cambiar el borrador.</span></button>
         </div> : null}
 
         {mode === 'rationale' ? <div className="space-y-5">
           <ReviewBack onClick={goBack} />
-          <div><p className="text-xs font-bold uppercase tracking-[0.14em] text-sky-700">ExplicaciÃ³n en lenguaje de negocio</p><h4 className="mt-1 text-lg font-semibold text-slate-950">Por quÃ© StarterÃ­a propone este reto</h4></div>
-          <RationaleItem label="PatrÃ³n detectado" value={challengeGroupingRationale(challenge)} />
-          <RationaleItem label="Iniciativas que sustentan la propuesta" value={initiativeNames.length > 0 ? initiativeNames.join(', ') : 'TodavÃ­a no hay iniciativas relacionadas.'} />
+          <div><p className="text-xs font-bold uppercase tracking-[0.14em] text-sky-700">Explicación en lenguaje de negocio</p><h4 className="mt-1 text-lg font-semibold text-slate-950">Por qué Startería propone este reto</h4></div>
+          <RationaleItem label="Patrón detectado" value={challengeGroupingRationale(challenge)} />
+          <RationaleItem label="Iniciativas que sustentan la propuesta" value={initiativeNames.length > 0 ? initiativeNames.join(', ') : 'Todavía no hay iniciativas relacionadas.'} />
           {challenge.evidence.length > 0 ? <RationaleItem label="Evidencia disponible" value={challenge.evidence.join(' ')} /> : null}
           {sourceLabels.length > 0 ? <RationaleItem label="Procedencia" value={sourceLabels.join(', ')} /> : null}
-          <RationaleItem label="VacÃ­os relevantes" value={challenge.gaps.length > 0 ? challenge.gaps.join(' ') : 'No se detectan vacÃ­os crÃ­ticos para organizar.'} />
-          <RationaleItem label="DecisiÃ³n que ayuda a tomar" value={challengeDecision(challenge)} />
-          <RationaleItem label="Por quÃ© tratarlo como un reto separado" value={`Permite decidir sobre â€œ${challenge.problem}â€ sin mezclarlo con problemas que podrÃ­an requerir otra prioridad, evidencia o capacidad.`} />
+          <RationaleItem label="Vacíos relevantes" value={challenge.gaps.length > 0 ? challenge.gaps.join(' ') : 'No se detectan vacíos críticos para organizar.'} />
+          <RationaleItem label="Decisión que ayuda a tomar" value={challengeDecision(challenge)} />
+          <RationaleItem label="Por qué tratarlo como un reto separado" value={`Permite decidir sobre “${challenge.problem}” sin mezclarlo con problemas que podrían requerir otra prioridad, evidencia o capacidad.`} />
         </div> : null}
 
         {mode === 'edit' ? <form className="space-y-4" onSubmit={(event) => { event.preventDefault(); onEdit({ title: title.trim(), problem: problem.trim(), rationale: composeChallengeRationale(groupingRationale, decision) }); }}>
           <ReviewBack onClick={goBack} />
-          <div><h4 className="text-lg font-semibold text-slate-950">Editar reto</h4><p className="mt-1 text-sm text-slate-600">Corrige la interpretaciÃ³n de StarterÃ­a con tus palabras.</p></div>
+          <div><h4 className="text-lg font-semibold text-slate-950">Editar reto</h4><p className="mt-1 text-sm text-slate-600">Corrige la interpretación de Startería con tus palabras.</p></div>
           <ReviewField label="Nombre del reto"><input aria-label="Nombre del reto" value={title} onChange={(event) => setTitle(event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" /></ReviewField>
           <ReviewField label="Problema o incertidumbre"><textarea aria-label="Problema o incertidumbre del reto" value={problem} onChange={(event) => setProblem(event.target.value)} rows={3} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" /></ReviewField>
-          <ReviewField label="DecisiÃ³n que ayuda a tomar"><textarea aria-label="DecisiÃ³n que ayuda a tomar" value={decision} onChange={(event) => setDecision(event.target.value)} rows={2} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" /></ReviewField>
-          <ReviewField label="Por quÃ© conviene agrupar estas iniciativas"><textarea aria-label="Por quÃ© conviene agrupar estas iniciativas" value={groupingRationale} onChange={(event) => setGroupingRationale(event.target.value)} rows={3} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" /></ReviewField>
+          <ReviewField label="Decisión que ayuda a tomar"><textarea aria-label="Decisión que ayuda a tomar" value={decision} onChange={(event) => setDecision(event.target.value)} rows={2} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" /></ReviewField>
+          <ReviewField label="Por qué conviene agrupar estas iniciativas"><textarea aria-label="Por qué conviene agrupar estas iniciativas" value={groupingRationale} onChange={(event) => setGroupingRationale(event.target.value)} rows={3} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" /></ReviewField>
           <div className="flex flex-wrap gap-2"><button type="submit" disabled={!title.trim() || !problem.trim() || !decision.trim()} className="rounded-lg bg-slate-950 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">Aplicar cambios al reto</button><button type="button" onClick={goBack} className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700">Volver sin cambios</button></div>
         </form> : null}
 
         {mode === 'add' ? <form className="space-y-4" onSubmit={(event) => { event.preventDefault(); onAdd({ title: newTitle, problem: newProblem, decision: newDecision, relatedInitiativeIds: newRelatedIds }); }}>
           <ReviewBack onClick={goBack} />
-          <div><h4 className="text-lg font-semibold text-slate-950">AÃ±adir otro reto</h4><p className="mt-1 text-sm leading-6 text-slate-600">AÃ±ade una hipÃ³tesis que StarterÃ­a no detectÃ³. SeguirÃ¡ siendo provisional hasta la confirmaciÃ³n final.</p></div>
-          <ReviewField label="Nombre opcional"><input aria-label="Nombre del nuevo reto" value={newTitle} onChange={(event) => setNewTitle(event.target.value)} placeholder="Si lo dejas vacÃ­o, usaremos una sÃ­ntesis del problema" className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" /></ReviewField>
+          <div><h4 className="text-lg font-semibold text-slate-950">Añadir otro reto</h4><p className="mt-1 text-sm leading-6 text-slate-600">Añade una hipótesis que Startería no detectó. Seguirá siendo provisional hasta la confirmación final.</p></div>
+          <ReviewField label="Nombre opcional"><input aria-label="Nombre del nuevo reto" value={newTitle} onChange={(event) => setNewTitle(event.target.value)} placeholder="Si lo dejas vacío, usaremos una síntesis del problema" className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" /></ReviewField>
           <ReviewField label="Problema o incertidumbre"><textarea aria-label="Problema o incertidumbre del nuevo reto" value={newProblem} onChange={(event) => setNewProblem(event.target.value)} rows={3} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" /></ReviewField>
-          <ReviewField label="DecisiÃ³n que ayudarÃ­a a tomar"><textarea aria-label="DecisiÃ³n que ayudarÃ­a a tomar" value={newDecision} onChange={(event) => setNewDecision(event.target.value)} rows={2} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" /></ReviewField>
-          <fieldset className="rounded-xl border border-slate-200 p-4"><legend className="px-1 text-sm font-semibold text-slate-800">Iniciativas relacionadas opcionales</legend><p className="mb-3 text-xs leading-5 text-slate-500">Si eliges una iniciativa, se moverÃ¡ desde su ubicaciÃ³n actual a este nuevo reto sin perder procedencia ni anÃ¡lisis.</p><div className="grid gap-2 sm:grid-cols-2">{projection.workItems.map((item) => { const label = item.proposedName ?? item.rawLabel; return <label key={item.id} className="flex items-start gap-2 text-sm text-slate-700"><input type="checkbox" aria-label={`Relacionar ${label}`} checked={newRelatedIds.includes(item.id)} onChange={(event) => setNewRelatedIds((ids) => event.target.checked ? unique([...ids, item.id]) : ids.filter((id) => id !== item.id))} className="mt-1" /><span>{label}</span></label>; })}</div></fieldset>
-          <p className="rounded-lg bg-violet-50 px-3 py-2 text-xs leading-5 text-violet-900">Puedes usar el problema y la decisiÃ³n como guÃ­a de redacciÃ³n; no necesitas imitar el lenguaje de StarterÃ­a.</p>
-          <div className="flex flex-wrap gap-2"><button type="submit" disabled={!newProblem.trim() || !newDecision.trim()} className="rounded-lg bg-slate-950 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">AÃ±adir reto a la propuesta</button><button type="button" onClick={goBack} className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700">Cancelar</button></div>
+          <ReviewField label="Decisión que ayudaría a tomar"><textarea aria-label="Decisión que ayudaría a tomar" value={newDecision} onChange={(event) => setNewDecision(event.target.value)} rows={2} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" /></ReviewField>
+          <fieldset className="rounded-xl border border-slate-200 p-4"><legend className="px-1 text-sm font-semibold text-slate-800">Iniciativas relacionadas opcionales</legend><p className="mb-3 text-xs leading-5 text-slate-500">Si eliges una iniciativa, se moverá desde su ubicación actual a este nuevo reto sin perder procedencia ni análisis.</p><div className="grid gap-2 sm:grid-cols-2">{projection.workItems.map((item) => { const label = item.proposedName ?? item.rawLabel; return <label key={item.id} className="flex items-start gap-2 text-sm text-slate-700"><input type="checkbox" aria-label={`Relacionar ${label}`} checked={newRelatedIds.includes(item.id)} onChange={(event) => setNewRelatedIds((ids) => event.target.checked ? unique([...ids, item.id]) : ids.filter((id) => id !== item.id))} className="mt-1" /><span>{label}</span></label>; })}</div></fieldset>
+          <p className="rounded-lg bg-violet-50 px-3 py-2 text-xs leading-5 text-violet-900">Puedes usar el problema y la decisión como guía de redacción; no necesitas imitar el lenguaje de Startería.</p>
+          <div className="flex flex-wrap gap-2"><button type="submit" disabled={!newProblem.trim() || !newDecision.trim()} className="rounded-lg bg-slate-950 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">Añadir reto a la propuesta</button><button type="button" onClick={goBack} className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700">Cancelar</button></div>
         </form> : null}
 
         {mode === 'merge' ? <div className="space-y-4">
           <ReviewBack onClick={goBack} />
-          <div><h4 className="text-lg font-semibold text-slate-950">Combinar con otro reto</h4><p className="mt-1 text-sm leading-6 text-slate-600">Las iniciativas, fuentes, gaps y comparaciones de ambos retos se conservarÃ¡n en una sola propuesta.</p></div>
+          <div><h4 className="text-lg font-semibold text-slate-950">Combinar con otro reto</h4><p className="mt-1 text-sm leading-6 text-slate-600">Las iniciativas, fuentes, gaps y comparaciones de ambos retos se conservarán en una sola propuesta.</p></div>
           <ReviewField label="Reto de destino"><select aria-label="Reto con el que combinar" value={mergeTargetId} onChange={(event) => setMergeTargetId(event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm">{otherChallenges.map((candidate) => <option key={candidate.candidateId} value={candidate.candidateId}>{candidate.title}</option>)}</select></ReviewField>
           <div className="flex flex-wrap gap-2"><button type="button" disabled={!mergeTargetId} onClick={() => onMerge(mergeTargetId)} className="rounded-lg bg-slate-950 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">Combinar retos</button><button type="button" onClick={goBack} className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700">Cancelar</button></div>
         </div> : null}
 
         {mode === 'remove' ? <div className="space-y-4">
           <ReviewBack onClick={goBack} />
-          <div><h4 className="text-lg font-semibold text-slate-950">Quitar reto de la propuesta</h4><p className="mt-1 text-sm leading-6 text-slate-600">Esto retira Ãºnicamente el reto candidato. No se borrarÃ¡ ninguna iniciativa, fuente, procedencia ni anÃ¡lisis.</p>{isOnlyChallenge ? <p className="mt-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm leading-6 text-amber-950">Es el Ãºnico reto de la propuesta. Si lo quitas, la organizaciÃ³n quedarÃ¡ pausada y todas las iniciativas seguirÃ¡n disponibles individualmente. No se crearÃ¡ estructura canÃ³nica y podrÃ¡s volver a organizar mÃ¡s adelante.</p> : null}</div>
-          {challenge.relatedInitiativeIds.length > 0 ? <fieldset className="space-y-3 rounded-xl border border-amber-200 bg-amber-50 p-4"><legend className="px-1 text-sm font-semibold text-amber-950">Â¿QuÃ© quieres hacer con sus iniciativas?</legend><RemovalChoice value="ungrouped" selected={removalDisposition} onChange={setRemovalDisposition} label="Mantener iniciativas sin agrupar" /><RemovalChoice value="move" selected={removalDisposition} onChange={setRemovalDisposition} label="Mover a otro reto" disabled={otherChallenges.length === 0} /><RemovalChoice value="individual" selected={removalDisposition} onChange={setRemovalDisposition} label="Revisar individualmente" />{removalDisposition === 'move' ? <select aria-label="Reto de destino para las iniciativas" value={removalTargetId} onChange={(event) => setRemovalTargetId(event.target.value)} className="w-full rounded-lg border border-amber-300 bg-white px-3 py-2 text-sm">{otherChallenges.map((candidate) => <option key={candidate.candidateId} value={candidate.candidateId}>{candidate.title}</option>)}</select> : null}</fieldset> : <p className="rounded-lg bg-slate-50 p-3 text-sm text-slate-700">Este reto no contiene iniciativas; puedes retirarlo sin afectar el resto de la propuesta.</p>}
+          <div><h4 className="text-lg font-semibold text-slate-950">Quitar reto de la propuesta</h4><p className="mt-1 text-sm leading-6 text-slate-600">Esto retira únicamente el reto candidato. No se borrará ninguna iniciativa, fuente, procedencia ni análisis.</p>{isOnlyChallenge ? <p className="mt-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm leading-6 text-amber-950">Es el único reto de la propuesta. Si lo quitas, la organización quedará pausada y todas las iniciativas seguirán disponibles individualmente. No se creará estructura canónica y podrás volver a organizar más adelante.</p> : null}</div>
+          {challenge.relatedInitiativeIds.length > 0 ? <fieldset className="space-y-3 rounded-xl border border-amber-200 bg-amber-50 p-4"><legend className="px-1 text-sm font-semibold text-amber-950">¿Qué quieres hacer con sus iniciativas?</legend><RemovalChoice value="ungrouped" selected={removalDisposition} onChange={setRemovalDisposition} label="Mantener iniciativas sin agrupar" /><RemovalChoice value="move" selected={removalDisposition} onChange={setRemovalDisposition} label="Mover a otro reto" disabled={otherChallenges.length === 0} /><RemovalChoice value="individual" selected={removalDisposition} onChange={setRemovalDisposition} label="Revisar individualmente" />{removalDisposition === 'move' ? <select aria-label="Reto de destino para las iniciativas" value={removalTargetId} onChange={(event) => setRemovalTargetId(event.target.value)} className="w-full rounded-lg border border-amber-300 bg-white px-3 py-2 text-sm">{otherChallenges.map((candidate) => <option key={candidate.candidateId} value={candidate.candidateId}>{candidate.title}</option>)}</select> : null}</fieldset> : <p className="rounded-lg bg-slate-50 p-3 text-sm text-slate-700">Este reto no contiene iniciativas; puedes retirarlo sin afectar el resto de la propuesta.</p>}
           <div className="flex flex-wrap gap-2"><button type="button" disabled={challenge.relatedInitiativeIds.length > 0 && (!removalDisposition || (removalDisposition === 'move' && !removalTargetId))} onClick={() => onRemove(removalDisposition || 'ungrouped', removalTargetId || undefined)} className="rounded-lg bg-slate-950 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">{isOnlyChallenge ? 'Quitar reto y dejar todo sin organizar' : 'Quitar reto'}</button><button type="button" onClick={goBack} className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700">Cancelar</button></div>
         </div> : null}
 
         {mode === 'disagree' ? <div className="space-y-4">
           <ReviewBack onClick={goBack} />
-          <div><h4 className="text-lg font-semibold text-slate-950">No estoy de acuerdo con esta propuesta</h4><p className="mt-1 text-sm leading-6 text-slate-600">Elige la razÃ³n que mejor explica tu objeciÃ³n. StarterÃ­a te llevarÃ¡ a una modificaciÃ³n concreta del borrador.</p></div>
+          <div><h4 className="text-lg font-semibold text-slate-950">No estoy de acuerdo con esta propuesta</h4><p className="mt-1 text-sm leading-6 text-slate-600">Elige la razón que mejor explica tu objeción. Startería te llevará a una modificación concreta del borrador.</p></div>
           <fieldset className="space-y-3"><legend className="sr-only">Motivo del desacuerdo</legend>{[
             ['incorrect-problem', 'El problema planteado no es correcto.'],
-            ['multiple-problems', 'Hay mÃ¡s de un problema.'],
-            ['wrong-group', 'Estas iniciativas no deberÃ­an estar juntas.'],
-            ['missing-challenge', 'Falta un reto que StarterÃ­a no detectÃ³.'],
-            ['not-now', 'Prefiero no organizar todavÃ­a.'],
+            ['multiple-problems', 'Hay más de un problema.'],
+            ['wrong-group', 'Estas iniciativas no deberían estar juntas.'],
+            ['missing-challenge', 'Falta un reto que Startería no detectó.'],
+            ['not-now', 'Prefiero no organizar todavía.'],
           ].map(([value, label]) => <label key={value} className="flex items-start gap-3 rounded-lg border border-slate-200 p-3 text-sm text-slate-800"><input type="radio" name="challenge-disagreement" value={value} checked={disagreement === value} onChange={() => setDisagreement(value)} className="mt-1" /><span>{label}</span></label>)}</fieldset>
           <div className="flex flex-wrap gap-2"><button type="button" disabled={!disagreement} onClick={executeDisagreement} className="rounded-lg bg-slate-950 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">{disagreementAction}</button><button type="button" onClick={goBack} className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700">Cancelar</button></div>
         </div> : null}
@@ -837,7 +850,7 @@ function ReviewAction({ label, description, onClick, disabled = false }: { label
 }
 
 function ReviewBack({ onClick }: { onClick: () => void }) {
-  return <button type="button" aria-label="Volver a opciones de revisiÃ³n" onClick={onClick} className="text-sm font-semibold text-violet-800">â† Volver a opciones de revisiÃ³n</button>;
+  return <button type="button" aria-label="Volver a opciones de revisión" onClick={onClick} className="text-sm font-semibold text-violet-800">← Volver a opciones de revisión</button>;
 }
 
 function ReviewField({ label, children }: { label: string; children: React.ReactNode }) {
@@ -853,13 +866,13 @@ function RemovalChoice({ value, selected, onChange, label, disabled = false }: {
 }
 
 function OrganizationOptOutReview({ onConfirm, onCancel }: { onConfirm: () => void; onCancel: () => void }) {
-  return <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/45 p-4" role="dialog" aria-modal="true" aria-label="Revisar decisiÃ³n de no organizar">
-    <section className="w-full max-w-lg rounded-2xl border border-slate-200 bg-white p-5 shadow-xl md:p-6"><p className="text-xs font-bold uppercase tracking-[0.14em] text-violet-700">Alternativa vÃ¡lida</p><h3 className="mt-1 text-lg font-semibold text-slate-950">Prefiero no organizar todavÃ­a</h3><p className="mt-3 text-sm leading-6 text-slate-700">Las iniciativas permanecerÃ¡n disponibles individualmente. No se pierde informaciÃ³n ni se crea estructura canÃ³nica; tendrÃ¡s menos claridad agregada sobre cobertura, solapamientos y prioridades, y podrÃ¡s volver a organizar mÃ¡s adelante.</p><div className="mt-5 flex flex-wrap gap-2"><button type="button" onClick={onConfirm} className="rounded-lg bg-slate-950 px-4 py-2 text-sm font-semibold text-white">Mantener iniciativas sin organizar</button><button type="button" onClick={onCancel} className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700">Cancelar / volver sin cambios</button></div></section>
+  return <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/45 p-4" role="dialog" aria-modal="true" aria-label="Revisar decisión de no organizar">
+    <section className="w-full max-w-lg rounded-2xl border border-slate-200 bg-white p-5 shadow-xl md:p-6"><p className="text-xs font-bold uppercase tracking-[0.14em] text-violet-700">Alternativa válida</p><h3 className="mt-1 text-lg font-semibold text-slate-950">Prefiero no organizar todavía</h3><p className="mt-3 text-sm leading-6 text-slate-700">Las iniciativas permanecerán disponibles individualmente. No se pierde información ni se crea estructura canónica; tendrás menos claridad agregada sobre cobertura, solapamientos y prioridades, y podrás volver a organizar más adelante.</p><div className="mt-5 flex flex-wrap gap-2"><button type="button" onClick={onConfirm} className="rounded-lg bg-slate-950 px-4 py-2 text-sm font-semibold text-white">Mantener iniciativas sin organizar</button><button type="button" onClick={onCancel} className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700">Cancelar / volver sin cambios</button></div></section>
   </div>;
 }
 
 function OrganizationOptOutState({ onResume }: { onResume: () => void }) {
-  return <section className="rounded-2xl border border-slate-300 bg-slate-50 p-5 md:p-6" data-testid="organization-opt-out-state"><p className="text-xs font-bold uppercase tracking-[0.14em] text-slate-600">Propuesta pausada por decisiÃ³n humana</p><h3 className="mt-1 text-lg font-semibold text-slate-950">Has decidido no organizar todavÃ­a</h3><p className="mt-2 max-w-3xl text-sm leading-6 text-slate-700">Las iniciativas siguen accesibles individualmente y no se pierde informaciÃ³n. No se crearÃ¡ ningÃºn Frente ni Reto canÃ³nico. Puedes guardar esta revisiÃ³n y volver cuando tenga sentido.</p><button type="button" onClick={onResume} className="mt-4 rounded-lg border border-violet-300 bg-white px-4 py-2 text-sm font-semibold text-violet-900">Volver a revisar una organizaciÃ³n</button></section>;
+  return <section className="rounded-2xl border border-slate-300 bg-slate-50 p-5 md:p-6" data-testid="organization-opt-out-state"><p className="text-xs font-bold uppercase tracking-[0.14em] text-slate-600">Propuesta pausada por decisión humana</p><h3 className="mt-1 text-lg font-semibold text-slate-950">Has decidido no organizar todavía</h3><p className="mt-2 max-w-3xl text-sm leading-6 text-slate-700">Las iniciativas siguen accesibles individualmente y no se pierde información. No se creará ningún Frente ni Reto canónico. Puedes guardar esta revisión y volver cuando tenga sentido.</p><button type="button" onClick={onResume} className="mt-4 rounded-lg border border-violet-300 bg-white px-4 py-2 text-sm font-semibold text-violet-900">Volver a revisar una organización</button></section>;
 }
 
 type SpecificComparison = { initiativeIds: string[]; names: string[]; rationale: string };
@@ -881,8 +894,8 @@ function SpecificOverlapSummary({ comparisons }: { comparisons: SpecificComparis
 }
 
 function ChallengeGapSignal({ gaps }: { gaps: string[] }) {
-  if (gaps.length === 0) return <p className="mt-4 inline-flex rounded-full bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-900">No se detectan vacÃ­os crÃ­ticos para organizar este reto.</p>;
-  return <section className="mt-4 rounded-lg border border-amber-200 bg-amber-50/70 p-3"><p className="text-sm font-semibold text-amber-950">InformaciÃ³n pendiente que se conserva</p><ul className="mt-1 space-y-1 text-sm text-amber-900">{gaps.map((gap) => <li key={gap}>{gap} Puede afectar la comparaciÃ³n o priorizaciÃ³n, pero no bloquea la organizaciÃ³n.</li>)}</ul></section>;
+  if (gaps.length === 0) return <p className="mt-4 inline-flex rounded-full bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-900">No se detectan vacíos críticos para organizar este reto.</p>;
+  return <section className="mt-4 rounded-lg border border-amber-200 bg-amber-50/70 p-3"><p className="text-sm font-semibold text-amber-950">Información pendiente que se conserva</p><ul className="mt-1 space-y-1 text-sm text-amber-900">{gaps.map((gap) => <li key={gap}>{gap} Puede afectar la comparación o priorización, pero no bloquea la organización.</li>)}</ul></section>;
 }
 
 function ChallengeClosingSummary({
@@ -894,14 +907,14 @@ function ChallengeClosingSummary({
 }) {
   const workById = new Map(projection.workItems.map((item) => [item.id, item]));
   const insights = challenge.relatedInitiativeIds.map((id) => organizationInitiativeInsight(id, projection, 'challenge', challenge.overlaps, challenge.relatedInitiativeIds));
-  const direct = insights.filter((insight) => insight.alignment === 'RelaciÃ³n directa con el objetivo').length;
-  const partial = insights.filter((insight) => insight.alignment === 'RelaciÃ³n parcial con el objetivo').length;
-  const enabling = insights.filter((insight) => insight.alignment === 'FunciÃ³n habilitadora').length;
+  const direct = insights.filter((insight) => insight.alignment === 'Relación directa con el objetivo').length;
+  const partial = insights.filter((insight) => insight.alignment === 'Relación parcial con el objetivo').length;
+  const enabling = insights.filter((insight) => insight.alignment === 'Función habilitadora').length;
   const outside = insights.filter((insight) => insight.alignment === 'Fuera del objetivo actual').length;
   const pending = insights.length - direct - partial - enabling - outside;
   const stages = [...new Set(insights.map((insight) => insight.maturity.toLocaleLowerCase()))].join(', ');
   const comparisons = specificChallengeComparisons(challenge, workById).length;
-  return <section className="mt-5 border-t border-slate-200 pt-4" data-testid={`challenge-summary-${challenge.candidateId}`}><p className="text-xs font-bold uppercase tracking-[0.14em] text-slate-500">Resumen del reto</p><p className="mt-2 text-sm font-semibold text-slate-900">{`${challenge.relatedInitiativeIds.length} iniciativas Â· ${direct} directas Â· ${partial} parciales Â· ${enabling} habilitadoras Â· ${outside} fuera Â· ${pending} por confirmar`}</p><div className="mt-2 flex flex-wrap gap-2 text-xs text-slate-600"><span className="rounded-full bg-slate-100 px-2.5 py-1">{`Etapas documentales: ${stages || 'por confirmar'}`}</span><span className="rounded-full bg-slate-100 px-2.5 py-1">{`${comparisons} ${comparisons === 1 ? 'comparaciÃ³n especÃ­fica' : 'comparaciones especÃ­ficas'}`}</span><span className="rounded-full bg-slate-100 px-2.5 py-1">0 vacÃ­os crÃ­ticos</span><span className="rounded-full bg-slate-100 px-2.5 py-1">{`${challenge.gaps.length} pendientes conservados`}</span></div></section>;
+  return <section className="mt-5 border-t border-slate-200 pt-4" data-testid={`challenge-summary-${challenge.candidateId}`}><p className="text-xs font-bold uppercase tracking-[0.14em] text-slate-500">Resumen del reto</p><p className="mt-2 text-sm font-semibold text-slate-900">{`${challenge.relatedInitiativeIds.length} iniciativas · ${direct} directas · ${partial} parciales · ${enabling} habilitadoras · ${outside} fuera · ${pending} por confirmar`}</p><div className="mt-2 flex flex-wrap gap-2 text-xs text-slate-600"><span className="rounded-full bg-slate-100 px-2.5 py-1">{`Etapas documentales: ${stages || 'por confirmar'}`}</span><span className="rounded-full bg-slate-100 px-2.5 py-1">{`${comparisons} ${comparisons === 1 ? 'comparación específica' : 'comparaciones específicas'}`}</span><span className="rounded-full bg-slate-100 px-2.5 py-1">0 vacíos críticos</span><span className="rounded-full bg-slate-100 px-2.5 py-1">{`${challenge.gaps.length} pendientes conservados`}</span></div></section>;
 }
 
 function buildOrganizationProposal(projection: BootstrapProjection): PortfolioOrganizationPayload {
@@ -919,27 +932,27 @@ function buildOrganizationProposal(projection: BootstrapProjection): PortfolioOr
   const gaps = projection.advancementConditions.map((condition) => condition.statement).filter(Boolean);
   const count = projection.workItems.length;
   return {
-    summary: `StarterÃ­a propone esta organizaciÃ³n a partir de las ${count} iniciativas revisadas.`,
+    summary: `Startería propone esta organización a partir de las ${count} iniciativas revisadas.`,
     fronts: [{
       candidateId: `front-${projection.bootstrapSessionId}-1`,
       name: businessFrontName(projection.anchor.outcomeStatement),
       focus: projection.anchor.outcomeStatement,
-      rationale: 'ReÃºne las iniciativas que persiguen el mismo resultado de negocio para poder comparar cobertura, prioridades y decisiones necesarias.',
+      rationale: 'Reúne las iniciativas que persiguen el mismo resultado de negocio para poder comparar cobertura, prioridades y decisiones necesarias.',
       coverage: `${relatedInitiativeIds.length} de ${count} iniciativas revisadas`,
       challenges: [{
         candidateId: `challenge-${projection.bootstrapSessionId}-1`,
         title: 'Aclarar y remover las barreras para lograr el objetivo',
         problem: projection.anchor.decisionToEnable
-          ? `Necesitamos resolver quÃ© impide tomar esta decisiÃ³n: ${projection.anchor.decisionToEnable}`
-          : 'Necesitamos aclarar quÃ© barreras explican la distancia entre las iniciativas actuales y el resultado esperado.',
-        rationale: 'Estas iniciativas necesitan coordinar evidencia y decisiones sobre el mismo resultado; agruparlas permite comparar quÃ© barrera atender primero sin asumir una soluciÃ³n.',
+          ? `Necesitamos resolver qué impide tomar esta decisión: ${projection.anchor.decisionToEnable}`
+          : 'Necesitamos aclarar qué barreras explican la distancia entre las iniciativas actuales y el resultado esperado.',
+        rationale: 'Estas iniciativas necesitan coordinar evidencia y decisiones sobre el mismo resultado; agruparlas permite comparar qué barrera atender primero sin asumir una solución.',
         relatedInitiativeIds,
         // Initiative names and descriptions are context, not evidence. Concrete
         // SourceRefs/evidence can be added during review without fabricating it.
         evidence: [],
         gaps,
         overlaps: relatedInitiativeIds.length > 1
-          ? ['Varias iniciativas contribuyen al mismo resultado; revisa si duplican alcance, evidencia o mediciÃ³n.']
+          ? ['Varias iniciativas contribuyen al mismo resultado; revisa si duplican alcance, evidencia o medición.']
           : [],
       }],
     }],
@@ -969,7 +982,7 @@ function normalizeOrganizationPayload(payload: PortfolioOrganizationPayload, wor
 
 function businessFrontName(outcome: string): string {
   const normalized = outcome.trim().replace(/[.!?]+$/, '');
-  return normalized.length <= 80 ? normalized : `${normalized.slice(0, 77).trim()}â€¦`;
+  return normalized.length <= 80 ? normalized : `${normalized.slice(0, 77).trim()}…`;
 }
 
 function updateFront(payload: PortfolioOrganizationPayload, frontId: string, patch: Partial<PortfolioOrganizationPayload['fronts'][number]>): PortfolioOrganizationPayload {
@@ -988,17 +1001,17 @@ function updateChallenge(
 }
 
 function challengeDecision(challenge: OrganizationChallenge): string {
-  const match = challenge.rationale.match(/(?:^|\n)DecisiÃ³n:\s*(.+)$/i);
-  return match?.[1]?.trim() || 'QuÃ© respuesta priorizar y cÃ³mo coordinar la atenciÃ³n sobre este problema.';
+  const match = challenge.rationale.match(/(?:^|\n)Decisión:\s*(.+)$/i);
+  return match?.[1]?.trim() || 'Qué respuesta priorizar y cómo coordinar la atención sobre este problema.';
 }
 
 function challengeGroupingRationale(challenge: OrganizationChallenge): string {
-  return challenge.rationale.replace(/(?:^|\n)DecisiÃ³n:\s*.+$/i, '').trim()
+  return challenge.rationale.replace(/(?:^|\n)Decisión:\s*.+$/i, '').trim()
     || 'Estas iniciativas apuntan al mismo problema y conviene compararlas antes de priorizar.';
 }
 
 function composeChallengeRationale(groupingRationale: string, decision: string): string {
-  return `${groupingRationale.trim()}\nDecisiÃ³n: ${decision.trim()}`;
+  return `${groupingRationale.trim()}\nDecisión: ${decision.trim()}`;
 }
 
 function addChallengeCandidate(
@@ -1020,7 +1033,7 @@ function addChallengeCandidate(
     candidateId,
     title: input.title.trim() || summarizeChallengeTitle(input.problem),
     problem: input.problem.trim(),
-    rationale: composeChallengeRationale('Propuesto por el Portfolio Lead para revisar un problema o decisiÃ³n que no estaba representado.', input.decision),
+    rationale: composeChallengeRationale('Propuesto por el Portfolio Lead para revisar un problema o decisión que no estaba representado.', input.decision),
     relatedInitiativeIds,
     evidence: [],
     gaps: [],
@@ -1032,7 +1045,7 @@ function addChallengeCandidate(
 
 function summarizeChallengeTitle(problem: string): string {
   const normalized = problem.trim().replace(/[.!?]+$/, '');
-  return normalized.length <= 80 ? normalized : `${normalized.slice(0, 77).trim()}â€¦`;
+  return normalized.length <= 80 ? normalized : `${normalized.slice(0, 77).trim()}…`;
 }
 
 function clearInitiativePlacements(payload: PortfolioOrganizationPayload, ids: string[]): PortfolioOrganizationPayload {
@@ -1056,9 +1069,9 @@ function splitChallenge(payload: PortfolioOrganizationPayload, frontId: string, 
   const copy = {
     ...challenge,
     candidateId: `${challenge.candidateId}-split-${front.challenges.length + 1}`,
-    title: `${challenge.title} Â· segunda hipÃ³tesis`,
+    title: `${challenge.title} · segunda hipótesis`,
     relatedInitiativeIds: moved,
-    rationale: 'Separado para que el Portfolio Lead pueda revisar una incertidumbre o decisiÃ³n distinta.',
+    rationale: 'Separado para que el Portfolio Lead pueda revisar una incertidumbre o decisión distinta.',
   };
   return updateFront(payload, frontId, { challenges: front.challenges.flatMap((candidate) => candidate.candidateId === challengeId ? [{ ...candidate, relatedInitiativeIds: retained }, copy] : [candidate]) });
 }
@@ -1154,8 +1167,8 @@ function InitiativePlacementList({
     const moving = movingInitiativeId === id;
     return <li key={id} className="py-3.5" data-testid={`organization-initiative-${id}`}>
       <div className="flex flex-wrap items-start justify-between gap-3"><div><p className="text-sm font-semibold text-slate-900">{label}</p><span className="mt-2 inline-flex rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-900">{insight.alignment}</span></div><button type="button" aria-expanded={moving} aria-label={`Mover ${label}`} onClick={() => onMoveStart(moving ? null : id)} className="min-h-9 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm font-semibold text-violet-800">Mover</button></div>
-      <div className="mt-3 space-y-1 text-xs leading-5 text-slate-600"><p>{insight.maturity === 'Etapa no determinada' ? <b className="text-slate-700">Etapa no determinada</b> : <><b className="text-slate-700">Etapa documental estimada:</b> {insight.maturity}</>}</p><p>EstimaciÃ³n basada en la informaciÃ³n disponible. No significa que el Step estÃ© aprobado.</p><p><b className="text-slate-700">Procedencia:</b> {insight.source}</p>{insight.owner ? <p><b className="text-slate-700">Responsable actual segÃºn fuente:</b> {insight.owner}</p> : null}</div>
-      {insight.comparison ? <div className="mt-3 rounded-lg border border-sky-200 bg-sky-50/60 p-3 text-xs leading-5 text-sky-950"><p className="font-semibold">{insight.comparison.label}</p><p>{insight.comparison.rationale} Es una comparaciÃ³n sugerida; no implica una duplicidad confirmada.</p></div> : null}
+      <div className="mt-3 space-y-1 text-xs leading-5 text-slate-600"><p>{insight.maturity === 'Etapa no determinada' ? <b className="text-slate-700">Etapa no determinada</b> : <><b className="text-slate-700">Etapa documental estimada:</b> {insight.maturity}</>}</p><p>Estimación basada en la información disponible. No significa que el Step esté aprobado.</p><p><b className="text-slate-700">Procedencia:</b> {insight.source}</p>{insight.owner ? <p><b className="text-slate-700">Responsable actual según fuente:</b> {insight.owner}</p> : null}</div>
+      {insight.comparison ? <div className="mt-3 rounded-lg border border-sky-200 bg-sky-50/60 p-3 text-xs leading-5 text-sky-950"><p className="font-semibold">{insight.comparison.label}</p><p>{insight.comparison.rationale} Es una comparación sugerida; no implica una duplicidad confirmada.</p></div> : null}
       {moving ? <label className="mt-2 block text-xs font-semibold text-slate-700">Nuevo destino para {label}<select autoFocus aria-label={`Nuevo destino para ${label}`} value={placementFor(id)} onChange={(event) => onMove(id, event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-normal text-slate-900">{destinationOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label> : null}
     </li>;
   })}</ul>;
@@ -1191,7 +1204,7 @@ function organizationInitiativeInsight(
   const alignment = placement === 'outside'
     ? 'Fuera del objetivo actual'
     : placement === 'cross-cutting'
-      ? 'FunciÃ³n habilitadora'
+      ? 'Función habilitadora'
       : alignmentLabel(connection?.status);
   const workById = new Map(projection.workItems.map((candidate) => [candidate.id, candidate]));
   const comparison = specificChallengeComparisons({
@@ -1217,10 +1230,10 @@ function organizationInitiativeInsight(
 }
 
 function alignmentLabel(status: BootstrapProjection['strategicConnections'][number]['status'] | undefined): string {
-  if (status === 'confirmed_alignment') return 'RelaciÃ³n directa con el objetivo';
-  if (status === 'partial_alignment') return 'RelaciÃ³n parcial con el objetivo';
+  if (status === 'confirmed_alignment') return 'Relación directa con el objetivo';
+  if (status === 'partial_alignment') return 'Relación parcial con el objetivo';
   if (status === 'confirmed_misalignment' || status === 'out_of_current_priority') return 'Fuera del objetivo actual';
-  return 'RelaciÃ³n por validar';
+  return 'Relación por validar';
 }
 
 function documentaryStageLabel(item: BootstrapProjection['workItems'][number] | undefined): string {
@@ -1231,12 +1244,12 @@ function documentaryStageLabel(item: BootstrapProjection['workItems'][number] | 
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
     .toLowerCase();
-  if (/validacion de resultados|resultados validados|medicion de resultados|impacto medido/.test(sourceText)) return 'ValidaciÃ³n de resultados';
+  if (/validacion de resultados|resultados validados|medicion de resultados|impacto medido/.test(sourceText)) return 'Validación de resultados';
   if (/piloto|pilot|prueba|experimento/.test(sourceText)) return 'Prueba / piloto';
   if (/prototipo|prototype/.test(sourceText)) return 'Prototipo';
-  if (/investigacion|research|discovery|descubrimiento|diagnostico/.test(sourceText)) return 'InvestigaciÃ³n';
-  if (/diseno|formulacion|conceptualizacion|definicion de solucion/.test(sourceText)) return 'DiseÃ±o / formulaciÃ³n';
-  if (item.currentStateHint === 'idea' || item.currentStateHint === 'candidate') return 'DiseÃ±o / formulaciÃ³n';
+  if (/investigacion|research|discovery|descubrimiento|diagnostico/.test(sourceText)) return 'Investigación';
+  if (/diseno|formulacion|conceptualizacion|definicion de solucion/.test(sourceText)) return 'Diseño / formulación';
+  if (item.currentStateHint === 'idea' || item.currentStateHint === 'candidate') return 'Diseño / formulación';
   return 'Etapa no determinada';
 }
 
@@ -1263,28 +1276,28 @@ function OrganizationValueExplainer({ onOptOut }: { onOptOut: () => void }) {
   return <section aria-labelledby="organization-value-heading" className="border-y border-slate-200 py-5" data-testid="portfolio-organization-value">
     <div className="max-w-3xl">
       <p className="text-xs font-bold uppercase tracking-[0.14em] text-violet-800">Antes de decidir</p>
-      <h4 id="organization-value-heading" className="mt-1 text-base font-semibold text-slate-950">Â¿QuÃ© aporta organizar estas iniciativas?</h4>
-      <p className="mt-2 text-sm leading-6 text-slate-700">Agruparlas por Ã¡reas de enfoque y problemas comunes ayuda a comparar iniciativas que atacan el mismo problema, detectar posibles solapamientos, ver cobertura y gaps, priorizar dÃ³nde dedicar atenciÃ³n y capacidad, y preparar decisiones de Portfolio.</p>
+      <h4 id="organization-value-heading" className="mt-1 text-base font-semibold text-slate-950">¿Qué aporta organizar estas iniciativas?</h4>
+      <p className="mt-2 text-sm leading-6 text-slate-700">Agruparlas por áreas de enfoque y problemas comunes ayuda a comparar iniciativas que atacan el mismo problema, detectar posibles solapamientos, ver cobertura y gaps, priorizar dónde dedicar atención y capacidad, y preparar decisiones de Portfolio.</p>
     </div>
     <div className="mt-4 grid overflow-hidden rounded-xl border border-slate-200 md:grid-cols-2">
       <div className="bg-slate-50 p-4">
         <h5 className="font-semibold text-slate-900">Sin organizar</h5>
         <ul className="mt-2 space-y-1 text-sm text-slate-700">
           <li>Iniciativas aisladas</li>
-          <li>Lectura mÃ¡s fragmentada</li>
+          <li>Lectura más fragmentada</li>
         </ul>
-        <p className="mt-3 text-sm leading-6 text-slate-600">Las iniciativas siguen disponibles individualmente y no se pierde informaciÃ³n. Hay menos claridad agregada sobre cobertura, solapamientos y prioridades, pero puedes volver a organizarlas mÃ¡s adelante.</p>
+        <p className="mt-3 text-sm leading-6 text-slate-600">Las iniciativas siguen disponibles individualmente y no se pierde información. Hay menos claridad agregada sobre cobertura, solapamientos y prioridades, pero puedes volver a organizarlas más adelante.</p>
       </div>
       <div className="border-t border-slate-200 bg-emerald-50/60 p-4 md:border-l md:border-t-0">
-        <h5 className="flex items-center gap-2 font-semibold text-emerald-950"><CheckCircle2 aria-hidden="true" size={17} />Con organizaciÃ³n</h5>
+        <h5 className="flex items-center gap-2 font-semibold text-emerald-950"><CheckCircle2 aria-hidden="true" size={17} />Con organización</h5>
         <ul className="mt-2 space-y-1 text-sm text-emerald-950">
           <li>Iniciativas agrupadas por problema</li>
           <li>Cobertura y overlap visibles</li>
-          <li>Decisiones mÃ¡s claras</li>
+          <li>Decisiones más claras</li>
         </ul>
       </div>
     </div>
-    <button type="button" onClick={onOptOut} className="mt-4 text-sm font-semibold text-slate-700 underline decoration-slate-300 underline-offset-4">Prefiero no organizar todavÃ­a</button>
+    <button type="button" onClick={onOptOut} className="mt-4 text-sm font-semibold text-slate-700 underline decoration-slate-300 underline-offset-4">Prefiero no organizar todavía</button>
   </section>;
 }
 
@@ -1307,13 +1320,13 @@ function OrganizationConfirmationSummary({
   const readyToConfirm = !reviewNeedsSaving && !unavailableReason;
   return <section className="rounded-xl border border-amber-200 bg-amber-50 p-4 md:p-5" aria-labelledby="organization-confirmation-summary" data-testid="organization-confirmation-summary">
     <p className="text-xs font-bold uppercase tracking-[0.14em] text-amber-800">Cierre del paso</p>
-    <h4 id="organization-confirmation-summary" className="mt-1 text-base font-semibold text-slate-950">{optedOut ? 'OrganizaciÃ³n pospuesta' : readyToConfirm ? 'Estructura estratÃ©gica lista para confirmar' : 'Lista para revisiÃ³n final'}</h4>
+    <h4 id="organization-confirmation-summary" className="mt-1 text-base font-semibold text-slate-950">{optedOut ? 'Organización pospuesta' : readyToConfirm ? 'Estructura estratégica lista para confirmar' : 'Lista para revisión final'}</h4>
     <p id="organization-confirmation-state" role="status" aria-live="polite" className="mt-2 text-sm leading-6 text-amber-950">
       {unavailableReason ?? (reviewNeedsSaving
-        ? 'Tienes cambios sin guardar. Puedes confirmar directamente: guardaremos esta revisiÃ³n y confirmaremos exactamente esa versiÃ³n.'
-        : 'RevisiÃ³n guardada. Ya puedes confirmar.')}
+        ? 'Tienes cambios sin guardar. Puedes confirmar directamente: guardaremos esta revisión y confirmaremos exactamente esa versión.'
+        : 'Revisión guardada. Ya puedes confirmar.')}
     </p>
-    <p className="mt-2 text-sm font-semibold text-slate-800">{optedOut ? 'Objetivo â†’ Iniciativas disponibles individualmente' : `Objetivo â†’ Frente estratÃ©gico â†’ ${challenges.length === 1 ? 'Reto' : 'Retos'} â†’ Iniciativas`}</p>
+    <p className="mt-2 text-sm font-semibold text-slate-800">{optedOut ? 'Objetivo → Iniciativas disponibles individualmente' : `Objetivo → Frente estratégico → ${challenges.length === 1 ? 'Reto' : 'Retos'} → Iniciativas`}</p>
     <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-5">
       <OrganizationSummaryMetric value={optedOut ? 0 : draft.fronts.length} singular="frente" plural="frentes" />
       <OrganizationSummaryMetric value={optedOut ? 0 : challenges.length} singular="reto" plural="retos" />
@@ -1321,8 +1334,8 @@ function OrganizationConfirmationSummary({
       <OrganizationSummaryMetric value={draft.outsideObjectiveInitiativeIds.length} singular="fuera del objetivo" plural="fuera del objetivo" />
       <OrganizationSummaryMetric value={draft.ungroupedInitiativeIds.length} singular="sin agrupar" plural="sin agrupar" />
     </div>
-    <p className="mt-4 text-sm font-semibold leading-6 text-amber-950">{optedOut ? 'Guardar conserva esta decisiÃ³n provisional para retomarla despuÃ©s.' : 'Confirmar refleja esta estructura en Portfolio.'}</p>
-    <p className="text-sm leading-6 text-amber-950">{optedOut ? 'No se crea ningÃºn Frente ni Reto canÃ³nico.' : 'No inicia iniciativas, no asigna equipos y no activa Steps.'}</p>
+    <p className="mt-4 text-sm font-semibold leading-6 text-amber-950">{optedOut ? 'Guardar conserva esta decisión provisional para retomarla después.' : 'Confirmar refleja esta estructura en Portfolio.'}</p>
+    <p className="text-sm leading-6 text-amber-950">{optedOut ? 'No se crea ningún Frente ni Reto canónico.' : 'No inicia iniciativas, no asigna equipos y no activa Steps.'}</p>
   </section>;
 }
 
@@ -1332,15 +1345,169 @@ function OrganizationSummaryMetric({ value, singular, plural }: { value: number;
 
 function unique(values: string[]): string[] { return [...new Set(values)]; }
 
+function FrozenBriefStage({
+  projection,
+  confirmedOrganization,
+  onBriefConfirmationChange,
+}: {
+  projection: BootstrapProjection;
+  confirmedOrganization: PortfolioOrganizationProposal | null;
+  onBriefConfirmationChange: (challengeId: string, confirmed: boolean) => void;
+}) {
+  const [selectedBrief, setSelectedBrief] = useState<{ challengeCandidateId: string; briefId: string | null } | null>(null);
+  const [briefEditorDirty, setBriefEditorDirty] = useState<Record<string, boolean>>({});
+  const [briefCollections, setBriefCollections] = useState<Record<string, { status: 'loading' | 'ready' | 'error'; briefs: ActivationBrief[] }>>({});
+  const challengeEntries = useMemo(() => confirmedOrganization?.payload.fronts.flatMap((front) => front.challenges.map((challenge) => ({ front, challenge }))) ?? [], [confirmedOrganization]);
+
+  const openBrief = (challengeCandidateId: string, briefId: string | null) => {
+    const changesSelection = selectedBrief?.challengeCandidateId !== challengeCandidateId || selectedBrief.briefId !== briefId;
+    if (changesSelection && selectedBrief && briefEditorDirty[selectedBrief.challengeCandidateId]) {
+      const discard = window.confirm('Tienes cambios sin guardar. Si abres otro Brief, perderás esos cambios. ¿Quieres continuar?');
+      if (!discard) return;
+    }
+    if (selectedBrief) setBriefEditorDirty((current) => ({ ...current, [selectedBrief.challengeCandidateId]: false }));
+    setSelectedBrief({ challengeCandidateId, briefId });
+  };
+
+  const refreshChallengeBriefs = useCallback(async (challengeCandidateId: string, canonicalId: string) => {
+    try {
+      const briefs = await listActivationBriefs(canonicalId);
+      setBriefCollections((current) => ({ ...current, [challengeCandidateId]: { status: 'ready', briefs } }));
+      onBriefConfirmationChange(canonicalId, briefs.some((brief) => brief.versions.some((version) => version.status === 'CONFIRMED')));
+    } catch {
+      setBriefCollections((current) => ({ ...current, [challengeCandidateId]: { status: 'error', briefs: [] } }));
+    }
+  }, [onBriefConfirmationChange]);
+
+  useEffect(() => {
+    if (!confirmedOrganization?.materialization) return;
+    let active = true;
+    setSelectedBrief(null);
+    setBriefEditorDirty({});
+    setBriefCollections(Object.fromEntries(challengeEntries.map(({ challenge }) => [challenge.candidateId, { status: 'loading', briefs: [] }])));
+    void Promise.all(challengeEntries.map(async ({ challenge }) => {
+      const canonicalId = confirmedOrganization.materialization?.canonicalMappings.challenges.find((mapping) => mapping.candidateId === challenge.candidateId)?.canonicalId;
+      if (!canonicalId) return { candidateId: challenge.candidateId, canonicalId: null, status: 'ready' as const, briefs: [] as ActivationBrief[] };
+      try {
+        const briefs = await listActivationBriefs(canonicalId);
+        return { candidateId: challenge.candidateId, canonicalId, status: 'ready' as const, briefs };
+      } catch {
+        return { candidateId: challenge.candidateId, canonicalId, status: 'error' as const, briefs: [] as ActivationBrief[] };
+      }
+    })).then((results) => {
+      if (!active) return;
+      setBriefCollections(Object.fromEntries(results.map((result) => [result.candidateId, { status: result.status, briefs: result.briefs }])));
+      results.forEach((result) => {
+        if (result.canonicalId) onBriefConfirmationChange(result.canonicalId, result.briefs.some((brief) => brief.versions.some((version) => version.status === 'CONFIRMED')));
+      });
+    });
+    return () => { active = false; };
+  }, [challengeEntries, confirmedOrganization?.materialization?.id, onBriefConfirmationChange]);
+  if (!confirmedOrganization?.materialization) return <><AssistantBubble>Los Briefs se preparan después de confirmar la estructura estratégica. Puedes volver a Organización sin perder la propuesta revisada.</AssistantBubble><FocusedQuestion eyebrow="PL-05 · Briefs" title="Confirma primero la estructura estratégica" help="No se crea ningún Brief, iniciativa o Step desde este límite." /></>;
+  return <>
+    <AssistantBubble>La organización confirmada ya está reflejada en Portfolio. Ya confirmamos el objetivo y el reto; ahora vamos a preparar el encargo que recibirá un equipo antes de invitarlo o asignarlo. <b>Startería recupera el contexto y propone; tú revisas, editas y decides qué versión confirmar.</b></AssistantBubble>
+    <FocusedQuestion eyebrow="PL-05 · Briefs" title="Prepara el encargo antes de asignar personas" help="El Brief reúne qué se busca, qué sabemos, qué esperamos recibir y qué decisión permitirá tomar el trabajo. Guardar y confirmar son acciones distintas; ninguna asigna personas ni inicia trabajo." />
+    <section className="rounded-xl border border-emerald-200 bg-white p-4 md:p-5" data-testid="pl05-brief-boundary">
+      <div className="flex items-center gap-2"><FileText size={18} className="text-emerald-700" /><h3 className="font-semibold text-slate-950">Retos confirmados</h3></div>
+      <p className="mt-2 text-sm text-slate-600">Elige un reto para preparar o recuperar su Brief sin salir del Copilot.</p>
+      <ul className="mt-4 space-y-3">{challengeEntries.map(({ front, challenge }) => {
+        const canonicalId = confirmedOrganization.materialization?.canonicalMappings.challenges.find((mapping) => mapping.candidateId === challenge.candidateId)?.canonicalId;
+        const canPrepareBrief = Boolean(canonicalId);
+        const conditionId = `brief-condition-${challenge.candidateId}`;
+        const collection = briefCollections[challenge.candidateId] ?? { status: 'loading' as const, briefs: [] };
+        const latestByBrief = collection.briefs.map((brief) => ({ brief, latest: brief.versions.at(-1) ?? null }));
+        const confirmedCount = latestByBrief.filter(({ latest }) => latest?.status === 'CONFIRMED').length;
+        const draftCount = latestByBrief.filter(({ latest }) => latest?.status === 'DRAFT').length;
+        const relatedItems = challenge.relatedInitiativeIds.map((id) => projection.workItems.find((item) => item.id === id)).filter(Boolean) as BootstrapProjection['workItems'];
+        const inherited: ChallengeBriefInheritedContext = {
+          objective: projection.anchor.outcomeStatement,
+          frontName: front.name,
+          frontFocus: front.focus,
+          challengeProblem: challenge.problem,
+          businessSignal: projection.anchor.businessSignalValue,
+          decisionToEnable: projection.anchor.decisionToEnable,
+          relatedInitiatives: relatedItems.map((item) => item.proposedName ?? item.rawLabel),
+          knownFacts: [`Reto confirmado dentro de ${front.name}.`, `${initiativeCountLabel(relatedItems.length)} quedaron relacionadas en la organización revisada.`],
+          unknowns: challenge.gaps,
+          constraints: [],
+          sourceRefs: unique([...challenge.evidence, ...relatedItems.map((item) => organizationSourceLabel(item, projection.importBatches))]),
+          horizon: null,
+        };
+        const selected = selectedBrief?.challengeCandidateId === challenge.candidateId ? selectedBrief : null;
+        const reviewingUnsavedProposal = selected?.briefId === null;
+        const summary = collection.status === 'loading'
+          ? 'Recuperando Briefs...'
+          : collection.status === 'error'
+            ? 'No se pudo recuperar la colección de Briefs.'
+            : collection.briefs.length === 0
+              ? reviewingUnsavedProposal
+                ? 'Estás revisando una propuesta sin guardar; aún no existe un Brief guardado.'
+                : 'Todavía no preparaste un Brief para este reto.'
+              : `${collection.briefs.length} ${collection.briefs.length === 1 ? 'Brief' : 'Briefs'} · ${confirmedCount} ${confirmedCount === 1 ? 'confirmado' : 'confirmados'} · ${draftCount} ${draftCount === 1 ? 'borrador' : 'borradores'}`;
+        const prepareLabel = collection.status === 'ready' && collection.briefs.length === 0 ? 'Preparar primer Brief' : 'Preparar nuevo Brief';
+        return (
+          <li key={challenge.candidateId} data-canonical-id={canonicalId} className="rounded-xl border border-slate-200 bg-slate-50/70 p-4">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <p className="text-xs font-bold uppercase tracking-wide text-emerald-700">Reto confirmado</p>
+                <h3 className="mt-1 font-semibold text-slate-950">{challenge.title}</h3>
+                <p className="mt-1 text-sm text-slate-600">{initiativeCountLabel(challenge.relatedInitiativeIds.length)} relacionadas</p>
+                <p className="mt-2 text-sm font-semibold text-slate-800" data-testid={`brief-summary-${challenge.candidateId}`}>{summary}</p>
+              </div>
+              <button type="button" disabled={!canPrepareBrief} aria-describedby={!canPrepareBrief ? conditionId : undefined} onClick={() => openBrief(challenge.candidateId, null)} className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-900 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400">{prepareLabel}</button>
+            </div>
+            {!canPrepareBrief ? <p id={conditionId} className="mt-3 text-sm text-amber-800">Falta la identidad canónica del reto. Vuelve a Organización y confirma la estructura antes de preparar el Brief.</p> : null}
+            {latestByBrief.length > 0 ? (
+              <ul className="mt-4 space-y-2" aria-label={`Briefs de ${challenge.title}`} data-testid={`brief-collection-${challenge.candidateId}`}>
+                {latestByBrief.map(({ brief, latest }) => {
+                  const identity = latest?.intent?.trim() || 'Brief sin título';
+                  const isSelected = selected?.briefId === brief.id;
+                  return (
+                    <li key={brief.id} data-brief-id={brief.id} className={`rounded-lg border p-3 ${isSelected ? 'border-violet-300 bg-violet-50' : 'border-slate-200 bg-white'}`}>
+                      <div className="flex flex-wrap items-center justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-semibold text-slate-950">{identity}</p>
+                          <p className="mt-1 text-xs text-slate-600">{latest ? `Versión ${latest.versionNumber} · ${latest.status === 'CONFIRMED' ? 'Confirmada' : 'Borrador'}` : 'Sin versiones'}</p>
+                        </div>
+                        <button type="button" aria-label={`Abrir Brief: ${identity}`} aria-pressed={isSelected} onClick={() => openBrief(challenge.candidateId, brief.id)} className="rounded-lg bg-slate-950 px-3 py-2 text-sm font-semibold text-white">{isSelected ? 'Brief abierto' : 'Abrir Brief'}</button>
+                      </div>
+                    </li>
+                  );
+                })}
+              </ul>
+            ) : null}
+            {selected && canonicalId ? (
+              <div className="mt-4">
+                <ChallengeActivationBriefPanel
+                  key={`${canonicalId}:${selected.briefId ?? 'new'}`}
+                  challengeId={canonicalId}
+                  challengeName={challenge.title}
+                  briefId={selected.briefId}
+                  inherited={inherited}
+                  onDirtyChange={(dirty) => setBriefEditorDirty((current) => ({ ...current, [challenge.candidateId]: dirty }))}
+                  onVersionStateChange={({ briefId }) => {
+                    if (briefId) setSelectedBrief({ challengeCandidateId: challenge.candidateId, briefId });
+                    void refreshChallengeBriefs(challenge.candidateId, canonicalId);
+                  }}
+                />
+              </div>
+            ) : null}
+          </li>
+        );
+      })}</ul>
+      <p className="mt-4 text-xs leading-5 text-slate-500">{projection.workItems.length} registros de trabajo siguen disponibles como contexto. PL-05 no crea Assignment, Invitation, Initiative ni Step.</p>
+    </section>
+  </>;
+}
 function AssistantBubble({ children }: { children: React.ReactNode }) { return <div className="flex items-start gap-3"><span className="mt-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-violet-100 text-violet-800"><Sparkles size={15} /></span><div className="max-w-3xl rounded-2xl rounded-tl-sm border border-violet-100 bg-white px-4 py-3 text-sm leading-6 text-slate-800">{children}</div></div>; }
 function UserBubble({ children }: { children: React.ReactNode }) { return <div className="ml-auto max-w-3xl rounded-2xl rounded-tr-sm bg-slate-900 px-4 py-3 text-sm leading-6 text-white">{children}</div>; }
 function FocusedQuestion({ eyebrow, title, help }: { eyebrow: string; title: string; help: string }) { return <section className="ml-0 rounded-xl border border-violet-200 bg-violet-50 p-4 md:ml-11"><p className="text-xs font-bold uppercase tracking-[0.14em] text-violet-800">{eyebrow}</p><h3 className="mt-1 text-lg font-semibold text-slate-950">{title}</h3><p className="mt-1 text-sm leading-6 text-slate-700">{help}</p></section>; }
 function FrozenProgress({ stage, onSelect, blockedAfterStage }: { stage: number; onSelect: (stage: number) => void; blockedAfterStage: number | null }) {
-  const notes = ['Prompt de diagnÃ³stico externo recibido', 'ConversaciÃ³n: resultado, contexto, seÃ±al, condiciones y decisiÃ³n', 'Subir archivos, pegar iniciativas o continuar sin ellas', 'Comparar fuentes, detectar solapamientos y confirmar o posponer vÃ­nculos', 'Organizar retos cuando ayuden a orientar y coordinar', 'Preparar Brief de convocatoria o de iniciativa existente', 'Preparar encargos independientes; un responsable y hasta dos colaboradores por encargo'];
-  return <aside className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm xl:sticky xl:top-6" aria-label="Tu avance"><div className="flex items-center justify-between"><h2 className="font-semibold text-slate-950">Tu avance</h2><span className="rounded-full bg-violet-100 px-2 py-1 text-xs font-bold text-violet-800">{stage + 1} de 7</span></div><div className="mt-3 h-2 overflow-hidden rounded-full bg-slate-100"><span className="block h-full rounded-full bg-violet-600" style={{ width: `${((stage + 1) / 7) * 100}%` }} /></div><ol className="mt-5 space-y-3">{FROZEN_SETUP_STAGES.map((name, index) => { const blocked = blockedAfterStage !== null && index > blockedAfterStage; const blockedReason = index === 6 && blockedAfterStage === 5 ? 'Disponible al continuar desde una versiÃ³n de Brief confirmada' : 'Bloqueado hasta resolver el punto crÃ­tico del anÃ¡lisis'; return <li key={name}><button type="button" disabled={blocked} onClick={() => onSelect(index)} className={`flex w-full gap-3 text-left ${blocked ? 'cursor-not-allowed text-slate-400' : index === stage ? 'text-slate-950' : 'text-slate-500'}`}><span className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[11px] font-bold ${index < stage ? 'bg-emerald-100 text-emerald-700' : index === stage ? 'bg-violet-600 text-white' : 'bg-slate-100 text-slate-500'}`}>{index < stage ? 'âœ“' : index + 1}</span><span><b className="text-sm">{name}</b><small className="mt-0.5 block text-xs leading-4">{blocked ? blockedReason : index === stage ? notes[index] : index < stage ? 'Revisado o completado' : 'TodavÃ­a no necesario'}</small></span></button></li>; })}</ol><div className="mt-5 rounded-xl bg-violet-50 p-3 text-sm text-violet-950"><b>Lo importante ahora</b><p className="mt-1">{notes[stage]}</p></div><p className="mt-3 text-xs leading-5 text-slate-500">Los checks representan avance de configuraciÃ³n, no cumplimiento del objetivo de negocio.</p></aside>;
+  const notes = ['Prompt de diagnóstico externo recibido', 'Conversación: resultado, contexto, señal, condiciones y decisión', 'Subir archivos, pegar iniciativas o continuar sin ellas', 'Comparar fuentes, detectar solapamientos y confirmar o posponer vínculos', 'Organizar retos cuando ayuden a orientar y coordinar', 'Preparar Brief de convocatoria o de iniciativa existente'];
+  return <aside className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm xl:sticky xl:top-6" aria-label="Tu avance"><div className="flex items-center justify-between"><h2 className="font-semibold text-slate-950">Tu avance</h2><span className="rounded-full bg-violet-100 px-2 py-1 text-xs font-bold text-violet-800">{stage + 1} de 6</span></div><div className="mt-3 h-2 overflow-hidden rounded-full bg-slate-100"><span className="block h-full rounded-full bg-violet-600" style={{ width: `${((stage + 1) / 6) * 100}%` }} /></div><ol className="mt-5 space-y-3">{FROZEN_SETUP_STAGES.map((name, index) => { const blocked = blockedAfterStage !== null && index > blockedAfterStage; return <li key={name}><button type="button" disabled={blocked} onClick={() => onSelect(index)} className={`flex w-full gap-3 text-left ${blocked ? 'cursor-not-allowed text-slate-400' : index === stage ? 'text-slate-950' : 'text-slate-500'}`}><span className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[11px] font-bold ${index < stage ? 'bg-emerald-100 text-emerald-700' : index === stage ? 'bg-violet-600 text-white' : 'bg-slate-100 text-slate-500'}`}>{index < stage ? '✓' : index + 1}</span><span><b className="text-sm">{name}</b><small className="mt-0.5 block text-xs leading-4">{blocked ? 'Bloqueado hasta resolver el punto crítico del análisis' : index === stage ? notes[index] : index < stage ? 'Revisado o completado' : 'Todavía no necesario'}</small></span></button></li>; })}</ol><div className="mt-5 rounded-xl bg-violet-50 p-3 text-sm text-violet-950"><b>Lo importante ahora</b><p className="mt-1">{notes[stage]}</p></div><p className="mt-3 text-xs leading-5 text-slate-500">Los checks representan avance de configuración, no cumplimiento del objetivo de negocio.</p></aside>;
 }
 function frozenStageFrom(projection: BootstrapProjection): number { if (!projection.anchor.contextSummary?.trim()) return 0; if (projection.anchor.status !== 'anchor_confirmed') return 1; if (projection.existingWorkStatus === 'unknown') return 2; if (projection.existingWorkStatus === 'has_work' && (!projection.latestAnalysisRun || !projection.analysisSummary.materialReviewComplete)) return 3; return 4; }
-function frozenStageTitle(stage: number): string { return ['Empecemos con el contexto', 'Conversemos para definir quÃ© queremos lograr', 'Â¿QuÃ© estÃ¡ haciendo hoy tu organizaciÃ³n?', 'Analizar evidencias y relaciones', 'Estructurar retos solo si ayudan', 'Convertir necesidades en encargos claros', 'Activar equipos y dar seguimiento'][stage] ?? 'Configurar con Copilot'; }
+function frozenStageTitle(stage: number): string { return ['Empecemos con el contexto', 'Conversemos para definir qué queremos lograr', '¿Qué está haciendo hoy tu organización?', 'Analizar evidencias y relaciones', 'Estructurar retos solo si ayudan', 'Convertir necesidades en encargos claros'][stage] ?? 'Configurar con Copilot'; }
 
 function PortfolioBootstrapHomeA({
   projection,
@@ -1488,12 +1655,12 @@ function PortfolioBootstrapWorkIntake({
   return (
     <section className="space-y-5 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm" data-testid="portfolio-bootstrap-work-intake">
       <BootstrapHeader
-        eyebrow={analysisSurface ? 'AnÃ¡lisis revisable' : hasItems ? 'IncorporaciÃ³n revisable' : 'Portfolio Bootstrap'}
-        title={analysisSurface ? `Lectura provisional de ${projection.workItems.length} iniciativas` : hasItems ? `${projection.workItems.length} iniciativas detectadas` : 'Â¿QuÃ© iniciativas existen hoy alrededor de este objetivo?'}
+        eyebrow={analysisSurface ? 'Análisis revisable' : hasItems ? 'Incorporación revisable' : 'Portfolio Bootstrap'}
+        title={analysisSurface ? `Lectura provisional de ${projection.workItems.length} iniciativas` : hasItems ? `${projection.workItems.length} iniciativas detectadas` : '¿Qué iniciativas existen hoy alrededor de este objetivo?'}
         status={projection.anchor.status}
         provenanceLabel={projection.provenanceLabel}
       />
-      {analysisSurface ? <AnalysisInputReference projection={projection} onUpdateWorkItem={onUpdateWorkItem} onRemoveWorkItem={onRemoveWorkItem} /> : hasItems ? <div className="rounded-xl border border-violet-200 bg-violet-50/60 p-4" data-testid="portfolio-detected-initiatives-summary"><p className="text-sm font-semibold text-slate-950">Las iniciativas importadas son provisionales: puedes revisar sus datos fuente antes del anÃ¡lisis.</p><button type="button" onClick={() => setAddMoreOpen((open) => !open)} className="mt-3 rounded-lg border border-violet-300 bg-white px-3 py-2 text-sm font-semibold text-violet-950">{addMoreOpen ? 'Ocultar opciones para agregar' : 'Agregar mÃ¡s informaciÃ³n'}</button></div> : <AnchorSummary anchor={projection.anchor} />}
+      {analysisSurface ? <AnalysisInputReference projection={projection} onUpdateWorkItem={onUpdateWorkItem} onRemoveWorkItem={onRemoveWorkItem} /> : hasItems ? <div className="rounded-xl border border-violet-200 bg-violet-50/60 p-4" data-testid="portfolio-detected-initiatives-summary"><p className="text-sm font-semibold text-slate-950">Las iniciativas importadas son provisionales: puedes revisar sus datos fuente antes del análisis.</p><button type="button" onClick={() => setAddMoreOpen((open) => !open)} className="mt-3 rounded-lg border border-violet-300 bg-white px-3 py-2 text-sm font-semibold text-violet-950">{addMoreOpen ? 'Ocultar opciones para agregar' : 'Agregar más información'}</button></div> : <AnchorSummary anchor={projection.anchor} />}
       {(!analysisSurface && (!hasItems || addMoreOpen)) ? <>
       <div className="flex flex-wrap gap-2">
         <ModeButton label="Pegar una lista" active={mode === 'paste'} onClick={() => setMode('paste')} />
@@ -1671,12 +1838,12 @@ function PortfolioBootstrapWorkIntake({
 
       {analysisSurface ? <AnalysisCompletionGate projection={projection} onContinue={onContinueToOrganization} /> : hasItems || noWork ? (
         <PrimaryAction
-          label={hasProposals ? 'Revisar anÃ¡lisis y propuestas' : `Analizar ${projection.workItems.length} iniciativas`}
+          label={hasProposals ? 'Revisar análisis y propuestas' : `Analizar ${projection.workItems.length} iniciativas`}
           description={hasProposals
             ? 'Pendiente de tu revision. La propuesta sigue siendo provisional.'
             : noWork
               ? 'No hay trabajo declarado para analizar en B3.'
-              : 'StarterÃ­a prepararÃ¡ una lectura revisable: alineamiento, evidencia, vacÃ­os, posibles solapamientos y razones.'}
+              : 'Startería preparará una lectura revisable: alineamiento, evidencia, vacíos, posibles solapamientos y razones.'}
           disabled={noWork || analyzing}
           onClick={hasProposals ? () => setReviewOpen(true) : hasItems ? onAnalyzeWorkItems : undefined}
         />
@@ -1762,9 +1929,9 @@ function ImportWorkItemsPanel({
           </div>
 
           {batch.rawHeaders.length > 0 ? <section className="rounded-lg border border-violet-200 bg-violet-50/60 p-3" data-testid="portfolio-import-mapping-summary">
-            <div className="flex flex-wrap items-start justify-between gap-3"><div><p className="text-sm font-semibold text-slate-950">AsÃ­ interpretamos tu archivo</p><p className="mt-1 text-sm text-slate-600">Relacionamos las columnas del archivo con los datos provisionales de cada iniciativa. Los valores originales permanecen visibles en su trazabilidad.</p></div>{mappingIsSufficient ? <button type="button" onClick={() => setMappingReviewOpen((open) => !open)} className="rounded-lg border border-violet-300 bg-white px-3 py-2 text-sm font-semibold text-violet-950">{mappingReviewOpen ? 'Ocultar mapeo' : 'Revisar mapeo'}</button> : null}</div>
-            <div className="mt-3 flex flex-wrap gap-2">{detectedMappings.map((field) => <span key={field.key} className="rounded-full border border-violet-200 bg-white px-2.5 py-1 text-xs font-semibold text-violet-950">{field.label} â† {mapping[field.key]}</span>)}</div>
-            {!mappingIsSufficient ? <p className="mt-3 rounded-md border border-amber-200 bg-amber-50 p-2 text-sm text-amber-950">Necesitamos saber quÃ© columna contiene el nombre de cada iniciativa para continuar.</p> : null}
+            <div className="flex flex-wrap items-start justify-between gap-3"><div><p className="text-sm font-semibold text-slate-950">Así interpretamos tu archivo</p><p className="mt-1 text-sm text-slate-600">Relacionamos las columnas del archivo con los datos provisionales de cada iniciativa. Los valores originales permanecen visibles en su trazabilidad.</p></div>{mappingIsSufficient ? <button type="button" onClick={() => setMappingReviewOpen((open) => !open)} className="rounded-lg border border-violet-300 bg-white px-3 py-2 text-sm font-semibold text-violet-950">{mappingReviewOpen ? 'Ocultar mapeo' : 'Revisar mapeo'}</button> : null}</div>
+            <div className="mt-3 flex flex-wrap gap-2">{detectedMappings.map((field) => <span key={field.key} className="rounded-full border border-violet-200 bg-white px-2.5 py-1 text-xs font-semibold text-violet-950">{field.label} ← {mapping[field.key]}</span>)}</div>
+            {!mappingIsSufficient ? <p className="mt-3 rounded-md border border-amber-200 bg-amber-50 p-2 text-sm text-amber-950">Necesitamos saber qué columna contiene el nombre de cada iniciativa para continuar.</p> : null}
           </section> : null}
 
           {batch.rawHeaders.length > 0 && (!mappingIsSufficient || mappingReviewOpen) ? <div className="grid gap-3 md:grid-cols-3" aria-label="Revisar mapeo de columnas">
@@ -1920,10 +2087,10 @@ function PortfolioFirstReading({
 
       {onNavigate ? (
         <section className="rounded-lg border border-indigo-200 bg-indigo-50/60 p-4" data-testid="portfolio-bootstrap-organization-handoff">
-          <p className="text-xs font-bold uppercase tracking-wide text-indigo-800">Siguiente momento: organizaciÃ³n</p>
+          <p className="text-xs font-bold uppercase tracking-wide text-indigo-800">Siguiente momento: organización</p>
           <h2 className="mt-1 text-base font-semibold text-slate-950">Revisa la estructura antes de activar trabajo</h2>
           <p className="mt-1 text-sm text-slate-700">
-            La lectura conserva propuestas, cobertura y dudas. Crear o modificar Frentes y Retos sigue siendo una acciÃ³n humana separada; no se crean objetos canÃ³nicos desde esta lectura.
+            La lectura conserva propuestas, cobertura y dudas. Crear o modificar Frentes y Retos sigue siendo una acción humana separada; no se crean objetos canónicos desde esta lectura.
           </p>
           <div className="mt-3 flex flex-wrap gap-2">
             <button
@@ -2049,13 +2216,13 @@ function WorkItemList({
   onRemoveWorkItem: (workItemId: string) => Promise<void>;
 }) {
   if (items.length === 0) {
-    return <p className="rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">AÃºn no hay iniciativas provisionales agregadas.</p>;
+    return <p className="rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">Aún no hay iniciativas provisionales agregadas.</p>;
   }
 
   return (
     <div className="rounded-lg border border-slate-200 bg-white p-4">
       <h2 className="text-sm font-semibold text-slate-950">{items.length} iniciativas detectadas</h2>
-      <p className="mt-1 text-sm text-slate-600">Cada fila conserva el archivo y los valores de origen. â€œEstado no declaradoâ€ no borra el valor original: indica que no pudo normalizarse.</p>
+      <p className="mt-1 text-sm text-slate-600">Cada fila conserva el archivo y los valores de origen. “Estado no declarado” no borra el valor original: indica que no pudo normalizarse.</p>
       <ul className="mt-3 space-y-2">
         {items.map((item) => (
           <li key={item.id} className="flex flex-col gap-2 rounded-lg border border-slate-200 p-3 md:flex-row md:items-center md:justify-between">
@@ -2106,7 +2273,7 @@ function AnalysisInputReference({
   onRemoveWorkItem: (workItemId: string) => Promise<void>;
 }) {
   const latestFile = projection.importBatches[0]?.fileName;
-  return <section className="rounded-xl border border-slate-200 bg-slate-50 p-4" data-testid="portfolio-analysis-input-reference"><p className="text-xs font-bold uppercase tracking-wide text-slate-500">Fuente analizada</p><p className="mt-1 text-sm font-semibold text-slate-950">{latestFile ?? 'Iniciativas incorporadas durante la conversaciÃ³n'}</p><p className="mt-1 text-sm text-slate-600">{projection.workItems.length} iniciativas incorporadas. Sus fuentes y datos siguen disponibles sin competir con el anÃ¡lisis.</p><details className="mt-3"><summary className="cursor-pointer text-sm font-semibold text-violet-800">Ver importaciÃ³n</summary><div className="mt-3"><WorkItemList items={projection.workItems} importBatches={projection.importBatches} onUpdateWorkItem={onUpdateWorkItem} onRemoveWorkItem={onRemoveWorkItem} /></div></details></section>;
+  return <section className="rounded-xl border border-slate-200 bg-slate-50 p-4" data-testid="portfolio-analysis-input-reference"><p className="text-xs font-bold uppercase tracking-wide text-slate-500">Fuente analizada</p><p className="mt-1 text-sm font-semibold text-slate-950">{latestFile ?? 'Iniciativas incorporadas durante la conversación'}</p><p className="mt-1 text-sm text-slate-600">{projection.workItems.length} iniciativas incorporadas. Sus fuentes y datos siguen disponibles sin competir con el análisis.</p><details className="mt-3"><summary className="cursor-pointer text-sm font-semibold text-violet-800">Ver importación</summary><div className="mt-3"><WorkItemList items={projection.workItems} importBatches={projection.importBatches} onUpdateWorkItem={onUpdateWorkItem} onRemoveWorkItem={onRemoveWorkItem} /></div></details></section>;
 }
 
 function AnalysisCompletionGate({
@@ -2126,7 +2293,7 @@ function AnalysisCompletionGate({
   ));
   const workItemsById = new Map(projection.workItems.map((item) => [item.id, item]));
   const reviewPending = () => document.getElementById('portfolio-analysis-review')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-  return <section className={`rounded-xl border p-4 ${hasHardBlocker ? 'border-amber-300 bg-amber-50' : 'border-emerald-200 bg-emerald-50'}`} data-testid="portfolio-analysis-completion-gate"><p className="text-xs font-bold uppercase tracking-wide text-slate-600">Cierre de la lectura</p><h2 className="mt-1 text-base font-semibold text-slate-950">{hasHardBlocker ? 'Hay un bloqueo real antes de organizar' : 'Lectura suficiente para continuar'}</h2><div className="mt-3 grid gap-2 text-sm text-slate-700 sm:grid-cols-2"><p><b>{summary.confirmed}</b> confirmadas</p><p><b>{summary.reviewLater + summary.carryToBrief + summary.contextual}</b> por revisar</p><p><b>{comparisonRequired}</b> comparaciÃ³n requerida</p><p><b>{summary.hardBlockingNow}</b> {summary.hardBlockingNow === 1 ? 'bloqueo real' : 'bloqueos reales'}</p></div>{hasHardBlocker ? <div className="mt-3 text-sm text-amber-950"><p>Estos puntos estÃ¡n marcados como <b>HARD_BLOCKING_NOW</b> y requieren una disposiciÃ³n antes de continuar:</p><ul className="mt-2 space-y-2">{hardBlockers.map((blocker) => { const item = blocker.targetId ? workItemsById.get(blocker.targetId) : null; return <li key={blocker.id} className="rounded-lg border border-amber-200 bg-white/70 p-3"><p className="font-semibold text-slate-950">{item ? `${item.proposedName ?? item.rawLabel} Â· ` : ''}{dimensionTitle(blocker)}</p><p className="mt-1">{proposalText(blocker)}</p><p className="mt-1 text-xs font-medium">Bloquea porque afecta la decisiÃ³n de organizaciÃ³n actual.</p>{blocker.rationale && blocker.rationale !== proposalText(blocker) ? <p className="mt-1 text-xs">Motivo registrado: {blocker.rationale}</p> : null}</li>; })}</ul></div> : <p className="mt-3 text-sm text-emerald-950">Quedan {remaining} aspectos pendientes. Puedes continuar; se conservarÃ¡n con trazabilidad y volverÃ¡n a aparecer cuando sean relevantes.</p>}<div className="mt-4 flex flex-wrap gap-2"><button type="button" disabled={hasHardBlocker} onClick={onContinue} className="rounded-lg bg-slate-950 px-4 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:bg-slate-400">Continuar a organizaciÃ³n</button><button type="button" onClick={reviewPending} className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-800">Revisar pendientes</button></div></section>;
+  return <section className={`rounded-xl border p-4 ${hasHardBlocker ? 'border-amber-300 bg-amber-50' : 'border-emerald-200 bg-emerald-50'}`} data-testid="portfolio-analysis-completion-gate"><p className="text-xs font-bold uppercase tracking-wide text-slate-600">Cierre de la lectura</p><h2 className="mt-1 text-base font-semibold text-slate-950">{hasHardBlocker ? 'Hay un bloqueo real antes de organizar' : 'Lectura suficiente para continuar'}</h2><div className="mt-3 grid gap-2 text-sm text-slate-700 sm:grid-cols-2"><p><b>{summary.confirmed}</b> confirmadas</p><p><b>{summary.reviewLater + summary.carryToBrief + summary.contextual}</b> por revisar</p><p><b>{comparisonRequired}</b> comparación requerida</p><p><b>{summary.hardBlockingNow}</b> {summary.hardBlockingNow === 1 ? 'bloqueo real' : 'bloqueos reales'}</p></div>{hasHardBlocker ? <div className="mt-3 text-sm text-amber-950"><p>Estos puntos están marcados como <b>HARD_BLOCKING_NOW</b> y requieren una disposición antes de continuar:</p><ul className="mt-2 space-y-2">{hardBlockers.map((blocker) => { const item = blocker.targetId ? workItemsById.get(blocker.targetId) : null; return <li key={blocker.id} className="rounded-lg border border-amber-200 bg-white/70 p-3"><p className="font-semibold text-slate-950">{item ? `${item.proposedName ?? item.rawLabel} · ` : ''}{dimensionTitle(blocker)}</p><p className="mt-1">{proposalText(blocker)}</p><p className="mt-1 text-xs font-medium">Bloquea porque afecta la decisión de organización actual.</p>{blocker.rationale && blocker.rationale !== proposalText(blocker) ? <p className="mt-1 text-xs">Motivo registrado: {blocker.rationale}</p> : null}</li>; })}</ul></div> : <p className="mt-3 text-sm text-emerald-950">Quedan {remaining} aspectos pendientes. Puedes continuar; se conservarán con trazabilidad y volverán a aparecer cuando sean relevantes.</p>}<div className="mt-4 flex flex-wrap gap-2"><button type="button" disabled={hasHardBlocker} onClick={onContinue} className="rounded-lg bg-slate-950 px-4 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:bg-slate-400">Continuar a organización</button><button type="button" onClick={reviewPending} className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-800">Revisar pendientes</button></div></section>;
 }
 
 function duplicateInitiativeCount(items: NonNullable<ReturnType<typeof projectBootstrapHome>>['workItems']): number {
@@ -2149,10 +2316,10 @@ function ImportedItemTrace({ item, importBatches }: { item: NonNullable<ReturnTy
     ['Responsable', mapping.owner, item.ownerCandidate],
     ['Estado', mapping.state, source.sourceRefs?.rawState ?? null],
     ['Objetivo', mapping.purpose, item.proposedPurpose],
-    ['KPI / seÃ±al', mapping.signal, source.sourceRefs?.signal ?? null],
+    ['KPI / señal', mapping.signal, source.sourceRefs?.signal ?? null],
     ['Notas', mapping.notes, source.sourceRefs?.notes ?? null],
   ].filter(([, column, value]) => Boolean(column || value));
-  return <details className="mt-2 text-xs text-slate-600" data-testid={`portfolio-import-trace-${item.id}`}><summary className="cursor-pointer font-semibold text-violet-800">Ver datos importados y trazabilidad</summary><div className="mt-2 grid gap-1 rounded-md border border-slate-200 bg-white p-2">{mapped.map(([label, column, value]) => <p key={String(label)}><b>{label}:</b> {column ? `columna â€œ${column}â€ â†’ ` : ''}{value || 'sin valor'}</p>)}{Object.entries(rawRow).filter(([header]) => !Object.values(mapping).includes(header)).map(([header, value]) => <p key={header}><b>{header}:</b> {value || 'sin valor'} <span className="text-slate-400">(conservado como dato fuente)</span></p>)}</div></details>;
+  return <details className="mt-2 text-xs text-slate-600" data-testid={`portfolio-import-trace-${item.id}`}><summary className="cursor-pointer font-semibold text-violet-800">Ver datos importados y trazabilidad</summary><div className="mt-2 grid gap-1 rounded-md border border-slate-200 bg-white p-2">{mapped.map(([label, column, value]) => <p key={String(label)}><b>{label}:</b> {column ? `columna “${column}” → ` : ''}{value || 'sin valor'}</p>)}{Object.entries(rawRow).filter(([header]) => !Object.values(mapping).includes(header)).map(([header, value]) => <p key={header}><b>{header}:</b> {value || 'sin valor'} <span className="text-slate-400">(conservado como dato fuente)</span></p>)}</div></details>;
 }
 
 function displayedItemState(item: NonNullable<ReturnType<typeof projectBootstrapHome>>['workItems'][number]): string {
@@ -2221,10 +2388,10 @@ function MaterialReviewPanel({
     <div id="portfolio-analysis-review" tabIndex={-1} className="space-y-4 rounded-lg border border-slate-200 bg-white p-4" data-testid="portfolio-bootstrap-material-review">
       <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
         <div>
-          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">AnÃ¡lisis revisable</p>
-          <h2 className="text-base font-semibold text-slate-950">StarterÃ­a encontrÃ³â€¦</h2>
+          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Análisis revisable</p>
+          <h2 className="text-base font-semibold text-slate-950">Startería encontró…</h2>
           <p className="mt-1 text-sm text-slate-600">
-            Una primera lectura de tus iniciativas. La IA propone; tÃº confirmas, corriges o dejas cada vÃ­nculo pendiente.
+            Una primera lectura de tus iniciativas. La IA propone; tú confirmas, corriges o dejas cada vínculo pendiente.
           </p>
         </div>
         <span className="rounded-full border border-slate-200 px-3 py-1 text-xs font-semibold text-slate-700">
@@ -2234,14 +2401,14 @@ function MaterialReviewPanel({
 
       <div className="grid gap-3 md:grid-cols-3" data-testid="portfolio-analysis-summary">
         <AnalysisSignal label="Iniciativas detectadas" value={String(projection.workItems.length)} detail="Importadas o escritas; cada una conserva fuente." />
-        <AnalysisCategoryButton category="evidence" active={activeCategory} count={evidenceIds.size} label="Evidencia por validar" detail="No hay seÃ±al o contexto suficiente para sostener una conclusiÃ³n." onClick={setActiveCategory} />
+        <AnalysisCategoryButton category="evidence" active={activeCategory} count={evidenceIds.size} label="Evidencia por validar" detail="No hay señal o contexto suficiente para sostener una conclusión." onClick={setActiveCategory} />
         <AnalysisCategoryButton category="owner" active={activeCategory} count={missingOwnerIds.size} label="Responsable pendiente" detail="La fuente no identifica una persona responsable." onClick={setActiveCategory} />
-        <AnalysisCategoryButton category="relation" active={activeCategory} count={relationIds.size} label="RelaciÃ³n estratÃ©gica por revisar" detail="La IA propuso un vÃ­nculo; aÃºn no es una decisiÃ³n." onClick={setActiveCategory} />
-        <AnalysisCategoryButton category="overlap" active={activeCategory} count={overlapIds.size} label="Posible solapamiento / comparaciÃ³n" detail="Nombres repetidos o similares: comparar antes de agrupar." onClick={setActiveCategory} />
-        <AnalysisCategoryButton category="outside" active={activeCategory} count={outOfObjectiveIds.size} label="Fuera del objetivo" detail="Solo aparece cuando la lectura lo propone explÃ­citamente." onClick={setActiveCategory} />
+        <AnalysisCategoryButton category="relation" active={activeCategory} count={relationIds.size} label="Relación estratégica por revisar" detail="La IA propuso un vínculo; aún no es una decisión." onClick={setActiveCategory} />
+        <AnalysisCategoryButton category="overlap" active={activeCategory} count={overlapIds.size} label="Posible solapamiento / comparación" detail="Nombres repetidos o similares: comparar antes de agrupar." onClick={setActiveCategory} />
+        <AnalysisCategoryButton category="outside" active={activeCategory} count={outOfObjectiveIds.size} label="Fuera del objetivo" detail="Solo aparece cuando la lectura lo propone explícitamente." onClick={setActiveCategory} />
         <AnalysisCategoryButton category="blocker" active={activeCategory} count={blockingIds.size} label="Bloqueo real" detail="Solo dependencias marcadas como bloqueo del siguiente movimiento." onClick={setActiveCategory} />
       </div>
-      <p className="text-sm text-slate-600">{activeCategory === 'all' ? 'Abre una iniciativa para revisar su lectura y decidir solo lo que afecta la decisiÃ³n actual.' : `Mostrando iniciativas: ${analysisCategoryLabel(activeCategory)}.`} <button type="button" className="font-semibold text-violet-800 underline" onClick={() => setActiveCategory('all')}>Ver todas</button></p>
+      <p className="text-sm text-slate-600">{activeCategory === 'all' ? 'Abre una iniciativa para revisar su lectura y decidir solo lo que afecta la decisión actual.' : `Mostrando iniciativas: ${analysisCategoryLabel(activeCategory)}.`} <button type="button" className="font-semibold text-violet-800 underline" onClick={() => setActiveCategory('all')}>Ver todas</button></p>
       <div className="space-y-3" data-testid="portfolio-analysis-initiative-cards">
         {visibleGroups.map((group) => <AnalysisCompactCard key={group.id} group={group} item={workItemsById.get(group.id)} onOpen={() => setSelectedGroupId(group.id)} />)}
       </div>
@@ -2272,8 +2439,8 @@ function analysisCategoryLabel(category: AnalysisCategory): string {
     all: 'todas las iniciativas',
     evidence: 'evidencia por validar',
     owner: 'responsable pendiente',
-    relation: 'relaciÃ³n estratÃ©gica por revisar',
-    overlap: 'posible solapamiento o comparaciÃ³n',
+    relation: 'relación estratégica por revisar',
+    overlap: 'posible solapamiento o comparación',
     outside: 'fuera del objetivo',
     blocker: 'bloqueo real',
   })[category];
@@ -2321,31 +2488,31 @@ function conditionSeverity(mutation: AnalysisMutation): string | null {
 }
 
 function dimensionTitle(mutation: AnalysisMutation): string {
-  if (mutation.targetType === 'strategic_connection') return 'RelaciÃ³n estratÃ©gica';
-  if (mutation.targetType === 'portfolio_anchor') return 'Objetivo y decisiÃ³n a habilitar';
+  if (mutation.targetType === 'strategic_connection') return 'Relación estratégica';
+  if (mutation.targetType === 'portfolio_anchor') return 'Objetivo y decisión a habilitar';
   const type = conditionType(mutation);
   const labels: Record<string, string> = {
     ownership_visibility: 'Responsable',
-    business_signal: 'Evidencia o seÃ±al de negocio',
+    business_signal: 'Evidencia o señal de negocio',
     required_context: 'Contexto por validar',
     critical_dependency: 'Dependencia',
-    decision_path: 'DecisiÃ³n a habilitar',
+    decision_path: 'Decisión a habilitar',
   };
-  return labels[type ?? ''] ?? (mutation.targetType === 'work_item' ? 'Dato de la iniciativa' : 'InterpretaciÃ³n provisional');
+  return labels[type ?? ''] ?? (mutation.targetType === 'work_item' ? 'Dato de la iniciativa' : 'Interpretación provisional');
 }
 
 function validationTiming(mutation: AnalysisMutation): { label: string; detail: string } {
-  if (conditionSeverity(mutation) === 'blocking') return { label: 'HARD_BLOCKING_NOW', detail: 'EstÃ¡ marcada explÃ­citamente como bloqueo de la decisiÃ³n actual; requiere una disposiciÃ³n antes de organizar.' };
+  if (conditionSeverity(mutation) === 'blocking') return { label: 'HARD_BLOCKING_NOW', detail: 'Está marcada explícitamente como bloqueo de la decisión actual; requiere una disposición antes de organizar.' };
   if (['ownership_visibility', 'business_signal', 'required_context', 'critical_dependency'].includes(conditionType(mutation) ?? '')) return { label: 'CARRY_TO_BRIEF', detail: 'Conviene conservarlo para el responsable; no impide la lectura actual.' };
-  if (mutation.targetType === 'strategic_connection') return { label: 'REVIEW_LATER / SOFT_GAP', detail: 'La relaciÃ³n puede seguir siendo provisional mientras organizas las iniciativas.' };
-  return { label: 'CONTEXTUAL', detail: 'Aporta contexto, pero no cambia la decisiÃ³n actual.' };
+  if (mutation.targetType === 'strategic_connection') return { label: 'REVIEW_LATER / SOFT_GAP', detail: 'La relación puede seguir siendo provisional mientras organizas las iniciativas.' };
+  return { label: 'CONTEXTUAL', detail: 'Aporta contexto, pero no cambia la decisión actual.' };
 }
 
 function AnalysisCompactCard({ group, item, onOpen }: { group: AnalysisGroup; item?: AnalysisItem; onOpen: () => void }) {
   const confirmed = group.mutations.some((mutation) => mutation.status === 'confirmed' && mutation.targetType === 'strategic_connection');
   const hasRelationToReview = group.mutations.some((mutation) => mutation.status !== 'confirmed' && mutation.targetType === 'strategic_connection');
   const mainWarning = group.mutations.find((mutation) => mutation.status !== 'confirmed');
-  return <article data-testid={`portfolio-analysis-card-${group.id}`} className="rounded-lg border border-slate-200 bg-white p-4"><div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between"><div><h3 className="text-sm font-semibold text-slate-950">{group.label}</h3><p className="mt-1 text-xs text-slate-600">{item ? `${sourceTypeLabel(item.sourceType)} Â· ${displayedItemState(item)}` : 'Lectura de portafolio'}</p></div><span className={`w-fit rounded-full px-2.5 py-1 text-xs font-semibold ${confirmed ? 'bg-emerald-50 text-emerald-800' : hasRelationToReview ? 'bg-amber-50 text-amber-900' : 'bg-slate-100 text-slate-700'}`}>{confirmed ? 'VÃ­nculo confirmado' : hasRelationToReview ? 'RelaciÃ³n por revisar' : 'Lectura provisional'}</span></div><p className="mt-3 text-sm text-slate-700">{mainWarning ? `${dimensionTitle(mainWarning)}: ${proposalText(mainWarning)}` : 'No hay una interpretaciÃ³n pendiente para esta iniciativa.'}</p><div className="mt-3 flex items-center justify-between gap-3"><span className="text-xs text-slate-500">{group.mutations.length} lectura{group.mutations.length === 1 ? '' : 's'} con trazabilidad</span><button type="button" onClick={onOpen} className="rounded-lg border border-violet-200 bg-white px-3 py-2 text-sm font-semibold text-violet-900 hover:bg-violet-50">Ver anÃ¡lisis</button></div></article>;
+  return <article data-testid={`portfolio-analysis-card-${group.id}`} className="rounded-lg border border-slate-200 bg-white p-4"><div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between"><div><h3 className="text-sm font-semibold text-slate-950">{group.label}</h3><p className="mt-1 text-xs text-slate-600">{item ? `${sourceTypeLabel(item.sourceType)} · ${displayedItemState(item)}` : 'Lectura de portafolio'}</p></div><span className={`w-fit rounded-full px-2.5 py-1 text-xs font-semibold ${confirmed ? 'bg-emerald-50 text-emerald-800' : hasRelationToReview ? 'bg-amber-50 text-amber-900' : 'bg-slate-100 text-slate-700'}`}>{confirmed ? 'Vínculo confirmado' : hasRelationToReview ? 'Relación por revisar' : 'Lectura provisional'}</span></div><p className="mt-3 text-sm text-slate-700">{mainWarning ? `${dimensionTitle(mainWarning)}: ${proposalText(mainWarning)}` : 'No hay una interpretación pendiente para esta iniciativa.'}</p><div className="mt-3 flex items-center justify-between gap-3"><span className="text-xs text-slate-500">{group.mutations.length} lectura{group.mutations.length === 1 ? '' : 's'} con trazabilidad</span><button type="button" onClick={onOpen} className="rounded-lg border border-violet-200 bg-white px-3 py-2 text-sm font-semibold text-violet-900 hover:bg-violet-50">Ver análisis</button></div></article>;
 }
 
 function AnalysisDetailDialog({
@@ -2384,7 +2551,7 @@ function AnalysisDetailDialog({
   onCorrect: (mutation: AnalysisMutation) => void;
 }) {
   const validations = group.mutations.filter((mutation) => mutation.status !== 'confirmed');
-  return <div role="dialog" aria-modal="true" aria-label={`AnÃ¡lisis de ${group.label}`} className="fixed inset-0 z-50 flex items-end bg-slate-950/35 p-3 sm:items-center sm:justify-center"><section className="max-h-[92vh] w-full max-w-3xl overflow-y-auto rounded-2xl bg-white p-5 shadow-2xl sm:p-6"><div className="flex items-start justify-between gap-4"><div><p className="text-xs font-bold uppercase tracking-wide text-violet-800">Lectura contextual</p><h2 className="mt-1 text-lg font-semibold text-slate-950">{group.label}</h2></div><button type="button" onClick={onClose} className="rounded-lg border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700">Cerrar</button></div><div className="mt-5 space-y-4"><section className="rounded-lg border border-slate-200 p-4"><h3 className="font-semibold text-slate-950">Datos observados / extraÃ­dos</h3>{item ? <dl className="mt-2 grid gap-2 text-sm text-slate-700 sm:grid-cols-2"><div><dt className="font-semibold">Iniciativa</dt><dd>{item.proposedName ?? item.rawLabel}</dd></div><div><dt className="font-semibold">Responsable</dt><dd>{item.ownerCandidate || 'No identificado en la fuente'}</dd></div><div><dt className="font-semibold">Estado</dt><dd>{displayedItemState(item)}</dd></div><div><dt className="font-semibold">Objetivo declarado</dt><dd>{item.proposedPurpose || 'No declarado'}</dd></div></dl> : <p className="mt-2 text-sm text-slate-600">Esta lectura se refiere al objetivo del portafolio.</p>}</section><section className="rounded-lg border border-slate-200 p-4"><h3 className="font-semibold text-slate-950">Fuente y trazabilidad</h3>{item ? <AnalysisInitiativeSignals item={item} importBatches={importBatches} /> : <p className="mt-2 text-sm text-slate-600">Las propuestas conservan sus referencias de origen en cada lectura.</p>}</section><section className="rounded-lg border border-violet-100 bg-violet-50/50 p-4"><h3 className="font-semibold text-slate-950">InterpretaciÃ³n provisional â€” no decisiÃ³n</h3><p className="mt-1 text-sm text-slate-700">StarterÃ­a propone esta lectura; ninguna relaciÃ³n se vuelve canÃ³nica sin tu revisiÃ³n.</p><ul className="mt-3 space-y-3">{group.mutations.map((mutation) => <li key={mutation.id} className="rounded-md border border-violet-100 bg-white p-3 text-sm text-slate-700"><p className="font-semibold text-slate-950">{dimensionTitle(mutation)}</p><p className="mt-1">{proposalText(mutation)}</p><p className="mt-2 text-xs text-slate-500">{mutation.rationale || 'Sin rationale adicional'} Â· {statusLabelForMutation(mutation.status)}</p></li>)}</ul></section><section className="rounded-lg border border-slate-200 p-4"><h3 className="font-semibold text-slate-950">QuÃ© falta validar</h3>{validations.length ? <ul className="mt-2 space-y-2">{validations.map((mutation) => { const timing = validationTiming(mutation); return <li key={mutation.id} className="rounded-md bg-slate-50 p-3 text-sm text-slate-700"><p className="font-semibold text-slate-950">{dimensionTitle(mutation)}</p><p className="mt-1">{proposalText(mutation)}</p><p className="mt-2 text-xs font-bold tracking-wide text-slate-600">{timing.label}</p><p className="mt-1 text-xs text-slate-600">{timing.detail}</p></li>; })}</ul> : <p className="mt-2 text-sm text-slate-600">No quedan validaciones abiertas en esta lectura. Puedes abrir una nueva revisiÃ³n si cambia el contexto.</p>}</section><section className="rounded-lg border border-slate-200 p-4"><h3 className="font-semibold text-slate-950">RevisiÃ³n/correcciÃ³n del Portfolio Lead</h3><p className="mt-1 text-sm text-slate-600">Tus decisiones quedan registradas; revisar de nuevo nunca reescribe una confirmaciÃ³n anterior.</p><div className="mt-3 space-y-3">{group.mutations.map((mutation) => { const busy = busyId === mutation.id; const isConfirmed = mutation.status === 'confirmed'; const isRelation = mutation.targetType === 'strategic_connection'; return <div key={mutation.id} className="rounded-md border border-slate-200 p-3"><p className="text-sm font-semibold text-slate-900">{dimensionTitle(mutation)}</p>{isConfirmed ? <div className="mt-2 flex flex-wrap items-center gap-2"><span className="rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-800">{isRelation ? 'VÃ­nculo confirmado' : 'RevisiÃ³n confirmada'}</span><SmallActionButton label={isRelation ? 'Revisar vÃ­nculo' : 'Revisar conclusiÃ³n'} action="reopen" disabled={busy} onClick={() => onReopen(mutation.id)} /></div> : <><div className="mt-2 flex flex-wrap gap-2"><SmallActionButton label="Dejar pendiente / sin vincular" action="pending" disabled={busy} onClick={() => onPending(mutation.id)} /><SmallActionButton label="Marcar para comparar" action="compare" disabled={busy} onClick={() => onPending(mutation.id, 'Marcada para comparaciÃ³n antes de confirmar un vÃ­nculo.')} /><SmallActionButton label={isRelation ? 'Confirmar vÃ­nculo revisado' : 'Confirmar revisiÃ³n'} action="confirm" disabled={busy} onClick={() => onConfirm(mutation.id)} /><SmallActionButton label="Corregir" action="correct" disabled={busy} onClick={() => onBeginCorrection(mutation)} />{isRelation ? <SmallActionButton label="Retirar vÃ­nculo" action="reject" disabled={busy} onClick={() => onReject(mutation.id)} /> : null}</div>{correctingId === mutation.id ? <div className="mt-3 rounded-md bg-slate-50 p-3"><label className="block text-xs font-semibold text-slate-700">Lectura corregida<select value={correctionStatus} onChange={(event) => onCorrectionStatus(event.target.value)} className="mt-1 w-full rounded border border-slate-200 bg-white px-2 py-1 text-sm"><option value="partial_alignment">Alineamiento parcial</option><option value="confirmed_alignment">Alineamiento confirmado</option><option value="confirmed_misalignment">Fuera del objetivo</option><option value="out_of_current_priority">No es prioridad actual</option></select></label><label className="mt-2 block text-xs font-semibold text-slate-700">CorrecciÃ³n o rationale<textarea value={correctionNote} onChange={(event) => onCorrectionNote(event.target.value)} rows={2} className="mt-1 w-full rounded border border-slate-200 bg-white px-2 py-1 text-sm" /></label><div className="mt-2"><SmallActionButton label="Guardar correcciÃ³n" action="save-correction" disabled={busy} onClick={() => onCorrect(mutation)} /></div></div> : null}</>}</div>; })}</div></section></div></section></div>;
+  return <div role="dialog" aria-modal="true" aria-label={`Análisis de ${group.label}`} className="fixed inset-0 z-50 flex items-end bg-slate-950/35 p-3 sm:items-center sm:justify-center"><section className="max-h-[92vh] w-full max-w-3xl overflow-y-auto rounded-2xl bg-white p-5 shadow-2xl sm:p-6"><div className="flex items-start justify-between gap-4"><div><p className="text-xs font-bold uppercase tracking-wide text-violet-800">Lectura contextual</p><h2 className="mt-1 text-lg font-semibold text-slate-950">{group.label}</h2></div><button type="button" onClick={onClose} className="rounded-lg border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700">Cerrar</button></div><div className="mt-5 space-y-4"><section className="rounded-lg border border-slate-200 p-4"><h3 className="font-semibold text-slate-950">Datos observados / extraídos</h3>{item ? <dl className="mt-2 grid gap-2 text-sm text-slate-700 sm:grid-cols-2"><div><dt className="font-semibold">Iniciativa</dt><dd>{item.proposedName ?? item.rawLabel}</dd></div><div><dt className="font-semibold">Responsable</dt><dd>{item.ownerCandidate || 'No identificado en la fuente'}</dd></div><div><dt className="font-semibold">Estado</dt><dd>{displayedItemState(item)}</dd></div><div><dt className="font-semibold">Objetivo declarado</dt><dd>{item.proposedPurpose || 'No declarado'}</dd></div></dl> : <p className="mt-2 text-sm text-slate-600">Esta lectura se refiere al objetivo del portafolio.</p>}</section><section className="rounded-lg border border-slate-200 p-4"><h3 className="font-semibold text-slate-950">Fuente y trazabilidad</h3>{item ? <AnalysisInitiativeSignals item={item} importBatches={importBatches} /> : <p className="mt-2 text-sm text-slate-600">Las propuestas conservan sus referencias de origen en cada lectura.</p>}</section><section className="rounded-lg border border-violet-100 bg-violet-50/50 p-4"><h3 className="font-semibold text-slate-950">Interpretación provisional — no decisión</h3><p className="mt-1 text-sm text-slate-700">Startería propone esta lectura; ninguna relación se vuelve canónica sin tu revisión.</p><ul className="mt-3 space-y-3">{group.mutations.map((mutation) => <li key={mutation.id} className="rounded-md border border-violet-100 bg-white p-3 text-sm text-slate-700"><p className="font-semibold text-slate-950">{dimensionTitle(mutation)}</p><p className="mt-1">{proposalText(mutation)}</p><p className="mt-2 text-xs text-slate-500">{mutation.rationale || 'Sin rationale adicional'} · {statusLabelForMutation(mutation.status)}</p></li>)}</ul></section><section className="rounded-lg border border-slate-200 p-4"><h3 className="font-semibold text-slate-950">Qué falta validar</h3>{validations.length ? <ul className="mt-2 space-y-2">{validations.map((mutation) => { const timing = validationTiming(mutation); return <li key={mutation.id} className="rounded-md bg-slate-50 p-3 text-sm text-slate-700"><p className="font-semibold text-slate-950">{dimensionTitle(mutation)}</p><p className="mt-1">{proposalText(mutation)}</p><p className="mt-2 text-xs font-bold tracking-wide text-slate-600">{timing.label}</p><p className="mt-1 text-xs text-slate-600">{timing.detail}</p></li>; })}</ul> : <p className="mt-2 text-sm text-slate-600">No quedan validaciones abiertas en esta lectura. Puedes abrir una nueva revisión si cambia el contexto.</p>}</section><section className="rounded-lg border border-slate-200 p-4"><h3 className="font-semibold text-slate-950">Revisión/corrección del Portfolio Lead</h3><p className="mt-1 text-sm text-slate-600">Tus decisiones quedan registradas; revisar de nuevo nunca reescribe una confirmación anterior.</p><div className="mt-3 space-y-3">{group.mutations.map((mutation) => { const busy = busyId === mutation.id; const isConfirmed = mutation.status === 'confirmed'; const isRelation = mutation.targetType === 'strategic_connection'; return <div key={mutation.id} className="rounded-md border border-slate-200 p-3"><p className="text-sm font-semibold text-slate-900">{dimensionTitle(mutation)}</p>{isConfirmed ? <div className="mt-2 flex flex-wrap items-center gap-2"><span className="rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-800">{isRelation ? 'Vínculo confirmado' : 'Revisión confirmada'}</span><SmallActionButton label={isRelation ? 'Revisar vínculo' : 'Revisar conclusión'} action="reopen" disabled={busy} onClick={() => onReopen(mutation.id)} /></div> : <><div className="mt-2 flex flex-wrap gap-2"><SmallActionButton label="Dejar pendiente / sin vincular" action="pending" disabled={busy} onClick={() => onPending(mutation.id)} /><SmallActionButton label="Marcar para comparar" action="compare" disabled={busy} onClick={() => onPending(mutation.id, 'Marcada para comparación antes de confirmar un vínculo.')} /><SmallActionButton label={isRelation ? 'Confirmar vínculo revisado' : 'Confirmar revisión'} action="confirm" disabled={busy} onClick={() => onConfirm(mutation.id)} /><SmallActionButton label="Corregir" action="correct" disabled={busy} onClick={() => onBeginCorrection(mutation)} />{isRelation ? <SmallActionButton label="Retirar vínculo" action="reject" disabled={busy} onClick={() => onReject(mutation.id)} /> : null}</div>{correctingId === mutation.id ? <div className="mt-3 rounded-md bg-slate-50 p-3"><label className="block text-xs font-semibold text-slate-700">Lectura corregida<select value={correctionStatus} onChange={(event) => onCorrectionStatus(event.target.value)} className="mt-1 w-full rounded border border-slate-200 bg-white px-2 py-1 text-sm"><option value="partial_alignment">Alineamiento parcial</option><option value="confirmed_alignment">Alineamiento confirmado</option><option value="confirmed_misalignment">Fuera del objetivo</option><option value="out_of_current_priority">No es prioridad actual</option></select></label><label className="mt-2 block text-xs font-semibold text-slate-700">Corrección o rationale<textarea value={correctionNote} onChange={(event) => onCorrectionNote(event.target.value)} rows={2} className="mt-1 w-full rounded border border-slate-200 bg-white px-2 py-1 text-sm" /></label><div className="mt-2"><SmallActionButton label="Guardar corrección" action="save-correction" disabled={busy} onClick={() => onCorrect(mutation)} /></div></div> : null}</>}</div>; })}</div></section></div></section></div>;
 }
 
 function AnalysisInitiativeSignals({
@@ -2394,7 +2561,7 @@ function AnalysisInitiativeSignals({
   item: NonNullable<ReturnType<typeof projectBootstrapHome>>['workItems'][number];
   importBatches: NonNullable<ReturnType<typeof projectBootstrapHome>>['importBatches'];
 }) {
-  return <div className="rounded-lg border border-violet-100 bg-violet-50/50 p-3 text-xs text-slate-700" data-testid={`portfolio-analysis-initiative-${item.id}`}><p><b>Fuente y evidencia:</b> {sourceTypeLabel(item.sourceType)}{item.sourceRefs && typeof item.sourceRefs === 'object' ? ' Â· disponibles para revisar' : ' Â· sin detalle adicional'}</p><p className="mt-1"><b>Responsable:</b> {item.ownerCandidate || 'pendiente de identificar'}</p><p className="mt-1"><b>Estado:</b> {displayedItemState(item)}</p><ImportedItemTrace item={item} importBatches={importBatches} /></div>;
+  return <div className="rounded-lg border border-violet-100 bg-violet-50/50 p-3 text-xs text-slate-700" data-testid={`portfolio-analysis-initiative-${item.id}`}><p><b>Fuente y evidencia:</b> {sourceTypeLabel(item.sourceType)}{item.sourceRefs && typeof item.sourceRefs === 'object' ? ' · disponibles para revisar' : ' · sin detalle adicional'}</p><p className="mt-1"><b>Responsable:</b> {item.ownerCandidate || 'pendiente de identificar'}</p><p className="mt-1"><b>Estado:</b> {displayedItemState(item)}</p><ImportedItemTrace item={item} importBatches={importBatches} /></div>;
 }
 
 function SmallActionButton({
@@ -2588,7 +2755,7 @@ function ContextRecoveryPanel({
         },
       });
       setSourceText('');
-      setNotice('El contexto se guardÃ³ como fuente declarada y sigue pendiente de revisiÃ³n humana. No es un Decision Package ni una decisiÃ³n.');
+      setNotice('El contexto se guardó como fuente declarada y sigue pendiente de revisión humana. No es un Decision Package ni una decisión.');
     } finally {
       setSaving(false);
     }
@@ -2599,7 +2766,7 @@ function ContextRecoveryPanel({
       <p className="text-xs font-bold uppercase tracking-wide text-violet-800">Contexto</p>
       <h2 className="mt-1 text-base font-semibold text-slate-950">Recupera un contexto existente</h2>
       <p className="mt-1 text-sm text-slate-700">
-        Si llegas con un prompt o extracto de un Decision Brief externo, pÃ©galo aquÃ­. Se conserva como fuente declarada y se revisa antes de usarlo; Starteria no lo autoaprueba.
+        Si llegas con un prompt o extracto de un Decision Brief externo, pégalo aquí. Se conserva como fuente declarada y se revisa antes de usarlo; Starteria no lo autoaprueba.
       </p>
       <label className="mt-3 block text-sm font-semibold text-slate-700">
         Prompt o extracto externo
@@ -2613,9 +2780,9 @@ function ContextRecoveryPanel({
       </label>
       <div className="mt-3 flex flex-wrap items-center gap-3">
         <button type="button" disabled={saving || !sourceText.trim()} onClick={() => void saveSource()} className="rounded-lg border border-violet-300 bg-white px-3 py-2 text-sm font-semibold text-violet-950 disabled:opacity-60">
-          {saving ? 'Guardando fuente...' : 'Guardar fuente para revisiÃ³n'}
+          {saving ? 'Guardando fuente...' : 'Guardar fuente para revisión'}
         </button>
-        <span className="text-xs text-slate-600">Procedencia: fuente declarada Â· estado: provisional</span>
+        <span className="text-xs text-slate-600">Procedencia: fuente declarada · estado: provisional</span>
       </div>
       {notice ? <p role="status" className="mt-3 rounded-lg border border-violet-100 bg-white p-3 text-sm text-violet-950">{notice}</p> : null}
     </section>
@@ -2626,24 +2793,24 @@ type ObjectiveField = 'outcomeStatement' | 'contextSummary' | 'decisionToEnable'
 
 const objectiveQuestions: Record<ObjectiveField, { prompt: string; label: string; unknown: string }> = {
   outcomeStatement: {
-    prompt: 'Â¿QuÃ© resultado de negocio quieres mover? Describe el cambio, no la soluciÃ³n.',
+    prompt: '¿Qué resultado de negocio quieres mover? Describe el cambio, no la solución.',
     label: 'Resultado esperado',
-    unknown: 'AÃºn no conocemos el resultado de negocio.',
+    unknown: 'Aún no conocemos el resultado de negocio.',
   },
   contextSummary: {
-    prompt: 'Â¿QuÃ© contexto explica por quÃ© este resultado importa ahora?',
+    prompt: '¿Qué contexto explica por qué este resultado importa ahora?',
     label: 'Contexto',
     unknown: 'El contexto material sigue siendo desconocido.',
   },
   decisionToEnable: {
-    prompt: 'Â¿QuÃ© te gustarÃ­a poder decidir mejor cuando tengas mÃ¡s claridad sobre este objetivo?',
-    label: 'DecisiÃ³n a habilitar',
-    unknown: 'AÃºn no sabemos quÃ© decisiÃ³n ayudarÃ­a a tomar este trabajo.',
+    prompt: '¿Qué te gustaría poder decidir mejor cuando tengas más claridad sobre este objetivo?',
+    label: 'Decisión a habilitar',
+    unknown: 'Aún no sabemos qué decisión ayudaría a tomar este trabajo.',
   },
   businessSignalValue: {
-    prompt: 'Â¿CÃ³mo sabrÃ¡s que el resultado estÃ¡ mejorando? Si no lo sabes todavÃ­a, tambiÃ©n estÃ¡ bien.',
-    label: 'SeÃ±al de mejora',
-    unknown: 'No hay KPI o seÃ±al confirmada todavÃ­a.',
+    prompt: '¿Cómo sabrás que el resultado está mejorando? Si no lo sabes todavía, también está bien.',
+    label: 'Señal de mejora',
+    unknown: 'No hay KPI o señal confirmada todavía.',
   },
 };
 
@@ -2683,9 +2850,9 @@ function nextObjectiveQuestion(anchor: PortfolioBootstrapAnchor): ObjectiveQuest
     return {
       key: 'businessSignalMeasure',
       field: 'businessSignalValue',
-      prompt: 'Entiendo que quieres observar la conversiÃ³n de leads a clientes. Â¿Te interesa seguir el nÃºmero de conversiones o el porcentaje de leads que convierte?',
-      label: 'NÃºmero o porcentaje de conversiones',
-      unknown: 'TodavÃ­a no sabemos cÃ³mo se medirÃ¡ la conversiÃ³n.',
+      prompt: 'Entiendo que quieres observar la conversión de leads a clientes. ¿Te interesa seguir el número de conversiones o el porcentaje de leads que convierte?',
+      label: 'Número o porcentaje de conversiones',
+      unknown: 'Todavía no sabemos cómo se medirá la conversión.',
       help: 'Con una de las dos opciones basta por ahora.',
     };
   }
@@ -2699,21 +2866,21 @@ function nextObjectiveQuestion(anchor: PortfolioBootstrapAnchor): ObjectiveQuest
   if (!field) {
     return {
       key: 'complete',
-      prompt: 'Ya tenemos un borrador revisable. LÃ©elo y corrige cualquier matiz antes de confirmarlo.',
+      prompt: 'Ya tenemos un borrador revisable. Léelo y corrige cualquier matiz antes de confirmarlo.',
       label: 'Borrador completo',
-      unknown: 'Has dejado explÃ­citamente los vacÃ­os relevantes para revisar mÃ¡s adelante.',
+      unknown: 'Has dejado explícitamente los vacíos relevantes para revisar más adelante.',
     };
   }
   return { key: field, field, ...objectiveQuestions[field] };
 }
 
 function objectiveAnswerLooksIrrelevant(value: string): boolean {
-  return /\b(mi color|color favorito|pizza|fÃºtbol|futbol|mi perro|mi gato)\b/i.test(value);
+  return /\b(mi color|color favorito|pizza|fútbol|futbol|mi perro|mi gato)\b/i.test(value);
 }
 
 function isConversionWithoutMeasure(value: string): boolean {
   const normalized = value.toLowerCase();
-  return /(lead|cliente|conversi[oÃ³]n)/.test(normalized) && !/(porcentaje|%|tasa|n[uÃº]mero|cantidad|conteo)/.test(normalized);
+  return /(lead|cliente|conversi[oó]n)/.test(normalized) && !/(porcentaje|%|tasa|n[uú]mero|cantidad|conteo)/.test(normalized);
 }
 
 function applyObjectivePatch(anchor: PortfolioBootstrapAnchor, input: UpdatePortfolioBootstrapAnchorInput): PortfolioBootstrapAnchor {
@@ -2756,7 +2923,7 @@ function ObjectiveConversation({
     const field = question.field!;
     const answerKey = `${question.key}:${value.trim().toLowerCase()}:${unknown ? 'unknown' : origin}`;
     if (submittedAnswers.current.has(answerKey)) {
-      setNotice('Esta respuesta ya quedÃ³ registrada. Copilot continÃºa desde la siguiente incertidumbre.');
+      setNotice('Esta respuesta ya quedó registrada. Copilot continúa desde la siguiente incertidumbre.');
       return;
     }
     setSaving(true);
@@ -2767,13 +2934,13 @@ function ObjectiveConversation({
         submittedAnswers.current.add(answerKey);
         await onSave({ sourceRefs });
         setDraft((current) => applyObjectivePatch(current, { sourceRefs }));
-        setNotice(`Lo que compartiste no parece describir ${question.label.toLowerCase()}. CuÃ©ntame, con tus palabras, quÃ© informaciÃ³n de negocio te ayudarÃ­a a avanzar; si no la tienes, puedes indicar â€œNo lo sÃ© todavÃ­aâ€.`);
+        setNotice(`Lo que compartiste no parece describir ${question.label.toLowerCase()}. Cuéntame, con tus palabras, qué información de negocio te ayudaría a avanzar; si no la tienes, puedes indicar “No lo sé todavía”.`);
         return;
       }
 
       const needsMeasureClarification = !unknown && field === 'businessSignalValue' && question.key !== 'businessSignalMeasure' && isConversionWithoutMeasure(value);
       const signalValue = question.key === 'businessSignalMeasure' && draft.businessSignalValue
-        ? `${draft.businessSignalValue} Â· medida: ${value}`
+        ? `${draft.businessSignalValue} · medida: ${value}`
         : value;
       const sourceRefs = objectiveConversationSourceRefs(draft.sourceRefs, field, signalValue, unknown ? 'unknown' : origin, {
         pendingClarification: needsMeasureClarification ? 'businessSignalMeasure' : null,
@@ -2799,9 +2966,9 @@ function ObjectiveConversation({
       setAnswerOrigin('user_declared');
       setSuggestion(null);
       setNotice(unknown
-        ? `${question.unknown} Lo hemos dejado registrado y seguimos con lo que sÃ­ podemos aclarar.`
+        ? `${question.unknown} Lo hemos dejado registrado y seguimos con lo que sí podemos aclarar.`
         : needsMeasureClarification
-          ? 'He actualizado el borrador con esa seÃ±al. Para que sea Ãºtil, necesito precisar solo cÃ³mo la medirÃ¡s.'
+          ? 'He actualizado el borrador con esa señal. Para que sea útil, necesito precisar solo cómo la medirás.'
           : 'He actualizado el borrador con tu respuesta. Ahora seguimos con la siguiente pregunta que puede cambiar el trabajo.');
     } finally {
       setSaving(false);
@@ -2833,13 +3000,13 @@ function ObjectiveConversation({
       setSuggestionStatus('idle');
     } catch (error) {
       setSuggestionStatus('error');
-      setNotice(error instanceof Error ? error.message : 'No pudimos pedir una sugerencia ahora. Tu ficha no cambiÃ³.');
+      setNotice(error instanceof Error ? error.message : 'No pudimos pedir una sugerencia ahora. Tu ficha no cambió.');
     }
   };
 
   return (
     <section className="grid gap-4 rounded-xl border border-sky-200 bg-sky-50/50 p-4 lg:grid-cols-[minmax(0,1fr)_minmax(280px,0.8fr)]" data-testid="portfolio-objective-conversation">
-      <div className="space-y-3" aria-label="ConversaciÃ³n de objetivo">
+      <div className="space-y-3" aria-label="Conversación de objetivo">
         <div>
           <p className="text-xs font-bold uppercase tracking-wide text-sky-800">Copilot de Portfolio</p>
           <h2 className="mt-1 text-lg font-semibold text-slate-950">Construyamos el objetivo paso a paso</h2>
@@ -2872,13 +3039,13 @@ function ObjectiveConversation({
           </label>
           <div className="flex flex-wrap gap-2">
             <button type="submit" disabled={saving || !answer.trim()} className="rounded-lg bg-slate-950 px-3 py-2 text-sm font-semibold text-white disabled:opacity-60">
-              {saving ? 'Interpretando respuestaâ€¦' : 'Enviar respuesta'}
+              {saving ? 'Interpretando respuesta…' : 'Enviar respuesta'}
             </button>
             <button type="button" disabled={saving || suggestionStatus === 'loading'} onClick={() => void requestSuggestion()} className="rounded-lg border border-sky-300 bg-white px-3 py-2 text-sm font-semibold text-sky-950 disabled:opacity-60">
-              {suggestionStatus === 'loading' ? 'Pidiendo sugerencia...' : 'AyÃºdame a redactar'}
+              {suggestionStatus === 'loading' ? 'Pidiendo sugerencia...' : 'Ayúdame a redactar'}
             </button>
             <button type="button" disabled={saving} onClick={() => void saveAnswer(question.unknown, true)} className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 disabled:opacity-60">
-              No lo sÃ© todavÃ­a
+              No lo sé todavía
             </button>
           </div>
         </form> : null}
@@ -2886,7 +3053,7 @@ function ObjectiveConversation({
           <div className="rounded-lg border border-sky-200 bg-white p-3 text-sm" data-testid="portfolio-objective-ai-suggestion">
             <p className="font-semibold text-sky-950">Sugerencia de Starteria</p>
             <p className="mt-1 text-slate-900">{suggestion.value}</p>
-            <p className="mt-2 text-xs text-slate-600">RazÃ³n: {suggestion.rationale}</p>
+            <p className="mt-2 text-xs text-slate-600">Razón: {suggestion.rationale}</p>
             <div className="mt-3 flex flex-wrap gap-2">
               <button type="button" onClick={() => { setAnswer(suggestion.value); setAnswerOrigin('ai_suggested'); }} className="rounded-lg bg-sky-700 px-3 py-2 text-sm font-semibold text-white">Usar sugerencia editable</button>
               <button type="button" onClick={() => setSuggestion(null)} className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700">Descartar</button>
@@ -2902,13 +3069,13 @@ function ObjectiveConversation({
         <dl className="mt-3 space-y-3 text-sm">
           <ObjectiveCardField label="Resultado" value={isPendingOutcome(draft.outcomeStatement) ? null : draft.outcomeStatement} />
           <ObjectiveCardField label="Contexto" value={draft.contextSummary} />
-          <ObjectiveCardField label="KPI o seÃ±al" value={draft.businessSignalValue} />
+          <ObjectiveCardField label="KPI o señal" value={draft.businessSignalValue} />
           <ObjectiveCardField label="Condiciones" value={objectiveConversationMeta(draft.sourceRefs).conditions as string | undefined} />
-          <ObjectiveCardField label="DecisiÃ³n" value={draft.decisionToEnable} />
-          <ObjectiveCardField label="Pendientes explÃ­citos" value={unknownObjectiveFields(draft.sourceRefs).map((field) => objectiveQuestions[field].label).join(', ') || null} />
+          <ObjectiveCardField label="Decisión" value={draft.decisionToEnable} />
+          <ObjectiveCardField label="Pendientes explícitos" value={unknownObjectiveFields(draft.sourceRefs).map((field) => objectiveQuestions[field].label).join(', ') || null} />
         </dl>
-        <p className="mt-4 text-xs text-slate-600">Estado de revisiÃ³n: {statusLabel(draft.status)}. Esta ficha no crea un frente, reto ni iniciativa.</p>
-        {canConfirm ? <button type="button" onClick={() => void onConfirm()} className="mt-4 inline-flex items-center gap-2 rounded-lg bg-slate-950 px-4 py-2 text-sm font-semibold text-white"><CheckCircle2 size={16} />Confirmar este punto de partida y continuar</button> : <p className="mt-4 text-sm text-slate-600">PodrÃ¡s confirmarlo cuando el borrador tenga informaciÃ³n suficiente o los vacÃ­os estÃ©n declarados.</p>}
+        <p className="mt-4 text-xs text-slate-600">Estado de revisión: {statusLabel(draft.status)}. Esta ficha no crea un frente, reto ni iniciativa.</p>
+        {canConfirm ? <button type="button" onClick={() => void onConfirm()} className="mt-4 inline-flex items-center gap-2 rounded-lg bg-slate-950 px-4 py-2 text-sm font-semibold text-white"><CheckCircle2 size={16} />Confirmar este punto de partida y continuar</button> : <p className="mt-4 text-sm text-slate-600">Podrás confirmarlo cuando el borrador tenga información suficiente o los vacíos estén declarados.</p>}
         <div className="mt-3"><AnchorEditor anchor={draft} onSave={onSave} /></div>
       </div>
     </section>
