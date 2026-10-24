@@ -423,6 +423,7 @@ export class PortfolioEntryExperimentalSessionService {
       if (!latestAnalyzedContextTurn(turns)) throw PortfolioEntrySessionError.invalidTransition('No analyzed user context is available for Critical Handoff.');
       const latest = await this.sessionService.getLatestCriticalHandoff(sessionId);
       if (latest?.isCurrent && latest.artifact.sourceContextRevision === session.contextRevision) {
+        await this.closeGenerationAsReady(session);
         return { kind: 'ready', ...(await this.criticalHandoffMaterializationDto(session)) };
       }
       const claim = await this.criticalHandoffGenerationRepository.claim({
@@ -868,6 +869,16 @@ export class PortfolioEntryExperimentalSessionService {
     };
   }
 
+  /** Si el artefacto ya está publicado pero el proceso murió antes de markReady, cierra la generación vigente. */
+  private async closeGenerationAsReady(session: PortfolioEntrySession): Promise<void> {
+    const generation = await this.criticalHandoffGenerationRepository.find(
+      session.id, session.contextRevision, this.now(), this.config.criticalHandoffMaxMs ?? 180_000,
+    );
+    if (generation?.status === 'GENERATING') {
+      await this.criticalHandoffGenerationRepository.markReady(session.id, session.contextRevision, generation.attempt, this.now());
+    }
+  }
+
   private async recoverCriticalHandoffMaterialization(
     sessionId: string,
     _record: PortfolioEntryIdempotencyRecord,
@@ -880,12 +891,14 @@ export class PortfolioEntryExperimentalSessionService {
     if (session.revision !== expectedRevision && session.revision !== expectedRevision + 1) return null;
     const latest = await this.sessionService.getLatestCriticalHandoff(sessionId);
     if (latest?.isCurrent && latest.artifact.sourceContextRevision === session.contextRevision) {
+      await this.closeGenerationAsReady(session);
       return { kind: 'ready', ...(await this.criticalHandoffMaterializationDto(session)) };
     }
     const generation = await this.criticalHandoffGenerationRepository.find(
       sessionId, session.contextRevision, this.now(), this.config.criticalHandoffMaxMs ?? 180_000,
     );
-    return generation
+    // Una generación FAILED (o stale) no se devuelve: run() la vuelve a reclamar.
+    return generation && generation.status !== 'FAILED'
       ? { kind: 'generating', sessionRevision: session.revision, generation: toCriticalHandoffGenerationDto(generation) }
       : null;
   }
@@ -982,7 +995,7 @@ export class PortfolioEntryExperimentalSessionService {
         context.idempotencyRecordId = existing.id;
         try {
           const result = await run();
-          if (shouldCache(result)) await this.idempotencyRepository.complete({ id: existing.id, responseSnapshot: result });
+          await this.settleIdempotency(existing.id, result, shouldCache);
           return result;
         } catch (error) {
           await this.idempotencyRepository.markFailed(existing.id).catch(() => undefined);
@@ -1020,12 +1033,21 @@ export class PortfolioEntryExperimentalSessionService {
     context.idempotencyRecordId = record.id;
     try {
       const result = await run();
-      if (shouldCache(result)) await this.idempotencyRepository.complete({ id: record.id, responseSnapshot: result });
+      await this.settleIdempotency(record.id, result, shouldCache);
       return result;
     } catch (error) {
       await this.idempotencyRepository.markFailed(record.id).catch(() => undefined);
       throw error;
     }
+  }
+
+  /**
+   * Un resultado que no se cachea (p. ej. una generación en curso) no deja el registro en IN_PROGRESS:
+   * se libera como FAILED para que repetir la misma key vuelva a ejecutar run(), que une o relanza.
+   */
+  private async settleIdempotency<T>(id: string, result: T, shouldCache: (result: T) => boolean): Promise<void> {
+    if (shouldCache(result)) await this.idempotencyRepository.complete({ id, responseSnapshot: result });
+    else await this.idempotencyRepository.markFailed(id);
   }
 
   private async storeRecovery(context: RequestContext, hint: RecoveryHint): Promise<void> {
