@@ -429,14 +429,14 @@ test.describe('P12-R1 PL-04 confirmed organization runtime', () => {
     await expect(briefBoundary).toBeVisible();
     await expect(page.getByText('Configurar con Copilot · 6 de 7')).toBeVisible();
     await expect(page.getByRole('heading', { name: 'Eliminar barreras de adopción sostenida' })).toBeVisible();
-    await expect(page.getByText('Pendiente de preparar', { exact: true })).toBeVisible();
-    await expect(briefBoundary.getByRole('button', { name: 'Preparar Brief', exact: true })).toBeEnabled();
-    await briefBoundary.getByRole('button', { name: 'Preparar Brief', exact: true }).click();
-    await expect(briefBoundary.getByText('PL-05 abierto para este reto')).toBeVisible();
-    await expect(page.getByText(/No se ha creado ningún Brief todavía/)).toBeVisible();
+    await expect(page.getByText('Todavía no preparaste un Brief para este reto.', { exact: true })).toBeVisible();
+    await expect(briefBoundary.getByRole('button', { name: 'Preparar primer Brief', exact: true })).toBeEnabled();
+    await briefBoundary.getByRole('button', { name: 'Preparar primer Brief', exact: true }).click();
+    await expect(briefBoundary.getByRole('heading', { name: 'Prepara el Brief que recibirá tu equipo' })).toBeVisible();
+    await expect(briefBoundary.getByText('Propuesta sin guardar', { exact: true })).toBeVisible();
     await expect(page).toHaveURL(/\/portfolio\/inicio$/);
     await expect(page.getByLabel('Tu avance').getByRole('button', { name: /Asignación/ })).toBeDisabled();
-    await expect(page.getByLabel('Tu avance')).toContainText('Disponible después de preparar y revisar el Brief');
+    await expect(page.getByLabel('Tu avance')).toContainText('Disponible al continuar desde una versión de Brief confirmada');
 
     await page.screenshot({ path: resolve(evidenceDirectory, 'desktop-pl05-boundary-1440x900.png') });
     await page.setViewportSize({ width: 390, height: 844 });

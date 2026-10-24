@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { InMemoryHandoffReferenceRepository, InMemoryPortfolioHandoffAssignmentRepository } from '../infrastructure/in-memory-portfolio-handoff-assignment.repository';
 import { InMemoryHandoffInvitationAccessRepository } from '../infrastructure/in-memory-portfolio-handoff-invitation.repository';
 import { InMemoryHandoffDeliveryAttemptRepository } from '../infrastructure/in-memory-portfolio-handoff-delivery-attempt.repository';
@@ -54,6 +54,81 @@ describe('PortfolioHandoffDeliveryService / H-TECH-04', () => {
     expect(await ctx.service.markHandoffInvitationViewed(token)).toEqual({ state: 'VIEWED' });
     expect((await ctx.assignments.findById(ctx.assignment.id))?.state).toBe('VIEWED');
     expect(hashRefreshToken(token)).toBe(ctx.access.accesses[0].tokenHash);
+  });
+
+  it('reserves an idempotency key before SMTP so concurrent requests send exactly once', async () => {
+    let calls = 0;
+    let releaseDelivery!: () => void;
+    const deliveryGate = new Promise<void>((resolve) => { releaseDelivery = resolve; });
+    const ctx = await context(async () => {
+      calls += 1;
+      await deliveryGate;
+      return { delivered: true, providerMessageRef: 'provider-concurrent' };
+    });
+
+    const first = ctx.service.sendHandoffInvitation({ assignmentId: ctx.assignment.id, idempotencyKey: 'concurrent-key' });
+    await vi.waitFor(() => expect(calls).toBe(1));
+    const second = ctx.service.sendHandoffInvitation({ assignmentId: ctx.assignment.id, idempotencyKey: 'concurrent-key' });
+    await Promise.resolve();
+    releaseDelivery();
+
+    const [winner, replay] = await Promise.all([first, second]);
+    expect(calls).toBe(1);
+    expect(winner).toMatchObject({ state: 'SENT', attemptStatus: 'SUCCEEDED' });
+    expect(replay).toMatchObject({ state: 'SENT', attemptStatus: 'IDEMPOTENT', providerMessageRef: 'provider-concurrent' });
+  });
+
+  it('reclaims an abandoned reservation without exposing it as a permanent failed send', async () => {
+    let calls = 0;
+    const ctx = await context(async () => {
+      calls += 1;
+      return { delivered: true, providerMessageRef: 'provider-reclaimed' };
+    });
+    await ctx.attempts.reserve({
+      assignmentId: ctx.assignment.id,
+      channel: 'EMAIL',
+      status: 'FAILED',
+      attemptedAt: new Date(Date.now() - 60_000),
+      providerMessageRef: null,
+      errorCategory: 'IDEMPOTENCY_RESERVED',
+      idempotencyKey: 'abandoned-key',
+      requestFingerprint: 'abandoned-fingerprint',
+    });
+
+    const result = await ctx.service.sendHandoffInvitation({
+      assignmentId: ctx.assignment.id,
+      idempotencyKey: 'abandoned-key',
+      requestFingerprint: 'abandoned-fingerprint',
+    });
+
+    expect(result).toMatchObject({ state: 'SENT', attemptStatus: 'SUCCEEDED', providerMessageRef: 'provider-reclaimed' });
+    expect(calls).toBe(1);
+  });
+
+  it('rejects the same idempotency key when the invitation content fingerprint changes', async () => {
+    let calls = 0;
+    const ctx = await context(async () => { calls += 1; return { delivered: true }; });
+    await ctx.service.sendHandoffInvitation({ assignmentId: ctx.assignment.id, idempotencyKey: 'same-key', title: 'Mandato original' });
+
+    await expect(ctx.service.sendHandoffInvitation({ assignmentId: ctx.assignment.id, idempotencyKey: 'same-key', title: 'Mandato cambiado' }))
+      .rejects.toMatchObject({ code: 'HANDOFF_IDEMPOTENCY_CONFLICT' });
+    expect(calls).toBe(1);
+  });
+
+  it('revokes the unusable token when SMTP fails so a safe retry has one active invitation', async () => {
+    let fail = true;
+    const ctx = await context(async () => {
+      if (fail) throw new Error('SMTP down');
+      return { delivered: true };
+    });
+
+    await ctx.service.sendHandoffInvitation({ assignmentId: ctx.assignment.id, idempotencyKey: 'failed-key' });
+    expect(ctx.access.accesses).toHaveLength(1);
+    expect(ctx.access.accesses[0].revokedAt).toBeTruthy();
+
+    fail = false;
+    await ctx.service.sendHandoffInvitation({ assignmentId: ctx.assignment.id, idempotencyKey: 'retry-key' });
+    expect(ctx.access.accesses.filter((item) => item.revokedAt === null)).toHaveLength(1);
   });
 
   it('marks viewed only from a valid token, revokes access, and expires lazily', async () => {

@@ -44,7 +44,7 @@ export type PortfolioBootstrapImportStatus = 'idle' | 'uploading' | 'committing'
 export function usePortfolioBootstrap(
   portfolioEntryContinuationId: string | null,
   mode: 'legacy' | '114F' = 'legacy',
-  entryMode: 'continuation' | 'direct' | 'resume' | 'disabled' = 'continuation',
+  entryMode: 'continuation' | 'direct' | 'resume' | 'session' | 'disabled' = 'continuation',
 ) {
   const [data, setData] = useState<PortfolioBootstrapResponse | null>(null);
   const [status, setStatus] = useState<PortfolioBootstrapLoadStatus>('idle');
@@ -78,7 +78,9 @@ export function usePortfolioBootstrap(
     setError(null);
     try {
       const result = entryMode === 'resume'
-        ? await getCurrentPortfolioBootstrapSession()
+        ? await getCurrentPortfolioBootstrapSession() ?? await createOrReuseDirectPortfolioBootstrapSession()
+        : entryMode === 'session'
+        ? await getPortfolioBootstrapSession(portfolioEntryContinuationId!)
         : entryMode === 'direct'
         ? data?.bootstrapSession?.id
           ? await getPortfolioBootstrapSession(data.bootstrapSession.id)
@@ -118,9 +120,15 @@ export function usePortfolioBootstrap(
     }
 
     setStatus('loading');
+    setData(null);
+    setOrganizationProposal(null);
+    setOrganizationStatus('idle');
+    setOrganizationError(null);
     setError(null);
     (entryMode === 'resume'
-      ? getCurrentPortfolioBootstrapSession()
+      ? getCurrentPortfolioBootstrapSession().then((current) => current ?? createOrReuseDirectPortfolioBootstrapSession())
+      : entryMode === 'session'
+      ? getPortfolioBootstrapSession(portfolioEntryContinuationId!)
       : entryMode === 'direct'
       ? createOrReuseDirectPortfolioBootstrapSession()
       : mode === '114F'

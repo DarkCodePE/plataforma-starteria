@@ -65,6 +65,60 @@ describe('PortfolioBootstrapHome — frozen Copilot-first composition', () => {
     }
   });
 
+  it('starts a newly created front at 1 of 7 with shared organization context as an unconfirmed reference', () => {
+    const data = makeBootstrap('anchor_insufficient');
+    data.bootstrapSession.id = 'new-front-session';
+    data.bootstrapSession.bootstrapPhase = 'B1_ANCHOR';
+    data.anchor!.contextSummary = null;
+    data.anchor!.outcomeStatement = 'Reducir abandono';
+    data.anchor!.confirmedBy = null;
+    data.anchor!.confirmedAt = null;
+    data.anchor!.sourceRefs = {
+      organizationalContextReference: {
+        sourceBootstrapSessionId: 'completed-front-session',
+        contextSummary: 'Customer success y producto comparten el contexto confirmado.',
+        outcomeStatement: 'Reducir abandono',
+        reviewStatus: 'reference_only',
+      },
+    };
+
+    render(<PortfolioBootstrapHome {...props({ data })} />);
+
+    expect(screen.getByText('Configurar con Copilot · 1 de 7')).toBeInTheDocument();
+    expect(screen.getByText('Contexto organizacional de referencia')).toBeInTheDocument();
+    expect(screen.getByText('Customer success y producto comparten el contexto confirmado.')).toBeInTheDocument();
+    expect(screen.getByText(/aún no está confirmado para este frente/i)).toBeInTheDocument();
+    expect(screen.queryByText('Revisado o completado')).not.toBeInTheDocument();
+  });
+
+  it('does not let local stage navigation fabricate progress beyond the persisted scope', () => {
+    const data = makeBootstrap('anchor_insufficient');
+    data.bootstrapSession.id = 'new-front-session';
+    data.bootstrapSession.bootstrapPhase = 'B1_ANCHOR';
+    data.anchor!.contextSummary = null;
+    data.anchor!.confirmedBy = null;
+    data.anchor!.confirmedAt = null;
+    const input = props({ data });
+
+    render(<PortfolioBootstrapHome {...input} />);
+
+    const futureStage = screen.getByRole('button', { name: /Incorporación/i });
+    fireEvent.click(futureStage);
+
+    expect(futureStage).toBeDisabled();
+    expect(screen.getByText('Configurar con Copilot · 1 de 7')).toBeInTheDocument();
+    expect(screen.queryByText('Revisado o completado')).not.toBeInTheDocument();
+    expect(input.onUpdateAnchor).not.toHaveBeenCalled();
+    expect(input.onConfirmAnchor).not.toHaveBeenCalled();
+  });
+
+  it('resumes an existing draft at its persisted 3 of 7 progress', () => {
+    render(<PortfolioBootstrapHome {...props({ data: makeBootstrap('anchor_confirmed') })} />);
+
+    expect(screen.getByText('Configurar con Copilot · 3 de 7')).toBeInTheDocument();
+    expect(screen.getAllByText('Revisado o completado')).toHaveLength(2);
+  });
+
   it('persists PL-00 external context as a declared provisional source', async () => {
     const save = vi.fn().mockResolvedValue(undefined);
     render(<PortfolioBootstrapHome {...props({ onUpdateAnchor: save })} />);
@@ -110,7 +164,7 @@ describe('PortfolioBootstrapHome — frozen Copilot-first composition', () => {
 
   it('keeps Briefs as the next boundary and does not advance to Assignment', () => {
     const navigate = vi.fn();
-    render(<PortfolioBootstrapHome {...props({ onNavigate: navigate })} />);
+    render(<PortfolioBootstrapHome {...props({ data: makeBootstrapWithProposedMutations(), onNavigate: navigate })} />);
 
     fireEvent.click(screen.getByRole('button', { name: /Briefs/i }));
     expect(screen.getByText('Confirma primero la estructura estratégica')).toBeInTheDocument();
@@ -296,7 +350,7 @@ describe('PortfolioBootstrapHome — frozen Copilot-first composition', () => {
     expect(screen.getByRole('button', { name: /5 Organización/i })).toBeEnabled();
     fireEvent.click(continueButton);
     expect(screen.getByTestId('portfolio-organization-proposal')).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: /Análisis Revisado/i }));
+    fireEvent.click(screen.getByRole('button', { name: /4 Análisis/i }));
     expect(screen.getByTestId('portfolio-bootstrap-material-review')).toBeInTheDocument();
   });
 
@@ -807,7 +861,7 @@ describe('PortfolioBootstrapHome — frozen Copilot-first composition', () => {
     expect(assignmentStage).toBeDisabled();
     expect(assignmentStage).toHaveTextContent('Disponible al continuar desde una versión de Brief confirmada');
     fireEvent.click(screen.getByRole('button', { name: 'Continuar a asignación' }));
-    expect(await screen.findByRole('heading', { name: 'Prepara las asignaciones de este reto' })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'Asigna responsables para abordar este reto' })).toBeInTheDocument();
     expect(screen.getByTestId('pl06a-assignment-preparation')).toHaveAttribute('data-brief-version-id', 'version-a');
     expect(screen.getByRole('button', { name: /7 Asignación/i })).toBeEnabled();
     expect(screen.queryByRole('button', { name: /enviar|aceptar|rechazar|iniciar/i })).not.toBeInTheDocument();
@@ -844,5 +898,45 @@ describe('PortfolioBootstrapHome — frozen Copilot-first composition', () => {
     expect(screen.getByRole('heading', { name: 'Reducir fricción' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Preparar primer Brief' })).toBeEnabled();
     expect(screen.getByRole('button', { name: /6 Briefs/i })).toBeEnabled();
+  });
+
+  it('keeps an explicit Assignment deep link on stage seven when the materialized proposal hydrates', async () => {
+    const data = makeBootstrapWithProposedMutations();
+    const organizationProposal = {
+      id: 'proposal-deep-link', version: 1, status: 'materialized', sourceVersion: 'source-deep-link',
+      payload: {
+        summary: 'Organización confirmada.',
+        fronts: [{
+          candidateId: 'front-1', name: 'Activación sostenible', focus: 'Mejorar activación', rationale: 'Organiza el resultado.', coverage: '1 de 1',
+          challenges: [{ candidateId: 'challenge-1', title: 'Reducir fricción', problem: 'Existe fricción.', rationale: 'Permite decidir.', relatedInitiativeIds: [], evidence: [], gaps: [], overlaps: [] }],
+        }],
+        crossCuttingInitiativeIds: [], outsideObjectiveInitiativeIds: [], ungroupedInitiativeIds: [],
+      },
+      materialization: {
+        id: 'materialization-deep-link',
+        canonicalMappings: {
+          fronts: [{ candidateId: 'front-1', canonicalId: 'canonical-front-1' }],
+          challenges: [{ candidateId: 'challenge-1', canonicalId: 'canonical-challenge-1' }],
+        },
+      },
+    };
+    const brief = {
+      id: 'brief-deep-link', challengeId: 'canonical-challenge-1', organizationId: 'org-1',
+      versions: [{ id: 'version-deep-link', versionNumber: 1, status: 'CONFIRMED', intent: 'Validar el encargo', scope: 'Scope confirmado', strategicContextRefs: {}, inheritedContext: {}, constraintsSnapshot: [], knownGaps: [], sourceRefs: [], provenance: {}, createdAt: '2026-10-24T00:00:00.000Z', confirmedAt: '2026-10-24T00:01:00.000Z' }],
+    };
+    server.use(
+      http.get('/api/v1/portfolio/activation-briefs/brief-deep-link', () => HttpResponse.json({ success: true, data: brief })),
+      http.get('/api/v1/portfolio/challenges/canonical-challenge-1/handoff-assignments', () => HttpResponse.json({ success: true, data: [] })),
+      http.get('/api/v1/portfolio/challenges/canonical-challenge-1/assignable-initiatives', () => HttpResponse.json({ success: true, data: { canonicalInitiatives: [], importedRecords: [] } })),
+    );
+
+    render(<PortfolioBootstrapHome {...props({
+      data,
+      organizationProposal,
+      initialAssignmentTarget: { challengeId: 'canonical-challenge-1', challengeName: 'Reducir fricción', briefId: 'brief-deep-link', briefVersionId: 'version-deep-link' },
+    }) as any} />);
+
+    expect(await screen.findByTestId('pl06a-assignment-preparation')).toHaveAttribute('data-brief-version-id', 'version-deep-link');
+    expect(screen.getByText('Configurar con Copilot · 7 de 7')).toBeInTheDocument();
   });
 });

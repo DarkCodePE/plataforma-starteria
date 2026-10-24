@@ -29,6 +29,8 @@ export type PortfolioBootstrapDto = {
     status: string;
     bootstrapPhase: string;
     existingWorkStatus: string;
+    setupCompletedAt: string | null;
+    setupCompletedByActorId: string | null;
     createdAt: string;
     updatedAt: string;
   };
@@ -358,13 +360,24 @@ export class PortfolioBootstrapService {
     });
     if (!actor) throw AppError.unauthorized('No autorizado.', 'PORTFOLIO_BOOTSTRAP_AUTH_REQUIRED');
 
-    const row = await db.portfolioBootstrapSession.findFirst({
+    const scope = {
+      userId: input.authenticatedUserId,
+      organizationId: actor.organizationId,
+      status: { not: 'abandoned' },
+      organizationMaterializations: { some: {} },
+    };
+    const completed = await db.portfolioBootstrapSession.findFirst({
       where: {
-        userId: input.authenticatedUserId,
-        organizationId: actor.organizationId,
-        status: { not: 'abandoned' },
-        organizationMaterializations: { some: {} },
+        ...scope,
+        setupCompletedAt: { not: null },
       },
+      orderBy: { updatedAt: 'desc' },
+      include: this.sessionInclude(),
+    });
+    if (completed) return this.toDto(completed);
+
+    const row = await db.portfolioBootstrapSession.findFirst({
+      where: scope,
       orderBy: { updatedAt: 'desc' },
       include: this.sessionInclude(),
     });
@@ -1985,6 +1998,8 @@ export class PortfolioBootstrapService {
         status: row.status,
         bootstrapPhase: row.bootstrapPhase,
         existingWorkStatus: row.existingWorkStatus ?? 'unknown',
+        setupCompletedAt: row.setupCompletedAt?.toISOString() ?? null,
+        setupCompletedByActorId: row.setupCompletedByActorId ?? null,
         createdAt: row.createdAt.toISOString(),
         updatedAt: row.updatedAt.toISOString(),
       },

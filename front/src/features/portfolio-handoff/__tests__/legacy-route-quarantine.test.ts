@@ -50,8 +50,9 @@ describe('H-TECH-09 legacy route quarantine', () => {
     expect(read('front/src/features/portfolio-handoff/components/HandoffShell.tsx')).not.toContain('currentStep');
   });
 
-  it('preserves explicitly inventoried unrelated legacy consumers', () => {
-    expect(read('front/src/app/pages/PortfolioLeadChallengesPage.tsx')).toContain('buildLegacyChallengeProjectPath');
+  it('removes the migrated Portfolio Lead consumer and preserves the unrelated participant compatibility route', () => {
+    expect(read('front/src/app/pages/PortfolioLeadChallengesPage.tsx')).not.toContain('buildLegacyChallengeProjectPath');
+    expect(read('front/src/app/pages/PortfolioLeadChallengesPage.tsx')).toContain('Preparar Brief y Assignment');
     expect(read('front/src/app/pages/ParticipantChallengeDetailPage.tsx')).toContain('buildLegacyChallengeProjectPath');
   });
 });

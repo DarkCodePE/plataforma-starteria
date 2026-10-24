@@ -1,14 +1,24 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { PortfolioLeadHomePage } from '../PortfolioLeadHomePage';
 import { makeBootstrap } from '../../../features/portfolio-lead/bootstrap/testing/bootstrapFixtures';
 
 const createOrReuse = vi.fn();
+const createDirect = vi.fn();
+const getCurrent = vi.fn();
+const getHome = vi.fn();
+const openAdditional = vi.fn();
 
 vi.mock('../../../features/portfolio-lead/bootstrap/services/portfolioBootstrapClient', () => ({
   createOrReusePortfolioBootstrapSession: (...args: unknown[]) => createOrReuse(...args),
-  getPortfolioBootstrapSession: vi.fn(),
+  createOrReuseDirectPortfolioBootstrapSession: (...args: unknown[]) => createDirect(...args),
+  getCurrentPortfolioBootstrapSession: (...args: unknown[]) => getCurrent(...args),
+  getPortfolioBootstrapSession: vi.fn((sessionId: string) => createDirect(sessionId)),
+  getPortfolioOrganizationProposal: vi.fn().mockResolvedValue(null),
+  createOrReusePortfolioSetupBootstrapSession: vi.fn(),
+  completePortfolioSetup: vi.fn(),
+  openAdditionalPortfolioFrontSetup: (...args: unknown[]) => openAdditional(...args),
   updatePortfolioBootstrapAnchor: vi.fn(),
   confirmPortfolioBootstrapAnchor: vi.fn(),
   pastePortfolioBootstrapWorkItems: vi.fn(),
@@ -27,6 +37,11 @@ vi.mock('../../../features/portfolio-lead/bootstrap/services/portfolioBootstrapC
     apiError = { message: this.message };
   },
 }));
+
+vi.mock('../../services/portfolioService', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../services/portfolioService')>();
+  return { ...actual, getPortfolioHome: (...args: unknown[]) => getHome(...args) };
+});
 
 vi.mock('../../../features/portfolio-entry/home/usePortfolioHomeEntryContext', () => ({
   usePortfolioHomeEntryContext: () => ({
@@ -81,14 +96,21 @@ describe('PortfolioLeadHomePage Bootstrap integration', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     createOrReuse.mockResolvedValue(makeBootstrap('anchor_sufficient'));
+    createDirect.mockResolvedValue(makeBootstrap('anchor_sufficient'));
+    getCurrent.mockResolvedValue(null);
+    openAdditional.mockResolvedValue(makeBootstrap('anchor_insufficient'));
+    getHome.mockResolvedValue({
+      portfolioReading: { summary: null, strategicUnitCount: null, activeInitiativeCount: null, pendingActivationCount: null, blockerCount: null, pendingDecisionCount: null, coverageGapCount: null, evidenceGapCount: null, homeState: null, generatedAt: null, source: 'unavailable' },
+      governance: {}, strategicUnits: [], attention: [], pendingDecisions: [], recommendations: [], handoffAssignments: [], generatedAt: '2026-10-24T00:00:00.000Z', learnings: [], learningsUnavailable: false,
+    });
   });
 
-  it('uses continuation query to create or reuse BootstrapSession and render HOME_B', async () => {
+  it('uses continuation query to create or reuse the persisted seven-step Bootstrap', async () => {
     renderPage();
 
-    expect(await screen.findByTestId('portfolio-bootstrap-home-b')).toBeInTheDocument();
+    expect(await screen.findByTestId('portfolio-bootstrap-home-a')).toBeInTheDocument();
     expect(createOrReuse).toHaveBeenCalledWith('cont-1');
-    expect(screen.getByRole('button', { name: /Incorporar trabajo existente/i })).toBeInTheDocument();
+    expect(screen.getByText(/Configurar con Copilot/i)).toBeInTheDocument();
     expect(screen.getByTestId('portfolio-entry-arrival-panel')).toBeInTheDocument();
     expect(screen.getByText('Ordenar las iniciativas')).toBeInTheDocument();
   });
@@ -103,12 +125,33 @@ describe('PortfolioLeadHomePage Bootstrap integration', () => {
     expect(screen.queryByText(/Step 0/i)).not.toBeInTheDocument();
   });
 
-  it('preserves the operational Home when no continuation is present', () => {
+  it('shows Portfolio Overview after the contextual setup has been persistently completed', async () => {
+    const completed = makeBootstrap('anchor_sufficient');
+    completed.bootstrapSession.setupCompletedAt = '2026-10-24T08:00:00.000Z';
+    createDirect.mockResolvedValue(completed);
     renderPage('/portfolio/inicio');
 
+    expect(await screen.findByRole('heading', { name: /Qué necesita tu atención para mover el negocio/i })).toBeInTheDocument();
     expect(createOrReuse).not.toHaveBeenCalled();
-    expect(screen.getByRole('heading', { name: /Qué requiere atención hoy/i })).toBeInTheDocument();
-    expect(screen.getByText(/Resumen ejecutivo/i)).toBeInTheDocument();
-    expect(screen.getByText(/No hay alertas operativas criticas ahora/i)).toBeInTheDocument();
+    expect(getHome).toHaveBeenCalled();
+  });
+
+  it('reuses the same creation intent after an uncertain request failure', async () => {
+    const completed = makeBootstrap('anchor_sufficient');
+    completed.bootstrapSession.setupCompletedAt = '2026-10-24T08:00:00.000Z';
+    createDirect.mockResolvedValue(completed);
+    openAdditional
+      .mockRejectedValueOnce(new Error('network interrupted'))
+      .mockResolvedValueOnce(makeBootstrap('anchor_insufficient'));
+    renderPage('/portfolio/inicio');
+
+    const action = await screen.findByRole('button', { name: 'Crear nuevo frente estratégico' });
+    fireEvent.click(action);
+    await screen.findByText('network interrupted');
+    fireEvent.click(action);
+
+    await waitFor(() => expect(openAdditional).toHaveBeenCalledTimes(2));
+    expect(openAdditional.mock.calls[0][0]).toEqual(openAdditional.mock.calls[1][0]);
+    expect(openAdditional.mock.calls[0][0]).toMatch(/^portfolio-additional-front:/);
   });
 });

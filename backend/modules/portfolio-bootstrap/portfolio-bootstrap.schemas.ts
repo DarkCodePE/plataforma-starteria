@@ -10,6 +10,10 @@ export const bootstrapSessionParamsSchema = z.object({
   sessionId: z.string().min(1),
 });
 
+export const completePortfolioSetupBodySchema = z.object({
+  confirmed: z.literal(true),
+}).strict();
+
 export const updateAnchorBodySchema = z.object({
   outcomeStatement: z.string().min(1).optional(),
   contextSummary: z.string().min(1).nullable().optional(),

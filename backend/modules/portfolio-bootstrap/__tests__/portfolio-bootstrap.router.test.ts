@@ -35,6 +35,11 @@ const organizationService = {
   confirmAndMaterialize: vi.fn(),
 };
 
+const completionService = {
+  complete: vi.fn(),
+  openAdditionalFront: vi.fn(),
+};
+
 let currentUser: any;
 
 const fakeAuthenticate: RequestHandler = (req: any, _res, next) => {
@@ -49,6 +54,7 @@ function makeApp() {
     authenticate: fakeAuthenticate,
     service: service as any,
     organizationService: organizationService as any,
+    completionService: completionService as any,
   }));
   app.use(errorHandler);
   return app;
@@ -102,6 +108,34 @@ describe('portfolio-bootstrap router', () => {
       id: 'proposal-1', version: 1, status: 'materialized',
       materialization: { id: 'materialization-1' },
     });
+    completionService.complete.mockResolvedValue({ completed: true, summary: { sent: 2, unsent: 2, failed: 0 } });
+    completionService.openAdditionalFront.mockResolvedValue({ bootstrapSession: { id: 'bs-front-2' }, anchor: { id: 'anchor-front-2' } });
+  });
+
+  it('requires an explicit human confirmation to close the contextual setup', async () => {
+    await request(makeApp())
+      .post('/api/v1/portfolio-bootstrap/sessions/bs-1/complete-setup')
+      .set('Idempotency-Key', 'close-bs-1')
+      .send({ confirmed: true })
+      .expect(200);
+
+    expect(completionService.complete).toHaveBeenCalledWith(expect.objectContaining({
+      sessionId: 'bs-1', authenticatedUserId: 'portfolio-lead-1', confirmed: true,
+      idempotencyKey: 'close-bs-1',
+    }));
+  });
+
+  it('opens a separate setup context for another strategic front', async () => {
+    const response = await request(makeApp())
+      .post('/api/v1/portfolio-bootstrap/sessions/additional-front')
+      .set('Idempotency-Key', 'new-front-intent-1')
+      .send({})
+      .expect(200);
+
+    expect(response.body.data.bootstrapSession.id).toBe('bs-front-2');
+    expect(completionService.openAdditionalFront).toHaveBeenCalledWith(expect.objectContaining({
+      authenticatedUserId: 'portfolio-lead-1', idempotencyKey: 'new-front-intent-1',
+    }));
   });
 
   it('saves, reads, and explicitly confirms the reviewed organization proposal', async () => {

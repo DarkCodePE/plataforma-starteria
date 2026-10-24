@@ -53,6 +53,7 @@ export function PortfolioBootstrapHome({
   onNavigate,
   initialAssignmentTarget = null,
   onOpenAssignment,
+  onCompleteSetup,
 }: {
   data: PortfolioBootstrapResponse | null;
   status: 'idle' | 'loading' | 'ready' | 'error';
@@ -90,6 +91,7 @@ export function PortfolioBootstrapHome({
   onNavigate?: (path: string) => void;
   initialAssignmentTarget?: ChallengeAssignmentTarget | null;
   onOpenAssignment?: (target: ChallengeAssignmentTarget) => void;
+  onCompleteSetup?: () => Promise<void>;
 }) {
   const projection = useMemo(() => data ? projectBootstrapHome(data) : null, [data]);
 
@@ -124,13 +126,14 @@ export function PortfolioBootstrapHome({
     );
   }
 
-  if (projection.homeState === 'HOME_D' || projection.homeState === 'HOME_E') {
+  if (!initialAssignmentTarget && (projection.homeState === 'HOME_D' || projection.homeState === 'HOME_E')) {
     return <PortfolioFirstReading projection={projection} onNavigate={onNavigate} />;
   }
 
   return (
     <PortfolioCopilotWorkspace
       projection={projection}
+      bootstrapPhase={data.bootstrapSession.bootstrapPhase}
       onUpdateAnchor={onUpdateAnchor}
       onConfirmAnchor={onConfirmAnchor}
       onPasteWorkItems={onPasteWorkItems}
@@ -162,6 +165,7 @@ export function PortfolioBootstrapHome({
       onNavigate={onNavigate}
       initialAssignmentTarget={initialAssignmentTarget}
       onOpenAssignment={onOpenAssignment}
+      onCompleteSetup={onCompleteSetup}
     />
   );
 }
@@ -185,6 +189,7 @@ type BootstrapProjection = NonNullable<ReturnType<typeof projectBootstrapHome>>;
  */
 function PortfolioCopilotWorkspace({
   projection,
+  bootstrapPhase,
   onUpdateAnchor,
   onConfirmAnchor,
   onPasteWorkItems,
@@ -216,8 +221,10 @@ function PortfolioCopilotWorkspace({
   onNavigate,
   initialAssignmentTarget,
   onOpenAssignment,
+  onCompleteSetup,
 }: {
   projection: BootstrapProjection;
+  bootstrapPhase: PortfolioBootstrapResponse['bootstrapSession']['bootstrapPhase'];
   onUpdateAnchor: (input: UpdatePortfolioBootstrapAnchorInput) => Promise<void>;
   onConfirmAnchor: () => Promise<void>;
   onPasteWorkItems: (text: string) => Promise<void>;
@@ -249,6 +256,7 @@ function PortfolioCopilotWorkspace({
   onNavigate?: (path: string) => void;
   initialAssignmentTarget: ChallengeAssignmentTarget | null;
   onOpenAssignment?: (target: ChallengeAssignmentTarget) => void;
+  onCompleteSetup?: () => Promise<void>;
 }) {
   const [selectedStage, setSelectedStage] = useState<number | null>(initialAssignmentTarget ? 6 : null);
   const [assignmentTarget, setAssignmentTarget] = useState<ChallengeAssignmentTarget | null>(initialAssignmentTarget);
@@ -267,9 +275,17 @@ function PortfolioCopilotWorkspace({
   const inferredStage = frozenStageFrom(projection);
   const organizationIsMaterialized = Boolean(confirmedOrganization?.materialization ?? organizationProposal?.materialization);
   const hasAnalysisHardBlocker = projection.analysisSummary.hardBlockingNow > 0 && !organizationIsMaterialized;
-  const lastAvailableStage = hasAnalysisHardBlocker ? 3 : assignmentTarget ? 6 : 5;
-  const requestedStage = selectedStage ?? inferredStage;
-  const stage = hasAnalysisHardBlocker && requestedStage > 3 ? 3 : requestedStage;
+  const progressStage = assignmentTarget ? 6 : organizationIsMaterialized ? 5 : inferredStage;
+  const earlyScope = bootstrapPhase === 'B1_ANCHOR' || bootstrapPhase === 'B2_WORK_INTAKE';
+  const lastAvailableStage = hasAnalysisHardBlocker
+    ? 3
+    : earlyScope
+      ? progressStage
+      : assignmentTarget
+        ? 6
+        : 5;
+  const requestedStage = selectedStage ?? progressStage;
+  const stage = Math.min(requestedStage, lastAvailableStage);
   const selectStage = (nextStage: number) => {
     if (nextStage > lastAvailableStage) return;
     setSelectedStage(nextStage);
@@ -277,9 +293,9 @@ function PortfolioCopilotWorkspace({
   useEffect(() => {
     if (organizationProposal?.materialization) {
       setConfirmedOrganization(organizationProposal);
-      setSelectedStage(5);
+      setSelectedStage(initialAssignmentTarget ? 6 : 5);
     }
-  }, [organizationProposal?.materialization?.id]);
+  }, [initialAssignmentTarget, organizationProposal?.materialization?.id]);
   useEffect(() => {
     if (!initialAssignmentTarget) return;
     setAssignmentTarget(initialAssignmentTarget);
@@ -290,6 +306,11 @@ function PortfolioCopilotWorkspace({
     setSelectedStage(6);
     onOpenAssignment?.(target);
   }, [onOpenAssignment]);
+  const exitAssignment = useCallback(() => {
+    setAssignmentTarget(null);
+    setSelectedStage(5);
+    onNavigate?.('/portfolio/inicio');
+  }, [onNavigate]);
 
   const runtimePanel = (
     <PortfolioBootstrapWorkIntake
@@ -322,7 +343,7 @@ function PortfolioCopilotWorkspace({
   return (
     <section className="space-y-5" data-testid="portfolio-bootstrap-home-a" data-frozen-composition="copilot-first">
       <header className="rounded-2xl border border-slate-200 bg-white px-5 py-5 shadow-sm md:px-7">
-        <p className="text-xs font-bold uppercase tracking-[0.16em] text-violet-700">Configurar con Copilot · {stage + 1} de 7</p>
+        <p className="text-xs font-bold uppercase tracking-[0.16em] text-violet-700">Configurar con Copilot · {progressStage + 1} de 7</p>
         <h1 className="mt-2 text-2xl font-semibold tracking-tight text-slate-950">{frozenStageTitle(stage)}</h1>
         <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">Copilot construye contigo; las fuentes, inferencias y confirmaciones quedan diferenciadas. No necesitas completar formularios en paralelo.</p>
       </header>
@@ -343,10 +364,10 @@ function PortfolioCopilotWorkspace({
             {stage === 3 ? <FrozenChatStage eyebrow="Análisis explicable" title="¿Qué está contribuyendo, qué se solapa y qué requiere revisión?" help="Cada lectura conserva su fuente, evidencia, vacíos y estado de revisión humana.">{runtimePanel}</FrozenChatStage> : null}
             {stage === 4 ? <FrozenOrganizationStage projection={projection} proposal={organizationProposal} status={organizationStatus} error={organizationError} onSave={onSaveOrganizationProposal} onConfirm={onConfirmOrganizationProposal} onComplete={(confirmed) => { setConfirmedOrganization(confirmed); setSelectedStage(5); }} /> : null}
             {stage === 5 ? <FrozenBriefStage projection={projection} confirmedOrganization={confirmedOrganization} onBriefConfirmationChange={handleBriefConfirmationChange} onContinueToAssignment={openAssignment} /> : null}
-            {stage === 6 && assignmentTarget ? <FrozenAssignmentStage target={assignmentTarget} /> : null}
+            {stage === 6 && assignmentTarget ? <FrozenAssignmentStage target={assignmentTarget} onExit={exitAssignment} onCompleteSetup={onCompleteSetup} /> : null}
           </div>
         </main>
-        <FrozenProgress stage={stage} onSelect={selectStage} blockedAfterStage={lastAvailableStage} />
+        <FrozenProgress stage={stage} progressStage={progressStage} onSelect={selectStage} blockedAfterStage={lastAvailableStage} />
       </div>
     </section>
   );
@@ -356,7 +377,13 @@ function FrozenContextConversation({ anchor, onSave }: { anchor: PortfolioBootst
   const [answer, setAnswer] = useState('');
   const [saving, setSaving] = useState(false);
   const hasContext = Boolean(anchor.contextSummary?.trim());
+  const organizationReference = getOrganizationalContextReference(anchor.sourceRefs);
   return <>
+    {organizationReference?.contextSummary ? <section className="rounded-xl border border-slate-200 bg-slate-50 p-4" data-testid="organizational-context-reference">
+      <p className="text-xs font-bold uppercase tracking-[0.14em] text-slate-600">Contexto organizacional de referencia</p>
+      <p className="mt-2 text-sm leading-6 text-slate-800">{organizationReference.contextSummary}</p>
+      <p className="mt-2 text-xs leading-5 text-slate-600">Este contexto confirmado de la organización puede reutilizarse como punto de partida, pero aún no está confirmado para este frente.</p>
+    </section> : null}
     <AssistantBubble>Si ya acordaron trabajar el objetivo con <b>Portfolio Lead</b>, pega el prompt elaborado a partir del Decision Brief externo. <b>Ese diagnóstico no se repite aquí.</b> Lo usaremos como contexto inicial y podrás corregir cualquier interpretación.</AssistantBubble>
     {hasContext ? <UserBubble>{anchor.contextSummary}</UserBubble> : null}
     <FocusedQuestion eyebrow="Punto de partida" title="¿Qué quieres lograr con Startería?" help="Pega el texto de referencia. No necesitas conocer qué son frentes, retos o Steps." />
@@ -370,6 +397,14 @@ function FrozenContextConversation({ anchor, onSave }: { anchor: PortfolioBootst
       <p className="mt-3 text-xs text-slate-500">El contexto queda como fuente declarada y provisional; no es una decisión ni un diagnóstico revalidado.</p>
     </form>
   </>;
+}
+
+function getOrganizationalContextReference(sourceRefs: unknown): { contextSummary: string | null } | null {
+  if (!sourceRefs || typeof sourceRefs !== 'object' || Array.isArray(sourceRefs)) return null;
+  const candidate = (sourceRefs as Record<string, unknown>).organizationalContextReference;
+  if (!candidate || typeof candidate !== 'object' || Array.isArray(candidate)) return null;
+  const contextSummary = (candidate as Record<string, unknown>).contextSummary;
+  return { contextSummary: typeof contextSummary === 'string' && contextSummary.trim() ? contextSummary : null };
 }
 
 function FrozenObjectiveConversation({ projection, onSave, onConfirm }: { projection: BootstrapProjection; onSave: (input: UpdatePortfolioBootstrapAnchorInput) => Promise<void>; onConfirm: () => Promise<void> }) {
@@ -1526,13 +1561,13 @@ function FrozenBriefStage({
     </section>
   </>;
 }
-function FrozenAssignmentStage({ target }: { target: ChallengeAssignmentTarget }) { return <ChallengeAssignmentPreparationPanel target={target} />; }
+function FrozenAssignmentStage({ target, onExit, onCompleteSetup }: { target: ChallengeAssignmentTarget; onExit: () => void; onCompleteSetup?: () => Promise<void> }) { return <ChallengeAssignmentPreparationPanel target={target} onExitToPortfolio={onExit} onCompleteSetup={onCompleteSetup} />; }
 function AssistantBubble({ children }: { children: React.ReactNode }) { return <div className="flex items-start gap-3"><span className="mt-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-violet-100 text-violet-800"><Sparkles size={15} /></span><div className="max-w-3xl rounded-2xl rounded-tl-sm border border-violet-100 bg-white px-4 py-3 text-sm leading-6 text-slate-800">{children}</div></div>; }
 function UserBubble({ children }: { children: React.ReactNode }) { return <div className="ml-auto max-w-3xl rounded-2xl rounded-tr-sm bg-slate-900 px-4 py-3 text-sm leading-6 text-white">{children}</div>; }
 function FocusedQuestion({ eyebrow, title, help }: { eyebrow: string; title: string; help: string }) { return <section className="ml-0 rounded-xl border border-violet-200 bg-violet-50 p-4 md:ml-11"><p className="text-xs font-bold uppercase tracking-[0.14em] text-violet-800">{eyebrow}</p><h3 className="mt-1 text-lg font-semibold text-slate-950">{title}</h3><p className="mt-1 text-sm leading-6 text-slate-700">{help}</p></section>; }
-function FrozenProgress({ stage, onSelect, blockedAfterStage }: { stage: number; onSelect: (stage: number) => void; blockedAfterStage: number | null }) {
+function FrozenProgress({ stage, progressStage, onSelect, blockedAfterStage }: { stage: number; progressStage: number; onSelect: (stage: number) => void; blockedAfterStage: number | null }) {
   const notes = ['Prompt de diagnóstico externo recibido', 'Conversación: resultado, contexto, señal, condiciones y decisión', 'Subir archivos, pegar iniciativas o continuar sin ellas', 'Comparar fuentes, detectar solapamientos y confirmar o posponer vínculos', 'Organizar retos cuando ayuden a orientar y coordinar', 'Preparar Brief de convocatoria o de iniciativa existente', 'Preparar encargos independientes; un responsable y hasta dos colaboradores por encargo'];
-  return <aside className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm xl:sticky xl:top-6" aria-label="Tu avance"><div className="flex items-center justify-between"><h2 className="font-semibold text-slate-950">Tu avance</h2><span className="rounded-full bg-violet-100 px-2 py-1 text-xs font-bold text-violet-800">{stage + 1} de 7</span></div><div className="mt-3 h-2 overflow-hidden rounded-full bg-slate-100"><span className="block h-full rounded-full bg-violet-600" style={{ width: `${((stage + 1) / 7) * 100}%` }} /></div><ol className="mt-5 space-y-3">{FROZEN_SETUP_STAGES.map((name, index) => { const blocked = blockedAfterStage !== null && index > blockedAfterStage; const blockedReason = index === 6 && blockedAfterStage === 5 ? 'Disponible al continuar desde una versión de Brief confirmada' : 'Bloqueado hasta resolver el punto crítico del análisis'; return <li key={name}><button type="button" disabled={blocked} onClick={() => onSelect(index)} className={`flex w-full gap-3 text-left ${blocked ? 'cursor-not-allowed text-slate-400' : index === stage ? 'text-slate-950' : 'text-slate-500'}`}><span className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[11px] font-bold ${index < stage ? 'bg-emerald-100 text-emerald-700' : index === stage ? 'bg-violet-600 text-white' : 'bg-slate-100 text-slate-500'}`}>{index < stage ? '✓' : index + 1}</span><span><b className="text-sm">{name}</b><small className="mt-0.5 block text-xs leading-4">{blocked ? blockedReason : index === stage ? notes[index] : index < stage ? 'Revisado o completado' : 'Todavía no necesario'}</small></span></button></li>; })}</ol><div className="mt-5 rounded-xl bg-violet-50 p-3 text-sm text-violet-950"><b>Lo importante ahora</b><p className="mt-1">{notes[stage]}</p></div><p className="mt-3 text-xs leading-5 text-slate-500">Los checks representan avance de configuración, no cumplimiento del objetivo de negocio.</p></aside>;
+  return <aside className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm xl:sticky xl:top-6" aria-label="Tu avance"><div className="flex items-center justify-between"><h2 className="font-semibold text-slate-950">Tu avance</h2><span className="rounded-full bg-violet-100 px-2 py-1 text-xs font-bold text-violet-800">{progressStage + 1} de 7</span></div><div className="mt-3 h-2 overflow-hidden rounded-full bg-slate-100"><span className="block h-full rounded-full bg-violet-600" style={{ width: `${((progressStage + 1) / 7) * 100}%` }} /></div><ol className="mt-5 space-y-3">{FROZEN_SETUP_STAGES.map((name, index) => { const blocked = blockedAfterStage !== null && index > blockedAfterStage; const completed = index < progressStage; const blockedReason = index === 6 && blockedAfterStage === 5 ? 'Disponible al continuar desde una versión de Brief confirmada' : 'Disponible cuando el scope confirme las etapas anteriores'; return <li key={name}><button type="button" disabled={blocked} onClick={() => onSelect(index)} className={`flex w-full gap-3 text-left ${blocked ? 'cursor-not-allowed text-slate-400' : index === stage ? 'text-slate-950' : 'text-slate-500'}`}><span className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[11px] font-bold ${completed ? 'bg-emerald-100 text-emerald-700' : index === stage ? 'bg-violet-600 text-white' : 'bg-slate-100 text-slate-500'}`}>{completed ? '✓' : index + 1}</span><span><b className="text-sm">{name}</b><small className="mt-0.5 block text-xs leading-4">{blocked ? blockedReason : index === stage ? notes[index] : completed ? 'Revisado o completado' : 'Todavía no necesario'}</small></span></button></li>; })}</ol><div className="mt-5 rounded-xl bg-violet-50 p-3 text-sm text-violet-950"><b>Lo importante ahora</b><p className="mt-1">{notes[stage]}</p></div><p className="mt-3 text-xs leading-5 text-slate-500">Los checks representan avance de configuración, no cumplimiento del objetivo de negocio.</p></aside>;
 }
 function frozenStageFrom(projection: BootstrapProjection): number { if (!projection.anchor.contextSummary?.trim()) return 0; if (projection.anchor.status !== 'anchor_confirmed') return 1; if (projection.existingWorkStatus === 'unknown') return 2; if (projection.existingWorkStatus === 'has_work' && (!projection.latestAnalysisRun || !projection.analysisSummary.materialReviewComplete)) return 3; return 4; }
 function frozenStageTitle(stage: number): string { return ['Empecemos con el contexto', 'Conversemos para definir qué queremos lograr', '¿Qué está haciendo hoy tu organización?', 'Analizar evidencias y relaciones', 'Estructurar retos solo si ayudan', 'Convertir necesidades en encargos claros', 'Activar equipos y dar seguimiento'][stage] ?? 'Configurar con Copilot'; }

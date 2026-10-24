@@ -487,3 +487,60 @@ export async function listPortfolioLearnings(): Promise<PortfolioLearning[]> {
   if (data.data.learningsUnavailable) throw new Error('LEARNINGS_UNAVAILABLE');
   return data.data.learnings ?? [];
 }
+
+export interface PortfolioHomeReadModel {
+  availability?: { strategicUnits: 'available' | 'unavailable'; portfolioReading: 'available' | 'unavailable'; handoffAssignments: 'available' | 'unavailable'; learnings: 'available' | 'unavailable'; capacity: 'available' | 'unavailable' };
+  portfolioReading: {
+    summary: string | null;
+    strategicUnitCount: number | null;
+    activeInitiativeCount: number | null;
+    pendingActivationCount: number | null;
+    blockerCount: number | null;
+    pendingDecisionCount: number | null;
+    coverageGapCount: number | null;
+    evidenceGapCount: number | null;
+    homeState: string | null;
+    generatedAt: string | null;
+    source: 'portfolio_reading' | 'unavailable';
+  };
+  governance: Record<string, unknown>;
+  strategicUnits: Array<{
+    strategicFront: { id: string; name: string; status: string | null; priority: string | null };
+    desiredOutcome: string | null;
+    signal: string | null;
+    baseline: string | null;
+    target: string | null;
+    horizon: string | null;
+    metricObservations: Array<{ value: string; unit: string; observedAt: string; source: string }>;
+    metricSource: 'StrategicFront' | null;
+    challenges: Array<{
+      id: string;
+      title: string;
+      status: string | null;
+      owner: string | null;
+      initiatives: Array<{
+        initiativeId: string;
+        title: string | null;
+        activationVisibility: 'initiative_exists' | 'initiative_active' | 'unknown';
+        currentExecutionState: { projectStatus: string | null; step0Status: string | null; currentStep: number | null };
+        blockers: Array<{ summary: string; severity: string | null; source: string }>;
+      }>;
+    }>;
+    initiativeSummary: { total: number; activeExecution: number; pendingActivation: number };
+    attentionSummary: { total: number; blockers: number };
+    nextGovernanceAction: string | null;
+  }>;
+  attention: Array<{ type: string; summary: string; reason: string | null; severity: string | null; suggestedAction: string | null; entity: { type: string; id: string | null } }>;
+  pendingDecisions: Array<{ requestId: string; initiativeId: string; requestedDecision: string | null; status: string | null }>;
+  recommendations: Array<{ recommendation: string; reason: string | null; source: string; uncertainty: string | null; requiresHumanConfirmation: true }>;
+  handoffAssignments: Array<{ assignmentId: string; targetKind: string; challengeRef: string; initiativeRef: string | null; handoffState: string; deliveryStatus?: 'not_sent' | 'smtp_accepted' | 'failed'; latestDeliveryAttemptAt?: string | null; briefVersionId?: string | null; invitedEmail?: string | null; portfolioResponse?: string | null; rejectedAt?: string | null }>;
+  capacity: PortfolioCapacityReading | null;
+  generatedAt: string;
+  learnings: PortfolioLearning[];
+  learningsUnavailable: boolean;
+}
+
+export async function getPortfolioHome(): Promise<PortfolioHomeReadModel> {
+  const { data } = await api.get<ApiResponse<PortfolioHomeReadModel>>('/portfolio/home');
+  return data.data;
+}

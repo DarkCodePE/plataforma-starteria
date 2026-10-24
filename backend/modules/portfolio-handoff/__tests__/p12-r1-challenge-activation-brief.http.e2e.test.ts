@@ -69,6 +69,12 @@ suite('P12-R1 ADR-008 HTTP lifecycle', () => {
     };
     const created = await request(app).post(`/api/v1/portfolio/challenges/${ids.challenge}/handoff-assignments`).set(auth).set('Idempotency-Key', 'p12r1-pl06a-challenge-2').send(challengeBody).expect(201);
     await request(app).post(`/api/v1/portfolio/challenges/${ids.challenge}/handoff-assignments`).set(auth).set('Idempotency-Key', 'p12r1-pl06a-challenge-duplicate').send(challengeBody).expect(409);
+    const nextVersion = await request(app).post(`/api/v1/portfolio/activation-briefs/${brief.id}/versions`).set(auth).set('Idempotency-Key', 'p12r1-pl06a-next-version').send(completeBody('A later confirmed context')).expect(201);
+    await request(app).post(`/api/v1/portfolio/activation-brief-versions/${nextVersion.body.data.version.id}/confirm`).set(auth).set('Idempotency-Key', 'p12r1-pl06a-next-version-confirm').send({}).expect(200);
+    await request(app).post(`/api/v1/portfolio/challenges/${ids.challenge}/handoff-assignments`).set(auth).set('Idempotency-Key', 'p12r1-pl06a-cross-version-duplicate').send({
+      ...challengeBody,
+      briefVersionId: nextVersion.body.data.version.id,
+    }).expect(409);
 
     const assignmentId = created.body.data.assignment.id as string;
     const updateBody = { expectedVersion: 1, contextNote: 'Priorizar las dos primeras semanas.', invitedEmailNormalized: 'second-owner@starteria.test', members: challengeBody.members };
@@ -78,8 +84,19 @@ suite('P12-R1 ADR-008 HTTP lifecycle', () => {
     await request(app).patch(`/api/v1/portfolio/handoff-assignments/${assignmentId}/preparation`).set(auth).set('Idempotency-Key', 'p12r1-pl06a-stale-update').send(updateBody).expect(409);
 
     const existingBody = { targetKind: 'EXISTING_INITIATIVE', initiativeId: ids.initiative, briefId: null, briefVersionId: null, contextNote: 'Aplicar el aprendizaje al onboarding existente.', invitedEmailNormalized: 'p12r1-http-recipient@starteria.test', members: [{ identityKey: 'p12r1-http-recipient@starteria.test', emailNormalized: 'p12r1-http-recipient@starteria.test', role: 'OWNER' }] };
-    await request(app).post(`/api/v1/portfolio/challenges/${ids.challenge}/handoff-assignments`).set(auth).set('Idempotency-Key', 'p12r1-pl06a-existing').send(existingBody).expect(201).expect(({ body }) => expect(body.data.assignment).toMatchObject({ targetKind: 'EXISTING_INITIATIVE', initiativeId: ids.initiative, briefVersionId: null }));
+    const existing = await request(app).post(`/api/v1/portfolio/challenges/${ids.challenge}/handoff-assignments`).set(auth).set('Idempotency-Key', 'p12r1-pl06a-existing').send(existingBody).expect(201).expect(({ body }) => expect(body.data.assignment).toMatchObject({ targetKind: 'EXISTING_INITIATIVE', initiativeId: ids.initiative, briefVersionId: null }));
     await request(app).post(`/api/v1/portfolio/challenges/${ids.challenge}/handoff-assignments`).set(auth).set('Idempotency-Key', 'p12r1-pl06a-existing-duplicate').send({ ...existingBody, invitedEmailNormalized: 'another@starteria.test', members: [{ identityKey: 'another@starteria.test', emailNormalized: 'another@starteria.test', role: 'OWNER' }] }).expect(409);
+    await prisma.portfolioHandoffAssignment.update({ where: { id: existing.body.data.assignment.id }, data: { state: 'REJECTED', rejectedAt: new Date(), rejectedBy: ids.recipient, portfolioResponse: null } });
+    await request(app).post(`/api/v1/portfolio/challenges/${ids.challenge}/handoff-assignments`).set(auth).set('Idempotency-Key', 'p12r1-pl06a-existing-rejected-pending').send({ ...existingBody, invitedEmailNormalized: 'pending@starteria.test', members: [{ identityKey: 'pending@starteria.test', emailNormalized: 'pending@starteria.test', role: 'OWNER' }] }).expect(409);
+    await prisma.portfolioHandoffAssignment.update({
+      where: { id: existing.body.data.assignment.id },
+      data: {
+        portfolioResponse: 'Prepararemos un encargo alternativo.',
+        portfolioResponseRecordedAt: new Date(),
+        portfolioResponseRecordedBy: ids.lead,
+      },
+    });
+    await request(app).post(`/api/v1/portfolio/challenges/${ids.challenge}/handoff-assignments`).set(auth).set('Idempotency-Key', 'p12r1-pl06a-existing-after-response').send({ ...existingBody, invitedEmailNormalized: 'after-response@starteria.test', members: [{ identityKey: 'after-response@starteria.test', emailNormalized: 'after-response@starteria.test', role: 'OWNER' }] }).expect(201);
     await request(app).post(`/api/v1/portfolio/challenges/${ids.challenge}/handoff-assignments`).set(auth).set('Idempotency-Key', 'p12r1-pl06a-unlinked').send({ ...existingBody, initiativeId: ids.unlinkedInitiative }).expect(400);
 
     expect(await prisma.portfolioHandoffInvitation.count({ where: { assignment: { id: { in: [assignmentId] } } } })).toBe(0);

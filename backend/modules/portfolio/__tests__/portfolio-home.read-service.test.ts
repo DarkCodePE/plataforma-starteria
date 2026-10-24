@@ -22,6 +22,8 @@ function front(overrides: any = {}) {
     priority: 'Alta',
     strategicObjective: 'Move the business signal',
     mainKpi: 'Revenue',
+    baseline: '38 %',
+    target: '20 %',
     horizon: 'Q4',
     sponsor: 'Sponsor label',
     challenges: [],
@@ -85,6 +87,15 @@ describe('PortfolioHomeReadService', () => {
 
     expect(result.strategicUnits).toHaveLength(1);
     expect(result.strategicUnits[0].challenges[0].initiatives[0].initiativeId).toBe('project-1');
+    expect(result.strategicUnits[0]).toMatchObject({
+      desiredOutcome: 'Move the business signal',
+      signal: 'Revenue',
+      baseline: '38 %',
+      target: '20 %',
+      horizon: 'Q4',
+      metricObservations: [],
+      metricSource: 'StrategicFront',
+    });
     expect(result.portfolioReading).toMatchObject({
       summary: 'Portfolio summary',
       strategicUnitCount: 1,
@@ -185,6 +196,20 @@ describe('PortfolioHomeReadService', () => {
     });
   });
 
+  it('exposes the existing capacity reading without inventing hours or cost', async () => {
+    const result = await new PortfolioHomeReadService(makePrisma([
+      front({ challenges: [challenge({ initiativeMetas: [initiativeMeta(project(), { status: 'en_step_1' })] })] }),
+    ])).getHome('user-1');
+
+    expect(result.availability.capacity).toBe('available');
+    expect(result.capacity).toMatchObject({
+      unit: 'active_initiatives',
+      totalActiveInitiatives: 1,
+    });
+    expect(result.capacity).not.toHaveProperty('hours');
+    expect(result.capacity).not.toHaveProperty('cost');
+  });
+
   it('does not infer Decision Authority from Sponsor', async () => {
     const result = await new PortfolioHomeReadService(makePrisma([
       front({ sponsor: 'Sponsor label' }),
@@ -196,7 +221,7 @@ describe('PortfolioHomeReadService', () => {
     expect(result.governance.decisionAuthorities).toEqual([]);
   });
 
-  it('is read-only: it calls only the two read methods and no domain mutation', async () => {
+  it('is read-only: it composes read methods and performs no domain mutation', async () => {
     const prisma = makePrisma([]);
     const forbidden = ['create', 'update', 'delete', 'upsert', 'createMany', 'updateMany', 'deleteMany'];
     for (const model of ['project', 'teamMember', 'step', 'initiativeCycle', 'decision', 'challengeInvitation', 'initiativePortfolioMeta']) {
@@ -207,7 +232,7 @@ describe('PortfolioHomeReadService', () => {
 
     await new PortfolioHomeReadService(prisma).getHome('user-1');
 
-    expect(prisma.spies.strategicFrontFindMany).toHaveBeenCalledOnce();
+    expect(prisma.spies.strategicFrontFindMany).toHaveBeenCalledTimes(2);
     expect(prisma.spies.portfolioBootstrapSessionFindFirst).toHaveBeenCalledWith(expect.objectContaining({
       where: { userId: 'user-1' },
     }));
@@ -256,6 +281,22 @@ describe('PortfolioHomeReadService — aprendizajes con schema incompleto', () =
   });
 });
 
+describe('PortfolioHomeReadService — degradación parcial', () => {
+  it('mantiene disponible el Overview y señala localmente una proyección de frentes fallida', async () => {
+    const prisma = {
+      strategicFront: { findMany: vi.fn().mockRejectedValue(new Error('projection unavailable')) },
+      portfolioBootstrapSession: { findFirst: vi.fn().mockResolvedValue(null) },
+      portfolioHandoffProjection: { findMany: vi.fn().mockResolvedValue([]) },
+    };
+
+    const home = await new PortfolioHomeReadService(prisma as any).getHome('u1');
+
+    expect(home.strategicUnits).toEqual([]);
+    expect(home.availability.strategicUnits).toBe('unavailable');
+    expect(home.availability.handoffAssignments).toBe('available');
+  });
+});
+
 // Auditoría E2E F-02: las asignaciones de handoff se leían sin filtro de organización.
 describe('PortfolioHomeReadService — asignaciones de handoff por organización', () => {
   const projection = (assignmentId: string, organizationId: string | null) => ({
@@ -285,5 +326,29 @@ describe('PortfolioHomeReadService — asignaciones de handoff por organización
     const prisma = prismaWithProjections(rows);
     const home = await new PortfolioHomeReadService(prisma as any).getHome('u1', { all: true, organizationIds: [] });
     expect(JSON.stringify(home)).toContain('b-1');
+  });
+
+  it('no presenta una reserva idempotente en curso como fallo SMTP', async () => {
+    const row = {
+      ...projection('reserved', 'org-a'),
+      handoffState: 'CREATED',
+      assignment: {
+        briefVersionId: 'brief-v1',
+        invitedEmailNormalized: 'owner@example.test',
+        deliveryAttempts: [{
+          status: 'FAILED',
+          errorCategory: 'IDEMPOTENCY_RESERVED',
+          attemptedAt: new Date('2026-10-24T12:00:00Z'),
+        }],
+      },
+    };
+    const home = await new PortfolioHomeReadService(prismaWithProjections([row]) as any)
+      .getHome('u1', { all: false, organizationIds: ['org-a'] });
+
+    expect(home.handoffAssignments[0]).toMatchObject({
+      assignmentId: 'reserved',
+      handoffState: 'CREATED',
+      deliveryStatus: 'not_sent',
+    });
   });
 });

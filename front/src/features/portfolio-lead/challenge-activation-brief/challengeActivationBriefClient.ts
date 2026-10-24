@@ -13,7 +13,16 @@ export type HandoffAssignment = {
   id: string; state: string; version: number; targetKind: 'EXISTING_INITIATIVE' | 'CHALLENGE'; initiativeId: string | null;
   briefVersionId: string | null; contextNote: string | null; invitedEmailNormalized: string;
   initiative?: { id: string; name: string } | null;
-  members: HandoffAssignmentMember[]; createdAt?: string;
+  briefVersion?: ActivationBriefVersion | null;
+  deliveryAttempts?: Array<{ status: 'SUCCEEDED' | 'FAILED'; errorCategory: string | null; attemptedAt: string }>;
+  members: HandoffAssignmentMember[]; createdAt?: string; updatedAt?: string;
+  sentAt?: string | null; viewedAt?: string | null; acceptedAt?: string | null; rejectedAt?: string | null;
+  portfolioResponse?: string | null;
+};
+export type HandoffDeliveryBatch = {
+  id: string; status: 'PROCESSING' | 'COMPLETED' | 'PARTIAL' | 'FAILED'; retryOfBatchId: string | null;
+  results: Array<{ assignmentId: string; status: 'SUCCEEDED' | 'FAILED'; state: string; errorCategory: string | null }>;
+  succeededCount: number; failedCount: number;
 };
 export type ImportedInitiativeRecord = {
   id: string;
@@ -102,4 +111,8 @@ export async function updateChallengeHandoffAssignment(assignmentId: string, inp
     const { data } = await api.patch<Envelope<{ assignment: HandoffAssignment; idempotent: boolean }>>(`/portfolio/handoff-assignments/${encodeURIComponent(assignmentId)}/preparation`, input, { headers: { 'Idempotency-Key': idempotencyKey ?? createIdempotencyKey(`activation-brief:update-assignment:${assignmentId}:${input.expectedVersion}`) } });
     return data.data;
   } catch (error) { throw parseApiError(error); }
+}
+
+export async function sendHandoffInvitationBatch(challengeId: string, items: Array<{ assignmentId: string; expectedVersion: number }>, idempotencyKey: string, retryOfBatchId?: string): Promise<HandoffDeliveryBatch> {
+  return post('/portfolio/handoff-assignments/batch/invitations', { challengeId, items, retryOfBatchId: retryOfBatchId ?? null }, `handoff:send-batch:${challengeId}`, idempotencyKey);
 }

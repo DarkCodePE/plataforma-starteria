@@ -4,11 +4,13 @@ import { authenticate } from '../auth/auth.middleware';
 import { PortfolioBootstrapController } from './portfolio-bootstrap.controller';
 import { PortfolioBootstrapService } from './portfolio-bootstrap.service';
 import { PortfolioOrganizationService } from './portfolio-organization.service';
+import { PortfolioSetupCompletionService } from './portfolio-setup-completion.service';
 
 export interface PortfolioBootstrapRouterDeps {
   authenticate?: RequestHandler;
   service?: PortfolioBootstrapService;
   organizationService?: PortfolioOrganizationService;
+  completionService?: PortfolioSetupCompletionService;
 }
 
 export function buildPortfolioBootstrapRouter(deps: PortfolioBootstrapRouterDeps = {}): Router {
@@ -17,13 +19,16 @@ export function buildPortfolioBootstrapRouter(deps: PortfolioBootstrapRouterDeps
   const controller = new PortfolioBootstrapController(
     deps.service ?? new PortfolioBootstrapService(prisma),
     deps.organizationService ?? new PortfolioOrganizationService(prisma),
+    deps.completionService ?? new PortfolioSetupCompletionService(prisma),
   );
 
   router.post('/sessions/direct', auth, controller.createOrReuseDirect);
+  router.post('/sessions/additional-front', auth, controller.openAdditionalFront);
   router.get('/sessions/current', auth, controller.getCurrent);
   router.post('/sessions/from-continuation', auth, controller.createOrReuseFromContinuation);
   router.post('/sessions/from-portfolio-setup-continuity', auth, controller.createOrReuseFromPortfolioSetup);
   router.get('/sessions/:sessionId', auth, controller.getSession);
+  router.post('/sessions/:sessionId/complete-setup', auth, controller.completeSetup);
   router.patch('/sessions/:sessionId/anchor', auth, controller.updateAnchor);
   router.post('/sessions/:sessionId/anchor/confirm', auth, controller.confirmAnchor);
   router.post('/sessions/:sessionId/work-items/paste', auth, controller.pasteWorkItems);

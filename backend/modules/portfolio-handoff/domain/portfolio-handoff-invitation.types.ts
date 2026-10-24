@@ -12,6 +12,7 @@ export type HandoffInvitationAccess = {
 };
 
 export type HandoffDeliveryAttemptStatus = 'SUCCEEDED' | 'FAILED';
+export const HANDOFF_DELIVERY_RESERVATION = 'IDEMPOTENCY_RESERVED';
 export type HandoffDeliveryAttempt = {
   id: string;
   assignmentId: string;
@@ -21,6 +22,7 @@ export type HandoffDeliveryAttempt = {
   providerMessageRef: string | null;
   errorCategory: string | null;
   idempotencyKey: string;
+  requestFingerprint: string;
 };
 
 export type HandoffInvitationPreview = {
@@ -53,7 +55,41 @@ export interface HandoffInvitationAccessRepository {
 
 export interface HandoffDeliveryAttemptRepository {
   findByIdempotencyKey(input: { assignmentId: string; idempotencyKey: string }): Promise<HandoffDeliveryAttempt | null>;
-  create(input: Omit<HandoffDeliveryAttempt, 'id'>): Promise<HandoffDeliveryAttempt>;
+  reserve(input: Omit<HandoffDeliveryAttempt, 'id'>): Promise<{ attempt: HandoffDeliveryAttempt; reserved: boolean }>;
+  reclaimReservation(input: { attemptId: string; staleBefore: Date; attemptedAt: Date }): Promise<{ attempt: HandoffDeliveryAttempt; reclaimed: boolean }>;
+  complete(input: { attemptId: string; status: HandoffDeliveryAttemptStatus; providerMessageRef: string | null; errorCategory: string | null; attemptedAt: Date }): Promise<HandoffDeliveryAttempt>;
+}
+
+export type HandoffDeliveryBatchItemResult = {
+  assignmentId: string;
+  status: 'SUCCEEDED' | 'FAILED';
+  state: HandoffAssignment['state'];
+  errorCategory: string | null;
+  providerMessageRef: string | null;
+};
+
+export type HandoffDeliveryBatch = {
+  id: string;
+  organizationId: string;
+  challengeId: string;
+  actorId: string;
+  idempotencyKey: string;
+  requestFingerprint: string;
+  retryOfBatchId: string | null;
+  assignmentIds: string[];
+  status: 'PROCESSING' | 'COMPLETED' | 'PARTIAL' | 'FAILED';
+  results: HandoffDeliveryBatchItemResult[];
+  succeededCount: number;
+  failedCount: number;
+  createdAt: Date;
+  completedAt: Date | null;
+};
+
+export interface HandoffDeliveryBatchRepository {
+  findById(id: string): Promise<HandoffDeliveryBatch | null>;
+  findByIdempotencyKey(input: { organizationId: string; idempotencyKey: string }): Promise<HandoffDeliveryBatch | null>;
+  reserve(input: Omit<HandoffDeliveryBatch, 'id' | 'createdAt'>): Promise<{ batch: HandoffDeliveryBatch; reserved: boolean }>;
+  saveProgress(input: { batchId: string; results: HandoffDeliveryBatchItemResult[]; status: HandoffDeliveryBatch['status']; completedAt: Date | null }): Promise<HandoffDeliveryBatch>;
 }
 
 export type HandoffInvitationDependencies = {

@@ -187,10 +187,13 @@ challengeActivationBriefRouter.post('/challenges/:challengeId/handoff-assignment
         challengeId,
         organizationId,
         targetKind: body.targetKind,
-        state: { notIn: ['REJECTED', 'REVOKED', 'EXPIRED'] },
+        OR: [
+          { state: { in: ['CREATED', 'SENT', 'VIEWED', 'ACCEPTED', 'STARTED'] } },
+          { state: 'REJECTED', portfolioResponse: null },
+        ],
         ...(body.targetKind === 'EXISTING_INITIATIVE'
           ? { initiativeId: body.initiativeId }
-          : { briefVersionId: body.briefVersionId, invitedEmailNormalized: body.invitedEmailNormalized }),
+          : { invitedEmailNormalized: body.invitedEmailNormalized }),
       } });
       if (duplicate) throw AppError.conflict('Ya existe una Assignment activa con la misma identidad de destino', 'HANDOFF_ASSIGNMENT_DUPLICATE');
       const assignmentRepository = new PrismaPortfolioHandoffAssignmentRepository(tx);
@@ -225,8 +228,18 @@ challengeActivationBriefRouter.patch('/handoff-assignments/:assignmentId/prepara
       const locked = await tx.portfolioHandoffAssignment.findUnique({ where: { id: assignmentId } });
       if (!locked || locked.organizationId !== organizationId || locked.state !== 'CREATED' || locked.version !== body.expectedVersion) throw AppError.conflict('La Assignment cambió o ya no se puede editar', 'HANDOFF_ASSIGNMENT_NOT_EDITABLE');
       if (locked.targetKind === 'CHALLENGE') {
-        const duplicate = await tx.portfolioHandoffAssignment.findFirst({ where: { id: { not: assignmentId }, challengeId: locked.challengeId, targetKind: 'CHALLENGE', briefVersionId: locked.briefVersionId, invitedEmailNormalized: body.invitedEmailNormalized, state: { notIn: ['REJECTED', 'REVOKED', 'EXPIRED'] } } });
-        if (duplicate) throw AppError.conflict('Ya existe una Assignment activa para este destinatario y Brief', 'HANDOFF_ASSIGNMENT_DUPLICATE');
+        const duplicate = await tx.portfolioHandoffAssignment.findFirst({ where: {
+          id: { not: assignmentId },
+          challengeId: locked.challengeId,
+          organizationId,
+          targetKind: 'CHALLENGE',
+          invitedEmailNormalized: body.invitedEmailNormalized,
+          OR: [
+            { state: { in: ['CREATED', 'SENT', 'VIEWED', 'ACCEPTED', 'STARTED'] } },
+            { state: 'REJECTED', portfolioResponse: null },
+          ],
+        } });
+        if (duplicate) throw AppError.conflict('Ya existe una Assignment activa para este destinatario y reto', 'HANDOFF_ASSIGNMENT_DUPLICATE');
       }
       const assignmentRepository = new PrismaPortfolioHandoffAssignmentRepository(tx);
       const events = new DurableHandoffEventPort(new PrismaHandoffSemanticEventRepository(tx), new PortfolioHandoffProjector(new PrismaPortfolioHandoffProjectionRepository(tx)));
@@ -351,7 +364,7 @@ challengeActivationBriefRouter.get('/challenges/:challengeId/handoff-assignments
     const organizationId = await ownChallenge(req, req.params.challengeId);
     const assignments = await (prisma as any).portfolioHandoffAssignment.findMany({
       where: { challengeId: req.params.challengeId, organizationId },
-      include: { members: true, briefVersion: true, initiative: { select: { id: true, name: true } } },
+      include: { members: true, briefVersion: true, initiative: { select: { id: true, name: true } }, deliveryAttempts: { orderBy: { attemptedAt: 'desc' }, take: 1 } },
       orderBy: { createdAt: 'desc' },
     });
     res.json({ success: true, data: assignments });

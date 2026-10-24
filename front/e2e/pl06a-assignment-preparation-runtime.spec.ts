@@ -96,10 +96,10 @@ test.describe('P12-R1 PL-06A Assignment preparation runtime', () => {
     await page.goto(`/portfolio/inicio?${query.toString()}`);
     const preparation = page.getByTestId('pl06a-assignment-preparation');
     await expect(preparation).toHaveAttribute('data-brief-version-id', exact.briefVersionId, { timeout: 20_000 });
-    await expect(preparation.getByRole('heading', { name: 'Prepara las asignaciones de este reto' })).toBeVisible();
-    await expect(preparation.getByText(/una persona responsable por encargo y hasta dos colaboradores/i)).toBeVisible();
-    await expect(preparation.getByText('1 iniciativa asignable sin encargo')).toBeVisible();
-    await expect(preparation.getByRole('button', { name: 'Agregar asignación' })).toBeVisible();
+    await expect(preparation.getByRole('heading', { name: 'Asigna responsables para abordar este reto' })).toBeVisible();
+    await expect(preparation.getByText(/puedes asignar a alguien el reto.*o asignarle una iniciativa existente/i)).toBeVisible();
+    await expect(preparation.getByRole('status')).toHaveText(/Quedan 1 iniciativas disponibles para asignar/i);
+    await expect(preparation.getByRole('button', { name: '+ Asignar responsable' })).toBeVisible();
     await expect(preparation.getByText('Onboarding B2B asistido')).toHaveCount(0);
     await expect(preparation.getByRole('button', { name: /Revisar y asignar/i })).toHaveCount(0);
     await expect(preparation.getByRole('button', { name: /Vincular a una iniciativa/i })).toHaveCount(0);
@@ -110,7 +110,7 @@ test.describe('P12-R1 PL-06A Assignment preparation runtime', () => {
     await preparation.scrollIntoViewIfNeeded();
     await page.screenshot({ path: resolve(evidenceDir, 'pl06a-initiative-first-desktop.png'), fullPage: true });
     await page.setViewportSize({ width: 390, height: 844 });
-    await preparation.getByRole('heading', { name: 'Prepara las asignaciones de este reto' }).scrollIntoViewIfNeeded();
+    await preparation.getByRole('heading', { name: 'Asigna responsables para abordar este reto' }).scrollIntoViewIfNeeded();
     await page.screenshot({ path: resolve(evidenceDir, 'pl06a-initiative-first-390.png'), fullPage: true });
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
     for (const viewport of [{ width: 768, height: 900 }, { width: 360, height: 800 }]) {
@@ -119,16 +119,8 @@ test.describe('P12-R1 PL-06A Assignment preparation runtime', () => {
       await page.screenshot({ path: resolve(evidenceDir, `pl06a-initiative-first-${viewport.width}.png`), fullPage: true });
     }
 
-    const documentarySummary = preparation.getByText('Información sobre iniciativas documentales');
-    await expect(documentarySummary.locator('xpath=..')).not.toHaveAttribute('open', '');
-    await documentarySummary.click();
-    await expect(preparation.getByText(/5 iniciativas relacionadas identificadas en documentos, por incorporar/i)).toBeVisible();
-    await expect(preparation.getByText(/3 registros adicionales.*no se cuentan como relacionados ni asignables/i)).toBeVisible();
-    await expect(preparation.getByText(/solo serán asignables cuando exista un Project y una InitiativePortfolioMeta válidos/i)).toBeVisible();
-    await documentarySummary.scrollIntoViewIfNeeded();
-    await page.screenshot({ path: resolve(evidenceDir, 'pl06a-documentary-note-360.png'), fullPage: true });
+    await expect(preparation.getByText('Información sobre iniciativas documentales')).toHaveCount(0);
     await page.setViewportSize({ width: 1440, height: 900 });
-    await page.screenshot({ path: resolve(evidenceDir, 'pl06a-documentary-note-desktop.png'), fullPage: true });
     expect(await prisma.portfolioHandoffAssignment.count({ where: { organizationId: lead.organizationId } })).toBe(before.assignments);
     expect(await prisma.project.count()).toBe(before.initiatives);
     expect(await prisma.step.count()).toBe(before.steps);
@@ -139,15 +131,12 @@ test.describe('P12-R1 PL-06A Assignment preparation runtime', () => {
     expect(await prisma.portfolioHandoffAssignment.count({ where: { organizationId: lead.organizationId } })).toBe(before.assignments);
 
     await page.setViewportSize({ width: 1440, height: 900 });
-    await preparation.getByRole('button', { name: 'Agregar asignación' }).click();
-    await preparation.getByRole('button', { name: 'Continuar una iniciativa existente' }).click();
+    await preparation.getByRole('button', { name: '+ Asignar responsable' }).click();
+    await preparation.getByRole('checkbox', { name: 'Asignarle una iniciativa existente' }).check();
     await preparation.getByLabel('Iniciativa a continuar').selectOption(initiativeId);
     await expect(preparation.getByRole('heading', { name: 'Asigna responsable y equipo' })).toBeVisible();
     await expect(preparation.getByLabel('Iniciativa a continuar')).toHaveValue(initiativeId);
     await expect(preparation.getByLabel('Persona responsable')).toHaveValue(lead.email);
-    await expect(preparation.getByLabel('Adjuntar también este Brief confirmado')).not.toBeChecked();
-    await preparation.getByLabel('Adjuntar también este Brief confirmado').check();
-    await expect(preparation.getByRole('button', { name: 'Agregar otra asignación' })).toBeDisabled();
     await preparation.getByLabel('Colaborador 1').fill('collaborator.one@starteria.test');
     await preparation.getByLabel('Colaborador 2').fill('collaborator.two@starteria.test');
     await preparation.getByLabel('Contexto específico del encargo').fill('Contrastar primero el abandono observado en onboarding.');
@@ -160,26 +149,26 @@ test.describe('P12-R1 PL-06A Assignment preparation runtime', () => {
     await page.screenshot({ path: resolve(evidenceDir, 'pl06a-canonical-review-desktop.png'), fullPage: true });
     await preparation.getByRole('button', { name: 'Guardar asignación' }).click();
     await expect(preparation.getByRole('heading', { name: 'Asignaciones preparadas' })).toBeVisible();
-    await expect(preparation.getByText('Preparada, aún no enviada')).toBeVisible();
-    await expect(preparation.getByText('0 iniciativas asignables sin encargo')).toBeVisible();
+    await expect(preparation.getByText('Pendiente de envío', { exact: true })).toBeVisible();
+    await expect(preparation.getByRole('status')).toHaveText(/Quedan 0 iniciativas disponibles para asignar/i);
     const assignment = await prisma.portfolioHandoffAssignment.findFirstOrThrow({ where: { organizationId: lead.organizationId, initiativeId }, include: { members: true } });
     expect(assignment.state).toBe('CREATED');
     expect(assignment.challengeId).toBe(challengeId);
     expect(assignment.initiativeId).toBe(initiativeId);
-    expect(assignment.briefVersionId).toBe(exact.briefVersionId);
+    expect(assignment.briefVersionId).toBeNull();
     expect(assignment.members.filter((member) => member.role === 'OWNER')).toHaveLength(1);
     expect(assignment.members.filter((member) => member.role === 'EXECUTOR')).toHaveLength(2);
     expect(await prisma.portfolioHandoffInvitation.count()).toBe(before.invitations);
     expect(await prisma.project.count()).toBe(before.initiatives);
     expect(await prisma.step.count()).toBe(before.steps);
 
-    await preparation.getByRole('button', { name: 'Agregar otra asignación' }).click();
+    await preparation.getByRole('button', { name: '+ Asignar responsable' }).click();
     await preparation.getByLabel('Persona responsable').fill('second.owner@starteria.test');
     await preparation.getByRole('button', { name: 'Revisar asignación' }).click();
     await preparation.getByRole('button', { name: 'Guardar asignación' }).click();
     await expect(preparation.getByRole('button', { name: 'Editar asignación para second.owner@starteria.test' })).toBeVisible();
-    await expect(preparation.getByText('0 iniciativas asignables sin encargo')).toBeVisible();
-    expect(await prisma.portfolioHandoffAssignment.count({ where: { organizationId: lead.organizationId, briefVersionId: exact.briefVersionId } })).toBe(2);
+    await expect(preparation.getByRole('status')).toHaveText(/Quedan 0 iniciativas disponibles para asignar/i);
+    expect(await prisma.portfolioHandoffAssignment.count({ where: { organizationId: lead.organizationId, briefVersionId: exact.briefVersionId } })).toBe(1);
     expect(await prisma.portfolioHandoffAssignment.count({ where: { organizationId: lead.organizationId, initiativeId } })).toBe(1);
     const assignmentIdsBeforeReentry = (await prisma.portfolioHandoffAssignment.findMany({ where: { organizationId: lead.organizationId }, orderBy: { id: 'asc' }, select: { id: true } })).map((item) => item.id);
 
@@ -193,7 +182,7 @@ test.describe('P12-R1 PL-06A Assignment preparation runtime', () => {
     await page.reload();
     await expect(page.getByTestId('pl06a-assignment-preparation')).toContainText(lead.email, { timeout: 20_000 });
     await expect(page.getByTestId('pl06a-assignment-preparation')).toContainText('second.owner@starteria.test');
-    expect(await prisma.portfolioHandoffAssignment.count({ where: { organizationId: lead.organizationId, briefVersionId: exact.briefVersionId } })).toBe(2);
+    expect(await prisma.portfolioHandoffAssignment.count({ where: { organizationId: lead.organizationId, briefVersionId: exact.briefVersionId } })).toBe(1);
     expect(await prisma.portfolioHandoffAssignment.count({ where: { organizationId: lead.organizationId, initiativeId } })).toBe(1);
     const assignmentIdsAfterReentry = (await prisma.portfolioHandoffAssignment.findMany({ where: { organizationId: lead.organizationId }, orderBy: { id: 'asc' }, select: { id: true } })).map((item) => item.id);
     expect(assignmentIdsAfterReentry).toEqual(assignmentIdsBeforeReentry);

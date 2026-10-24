@@ -130,6 +130,25 @@ describe('usePortfolioBootstrap', () => {
     expect(createDirect).not.toHaveBeenCalled();
   });
 
+  it('creates the first direct workspace only when resume finds no materialized context', async () => {
+    getCurrent.mockResolvedValueOnce(null);
+    const hook = renderHook(() => usePortfolioBootstrap(null, 'legacy', 'resume'));
+
+    await waitFor(() => expect(hook.result.current.status).toBe('ready'));
+    expect(getCurrent).toHaveBeenCalledOnce();
+    expect(createDirect).toHaveBeenCalledOnce();
+    expect(hook.result.current.data?.anchor?.status).toBe('anchor_insufficient');
+  });
+
+  it('loads the exact contextual session selected for an additional front', async () => {
+    const hook = renderHook(() => usePortfolioBootstrap('second-front-session', 'legacy', 'session'));
+
+    await waitFor(() => expect(hook.result.current.status).toBe('ready'));
+    expect(getSession).toHaveBeenCalledWith('second-front-session');
+    expect(createDirect).not.toHaveBeenCalled();
+    expect(getCurrent).not.toHaveBeenCalled();
+  });
+
   it('114F uses only the dedicated create/reuse path and revalidates on retry', async () => {
     const hook = renderHook(() => usePortfolioBootstrap('snapshot-114f', '114F'));
     await waitFor(() => expect(hook.result.current.status).toBe('ready'));

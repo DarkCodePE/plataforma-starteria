@@ -7,7 +7,9 @@
  * composition for the Home read path.
  */
 import { logger } from '../../shared/utils/logger';
+import { HANDOFF_DELIVERY_RESERVATION } from '../portfolio-handoff/domain/portfolio-handoff-invitation.types';
 import { frontScopeWhere, type PortfolioScope } from './portfolio-scope';
+import { PortfolioCapacityReadService, type PortfolioCapacityReading } from './portfolio-capacity.read-service';
 
 export type PortfolioHomePersonView = {
   id?: string | null;
@@ -81,7 +83,16 @@ export type StrategicUnitView = {
   };
   desiredOutcome: string | null;
   signal: string | null;
+  baseline: string | null;
+  target: string | null;
   horizon: string | null;
+  metricObservations: Array<{
+    value: string;
+    unit: string;
+    observedAt: string;
+    source: string;
+  }>;
+  metricSource: 'StrategicFront' | null;
   challenges: Array<{
     id: string;
     title: string;
@@ -142,6 +153,13 @@ export type PortfolioLearningView = {
 };
 
 export type PortfolioHomeReadModel = {
+  availability: {
+    strategicUnits: 'available' | 'unavailable';
+    portfolioReading: 'available' | 'unavailable';
+    handoffAssignments: 'available' | 'unavailable';
+    learnings: 'available' | 'unavailable';
+    capacity: 'available' | 'unavailable';
+  };
   portfolioReading: PortfolioReadingView;
   governance: {
     portfolioLead: PortfolioHomePersonView | null;
@@ -170,6 +188,10 @@ export type PortfolioHomeReadModel = {
     executionTeam: unknown[];
     observers: unknown[];
     handoffState: string;
+    deliveryStatus: 'not_sent' | 'smtp_accepted' | 'failed';
+    latestDeliveryAttemptAt: string | null;
+    briefVersionId: string | null;
+    invitedEmail: string | null;
     acceptedAt: string | null;
     rejectedAt: string | null;
     rejectionReason: string | null;
@@ -181,6 +203,7 @@ export type PortfolioHomeReadModel = {
     projectionVersion: number;
     generatedAt: string;
   }>;
+  capacity: PortfolioCapacityReading | null;
   generatedAt: string;
   /** E2E Job-Driven §23: lo que el portfolio aprendió de las últimas decisiones. */
   learnings: PortfolioLearningView[];
@@ -217,15 +240,23 @@ const READ_INCLUDE = {
 };
 
 export class PortfolioHomeReadService {
-  constructor(private readonly prisma: PrismaLike) {}
+  private readonly capacityReadService: PortfolioCapacityReadService;
+
+  constructor(private readonly prisma: PrismaLike) {
+    this.capacityReadService = new PortfolioCapacityReadService(prisma as any);
+  }
 
   async getHome(userId: string, scope: PortfolioScope = { all: true, organizationIds: [] }): Promise<PortfolioHomeReadModel> {
-    const [fronts, reading, handoffAssignments, learnings] = await Promise.all([
-      this.prisma.strategicFront.findMany({ where: frontScopeWhere(scope), include: READ_INCLUDE, orderBy: { updatedAt: 'desc' } }),
-      this.loadLatestReading(userId),
-      this.loadHandoffAssignments(scope),
+    const [frontResult, readingResult, handoffResult, learnings, capacityResult] = await Promise.all([
+      this.safeRead('strategic_units', () => this.prisma.strategicFront.findMany({ where: frontScopeWhere(scope), include: READ_INCLUDE, orderBy: { updatedAt: 'desc' } }), []),
+      this.safeRead('portfolio_reading', () => this.loadLatestReading(userId), null),
+      this.safeRead('handoff_assignments', () => this.loadHandoffAssignments(scope), []),
       this.loadLearnings(scope),
+      this.safeRead('capacity', () => this.capacityReadService.get(scope), null),
     ]);
+    const fronts = frontResult.value;
+    const reading = readingResult.value;
+    const handoffAssignments = handoffResult.value;
 
     const strategicUnits = (fronts ?? []).map((front) => this.mapStrategicUnit(front));
     const initiatives = strategicUnits.flatMap((unit) => unit.challenges.flatMap((challenge) => challenge.initiatives));
@@ -241,6 +272,13 @@ export class PortfolioHomeReadService {
 
     const generatedAt = new Date().toISOString();
     return {
+      availability: {
+        strategicUnits: frontResult.unavailable ? 'unavailable' : 'available',
+        portfolioReading: readingResult.unavailable ? 'unavailable' : 'available',
+        handoffAssignments: handoffResult.unavailable ? 'unavailable' : 'available',
+        learnings: learnings.unavailable ? 'unavailable' : 'available',
+        capacity: capacityResult.unavailable ? 'unavailable' : 'available',
+      },
       portfolioReading: this.mapReading(reading, strategicUnits, initiatives, attention, pendingDecisions),
       governance: this.mapGovernance(fronts, initiatives, pendingDecisions),
       strategicUnits,
@@ -248,10 +286,20 @@ export class PortfolioHomeReadService {
       pendingDecisions,
       recommendations: this.mapRecommendations(reading, strategicUnits),
       handoffAssignments,
+      capacity: capacityResult.value,
       learnings: learnings.items,
       learningsUnavailable: learnings.unavailable,
       generatedAt,
     };
+  }
+
+  private async safeRead<T>(segment: string, read: () => Promise<T>, fallback: T): Promise<{ value: T; unavailable: boolean }> {
+    try {
+      return { value: await read(), unavailable: false };
+    } catch (err) {
+      logger.warn({ err, segment }, '[portfolio-home] segmento no disponible');
+      return { value: fallback, unavailable: true };
+    }
   }
 
   private async loadLearnings(scope: PortfolioScope): Promise<{ items: PortfolioLearningView[]; unavailable: boolean }> {
@@ -291,13 +339,16 @@ export class PortfolioHomeReadService {
 
   // F-02: sólo las asignaciones de las organizaciones del alcance. Una proyección sin organización
   // no se publica fuera del admin: no hay cómo saber de quién es.
-  private async loadHandoffAssignments(scope: PortfolioScope) {
+  private async loadHandoffAssignments(scope: PortfolioScope): Promise<PortfolioHomeReadModel['handoffAssignments']> {
     if (!this.prisma.portfolioHandoffProjection?.findMany) return [];
     const rows = await this.prisma.portfolioHandoffProjection.findMany({
       where: scope.all ? undefined : { organizationId: { in: scope.organizationIds } },
       orderBy: { generatedAt: 'desc' },
+      include: { assignment: { include: { deliveryAttempts: { orderBy: { attemptedAt: 'desc' }, take: 1 } } } },
     });
-    return (rows ?? []).map((row: any) => ({
+    return (rows ?? []).map((row: any) => {
+      const latestAttempt = row.assignment?.deliveryAttempts?.[0] ?? null;
+      return ({
       assignmentId: row.assignmentId,
       targetKind: row.targetKind,
       challengeRef: row.challengeRef,
@@ -306,6 +357,12 @@ export class PortfolioHomeReadService {
       executionTeam: Array.isArray(row.executionTeam) ? row.executionTeam : [],
       observers: Array.isArray(row.observers) ? row.observers : [],
       handoffState: row.handoffState,
+      deliveryStatus: latestAttempt?.status === 'FAILED' && latestAttempt.errorCategory !== HANDOFF_DELIVERY_RESERVATION
+        ? 'failed'
+        : latestAttempt?.status === 'SUCCEEDED' ? 'smtp_accepted' : 'not_sent',
+      latestDeliveryAttemptAt: toIso(latestAttempt?.attemptedAt),
+      briefVersionId: row.assignment?.briefVersionId ?? null,
+      invitedEmail: row.assignment?.invitedEmailNormalized ?? null,
       acceptedAt: toIso(row.acceptedAt),
       rejectedAt: toIso(row.rejectedAt),
       rejectionReason: row.rejectionReason ?? null,
@@ -316,7 +373,8 @@ export class PortfolioHomeReadService {
       sourceEventRefs: Array.isArray(row.sourceEventRefs) ? row.sourceEventRefs : [],
       projectionVersion: row.projectionVersion,
       generatedAt: toIso(row.generatedAt) ?? new Date().toISOString(),
-    }));
+      });
+    });
   }
 
   private async loadLatestReading(userId: string): Promise<any | null> {
@@ -361,7 +419,11 @@ export class PortfolioHomeReadService {
       },
       desiredOutcome: front.strategicObjective ?? null,
       signal: front.mainKpi ?? null,
+      baseline: front.baseline ?? null,
+      target: front.target ?? null,
       horizon: front.horizon ?? null,
+      metricObservations: [],
+      metricSource: front.mainKpi || front.baseline || front.target || front.horizon ? 'StrategicFront' : null,
       challenges: challenges.map(({ _activeExecution, _pendingActivation, ...challenge }: any) => challenge),
       initiativeSummary: {
         total: allInitiatives.length,

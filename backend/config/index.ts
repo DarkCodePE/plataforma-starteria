@@ -88,7 +88,9 @@ export const config = {
     pass: process.env.SMTP_PASS || '',
     from: process.env.PILOT_LEAD_NOTIFY_FROM || '',
   },
-  handoffInvitationBaseUrl: process.env.HANDOFF_INVITATION_BASE_URL || process.env.CORS_ORIGIN || 'http://localhost:5173',
+  // Handoff reuses the already-deployed SMTP sender and public frontend origin.
+  // Separate variables would require a new deployment contract and secrets wiring.
+  handoffInvitationBaseUrl: process.env.CORS_ORIGIN || 'http://localhost:5173',
   // Comma-separated recipient(s) notified when a new pilot lead is captured.
   pilotLeadNotifyTo: (process.env.PILOT_LEAD_NOTIFY_TO || '')
     .split(',')

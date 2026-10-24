@@ -2,9 +2,11 @@ import type { NextFunction, Request, Response } from 'express';
 import { AppError } from '../../shared/errors/AppError';
 import type { PortfolioBootstrapService } from './portfolio-bootstrap.service';
 import type { PortfolioOrganizationService } from './portfolio-organization.service';
+import type { PortfolioSetupCompletionService } from './portfolio-setup-completion.service';
 import {
   analyzeBodySchema,
   bootstrapSessionParamsSchema,
+  completePortfolioSetupBodySchema,
   confirmPortfolioOrganizationBodySchema,
   correctProposedMutationBodySchema,
   fromContinuationBodySchema,
@@ -27,7 +29,36 @@ export class PortfolioBootstrapController {
   constructor(
     private readonly service: PortfolioBootstrapService,
     private readonly organizationService: PortfolioOrganizationService,
+    private readonly completionService: PortfolioSetupCompletionService,
   ) {}
+
+  completeSetup = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      if (!req.user?.id) throw AppError.unauthorized('No autorizado.', 'PORTFOLIO_SETUP_AUTH_REQUIRED');
+      const { sessionId } = bootstrapSessionParamsSchema.parse(req.params);
+      const { confirmed } = completePortfolioSetupBodySchema.parse(req.body);
+      const data = await this.completionService.complete({
+        sessionId,
+        authenticatedUserId: req.user.id,
+        permissions: req.user.permissions,
+        confirmed,
+        idempotencyKey: req.get('Idempotency-Key') ?? '',
+      });
+      res.json({ success: true, data });
+    } catch (error) { next(error); }
+  };
+
+  openAdditionalFront = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      if (!req.user?.id) throw AppError.unauthorized('No autorizado.', 'PORTFOLIO_SETUP_AUTH_REQUIRED');
+      const data = await this.completionService.openAdditionalFront({
+        authenticatedUserId: req.user.id,
+        permissions: req.user.permissions,
+        idempotencyKey: req.get('Idempotency-Key') ?? '',
+      });
+      res.json({ success: true, data });
+    } catch (error) { next(error); }
+  };
 
   getOrganizationProposal = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {

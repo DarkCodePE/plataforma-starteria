@@ -52,6 +52,8 @@ export type PortfolioBootstrapSession = {
     | 'B4_MATERIAL_REVIEW'
     | 'B5_FIRST_READING';
   existingWorkStatus: PortfolioBootstrapExistingWorkStatus;
+  setupCompletedAt?: string | null;
+  setupCompletedByActorId?: string | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -397,6 +399,32 @@ export async function getCurrentPortfolioBootstrapSession(): Promise<PortfolioBo
   try {
     const { data } = await api.get<ApiResponse<PortfolioBootstrapResponse | null>>(
       '/portfolio-bootstrap/sessions/current',
+    );
+    return data.data;
+  } catch (err) {
+    throw new PortfolioBootstrapClientError(parseApiError(err));
+  }
+}
+
+export async function completePortfolioSetup(sessionId: string): Promise<{ completed: true; completedAt: string; summary: { sent: number; unsent: number; failed: number } }> {
+  try {
+    const { data } = await api.post<ApiResponse<{ completed: true; completedAt: string; summary: { sent: number; unsent: number; failed: number } }>>(
+      `/portfolio-bootstrap/sessions/${encodeURIComponent(sessionId)}/complete-setup`,
+      { confirmed: true },
+      { headers: { 'Idempotency-Key': `portfolio-setup-complete:${sessionId}` } },
+    );
+    return data.data;
+  } catch (err) {
+    throw new PortfolioBootstrapClientError(parseApiError(err));
+  }
+}
+
+export async function openAdditionalPortfolioFrontSetup(idempotencyKey: string): Promise<PortfolioBootstrapResponse> {
+  try {
+    const { data } = await api.post<ApiResponse<PortfolioBootstrapResponse>>(
+      '/portfolio-bootstrap/sessions/additional-front',
+      {},
+      { headers: { 'Idempotency-Key': idempotencyKey } },
     );
     return data.data;
   } catch (err) {
