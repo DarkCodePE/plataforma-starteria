@@ -10,6 +10,7 @@ import {
   readPendingPortfolioEntryClaim,
   readClaimedPortfolioEntryBriefIdentity,
   markCriticalHandoffReviewSession,
+  saveCriticalHandoffMaterializationAttempt,
   saveClaimedPortfolioEntrySession,
   savePortfolioEntryCurrentSession,
 } from '../storage';
@@ -1260,12 +1261,12 @@ describe('PortfolioEntryExperience', () => {
 
     renderExperience();
 
-    expect(await screen.findByRole('button', { name: /reintentar an.*lisis/i })).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: /reintentar conclusi.*n/i })).toBeInTheDocument();
     const firstCall = serviceMocks.materializePortfolioEntryCriticalHandoff.mock.calls[0];
     expect(firstCall[0]).toBe(eligible.id);
     expect(firstCall[2].expectedRevision).toBe(eligible.revision);
 
-    fireEvent.click(screen.getByRole('button', { name: /reintentar an.*lisis/i }));
+    fireEvent.click(screen.getByRole('button', { name: /reintentar conclusi.*n/i }));
 
     await waitFor(() => expect(serviceMocks.materializePortfolioEntryCriticalHandoff).toHaveBeenCalledTimes(2));
     const secondCall = serviceMocks.materializePortfolioEntryCriticalHandoff.mock.calls[1];
@@ -1293,10 +1294,10 @@ describe('PortfolioEntryExperience', () => {
 
     renderExperience();
 
-    const retry = await screen.findByRole('button', { name: /reintentar an.*lisis/i });
+    const retry = await screen.findByRole('button', { name: /reintentar conclusi.*n/i });
     fireEvent.click(retry);
     await waitFor(() => expect(serviceMocks.materializePortfolioEntryCriticalHandoff).toHaveBeenCalledTimes(2));
-    expect(screen.queryByRole('button', { name: /reintentar an.*lisis/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /reintentar conclusi.*n/i })).not.toBeInTheDocument();
     fireEvent.click(retry);
     expect(serviceMocks.materializePortfolioEntryCriticalHandoff).toHaveBeenCalledTimes(2);
     resolveRetry({ sessionRevision: 3, criticalHandoff: makeCriticalHandoff() });
@@ -1318,8 +1319,137 @@ describe('PortfolioEntryExperience', () => {
     renderExperience();
 
     expect(await screen.findByText(/la sesi.*ya no es v.*lida/i)).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /reintentar an.*lisis/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /reintentar conclusi.*n/i })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: /empezar de nuevo/i })).toBeInTheDocument();
+  });
+
+  it('rehydrates after a lost materialization response and does not replay the conclusion request', async () => {
+    const eligible = makeSession({
+      lifecycleStatus: 'HANDOFF_ELIGIBLE',
+      revision: 2,
+      nextAction: 'generate_handoff',
+      handoffExperience: 'critical',
+    });
+    const ready = makeSession({
+      lifecycleStatus: 'HANDOFF_READY',
+      revision: 3,
+      nextAction: 'review_handoff',
+      handoffExperience: 'critical',
+    });
+    savePortfolioEntryCurrentSession({ sessionId: eligible.id, credential: 'entry-token' });
+    serviceMocks.getPortfolioEntrySession
+      .mockResolvedValueOnce(eligible)
+      .mockResolvedValueOnce(ready);
+    serviceMocks.materializePortfolioEntryCriticalHandoff.mockRejectedValueOnce({ kind: 'unavailable', status: 503 });
+    serviceMocks.getPortfolioEntryCriticalHandoff.mockResolvedValue(makeCriticalHandoff());
+
+    renderExperience();
+
+    expect(await screen.findByTestId('critical-handoff-review')).toBeInTheDocument();
+    expect(serviceMocks.materializePortfolioEntryCriticalHandoff).toHaveBeenCalledTimes(1);
+    expect(serviceMocks.getPortfolioEntrySession).toHaveBeenCalledTimes(2);
+    expect(serviceMocks.submitPortfolioEntryMessage).not.toHaveBeenCalled();
+    expect(screen.queryByRole('button', { name: /reintentar conclusi.*n/i })).not.toBeInTheDocument();
+  });
+
+  it('shows an honest unknown state when rehydration after 503 cannot be verified', async () => {
+    const eligible = makeSession({
+      lifecycleStatus: 'HANDOFF_ELIGIBLE',
+      revision: 2,
+      nextAction: 'generate_handoff',
+      handoffExperience: 'critical',
+    });
+    savePortfolioEntryCurrentSession({ sessionId: eligible.id, credential: 'entry-token' });
+    serviceMocks.getPortfolioEntrySession
+      .mockResolvedValueOnce(eligible)
+      .mockRejectedValueOnce({ kind: 'unavailable', status: 503 });
+    serviceMocks.materializePortfolioEntryCriticalHandoff.mockRejectedValueOnce({ kind: 'unavailable', status: 503 });
+
+    renderExperience();
+
+    expect(await screen.findByText(/no puedo verificar ahora qu.* parte/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /comprobar estado/i })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /reintentar conclusi.*n/i })).not.toBeInTheDocument();
+    expect(serviceMocks.materializePortfolioEntryCriticalHandoff).toHaveBeenCalledTimes(1);
+    expect(serviceMocks.submitPortfolioEntryMessage).not.toHaveBeenCalled();
+  });
+
+  it('retries only the conclusion with the current revision after a materialization conflict', async () => {
+    const stale = makeSession({
+      lifecycleStatus: 'HANDOFF_ELIGIBLE',
+      revision: 2,
+      nextAction: 'generate_handoff',
+      handoffExperience: 'critical',
+    });
+    const current = { ...stale, revision: 3 };
+    savePortfolioEntryCurrentSession({ sessionId: stale.id, credential: 'entry-token' });
+    serviceMocks.getPortfolioEntrySession
+      .mockResolvedValueOnce(stale)
+      .mockResolvedValueOnce(current);
+    serviceMocks.materializePortfolioEntryCriticalHandoff
+      .mockRejectedValueOnce({ kind: 'conflict', status: 409 })
+      .mockResolvedValueOnce({ sessionRevision: 4, criticalHandoff: makeCriticalHandoff() });
+    serviceMocks.getPortfolioEntryCriticalHandoff.mockResolvedValue(makeCriticalHandoff());
+
+    renderExperience();
+
+    const retry = await screen.findByRole('button', { name: /reintentar conclusi.*n/i });
+    expect(screen.getByText(/revisi.*n 3/i)).toBeInTheDocument();
+    fireEvent.click(retry);
+
+    await waitFor(() => expect(serviceMocks.materializePortfolioEntryCriticalHandoff).toHaveBeenCalledTimes(2));
+    expect(serviceMocks.materializePortfolioEntryCriticalHandoff.mock.calls[0][2].expectedRevision).toBe(2);
+    expect(serviceMocks.materializePortfolioEntryCriticalHandoff.mock.calls[1][2].expectedRevision).toBe(3);
+    expect(serviceMocks.submitPortfolioEntryMessage).not.toHaveBeenCalled();
+    expect(await screen.findByTestId('critical-handoff-review')).toBeInTheDocument();
+  });
+
+  it('does not auto-post again after a reload with a pending Critical Handoff attempt', async () => {
+    const eligible = makeSession({
+      lifecycleStatus: 'HANDOFF_ELIGIBLE',
+      revision: 2,
+      nextAction: 'generate_handoff',
+      handoffExperience: 'critical',
+    });
+    savePortfolioEntryCurrentSession({ sessionId: eligible.id, credential: 'entry-token' });
+    saveCriticalHandoffMaterializationAttempt({ sessionId: eligible.id, revision: eligible.revision });
+    serviceMocks.getPortfolioEntrySession.mockResolvedValue(eligible);
+
+    renderExperience();
+
+    expect(await screen.findByTestId('portfolio-entry-conclusion-failed')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /reintentar conclusi.*n/i })).toBeInTheDocument();
+    expect(screen.queryByTestId('portfolio-entry-inconsistent-state')).not.toBeInTheDocument();
+    expect(serviceMocks.materializePortfolioEntryCriticalHandoff).not.toHaveBeenCalled();
+    expect(serviceMocks.submitPortfolioEntryMessage).not.toHaveBeenCalled();
+  });
+
+  it('requires a manual conclusion retry with the authoritative revision after reload drift', async () => {
+    const current = makeSession({
+      lifecycleStatus: 'HANDOFF_ELIGIBLE',
+      revision: 3,
+      nextAction: 'generate_handoff',
+      handoffExperience: 'critical',
+    });
+    savePortfolioEntryCurrentSession({ sessionId: current.id, credential: 'entry-token' });
+    saveCriticalHandoffMaterializationAttempt({ sessionId: current.id, revision: 2 });
+    serviceMocks.getPortfolioEntrySession.mockResolvedValue(current);
+    serviceMocks.materializePortfolioEntryCriticalHandoff.mockResolvedValue({
+      sessionRevision: 4,
+      criticalHandoff: makeCriticalHandoff(),
+    });
+    serviceMocks.getPortfolioEntryCriticalHandoff.mockResolvedValue(makeCriticalHandoff());
+
+    renderExperience();
+
+    const retry = await screen.findByRole('button', { name: /reintentar conclusi.*n/i });
+    expect(serviceMocks.materializePortfolioEntryCriticalHandoff).not.toHaveBeenCalled();
+    fireEvent.click(retry);
+
+    await waitFor(() => expect(serviceMocks.materializePortfolioEntryCriticalHandoff).toHaveBeenCalledTimes(1));
+    expect(serviceMocks.materializePortfolioEntryCriticalHandoff.mock.calls[0][2].expectedRevision).toBe(3);
+    expect(serviceMocks.submitPortfolioEntryMessage).not.toHaveBeenCalled();
+    expect(await screen.findByTestId('critical-handoff-review')).toBeInTheDocument();
   });
 
   it('routes public correction through authentication without persisting anonymously', async () => {

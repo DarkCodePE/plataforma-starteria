@@ -246,6 +246,39 @@ describeIntegration('PrismaPortfolioEntrySessionRepository', () => {
     )).rejects.toMatchObject({ code: 'PORTFOLIO_ENTRY_SESSION_CONFLICT' });
   });
 
+  it('publishes legacy and Critical Handoff atomically and linearizes concurrent publication', async () => {
+    const { service, repository } = makeService();
+    const { session } = await createAnalyzingSession(service);
+    const turn = await service.appendTurn(makeTurnInput(session.id, 1, 'no_questions_required'));
+    await service.transitionLifecycle(session.id, 'HANDOFF_GENERATING');
+    const checkpoint = await requireSession(repository, session.id);
+    const publish = () => service.publishCriticalHandoff({
+      sessionId: session.id,
+      handoff: makeHandoff(),
+      sourceTurnId: turn.id,
+      expectedRevision: checkpoint.revision,
+      sourceContextRevision: checkpoint.contextRevision,
+      criticalHandoff: makeCriticalHandoffProjection(),
+    });
+
+    const results = await Promise.allSettled([publish(), publish()]);
+    const stored = await requireSession(repository, session.id);
+
+    expect(results.filter((result) => result.status === 'fulfilled')).toHaveLength(1);
+    expect(results.filter((result) => result.status === 'rejected')).toHaveLength(1);
+    expect(await prisma.portfolioEntryHandoff.count({ where: { sessionId: session.id } })).toBe(1);
+    expect(await prisma.portfolioEntryCriticalHandoff.count({ where: { sessionId: session.id } })).toBe(1);
+    expect(stored).toMatchObject({
+      lifecycleStatus: 'HANDOFF_READY',
+      revision: checkpoint.revision + 1,
+      latestHandoff: { version: 1, sourceTurnId: turn.id },
+    });
+    await expect(service.getLatestCriticalHandoff(session.id)).resolves.toMatchObject({
+      artifact: { artifactVersion: 1, sourceTurnId: turn.id },
+      isCurrent: true,
+    });
+  });
+
   it('defaults historical session contextRevision to zero and advances it independently from session revision', async () => {
     const { service, repository } = makeService();
     const { session } = await createSession(service);
@@ -297,6 +330,26 @@ describeIntegration('PrismaPortfolioEntrySessionRepository', () => {
     expect(stored?.payload).toEqual(makeCriticalHandoffProjection());
     expect(latest).toMatchObject({ artifact: { id: second.id, artifactVersion: 2 }, isCurrent: true });
     expect(await prisma.portfolioEntryCriticalHandoff.count({ where: { sessionId: session.id } })).toBe(2);
+  });
+
+  it('linearizes concurrent conclusion-only creation when session revision is a precondition', async () => {
+    const { service, repository } = makeService();
+    const { session } = await createAnalyzingSession(service);
+    const sourceTurn = await service.appendTurn(makeTurnInput(session.id, 1, 'no_questions_required'));
+    const checkpoint = await requireSession(repository, session.id);
+    const create = () => service.createCriticalHandoff({
+      sessionId: session.id,
+      expectedSessionRevision: checkpoint.revision,
+      sourceContextRevision: checkpoint.contextRevision,
+      sourceTurnId: sourceTurn.id,
+      payload: makeCriticalHandoffProjection(),
+    });
+
+    const results = await Promise.allSettled([create(), create()]);
+
+    expect(results.filter((result) => result.status === 'fulfilled')).toHaveLength(1);
+    expect(results.filter((result) => result.status === 'rejected')).toHaveLength(1);
+    expect(await prisma.portfolioEntryCriticalHandoff.count({ where: { sessionId: session.id } })).toBe(1);
   });
 
   it('persists explicit confirmation actor and time without changing the projection or source binding', async () => {

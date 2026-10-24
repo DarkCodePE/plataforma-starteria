@@ -44,16 +44,19 @@ import { portfolioEntryBriefIdentityFromSession } from './continuationIdentity';
 import { serializeConfirmedBriefMarkdown } from './portfolioEntryBriefExport';
 import {
   clearPortfolioEntryClaimedNotice,
+  clearCriticalHandoffMaterializationAttempt,
   clearCriticalHandoffReviewSession,
   clearPortfolioEntryConversionState,
   clearPortfolioEntryCurrentSession,
   clearClaimedPortfolioEntrySession,
   readClaimedPortfolioEntrySession,
+  readCriticalHandoffMaterializationAttempt,
   readPortfolioEntryClaimedNotice,
   readPortfolioEntryCurrentSession,
   markCriticalHandoffReviewSession,
   savePendingPortfolioEntryClaim,
   saveClaimedPortfolioEntrySession,
+  saveCriticalHandoffMaterializationAttempt,
   savePortfolioEntryCurrentSession,
 } from './storage';
 import type {
@@ -99,6 +102,13 @@ type CriticalHandoffLoad = {
   state: CriticalHandoffReviewState | 'idle';
   artifact?: PortfolioEntryCriticalHandoffDto;
 };
+
+type ConclusionState =
+  | 'awaiting_answer'
+  | 'conclusion_pending'
+  | 'conclusion_generating'
+  | 'conclusion_failed_recoverable'
+  | 'conclusion_ready';
 
 type StarteriaPathLoad = {
   sessionId: string | null;
@@ -371,7 +381,7 @@ function StatusMessage({ pendingRequest }: { pendingRequest: PendingRequest }) {
     starting: 'Creando una sesion segura...',
     submitting: 'Starteria esta revisando tu contexto...',
     guided: 'Starteria esta preparando la exploracion...',
-    handoff: 'Ordenando la sugerencia de Starteria...',
+    handoff: 'Preparando tu conclusión provisional...',
     correcting: 'Guardando tus correcciones...',
     confirming: 'Guardando tu confirmacion...',
     converting: 'Preparando la continuidad de tu portafolio...',
@@ -388,11 +398,9 @@ function StatusMessage({ pendingRequest }: { pendingRequest: PendingRequest }) {
 function ErrorMessage({
   error,
   onRestart,
-  onRetry,
 }: {
   error: UiError | null;
   onRestart: () => void;
-  onRetry?: () => void;
 }) {
   if (!error) return null;
   const terminal = ['unauthorized', 'not_found', 'expired'].includes(error.kind);
@@ -407,14 +415,51 @@ function ErrorMessage({
             <RefreshCcw size={14} />
             Empezar de nuevo
           </Button>
-        ) : onRetry ? (
-          <Button type="button" variant="secondary" size="sm" onClick={onRetry} className="mt-2">
-            <RefreshCcw size={14} />
-            Reintentar análisis
-          </Button>
         ) : null}
       </AlertDescription>
     </Alert>
+  );
+}
+
+function ConclusionStatus({
+  state,
+  session,
+  onRetry,
+  retryDisabled,
+}: {
+  state: ConclusionState;
+  session: PortfolioEntrySessionDto;
+  onRetry: () => void;
+  retryDisabled: boolean;
+}) {
+  if (state === 'awaiting_answer' || state === 'conclusion_ready') return null;
+  const failed = state === 'conclusion_failed_recoverable';
+  return (
+    <section
+      aria-live="polite"
+      data-testid={failed ? 'portfolio-entry-conclusion-failed' : 'portfolio-entry-conclusion-pending'}
+      className={`mx-auto max-w-3xl space-y-3 rounded-ds-lg border p-5 ${failed
+        ? 'border-status-feedback-warning-border bg-status-feedback-warning-surface text-status-feedback-warning-text'
+        : 'border-border-default bg-surface-default text-text-secondary'}`}
+    >
+      <h2 className="font-semibold text-text-primary">
+        {state === 'conclusion_generating' ? 'Preparando tu conclusión provisional' : failed ? 'La conclusión sigue pendiente' : 'Contexto suficiente'}
+      </h2>
+      <p className="text-sm leading-6">
+        {state === 'conclusion_generating'
+          ? 'Estamos usando el contexto ya guardado. No necesitas responder de nuevo.'
+          : failed
+            ? 'Tus respuestas y el contexto siguen guardados. Puedes reintentar únicamente la conclusión.'
+            : 'Tus aclaraciones ya están completas. La conclusión provisional está pendiente de preparación.'}
+      </p>
+      {failed ? (
+        <Button type="button" onClick={onRetry} disabled={retryDisabled}>
+          <RefreshCcw size={14} />
+          Reintentar conclusión
+        </Button>
+      ) : null}
+      <ConversationTrace session={session} />
+    </section>
   );
 }
 
@@ -1460,6 +1505,7 @@ export function PortfolioEntryExperience({
   const starteriaPathRequestRef = useRef<{ sessionId: string | null; sequence: number }>({ sessionId: null, sequence: 0 });
   const legacyHandoffRequestRef = useRef<{ sessionId: string | null; sequence: number }>({ sessionId: null, sequence: 0 });
   const materializedRevisionRef = useRef<number | null>(null);
+  const handoffRequestInFlightRef = useRef(false);
   const trackedClarificationRef = useRef<number | null>(null);
   const trackedGuidedOfferRef = useRef<number | null>(null);
   const trackedConversionCtaRef = useRef<string | null>(null);
@@ -1467,6 +1513,14 @@ export function PortfolioEntryExperience({
   const questions = useMemo(() => latestQuestions(sessionDto), [sessionDto]);
   const activeQuestion = questions[0];
   const pending = pendingRequest !== null;
+  const conclusionState = useMemo<ConclusionState>(() => {
+    if (!sessionDto || sessionDto.handoffExperience !== 'critical') return 'awaiting_answer';
+    if (sessionDto.nextAction === 'review_handoff' || sessionDto.nextAction === 'claim_or_close') return 'conclusion_ready';
+    if (sessionDto.nextAction !== 'generate_handoff') return 'awaiting_answer';
+    if (pendingRequest === 'handoff') return 'conclusion_generating';
+    if (handoffRetryRevision === sessionDto.revision) return 'conclusion_failed_recoverable';
+    return 'conclusion_pending';
+  }, [handoffRetryRevision, pendingRequest, sessionDto]);
   const legacyHandoff = sessionDto?.handoffExperience === 'legacy'
     && legacyHandoffLoad.sessionId === sessionDto.id
     ? legacyHandoffLoad.session?.handoff
@@ -1565,6 +1619,8 @@ export function PortfolioEntryExperience({
     criticalHandoffRequestRef.current = { sessionId: null, sequence: criticalHandoffRequestRef.current.sequence + 1 };
     legacyHandoffRequestRef.current = { sessionId: null, sequence: legacyHandoffRequestRef.current.sequence + 1 };
     clearCriticalHandoffReviewSession();
+    clearCriticalHandoffMaterializationAttempt();
+    handoffRequestInFlightRef.current = false;
     setCurrentInput('');
     setLiveUnderstandingUpdating(false);
     setLiveUnderstandingCorrectionOpen(false);
@@ -1581,6 +1637,30 @@ export function PortfolioEntryExperience({
     setHandoffRetryRevision(null);
   };
 
+  const applyVerifiedRecovery = (
+    latest: PortfolioEntrySessionDto,
+    allowConclusionRetry: boolean,
+  ) => {
+    setSessionDto(latest);
+    setRecoveryVisible(true);
+    setRecoveryVerified(true);
+    const attempt = readCriticalHandoffMaterializationAttempt();
+    const conclusionStillPending = latest.handoffExperience === 'critical' && latest.nextAction === 'generate_handoff';
+    const hasStoredAttemptForSession = attempt?.sessionId === latest.id;
+    if (conclusionStillPending && (allowConclusionRetry || hasStoredAttemptForSession)) {
+      materializedRevisionRef.current = latest.revision;
+      if (hasStoredAttemptForSession && attempt.revision !== latest.revision) {
+        saveCriticalHandoffMaterializationAttempt({ sessionId: latest.id, revision: latest.revision });
+      }
+      setHandoffRetryRevision(latest.revision);
+      return;
+    }
+    setHandoffRetryRevision(null);
+    if (!conclusionStillPending || (attempt && attempt.sessionId === latest.id)) {
+      clearCriticalHandoffMaterializationAttempt();
+    }
+  };
+
   const handleRequestError = async (err: unknown, ref = sessionRef) => {
     const apiError = normalizePortfolioEntryApiError(err);
     const uiError = mapError(apiError.kind);
@@ -1592,8 +1672,7 @@ export function PortfolioEntryExperience({
       setRecoveryVerified(false);
       try {
         const latest = await getPortfolioEntrySession(ref.sessionId, ref.credential);
-        setSessionDto(latest);
-        setRecoveryVerified(true);
+        applyVerifiedRecovery(latest, false);
       } catch {
         // Keep the unknown state visible; no semantic request is replayed.
       }
@@ -1616,6 +1695,36 @@ export function PortfolioEntryExperience({
     }
   };
 
+  const recoverCriticalHandoffFailure = async (err: unknown, ref: StoredPortfolioEntrySession) => {
+    const apiError = normalizePortfolioEntryApiError(err);
+    const uiError = mapError(apiError.kind);
+    setError(uiError);
+    setRecoveryVisible(true);
+    setRecoveryVerified(false);
+    setHandoffRetryRevision(null);
+    trackPortfolioEntryEvent('portfolio_entry_api_failure', { kind: apiError.kind, status: apiError.status });
+
+    if (['unauthorized', 'not_found', 'expired'].includes(apiError.kind)) {
+      clearPortfolioEntryCurrentSession();
+      clearCriticalHandoffMaterializationAttempt();
+      setSessionRef(null);
+      if (apiError.kind === 'expired') trackPortfolioEntryEvent('session_expired');
+      return;
+    }
+
+    try {
+      const latest = await getPortfolioEntrySession(ref.sessionId, ref.credential);
+      const mayRetryConclusion = uiError.retryable || apiError.kind === 'conflict';
+      if (!mayRetryConclusion) clearCriticalHandoffMaterializationAttempt();
+      applyVerifiedRecovery(latest, mayRetryConclusion);
+      if (latest.nextAction !== 'generate_handoff') setError(null);
+    } catch {
+      // Keep the state explicitly unknown. A semantic request is never replayed here.
+      setRecoveryVerified(false);
+      setHandoffRetryRevision(null);
+    }
+  };
+
   const checkRecovery = async () => {
     const claimed = readClaimedPortfolioEntrySession();
     const stored = sessionRef ?? readPortfolioEntryCurrentSession();
@@ -1627,8 +1736,7 @@ export function PortfolioEntryExperience({
       const latest = claimed
         ? await getClaimedPortfolioEntrySession(claimed.sessionId)
         : await getPortfolioEntrySession(stored!.sessionId, stored!.credential);
-      setSessionDto(latest);
-      setRecoveryVerified(true);
+      applyVerifiedRecovery(latest, false);
       setError(null);
     } catch {
       setRecoveryVerified(false);
@@ -1642,8 +1750,9 @@ export function PortfolioEntryExperience({
     ref: StoredPortfolioEntrySession,
     manualRetry = false,
   ) => {
-    if (pendingRequest === 'handoff') return;
+    if (handoffRequestInFlightRef.current || pendingRequest === 'handoff') return;
     if (!manualRetry && materializedRevisionRef.current === revision) return;
+    handoffRequestInFlightRef.current = true;
     materializedRevisionRef.current = revision;
     setHandoffRetryRevision(null);
     setError(null);
@@ -1653,6 +1762,7 @@ export function PortfolioEntryExperience({
         throw new Error('Portfolio Entry no tiene una experiencia de handoff autorizada para materializar.');
       }
       if (sessionDto.handoffExperience === 'critical') {
+        saveCriticalHandoffMaterializationAttempt({ sessionId: ref.sessionId, revision });
         const materialized = await materializePortfolioEntryCriticalHandoff(ref.sessionId, ref.credential, {
           expectedRevision: revision,
           idempotencyKey: createIdempotencyKey('portfolio-entry:critical-handoff-materialize'),
@@ -1669,6 +1779,7 @@ export function PortfolioEntryExperience({
           }
           : current);
         await fetchCriticalHandoff(ref.sessionId, ref.credential, true);
+        clearCriticalHandoffMaterializationAttempt();
       } else {
         // Historical sessions keep the legacy response and review contract.
         const next = await materializePortfolioEntryHandoff(ref.sessionId, ref.credential, {
@@ -1682,10 +1793,13 @@ export function PortfolioEntryExperience({
       setHandoffRetryRevision(null);
       trackPortfolioEntryEvent('handoff_generated', { sessionId: ref.sessionId });
     } catch (err) {
-      const apiError = normalizePortfolioEntryApiError(err);
-      if (mapError(apiError.kind).retryable) setHandoffRetryRevision(revision);
-      await handleRequestError(err, ref);
+      if (sessionDto?.handoffExperience === 'critical') {
+        await recoverCriticalHandoffFailure(err, ref);
+      } else {
+        await handleRequestError(err, ref);
+      }
     } finally {
+      handoffRequestInFlightRef.current = false;
       setPendingRequest(null);
     }
   };
@@ -1706,9 +1820,7 @@ export function PortfolioEntryExperience({
       .then((session) => {
         if (cancelled) return;
         setSessionRef(stored ?? null);
-        setSessionDto(session);
-        setRecoveryVisible(true);
-        setRecoveryVerified(true);
+        applyVerifiedRecovery(session, false);
         setError(null);
       })
       .catch((err) => {
@@ -1787,6 +1899,7 @@ export function PortfolioEntryExperience({
     if (
       !sessionDto ||
       !sessionRef ||
+      handoffRequestInFlightRef.current ||
       pendingRequest ||
       sessionDto.nextAction !== 'generate_handoff' ||
       handoffRetryRevision !== sessionDto.revision
@@ -2259,6 +2372,17 @@ export function PortfolioEntryExperience({
       );
     }
 
+    if (sessionDto.nextAction === 'generate_handoff' && sessionDto.handoffExperience === 'critical') {
+      return (
+        <ConclusionStatus
+          state={conclusionState}
+          session={sessionDto}
+          onRetry={retryHandoff}
+          retryDisabled={pending || !recoveryVerified}
+        />
+      );
+    }
+
     if (sessionDto.nextAction === 'review_handoff' || sessionDto.nextAction === 'claim_or_close') {
       if (sessionDto.handoffExperience === 'critical') {
         const loadState = criticalHandoffLoad.sessionId === sessionDto.id ? criticalHandoffLoad.state : 'idle';
@@ -2384,11 +2508,6 @@ export function PortfolioEntryExperience({
         <ErrorMessage
           error={error}
           onRestart={restart}
-          onRetry={
-            error?.retryable && handoffRetryRevision === sessionDto?.revision
-              ? retryHandoff
-              : undefined
-          }
         />
       </div>
       {recoveryVisible ? <div className="mx-auto max-w-3xl"><RecoveryStatus session={sessionDto} verified={recoveryVerified} onCheck={() => void checkRecovery()} /></div> : null}

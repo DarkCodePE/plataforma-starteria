@@ -249,7 +249,7 @@ jobs:
   # ---------------------------------------------------------------------------
   e2e-light:
     name: E2E light (Portfolio Entry)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 25
     defaults:
       run:
@@ -269,21 +269,10 @@ jobs:
       - name: Install dependencies (npm ci)
         run: npm ci
 
-      # El 2026-10-07 apt se colgó dos veces contra azure.archive.ubuntu.com (sólo `Ign:`) y el job
-      # murió por timeout a los 15 min, bloqueando el CD del #150. Se usa el mirror oficial y cada
-      # intento tiene su propio límite, para fallar o reintentar en vez de colgarse.
+      # Una única invocación evita solapar procesos apt si la instalación falla o agota el tiempo.
+      # El código de salida de Playwright se propaga para que el job falle de forma visible.
       - name: Install Playwright Chromium
-        timeout-minutes: 16
-        run: |
-          set -uo pipefail
-          sudo sed -i 's|http://azure.archive.ubuntu.com/ubuntu|http://archive.ubuntu.com/ubuntu|g' \
-            /etc/apt/sources.list.d/ubuntu.sources /etc/apt/sources.list 2>/dev/null || true
-          for attempt in 1 2 3; do
-            if timeout 300 npx playwright install --with-deps chromium; then exit 0; fi
-            echo "::warning::playwright install falló o superó 5 min (intento $attempt/3)"
-            sudo rm -rf /var/lib/apt/lists/partial/* || true
-          done
-          echo "::error::no se pudo instalar Chromium de Playwright en 3 intentos"; exit 1
+        run: npx playwright install --with-deps chromium
 
       - name: CURRENT_114D — deterministic full-stack browser journey
         run: npm run test:e2e -- --portfolio-entry-full-stack-test e2e/portfolio-entry-conversion.spec.ts --grep CURRENT_114D

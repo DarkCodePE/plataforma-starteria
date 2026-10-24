@@ -22,6 +22,7 @@ import {
   FetchStructuredModelAdapter,
   JevClassifier,
   LivePortfolioEntryAgentAdapter,
+  loadCriticalSynthesisProviderConfig,
   loadPortfolioEntryProviderConfig,
   ResilientStructuredModelAdapter,
   portfolioEntryLiveHealth,
@@ -257,25 +258,27 @@ function configuredHandoffMaterializer(): PortfolioEntryHandoffMaterializer {
   return new DeterministicPortfolioEntryHandoffMaterializer();
 }
 
-function configuredLiveUnderstandingSynthesizer(): PortfolioEntryLiveUnderstandingSynthesizer {
+export function configuredLiveUnderstandingSynthesizer(): PortfolioEntryLiveUnderstandingSynthesizer {
   try {
-    const provider = loadPortfolioEntryProviderConfig();
+    const provider = loadCriticalSynthesisProviderConfig();
     const adapter = new CriticalSituationSynthesisAdapter(createResilientModel(provider));
+    const generate = (input: Parameters<PortfolioEntryLiveUnderstandingSynthesizer['synthesize']>[0]) => adapter.generate({
+      authorized_snapshot: input.authorizedSnapshot,
+      call_id: `${input.sessionId}-${input.purpose}-context-${input.contextRevision}-turn-${input.turnIndex}`,
+      model_metadata: {
+        provider: provider.provider,
+        requested_model: provider.model,
+        model: provider.model,
+        temperature: provider.temperature ?? 0,
+        seed_support: provider.seed === undefined ? 'not_requested' : 'provided',
+        ...(provider.seed !== undefined ? { seed: provider.seed } : {}),
+      },
+    });
     return {
-      synthesize: async (input) => {
-        const result = await adapter.generate({
-          authorized_snapshot: input.authorizedSnapshot,
-          call_id: `${input.sessionId}-${input.purpose}-context-${input.contextRevision}-turn-${input.turnIndex}`,
-          model_metadata: {
-            provider: provider.provider,
-            requested_model: provider.model,
-            model: provider.model,
-            temperature: provider.temperature ?? 0,
-            seed_support: provider.seed === undefined ? 'not_requested' : 'provided',
-            ...(provider.seed !== undefined ? { seed: provider.seed } : {}),
-          },
-        });
-        return result.synthesis;
+      synthesize: async (input) => (await generate(input)).synthesis,
+      synthesizeDetailed: async (input) => {
+        const result = await generate(input);
+        return { synthesis: result.synthesis, modelExecution: result.model_execution };
       },
     };
   } catch (err) {

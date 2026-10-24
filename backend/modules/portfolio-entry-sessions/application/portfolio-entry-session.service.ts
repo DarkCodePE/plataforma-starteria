@@ -89,6 +89,11 @@ export type SaveHandoffInput = {
   now?: Date;
 };
 
+export type PublishCriticalHandoffServiceInput = SaveHandoffInput & {
+  sourceContextRevision: number;
+  criticalHandoff: CriticalHandoffProjection;
+};
+
 export type CreateCriticalHandoffServiceInput = {
   sessionId: string;
   expectedSessionRevision?: number;
@@ -419,6 +424,50 @@ export class PortfolioEntrySessionService {
       input.payload,
     );
     return this.repository.createCriticalHandoff({ ...input, payload });
+  }
+
+  async publishCriticalHandoff(input: PublishCriticalHandoffServiceInput) {
+    const now = input.now ?? this.now();
+    const session = await this.requireSession(input.sessionId);
+    assertSessionIsActive(session, now);
+    const expectedRevision = input.expectedRevision ?? session.revision;
+    if (session.revision !== expectedRevision) throw PortfolioEntrySessionError.conflict();
+    assertHandoffLifecycleApplication(session);
+    const payload = parseCriticalHandoffPayload(
+      PORTFOLIO_ENTRY_CRITICAL_HANDOFF_SCHEMA_VERSION,
+      input.criticalHandoff,
+    );
+    const handoff: PortfolioEntryHandoffRecord = {
+      id: randomUUID(),
+      sessionId: session.id,
+      version: (session.latestHandoff?.version ?? 0) + 1,
+      handoff: input.handoff,
+      sourceTurnId: input.sourceTurnId,
+      status: input.handoff.handoff_status,
+      versioning: session.versioning,
+      createdAt: now,
+      updatedAt: now,
+    };
+    const updatedSession: PortfolioEntrySession = {
+      ...session,
+      lifecycleStatus: 'HANDOFF_READY',
+      latestHandoff: handoff,
+      revision: expectedRevision + 1,
+      updatedAt: now,
+      lastActivityAt: now,
+    };
+    return this.repository.publishCriticalHandoff({
+      handoff,
+      session: updatedSession,
+      expectedRevision,
+      criticalHandoff: {
+        sessionId: session.id,
+        expectedSessionRevision: expectedRevision,
+        sourceContextRevision: input.sourceContextRevision,
+        sourceTurnId: input.sourceTurnId,
+        payload,
+      },
+    });
   }
 
   async getLatestCriticalHandoff(sessionId: string) {
