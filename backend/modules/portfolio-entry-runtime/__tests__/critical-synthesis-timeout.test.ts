@@ -31,7 +31,7 @@ describe('Critical synthesis timeout', () => {
   it('gives the synthesis its own 90 s limit without retrying timeouts, leaving turns at 30 s', () => {
     expect(loadPortfolioEntryProviderConfig(env)).toMatchObject({ timeoutMs: 30_000 });
     expect(loadPortfolioEntryProviderConfig(env).retryOnTimeout).toBeUndefined();
-    expect(loadCriticalSynthesisProviderConfig(env)).toMatchObject({ timeoutMs: 90_000, retryOnTimeout: false });
+    expect(loadCriticalSynthesisProviderConfig(env)).toMatchObject({ timeoutMs: 120_000, retryOnTimeout: false });
   });
 
   it('reads PORTFOLIO_ENTRY_SYNTHESIS_TIMEOUT_MS and rejects invalid values', () => {

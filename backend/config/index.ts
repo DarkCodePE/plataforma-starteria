@@ -100,6 +100,7 @@ export const config = {
   // Phase 6E: HTTP/application idempotency retention for costly public
   // Portfolio Entry operations. Kept separate from semantic session state.
   portfolioEntryIdempotencyTtlSeconds: positiveIntegerEnv('PORTFOLIO_ENTRY_IDEMPOTENCY_TTL_SECONDS', 86400),
+  portfolioEntryCriticalHandoffMaxMs: positiveIntegerEnv('PORTFOLIO_ENTRY_CRITICAL_HANDOFF_MAX_MS', 180000),
   portfolioEntryRuntimeMode,
   portfolioEntryClassifier,
 } as const;

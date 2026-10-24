@@ -9,7 +9,7 @@ describe('Critical Handoff synthesizer wiring', () => {
     vi.restoreAllMocks();
   });
 
-  it('uses the synthesis timeout (90 s) and does not retry a provider timeout', async () => {
+  it('uses the synthesis timeout (120 s) and does not retry a provider timeout', async () => {
     vi.stubEnv('PORTFOLIO_ENTRY_API_KEY', 'test-key');
     vi.stubEnv('PORTFOLIO_ENTRY_SYNTHESIS_TIMEOUT_MS', '');
     vi.stubEnv('PORTFOLIO_ENTRY_FALLBACK_API_KEY', '');
@@ -36,7 +36,7 @@ describe('Critical Handoff synthesizer wiring', () => {
     } as Parameters<NonNullable<typeof synthesizer.synthesizeDetailed>>[0]);
 
     expect(fetchImpl).toHaveBeenCalledTimes(1);
-    expect(setTimeoutSpy.mock.calls.map((call) => call[1])).toContain(90_000);
+    expect(setTimeoutSpy.mock.calls.map((call) => call[1])).toContain(120_000);
     expect(result.synthesis).toBeNull();
     expect(result.modelExecution?.technical_error).toContain('Provider timeout');
   });

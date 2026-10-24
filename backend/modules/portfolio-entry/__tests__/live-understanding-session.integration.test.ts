@@ -232,16 +232,18 @@ describe('Portfolio Entry Live Understanding session integration', () => {
       .set('Idempotency-Key', 'critical-handoff-close-exploration')
       .send({ expectedRevision: turn.body.data.revision, choice: 'provisional_route' })
       .expect(200);
-    const currentMaterialization = await request(app)
+    const generating = await request(app)
       .post(`${base}/sessions/${sessionId}/critical-handoff`)
       .set('X-Starteria-Entry-Token', turn.token)
       .set('Idempotency-Key', 'critical-handoff-current-materialization')
       .send({ expectedRevision: checkpoint.body.data.revision })
-      .expect(200);
-    const repeatedMaterialization = await request(app)
+      .expect(202);
+    expect(generating.body.data.generation.status).toBe('GENERATING');
+    await waitForGeneration(app, sessionId, turn.token, 'READY');
+    const currentMaterialization = await request(app)
       .post(`${base}/sessions/${sessionId}/critical-handoff`)
       .set('X-Starteria-Entry-Token', turn.token)
-      .set('Idempotency-Key', 'critical-handoff-current-materialization')
+      .set('Idempotency-Key', 'critical-handoff-current-materialization-ready')
       .send({ expectedRevision: checkpoint.body.data.revision })
       .expect(200);
 
@@ -273,7 +275,6 @@ describe('Portfolio Entry Live Understanding session integration', () => {
     const currentResponseJson = JSON.stringify(currentMaterialization.body.data);
     expect(Object.keys(currentMaterialization.body.data).sort()).toEqual(['criticalHandoff', 'sessionRevision']);
     expect(currentResponseJson).not.toMatch(/handoffPayload|provenance_summary|provenance|recommended_approach|starteria_path|recommended_cta|reasoning_metadata|selected_lenses|source_refs|sourceTurnId|provider|model|raw_synthesis|confirmedByUserId/i);
-    expect(repeatedMaterialization.body.data).toEqual(currentMaterialization.body.data);
     expect(currentMaterialization.body.data.sessionRevision).toBe(checkpoint.body.data.revision + 1);
     expect(criticalRead.body.data).toMatchObject(currentMaterialization.body.data.criticalHandoff);
     expect(criticalRead.body.data).not.toHaveProperty('schemaVersion');
@@ -457,9 +458,11 @@ describe('Portfolio Entry Live Understanding session integration', () => {
       .set('X-Starteria-Entry-Token', turn.token)
       .set('Idempotency-Key', 'critical-handoff-current-failure-materialization')
       .send({ expectedRevision: checkpoint.body.data.revision })
-      .expect(503);
+      .expect(202);
+    const failedGeneration = await waitForGeneration(app, sessionId, turn.token, 'FAILED');
+    expect(failedGeneration.body.data.failureClass).toBe('provider_failure');
 
-    expect(response.body.error.code).toBe('PORTFOLIO_ENTRY_CRITICAL_HANDOFF_SYNTHESIS_UNAVAILABLE');
+    expect(response.body.data.generation.status).toBe('GENERATING');
     expect(JSON.stringify(response.body)).not.toMatch(/recommended_approach|starteria_path|recommended_cta|provenance|private provider detail/i);
     const storedAfterFailure = await repository.findSessionById(sessionId);
     expect(storedAfterFailure?.latestHandoff).toBeNull();
@@ -504,18 +507,22 @@ describe('Portfolio Entry Live Understanding session integration', () => {
     await request(app).post(`${base}/sessions/${sessionId}/critical-handoff`)
       .set('X-Starteria-Entry-Token', turn.token)
       .set('Idempotency-Key', 'critical-retry-after-failure')
-      .send(body).expect(503);
+      .send(body).expect(202);
+    await waitForGeneration(app, sessionId, turn.token, 'FAILED');
     const recovered = await request(app).post(`${base}/sessions/${sessionId}/critical-handoff`)
       .set('X-Starteria-Entry-Token', turn.token)
-      .set('Idempotency-Key', 'critical-retry-after-failure')
-      .send(body).expect(200);
+      .set('Idempotency-Key', 'critical-retry-after-failure-second-attempt')
+      .send(body).expect(202);
+    await waitForGeneration(app, sessionId, turn.token, 'READY');
+    const criticalRead = await request(app).get(`${base}/sessions/${sessionId}/critical-handoff`)
+      .set('X-Starteria-Entry-Token', turn.token).expect(200);
 
     const stored = await repository.findSessionById(sessionId);
     expect(criticalAttempts).toBe(2);
     expect(await repository.listTurns(sessionId)).toHaveLength(1);
     expect(stored?.latestHandoff?.version).toBe(1);
     expect(stored?.revision).toBe(checkpoint.body.data.revision + 1);
-    expect(recovered.body.data.criticalHandoff).toMatchObject({ version: 1, state: 'current' });
+    expect(criticalRead.body.data).toMatchObject({ version: 1, state: 'current' });
   });
 
   it('recovers a historical partial write with either the old or current revision and never duplicates legacy', async () => {
@@ -537,26 +544,25 @@ describe('Portfolio Entry Live Understanding session integration', () => {
 
     const recoveredFromOld = await request(app).post(`${base}/sessions/${sessionId}/critical-handoff`)
       .set('X-Starteria-Entry-Token', turn.token).set('Idempotency-Key', 'partial-recovery-old-revision')
-      .send({ expectedRevision: checkpoint.body.data.revision }).expect(200);
+      .send({ expectedRevision: checkpoint.body.data.revision }).expect(202);
+    await waitForGeneration(app, sessionId, turn.token, 'READY');
     const recoveredFromCurrent = await request(app).post(`${base}/sessions/${sessionId}/critical-handoff`)
       .set('X-Starteria-Entry-Token', turn.token).set('Idempotency-Key', 'partial-recovery-current-revision')
       .send({ expectedRevision: partial.body.data.revision }).expect(200);
 
-    expect(recoveredFromCurrent.body.data).toEqual(recoveredFromOld.body.data);
+    expect(recoveredFromOld.body.data.generation.status).toBe('GENERATING');
+    expect(recoveredFromCurrent.body.data.criticalHandoff.version).toBe(1);
     expect((await repository.findSessionById(sessionId))?.latestHandoff?.version).toBe(1);
     expect((await repository.getLatestCriticalHandoff(sessionId)).artifact?.artifactVersion).toBe(1);
   });
 
   it('converges simultaneous conclusion-only retries on one artifact', async () => {
     let failCritical = true;
-    let started = 0;
     let release!: () => void;
     const gate = new Promise<void>((resolve) => { release = resolve; });
     const synthesizer = new FakeSynthesizer(async (input) => {
       if (input.purpose !== 'critical_handoff') return supportedSynthesis();
       if (failCritical) throw new Error('private provider failure');
-      started += 1;
-      if (started === 2) release();
       await gate;
       return supportedSynthesis();
     });
@@ -576,8 +582,10 @@ describe('Portfolio Entry Live Understanding session integration', () => {
       request(app).post(path).set('X-Starteria-Entry-Token', turn.token).set('Idempotency-Key', 'partial-concurrent-a').send(body),
       request(app).post(path).set('X-Starteria-Entry-Token', turn.token).set('Idempotency-Key', 'partial-concurrent-b').send(body),
     ]);
+    release();
+    await waitForGeneration(app, sessionId, turn.token, 'READY');
 
-    expect([first.status, second.status]).toEqual([200, 200]);
+    expect([first.status, second.status]).toEqual([202, 202]);
     expect(second.body.data).toEqual(first.body.data);
     expect((await repository.findSessionById(sessionId))?.latestHandoff?.version).toBe(1);
     expect((await repository.getLatestCriticalHandoff(sessionId)).artifact?.artifactVersion).toBe(1);
@@ -585,12 +593,9 @@ describe('Portfolio Entry Live Understanding session integration', () => {
 
   it('converges simultaneous materializations with different keys on one artifact and one legacy version', async () => {
     let releaseCritical!: () => void;
-    let started = 0;
     const gate = new Promise<void>((resolve) => { releaseCritical = resolve; });
     const synthesizer = new FakeSynthesizer(async (input) => {
       if (input.purpose === 'critical_handoff') {
-        started += 1;
-        if (started === 2) releaseCritical();
         await gate;
       }
       return supportedSynthesis();
@@ -607,8 +612,10 @@ describe('Portfolio Entry Live Understanding session integration', () => {
       request(app).post(path).set('X-Starteria-Entry-Token', turn.token).set('Idempotency-Key', 'concurrent-materialization-a').send(body),
       request(app).post(path).set('X-Starteria-Entry-Token', turn.token).set('Idempotency-Key', 'concurrent-materialization-b').send(body),
     ]);
+    releaseCritical();
+    await waitForGeneration(app, sessionId, turn.token, 'READY');
 
-    expect([first.status, second.status]).toEqual([200, 200]);
+    expect([first.status, second.status]).toEqual([202, 202]);
     expect(second.body.data).toEqual(first.body.data);
     expect((await repository.findSessionById(sessionId))?.latestHandoff?.version).toBe(1);
     expect((await repository.getLatestCriticalHandoff(sessionId)).artifact?.artifactVersion).toBe(1);
@@ -645,10 +652,12 @@ describe('Portfolio Entry Live Understanding session integration', () => {
     release();
     const [firstResponse, secondResponse] = await Promise.all([first, second]);
 
-    expect(firstResponse.status).toBe(200);
-    expect(secondResponse.status).toBe(409);
-    expect(secondResponse.body.error.code).toBe('PORTFOLIO_ENTRY_IDEMPOTENCY_IN_PROGRESS');
+    expect(firstResponse.status).toBe(202);
+    expect(secondResponse.status).toBe(202);
+    expect(secondResponse.body.data.generation).toEqual(firstResponse.body.data.generation);
     expect(criticalCalls).toBe(1);
+    release();
+    await waitForGeneration(app, sessionId, turn.token, 'READY');
     expect((await repository.findSessionById(sessionId))?.latestHandoff?.version).toBe(1);
     expect((await repository.getLatestCriticalHandoff(sessionId)).artifact?.artifactVersion).toBe(1);
   });
@@ -680,7 +689,9 @@ describe('Portfolio Entry Live Understanding session integration', () => {
     release();
     const response = await pending;
 
-    expect(response.status).toBe(409);
+    expect(response.status).toBe(202);
+    const failed = await waitForGeneration(app, sessionId, turn.token, 'FAILED');
+    expect(failed.body.data.failureClass).toBe('revision_conflict');
     expect((await repository.findSessionById(sessionId))?.latestHandoff).toBeNull();
     expect((await repository.getLatestCriticalHandoff(sessionId)).artifact).toBeNull();
     expect(warn.mock.calls.map(([fields]) => fields)).toContainEqual(expect.objectContaining({
@@ -708,7 +719,9 @@ describe('Portfolio Entry Live Understanding session integration', () => {
       .send({ expectedRevision: turn.body.data.revision, choice: 'provisional_route' }).expect(200);
     await request(app).post(`${base}/sessions/${sessionId}/critical-handoff`)
       .set('X-Starteria-Entry-Token', turn.token).set('Idempotency-Key', `observability-materialize-${failureClass}`)
-      .send({ expectedRevision: checkpoint.body.data.revision }).expect(503);
+      .send({ expectedRevision: checkpoint.body.data.revision }).expect(202);
+    const failed = await waitForGeneration(app, sessionId, turn.token, 'FAILED');
+    expect(failed.body.data.failureClass).toBe(failureClass);
 
     const event = warn.mock.calls.map(([fields]) => fields).find((fields) =>
       typeof fields === 'object' && fields !== null
@@ -745,7 +758,8 @@ describe('Portfolio Entry Live Understanding session integration', () => {
       .set('X-Starteria-Entry-Token', turn.token).set('Idempotency-Key', 'projection-failure-materialization')
       .send({ expectedRevision: checkpoint.body.data.revision });
 
-    expect(response.status).toBe(503);
+    expect(response.status).toBe(202);
+    await waitForGeneration(app, sessionId, turn.token, 'FAILED');
     const event = warn.mock.calls.map(([fields]) => fields).find((fields) =>
       typeof fields === 'object' && fields !== null
       && (fields as { event?: string }).event === 'portfolio_entry_critical_handoff_failure');
@@ -774,7 +788,8 @@ describe('Portfolio Entry Live Understanding session integration', () => {
       .set('X-Starteria-Entry-Token', turn.token).set('Idempotency-Key', 'publication-failure-materialization')
       .send({ expectedRevision: checkpoint.body.data.revision });
 
-    expect(response.status).toBe(503);
+    expect(response.status).toBe(202);
+    await waitForGeneration(app, sessionId, turn.token, 'FAILED');
     expect(JSON.stringify(response.body)).not.toContain('private persistence detail');
     expect((await repository.findSessionById(sessionId))?.latestHandoff).toBeNull();
     expect((await repository.findSessionById(sessionId))?.revision).toBe(checkpoint.body.data.revision);
@@ -814,6 +829,7 @@ describe('Portfolio Entry Live Understanding session integration', () => {
 
     await request(app).post(path).set('X-Starteria-Entry-Token', turn.token)
       .set('Idempotency-Key', 'lost-fresh-response').send(body).expect(500);
+    await waitForGeneration(app, sessionId, turn.token, 'READY');
     const callsAfterPublication = criticalCalls;
     const retry = await request(app).post(path).set('X-Starteria-Entry-Token', turn.token)
       .set('Idempotency-Key', 'lost-fresh-response').send(body).expect(200);
@@ -850,20 +866,25 @@ describe('Portfolio Entry Live Understanding session integration', () => {
     const legacy = await request(app).post(`${base}/sessions/${sessionId}/handoff`)
       .set('X-Starteria-Entry-Token', turn.token).set('Idempotency-Key', 'lost-conclusion-legacy')
       .send({ expectedRevision: checkpoint.body.data.revision }).expect(200);
-    failCritical = false;
     const path = `${base}/sessions/${sessionId}/critical-handoff`;
     const body = { expectedRevision: legacy.body.data.revision };
     idempotencyRepository.failNextComplete();
 
     await request(app).post(path).set('X-Starteria-Entry-Token', turn.token)
       .set('Idempotency-Key', 'lost-conclusion-response').send(body).expect(500);
+    await waitForGeneration(app, sessionId, turn.token, 'FAILED');
     const callsAfterPublication = criticalCalls;
+    failCritical = false;
     const retry = await request(app).post(path).set('X-Starteria-Entry-Token', turn.token)
-      .set('Idempotency-Key', 'lost-conclusion-response').send(body).expect(200);
+      .set('Idempotency-Key', 'lost-conclusion-response').send(body).expect(202);
+    await waitForGeneration(app, sessionId, turn.token, 'READY');
 
-    expect(criticalCalls).toBe(callsAfterPublication);
-    expect(retry.body.data.sessionRevision).toBe(legacy.body.data.revision);
-    expect(retry.body.data.criticalHandoff.version).toBe(1);
+    expect(criticalCalls).toBe(callsAfterPublication + 1);
+    const criticalRead = await request(app).get(`${base}/sessions/${sessionId}/critical-handoff`)
+      .set('X-Starteria-Entry-Token', turn.token).expect(200);
+    expect((await request(app).get(`${base}/sessions/${sessionId}`).set('X-Starteria-Entry-Token', turn.token).expect(200)).body.data.revision)
+      .toBe(legacy.body.data.revision);
+    expect(criticalRead.body.data.version).toBe(1);
     expect((await repository.findSessionById(sessionId))?.latestHandoff?.version).toBe(1);
     expect((await repository.getLatestCriticalHandoff(sessionId)).artifact?.artifactVersion).toBe(1);
   });
@@ -1517,6 +1538,78 @@ describe('Portfolio Entry Live Understanding session integration', () => {
     expect(synthesizer.calls).toHaveLength(2);
   });
 });
+
+describe('Portfolio Entry Critical Handoff generation API', () => {
+  it('returns 202, joins a generation across idempotency keys, and publishes once', async () => {
+    let signalStarted!: () => void;
+    let release!: () => void;
+    const started = new Promise<void>((resolve) => { signalStarted = resolve; });
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    const synthesizer = new FakeSynthesizer(async (input) => {
+      if (input.purpose === 'critical_handoff') { signalStarted(); await gate; }
+      return supportedSynthesis();
+    });
+    const { app, repository } = makeApp(synthesizer);
+    const turn = await submitTurn(app);
+    const sessionId = turn.body.data.id as string;
+    const checkpoint = await request(app).post(`${base}/sessions/${sessionId}/guided-exploration`)
+      .set('X-Starteria-Entry-Token', turn.token).set('Idempotency-Key', 'async-generation-checkpoint')
+      .send({ expectedRevision: turn.body.data.revision, choice: 'provisional_route' }).expect(200);
+    const path = `${base}/sessions/${sessionId}/critical-handoff`;
+    const first = await request(app).post(path).set('X-Starteria-Entry-Token', turn.token)
+      .set('Idempotency-Key', 'async-generation-first').send({ expectedRevision: checkpoint.body.data.revision }).expect(202);
+    await started;
+    const second = await request(app).post(path).set('X-Starteria-Entry-Token', turn.token)
+      .set('Idempotency-Key', 'async-generation-second').send({ expectedRevision: checkpoint.body.data.revision }).expect(202);
+
+    expect(first.body.data.generation).toMatchObject({ status: 'GENERATING', sourceContextRevision: 1, attempt: 1, retryable: false });
+    expect(second.body.data.generation).toEqual(first.body.data.generation);
+    expect(synthesizer.calls.filter((call) => call.purpose === 'critical_handoff')).toHaveLength(1);
+    release();
+    const ready = await waitForGeneration(app, sessionId, turn.token, 'READY');
+    expect(ready.body.data).toMatchObject({ status: 'READY', failureClass: null, retryable: false });
+    expect((await repository.getLatestCriticalHandoff(sessionId)).artifact).not.toBeNull();
+  });
+
+  it('exposes sanitized failure and permits a retry after FAILED', async () => {
+    let criticalCalls = 0;
+    const synthesizer = new FakeSynthesizer((input) => {
+      if (input.purpose === 'critical_handoff' && ++criticalCalls === 1) return null;
+      return supportedSynthesis();
+    });
+    const { app } = makeApp(synthesizer);
+    const turn = await submitTurn(app);
+    const sessionId = turn.body.data.id as string;
+    const checkpoint = await request(app).post(`${base}/sessions/${sessionId}/guided-exploration`)
+      .set('X-Starteria-Entry-Token', turn.token).set('Idempotency-Key', 'async-retry-checkpoint')
+      .send({ expectedRevision: turn.body.data.revision, choice: 'provisional_route' }).expect(200);
+    const path = `${base}/sessions/${sessionId}/critical-handoff`;
+    const read = `${path}/generation`;
+    await request(app).get(read).set('X-Starteria-Entry-Token', turn.token).expect(200).expect(({ body }) => expect(body.data).toBeNull());
+    await request(app).post(path).set('X-Starteria-Entry-Token', turn.token).set('Idempotency-Key', 'async-retry-first')
+      .send({ expectedRevision: checkpoint.body.data.revision }).expect(202);
+    const failed = await waitForGeneration(app, sessionId, turn.token, 'FAILED');
+    expect(failed.body.data).toMatchObject({ status: 'FAILED', failureClass: 'empty_output', retryable: true });
+    expect(JSON.stringify(failed.body)).not.toMatch(/provider|technical|schema/i);
+
+    const retry = await request(app).post(path).set('X-Starteria-Entry-Token', turn.token).set('Idempotency-Key', 'async-retry-second')
+      .send({ expectedRevision: checkpoint.body.data.revision }).expect(202);
+    expect(retry.body.data.generation).toMatchObject({ status: 'GENERATING', attempt: 2 });
+    const ready = await waitForGeneration(app, sessionId, turn.token, 'READY');
+    expect(ready.body.data.status).toBe('READY');
+    expect(criticalCalls).toBe(2);
+  });
+});
+
+async function waitForGeneration(app: express.Express, sessionId: string, token: string, status: 'READY' | 'FAILED') {
+  for (let attempt = 0; attempt < 30; attempt += 1) {
+    const response = await request(app).get(`${base}/sessions/${sessionId}/critical-handoff/generation`)
+      .set('X-Starteria-Entry-Token', token).expect(200);
+    if (response.body.data?.status === status) return response;
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  }
+  throw new Error(`Critical Handoff generation did not reach ${status}.`);
+}
 
 type SynthesisInput = PortfolioEntryLiveUnderstandingSynthesisRequest;
 
