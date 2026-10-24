@@ -67,16 +67,16 @@ export class PrismaCriticalHandoffGenerationRepository implements CriticalHandof
     return { generation: current as CriticalHandoffGeneration, claimed: claim.count === 1 };
   }
 
-  async markReady(sessionId: string, sourceContextRevision: number, now: Date) {
+  async markReady(sessionId: string, sourceContextRevision: number, attempt: number, now: Date) {
     await this.prisma.portfolioEntryCriticalHandoffGeneration.updateMany({
-      where: { sessionId, sourceContextRevision, status: 'GENERATING' },
+      where: { sessionId, sourceContextRevision, status: 'GENERATING', attempt },
       data: { status: 'READY', failureClass: null, finishedAt: now },
     });
   }
 
-  async markFailed(sessionId: string, sourceContextRevision: number, failureClass: CriticalHandoffGenerationFailureClass, now: Date) {
+  async markFailed(sessionId: string, sourceContextRevision: number, attempt: number, failureClass: CriticalHandoffGenerationFailureClass, now: Date) {
     await this.prisma.portfolioEntryCriticalHandoffGeneration.updateMany({
-      where: { sessionId, sourceContextRevision, status: 'GENERATING' },
+      where: { sessionId, sourceContextRevision, status: 'GENERATING', attempt },
       data: { status: 'FAILED', failureClass, finishedAt: now },
     });
   }

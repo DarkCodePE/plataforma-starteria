@@ -29,6 +29,6 @@ export interface CriticalHandoffGenerationRepository {
   find(sessionId: string, sourceContextRevision: number, now: Date, maxDurationMs: number): Promise<CriticalHandoffGeneration | null>;
   findLatest(sessionId: string, now: Date, maxDurationMs: number): Promise<CriticalHandoffGeneration | null>;
   claim(input: ClaimCriticalHandoffGenerationInput): Promise<{ generation: CriticalHandoffGeneration; claimed: boolean }>;
-  markReady(sessionId: string, sourceContextRevision: number, now: Date): Promise<void>;
-  markFailed(sessionId: string, sourceContextRevision: number, failureClass: CriticalHandoffGenerationFailureClass, now: Date): Promise<void>;
+  markReady(sessionId: string, sourceContextRevision: number, attempt: number, now: Date): Promise<void>;
+  markFailed(sessionId: string, sourceContextRevision: number, attempt: number, failureClass: CriticalHandoffGenerationFailureClass, now: Date): Promise<void>;
 }

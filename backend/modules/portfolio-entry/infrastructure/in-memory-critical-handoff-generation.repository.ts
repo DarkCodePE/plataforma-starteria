@@ -56,15 +56,15 @@ export class InMemoryCriticalHandoffGenerationRepository implements CriticalHand
     return { generation: clone(claimed), claimed: true };
   }
 
-  async markReady(sessionId: string, sourceContextRevision: number, now: Date) {
+  async markReady(sessionId: string, sourceContextRevision: number, attempt: number, now: Date) {
     const generation = this.generations.get(key(sessionId, sourceContextRevision));
-    if (!generation || generation.status !== 'GENERATING') return;
+    if (!generation || generation.status !== 'GENERATING' || generation.attempt !== attempt) return;
     generation.status = 'READY'; generation.failureClass = null; generation.finishedAt = now; generation.updatedAt = now;
   }
 
-  async markFailed(sessionId: string, sourceContextRevision: number, failureClass: CriticalHandoffGenerationFailureClass, now: Date) {
+  async markFailed(sessionId: string, sourceContextRevision: number, attempt: number, failureClass: CriticalHandoffGenerationFailureClass, now: Date) {
     const generation = this.generations.get(key(sessionId, sourceContextRevision));
-    if (!generation || generation.status !== 'GENERATING') return;
+    if (!generation || generation.status !== 'GENERATING' || generation.attempt !== attempt) return;
     generation.status = 'FAILED'; generation.failureClass = failureClass; generation.finishedAt = now; generation.updatedAt = now;
   }
 }

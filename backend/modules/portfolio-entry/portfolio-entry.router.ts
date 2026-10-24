@@ -178,7 +178,7 @@ export function buildPortfolioEntryRouter(
   });
   const generationReadLimiter = createPortfolioEntryRateLimiter({
     windowMs,
-    maxRequests: options.maxGenerationReadRequests ?? 120,
+    maxRequests: options.maxGenerationReadRequests ?? 300,
     scope: 'portfolio-entry:generation-read',
   });
   const conversionSubmissionLimiter = createPortfolioEntryRateLimiter({

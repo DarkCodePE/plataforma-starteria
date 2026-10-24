@@ -1505,6 +1505,7 @@ export function PortfolioEntryExperience({
   const [isPollingGeneration, setIsPollingGeneration] = useState(false);
   const pollingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pollingIdRef = useRef<number>(0);
+  const isMountedRef = useRef<boolean>(true);
   const statusRef = useRef<HTMLDivElement>(null);
   const criticalHandoffRequestRef = useRef<{ sessionId: string | null; sequence: number }>({ sessionId: null, sequence: 0 });
   const starteriaPathRequestRef = useRef<{ sessionId: string | null; sequence: number }>({ sessionId: null, sequence: 0 });
@@ -1613,7 +1614,20 @@ export function PortfolioEntryExperience({
     }
   }, []);
 
+  const stopGenerationPolling = React.useCallback(() => {
+    pollingIdRef.current += 1;
+    if (pollingTimerRef.current) {
+      clearTimeout(pollingTimerRef.current);
+      pollingTimerRef.current = null;
+    }
+    if (isMountedRef.current) {
+      setIsPollingGeneration(false);
+    }
+  }, []);
+
   const restart = () => {
+    stopGenerationPolling();
+    setIsPollingGeneration(false);
     clearPortfolioEntryCurrentSession();
     setSessionRef(null);
     setSessionDto(null);
@@ -1642,21 +1656,13 @@ export function PortfolioEntryExperience({
     setHandoffRetryRevision(null);
   };
 
-  const stopGenerationPolling = React.useCallback(() => {
-    pollingIdRef.current += 1;
-    if (pollingTimerRef.current) {
-      clearTimeout(pollingTimerRef.current);
-      pollingTimerRef.current = null;
-    }
-    setIsPollingGeneration(false);
-  }, []);
-
   const startGenerationPolling = React.useCallback((
     sessionId: string,
     credential: string | undefined,
     startedAt: string,
     expectedRevision: number,
   ) => {
+    if (!isMountedRef.current) return;
     stopGenerationPolling();
     const currentPollingId = pollingIdRef.current;
     setIsPollingGeneration(true);
@@ -1665,17 +1671,19 @@ export function PortfolioEntryExperience({
     const startedTime = Number.isFinite(startedMs) ? startedMs : Date.now();
 
     const poll = async () => {
-      if (pollingIdRef.current !== currentPollingId) return;
+      if (!isMountedRef.current || pollingIdRef.current !== currentPollingId) return;
 
       if (Date.now() - startedTime >= 180_000) {
-        setIsPollingGeneration(false);
-        setHandoffRetryRevision(expectedRevision);
+        if (isMountedRef.current) {
+          setIsPollingGeneration(false);
+          setHandoffRetryRevision(expectedRevision);
+        }
         return;
       }
 
       try {
         const generation = await getPortfolioEntryCriticalHandoffGeneration(sessionId, credential);
-        if (pollingIdRef.current !== currentPollingId) return;
+        if (!isMountedRef.current || pollingIdRef.current !== currentPollingId) return;
 
         if (generation?.status === 'READY') {
           setIsPollingGeneration(false);
@@ -1684,7 +1692,7 @@ export function PortfolioEntryExperience({
           const updatedSession = credential
             ? await getPortfolioEntrySession(sessionId, credential)
             : await getClaimedPortfolioEntrySession(sessionId);
-          if (pollingIdRef.current !== currentPollingId) return;
+          if (!isMountedRef.current || pollingIdRef.current !== currentPollingId) return;
           setSessionDto(updatedSession);
           await fetchCriticalHandoff(sessionId, credential, true);
           trackPortfolioEntryEvent('handoff_generated', { sessionId });
@@ -1702,8 +1710,31 @@ export function PortfolioEntryExperience({
           setHandoffRetryRevision(expectedRevision);
           return;
         }
-      } catch {
-        if (pollingIdRef.current !== currentPollingId) return;
+      } catch (err) {
+        if (!isMountedRef.current || pollingIdRef.current !== currentPollingId) return;
+        const apiError = normalizePortfolioEntryApiError(err);
+        if (apiError.status === 429 || apiError.kind === 'rate_limited') {
+          if (Date.now() - startedTime >= 180_000) {
+            setIsPollingGeneration(false);
+            setHandoffRetryRevision(expectedRevision);
+            return;
+          }
+          const retryAfterSeconds = typeof apiError.retryAfterSeconds === 'number' && Number.isFinite(apiError.retryAfterSeconds)
+            ? apiError.retryAfterSeconds
+            : 6;
+          const backoffMs = Math.max(6000, Math.min(10000, retryAfterSeconds * 1000));
+          if (isMountedRef.current && pollingIdRef.current === currentPollingId) {
+            pollingTimerRef.current = setTimeout(() => {
+              void poll();
+            }, backoffMs);
+          }
+          return;
+        }
+
+        if (['unauthorized', 'expired'].includes(apiError.kind) || apiError.status === 401 || apiError.status === 410) {
+          setError(mapError(apiError.kind));
+        }
+
         if (Date.now() - startedTime >= 180_000) {
           setIsPollingGeneration(false);
           setHandoffRetryRevision(expectedRevision);
@@ -1711,20 +1742,24 @@ export function PortfolioEntryExperience({
         }
       }
 
-      if (pollingIdRef.current === currentPollingId) {
+      if (isMountedRef.current && pollingIdRef.current === currentPollingId) {
         pollingTimerRef.current = setTimeout(() => {
           void poll();
         }, 3000);
       }
     };
 
-    pollingTimerRef.current = setTimeout(() => {
-      void poll();
-    }, 3000);
+    if (isMountedRef.current) {
+      pollingTimerRef.current = setTimeout(() => {
+        void poll();
+      }, 3000);
+    }
   }, [fetchCriticalHandoff, stopGenerationPolling]);
 
   useEffect(() => {
+    isMountedRef.current = true;
     return () => {
+      isMountedRef.current = false;
       stopGenerationPolling();
     };
   }, [stopGenerationPolling]);
@@ -1733,15 +1768,19 @@ export function PortfolioEntryExperience({
     latest: PortfolioEntrySessionDto,
     allowConclusionRetry: boolean,
     credential?: string,
-  ) => {
-    setSessionDto(latest);
-    setRecoveryVisible(true);
-    setRecoveryVerified(true);
+  ): Promise<{
+    startPolling?: {
+      sessionId: string;
+      credential?: string;
+      startedAt: string;
+      expectedRevision: number;
+    };
+  } | undefined> => {
     const attempt = readCriticalHandoffMaterializationAttempt();
     const conclusionStillPending = latest.handoffExperience === 'critical' && latest.nextAction === 'generate_handoff';
     const hasStoredAttemptForSession = attempt?.sessionId === latest.id;
-    if (conclusionStillPending && (allowConclusionRetry || hasStoredAttemptForSession)) {
-      materializedRevisionRef.current = latest.revision;
+
+    if (conclusionStillPending) {
       try {
         const generation = await getPortfolioEntryCriticalHandoffGeneration(latest.id, credential);
         const startedMs = generation?.startedAt ? Date.parse(generation.startedAt) : NaN;
@@ -1749,18 +1788,31 @@ export function PortfolioEntryExperience({
         const isVigente = generation?.status === 'GENERATING' && (Date.now() - startedTime < 180_000);
 
         if (isVigente && generation) {
+          setSessionDto(latest);
+          setRecoveryVisible(true);
+          setRecoveryVerified(true);
+          materializedRevisionRef.current = latest.revision;
           setHandoffRetryRevision(null);
-          startGenerationPolling(latest.id, credential, generation.startedAt, latest.revision);
-          return;
+          return {
+            startPolling: {
+              sessionId: latest.id,
+              credential,
+              startedAt: generation.startedAt,
+              expectedRevision: latest.revision,
+            },
+          };
         }
 
         if (generation?.status === 'READY') {
+          materializedRevisionRef.current = latest.revision;
           setHandoffRetryRevision(null);
           clearCriticalHandoffMaterializationAttempt();
           const fresh = credential
             ? await getPortfolioEntrySession(latest.id, credential)
             : await getClaimedPortfolioEntrySession(latest.id);
           setSessionDto(fresh);
+          setRecoveryVisible(true);
+          setRecoveryVerified(true);
           await fetchCriticalHandoff(latest.id, credential, true);
           return;
         }
@@ -1768,12 +1820,26 @@ export function PortfolioEntryExperience({
         // Fallback to error / pending behavior
       }
 
-      if (hasStoredAttemptForSession && attempt.revision !== latest.revision) {
-        saveCriticalHandoffMaterializationAttempt({ sessionId: latest.id, revision: latest.revision });
+      setSessionDto(latest);
+      setRecoveryVisible(true);
+      setRecoveryVerified(true);
+
+      if (allowConclusionRetry || hasStoredAttemptForSession) {
+        materializedRevisionRef.current = latest.revision;
+        if (hasStoredAttemptForSession && attempt.revision !== latest.revision) {
+          saveCriticalHandoffMaterializationAttempt({ sessionId: latest.id, revision: latest.revision });
+        }
+        setHandoffRetryRevision(latest.revision);
+        return;
       }
-      setHandoffRetryRevision(latest.revision);
+
+      setHandoffRetryRevision(null);
       return;
     }
+
+    setSessionDto(latest);
+    setRecoveryVisible(true);
+    setRecoveryVerified(true);
     setHandoffRetryRevision(null);
     if (!conclusionStillPending || (attempt && attempt.sessionId === latest.id)) {
       clearCriticalHandoffMaterializationAttempt();
@@ -1791,7 +1857,15 @@ export function PortfolioEntryExperience({
       setRecoveryVerified(false);
       try {
         const latest = await getPortfolioEntrySession(ref.sessionId, ref.credential);
-        await applyVerifiedRecovery(latest, false, ref.credential);
+        const resolution = await applyVerifiedRecovery(latest, false, ref.credential);
+        if (resolution?.startPolling) {
+          startGenerationPolling(
+            resolution.startPolling.sessionId,
+            resolution.startPolling.credential,
+            resolution.startPolling.startedAt,
+            resolution.startPolling.expectedRevision,
+          );
+        }
       } catch {
         // Keep the unknown state visible; no semantic request is replayed.
       }
@@ -1835,7 +1909,15 @@ export function PortfolioEntryExperience({
       const latest = await getPortfolioEntrySession(ref.sessionId, ref.credential);
       const mayRetryConclusion = uiError.retryable || apiError.kind === 'conflict';
       if (!mayRetryConclusion) clearCriticalHandoffMaterializationAttempt();
-      await applyVerifiedRecovery(latest, mayRetryConclusion, ref.credential);
+      const resolution = await applyVerifiedRecovery(latest, mayRetryConclusion, ref.credential);
+      if (resolution?.startPolling) {
+        startGenerationPolling(
+          resolution.startPolling.sessionId,
+          resolution.startPolling.credential,
+          resolution.startPolling.startedAt,
+          resolution.startPolling.expectedRevision,
+        );
+      }
       if (latest.nextAction !== 'generate_handoff') setError(null);
     } catch {
       // Keep the state explicitly unknown. A semantic request is never replayed here.
@@ -1855,7 +1937,15 @@ export function PortfolioEntryExperience({
       const latest = claimed
         ? await getClaimedPortfolioEntrySession(claimed.sessionId)
         : await getPortfolioEntrySession(stored!.sessionId, stored!.credential);
-      await applyVerifiedRecovery(latest, false, stored?.credential);
+      const resolution = await applyVerifiedRecovery(latest, false, stored?.credential);
+      if (resolution?.startPolling) {
+        startGenerationPolling(
+          resolution.startPolling.sessionId,
+          resolution.startPolling.credential,
+          resolution.startPolling.startedAt,
+          resolution.startPolling.expectedRevision,
+        );
+      }
       setError(null);
     } catch {
       setRecoveryVerified(false);
@@ -1869,7 +1959,7 @@ export function PortfolioEntryExperience({
     ref: StoredPortfolioEntrySession,
     manualRetry = false,
   ) => {
-    if (handoffRequestInFlightRef.current || pendingRequest === 'handoff') return;
+    if (handoffRequestInFlightRef.current || pendingRequest !== null) return;
     if (!manualRetry && materializedRevisionRef.current === revision) return;
     handoffRequestInFlightRef.current = true;
     materializedRevisionRef.current = revision;
@@ -1948,13 +2038,22 @@ export function PortfolioEntryExperience({
       : getClaimedPortfolioEntrySession(claimed!.sessionId);
     recovery
       .then(async (session) => {
-        if (cancelled) return;
+        if (cancelled || !isMountedRef.current) return;
         setSessionRef(stored ?? null);
-        await applyVerifiedRecovery(session, false, stored?.credential);
         setError(null);
+        const resolution = await applyVerifiedRecovery(session, false, stored?.credential);
+        if (cancelled || !isMountedRef.current) return;
+        if (resolution?.startPolling) {
+          startGenerationPolling(
+            resolution.startPolling.sessionId,
+            resolution.startPolling.credential,
+            resolution.startPolling.startedAt,
+            resolution.startPolling.expectedRevision,
+          );
+        }
       })
       .catch((err) => {
-        if (cancelled) return;
+        if (cancelled || !isMountedRef.current) return;
         if (stored) {
           setRecoveryVisible(true);
           setRecoveryVerified(false);
@@ -1968,7 +2067,7 @@ export function PortfolioEntryExperience({
         trackPortfolioEntryEvent('portfolio_entry_api_failure', { kind: apiError.kind, status: apiError.status });
       })
       .finally(() => {
-        if (!cancelled) setPendingRequest(null);
+        if (!cancelled && isMountedRef.current) setPendingRequest(null);
       });
     return () => {
       cancelled = true;
@@ -2018,12 +2117,13 @@ export function PortfolioEntryExperience({
 
   useEffect(() => {
     if (!sessionDto || !sessionRef) return;
+    if (pendingRequest !== null) return;
     if (sessionDto.nextAction !== 'generate_handoff') return;
     if (materializedRevisionRef.current === sessionDto.revision) return;
     void materializeHandoff(sessionDto.revision, sessionRef);
     // The helper intentionally owns request state and error recovery. The revision guard prevents automatic retries.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sessionDto?.nextAction, sessionDto?.revision, sessionRef?.sessionId]);
+  }, [sessionDto?.nextAction, sessionDto?.revision, sessionRef?.sessionId, pendingRequest]);
 
   const retryHandoff = () => {
     if (

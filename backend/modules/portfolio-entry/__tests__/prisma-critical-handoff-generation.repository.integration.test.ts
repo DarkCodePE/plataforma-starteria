@@ -40,5 +40,11 @@ describeIntegration('PrismaCriticalHandoffGenerationRepository', () => {
     expect(claims[0].generation.id).toBe(claims[1].generation.id);
     const retry = await repository.claim({ ...input, now: new Date(startedAt.getTime() + 180_001) });
     expect(retry).toMatchObject({ claimed: true, generation: { status: 'GENERATING', attempt: 2 } });
+
+    const staleAttempt = claims.find((claim) => claim.claimed)!.generation.attempt;
+    await repository.markFailed(created.session.id, 1, staleAttempt, 'provider_timeout', new Date(startedAt.getTime() + 181_000));
+    await repository.markReady(created.session.id, 1, staleAttempt, new Date(startedAt.getTime() + 182_000));
+    await expect(repository.find(created.session.id, 1, new Date(startedAt.getTime() + 182_000), 180_000))
+      .resolves.toMatchObject({ status: 'GENERATING', attempt: retry.generation.attempt });
   });
 });

@@ -20,7 +20,7 @@ describe('InMemoryCriticalHandoffGenerationRepository', () => {
 
   it('marks an old generation stale before allowing a retry', async () => {
     const repository = new InMemoryCriticalHandoffGenerationRepository();
-    await repository.claim({ sessionId: 'session-1', sourceContextRevision: 4,
+    const firstClaim = await repository.claim({ sessionId: 'session-1', sourceContextRevision: 4,
       expectedSessionRevision: 8, now: startedAt, maxDurationMs: 180_000 });
 
     const retried = await repository.claim({ sessionId: 'session-1', sourceContextRevision: 4,
@@ -28,13 +28,18 @@ describe('InMemoryCriticalHandoffGenerationRepository', () => {
 
     expect(retried.claimed).toBe(true);
     expect(retried.generation).toMatchObject({ status: 'GENERATING', attempt: 2, startedAt: new Date(startedAt.getTime() + 180_001) });
+
+    await repository.markFailed('session-1', 4, firstClaim.generation.attempt, 'provider_timeout', new Date(startedAt.getTime() + 181_000));
+    await repository.markReady('session-1', 4, firstClaim.generation.attempt, new Date(startedAt.getTime() + 182_000));
+    await expect(repository.find('session-1', 4, new Date(startedAt.getTime() + 182_000), 180_000))
+      .resolves.toMatchObject({ status: 'GENERATING', attempt: 2 });
   });
 
   it('allows FAILED generations to be claimed again with an incremented attempt', async () => {
     const repository = new InMemoryCriticalHandoffGenerationRepository();
     await repository.claim({ sessionId: 'session-1', sourceContextRevision: 4,
       expectedSessionRevision: 8, now: startedAt, maxDurationMs: 180_000 });
-    await repository.markFailed('session-1', 4, 'provider_timeout', new Date(startedAt.getTime() + 1000));
+    await repository.markFailed('session-1', 4, 1, 'provider_timeout', new Date(startedAt.getTime() + 1000));
 
     const retry = await repository.claim({ sessionId: 'session-1', sourceContextRevision: 4,
       expectedSessionRevision: 8, now: new Date(startedAt.getTime() + 2000), maxDurationMs: 180_000 });

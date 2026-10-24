@@ -390,6 +390,7 @@ describe('Portfolio Entry Experimental Session API', () => {
       const response = await request(app).get(path)
         .set('X-Starteria-Entry-Token', created.token)
         .expect(200);
+      if (index === 0) expect(response.headers['x-ratelimit-limit']).toBe('300');
       expect(response.body.data).toBeNull();
     }
   });

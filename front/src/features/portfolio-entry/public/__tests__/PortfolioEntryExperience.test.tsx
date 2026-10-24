@@ -1729,6 +1729,7 @@ describe('PortfolioEntryExperience', () => {
         },
       });
       serviceMocks.getPortfolioEntryCriticalHandoffGeneration
+        .mockResolvedValueOnce(null)
         .mockResolvedValueOnce({
           status: 'GENERATING',
           sourceContextRevision: 2,
@@ -1763,13 +1764,13 @@ describe('PortfolioEntryExperience', () => {
       await act(async () => {
         await vi.advanceTimersByTimeAsync(3000);
       });
-      expect(serviceMocks.getPortfolioEntryCriticalHandoffGeneration).toHaveBeenCalledTimes(1);
+      expect(serviceMocks.getPortfolioEntryCriticalHandoffGeneration).toHaveBeenCalledTimes(2);
       expect(screen.getByTestId('portfolio-entry-conclusion-pending')).toBeInTheDocument();
 
       await act(async () => {
         await vi.advanceTimersByTimeAsync(3000);
       });
-      expect(serviceMocks.getPortfolioEntryCriticalHandoffGeneration).toHaveBeenCalledTimes(2);
+      expect(serviceMocks.getPortfolioEntryCriticalHandoffGeneration).toHaveBeenCalledTimes(3);
 
       expect(screen.getByTestId('critical-handoff-review')).toBeInTheDocument();
       expect(serviceMocks.getPortfolioEntryCriticalHandoff).toHaveBeenCalledTimes(1);
@@ -1808,15 +1809,17 @@ describe('PortfolioEntryExperience', () => {
           sessionRevision: 3,
           criticalHandoff: makeCriticalHandoff(),
         });
-      serviceMocks.getPortfolioEntryCriticalHandoffGeneration.mockResolvedValueOnce({
-        status: 'FAILED',
-        sourceContextRevision: 2,
-        attempt: 1,
-        startedAt: new Date().toISOString(),
-        finishedAt: new Date().toISOString(),
-        failureClass: 'provider_timeout',
-        retryable: true,
-      });
+      serviceMocks.getPortfolioEntryCriticalHandoffGeneration
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce({
+          status: 'FAILED',
+          sourceContextRevision: 2,
+          attempt: 1,
+          startedAt: new Date().toISOString(),
+          finishedAt: new Date().toISOString(),
+          failureClass: 'provider_timeout',
+          retryable: true,
+        });
       serviceMocks.getPortfolioEntryCriticalHandoff.mockResolvedValue(makeCriticalHandoff());
 
       renderExperience();
@@ -1875,15 +1878,17 @@ describe('PortfolioEntryExperience', () => {
           retryable: false,
         },
       });
-      serviceMocks.getPortfolioEntryCriticalHandoffGeneration.mockResolvedValue({
-        status: 'GENERATING',
-        sourceContextRevision: 2,
-        attempt: 1,
-        startedAt: startTime.toISOString(),
-        finishedAt: null,
-        failureClass: null,
-        retryable: false,
-      });
+      serviceMocks.getPortfolioEntryCriticalHandoffGeneration
+        .mockResolvedValueOnce(null)
+        .mockResolvedValue({
+          status: 'GENERATING',
+          sourceContextRevision: 2,
+          attempt: 1,
+          startedAt: startTime.toISOString(),
+          finishedAt: null,
+          failureClass: null,
+          retryable: false,
+        });
 
       renderExperience();
 
@@ -2008,6 +2013,8 @@ describe('PortfolioEntryExperience', () => {
       });
       expect(serviceMocks.materializePortfolioEntryCriticalHandoff).toHaveBeenCalledTimes(1);
 
+      serviceMocks.getPortfolioEntryCriticalHandoffGeneration.mockClear();
+
       unmount();
 
       await act(async () => {
@@ -2015,6 +2022,313 @@ describe('PortfolioEntryExperience', () => {
       });
 
       expect(serviceMocks.getPortfolioEntryCriticalHandoffGeneration).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('stops generation polling and resets isPollingGeneration when restart is triggered', async () => {
+    vi.useFakeTimers();
+    try {
+      const eligible = makeSession({
+        lifecycleStatus: 'HANDOFF_ELIGIBLE',
+        revision: 2,
+        nextAction: 'generate_handoff',
+        handoffExperience: 'critical',
+      });
+      savePortfolioEntryCurrentSession({ sessionId: eligible.id, credential: 'entry-token' });
+      serviceMocks.getPortfolioEntrySession.mockResolvedValue(eligible);
+      serviceMocks.materializePortfolioEntryCriticalHandoff.mockResolvedValue({
+        kind: 'generating',
+        sessionRevision: 2,
+        generation: {
+          status: 'GENERATING',
+          sourceContextRevision: 2,
+          attempt: 1,
+          startedAt: new Date().toISOString(),
+          finishedAt: null,
+          failureClass: null,
+          retryable: false,
+        },
+      });
+
+      renderExperience();
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(0);
+      });
+      expect(serviceMocks.materializePortfolioEntryCriticalHandoff).toHaveBeenCalledTimes(1);
+      expect(screen.getByTestId('portfolio-entry-conclusion-pending')).toBeInTheDocument();
+
+      // Poll at 3s returns terminal 401 error
+      serviceMocks.getPortfolioEntryCriticalHandoffGeneration.mockRejectedValueOnce({ status: 401, kind: 'unauthorized' });
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(3000);
+      });
+
+      const restartButton = screen.getByRole('button', { name: /empezar de nuevo/i });
+      serviceMocks.getPortfolioEntryCriticalHandoffGeneration.mockClear();
+
+      fireEvent.click(restartButton);
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(10_000);
+      });
+
+      expect(serviceMocks.getPortfolioEntryCriticalHandoffGeneration).not.toHaveBeenCalled();
+      expect(screen.queryByTestId('portfolio-entry-conclusion-pending')).not.toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('cancels generation polling if unmounted during mount recovery before polling starts', async () => {
+    vi.useFakeTimers();
+    try {
+      const eligible = makeSession({
+        lifecycleStatus: 'HANDOFF_ELIGIBLE',
+        revision: 2,
+        nextAction: 'generate_handoff',
+        handoffExperience: 'critical',
+      });
+      savePortfolioEntryCurrentSession({ sessionId: eligible.id, credential: 'entry-token' });
+      serviceMocks.getPortfolioEntrySession.mockResolvedValue(eligible);
+
+      let resolveGeneration!: (value: unknown) => void;
+      serviceMocks.getPortfolioEntryCriticalHandoffGeneration.mockImplementation(
+        () => new Promise((resolve) => { resolveGeneration = resolve; }),
+      );
+
+      const { unmount } = renderExperience();
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(0);
+      });
+
+      expect(serviceMocks.getPortfolioEntryCriticalHandoffGeneration).toHaveBeenCalledTimes(1);
+
+      unmount();
+
+      await act(async () => {
+        resolveGeneration({
+          status: 'GENERATING',
+          sourceContextRevision: 2,
+          attempt: 1,
+          startedAt: new Date().toISOString(),
+          finishedAt: null,
+          failureClass: null,
+          retryable: false,
+        });
+        await vi.advanceTimersByTimeAsync(10_000);
+      });
+
+      expect(serviceMocks.getPortfolioEntryCriticalHandoffGeneration).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('resumes waiting on reload without a stored attempt when /generation reports active GENERATING', async () => {
+    vi.useFakeTimers();
+    try {
+      const now = new Date('2026-10-24T16:00:00.000Z');
+      vi.setSystemTime(now);
+
+      const eligible = makeSession({
+        lifecycleStatus: 'HANDOFF_ELIGIBLE',
+        revision: 2,
+        nextAction: 'generate_handoff',
+        handoffExperience: 'critical',
+      });
+      // Anonymous session in storage, BUT NO stored materialization attempt
+      savePortfolioEntryCurrentSession({ sessionId: eligible.id, credential: 'entry-token' });
+
+      serviceMocks.getPortfolioEntrySession
+        .mockResolvedValueOnce(eligible)
+        .mockResolvedValueOnce(makeSession({
+          ...eligible,
+          lifecycleStatus: 'HANDOFF_READY',
+          revision: 3,
+          nextAction: 'review_handoff',
+        }));
+
+      serviceMocks.getPortfolioEntryCriticalHandoffGeneration
+        .mockResolvedValueOnce({
+          status: 'GENERATING',
+          sourceContextRevision: 2,
+          attempt: 1,
+          startedAt: new Date(now.getTime() - 25_000).toISOString(),
+          finishedAt: null,
+          failureClass: null,
+          retryable: false,
+        })
+        .mockResolvedValueOnce({
+          status: 'READY',
+          sourceContextRevision: 2,
+          attempt: 1,
+          startedAt: new Date(now.getTime() - 25_000).toISOString(),
+          finishedAt: now.toISOString(),
+          failureClass: null,
+          retryable: false,
+        });
+      serviceMocks.getPortfolioEntryCriticalHandoff.mockResolvedValue(makeCriticalHandoff());
+
+      renderExperience();
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(0);
+      });
+
+      expect(serviceMocks.materializePortfolioEntryCriticalHandoff).not.toHaveBeenCalled();
+      expect(screen.getByTestId('portfolio-entry-conclusion-pending')).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /reintentar/i })).not.toBeInTheDocument();
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(3000);
+      });
+
+      expect(screen.getByTestId('critical-handoff-review')).toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('retries with backoff between 6 and 10 seconds without treating 429 as failure and renders on READY', async () => {
+    vi.useFakeTimers();
+    try {
+      const eligible = makeSession({
+        lifecycleStatus: 'HANDOFF_ELIGIBLE',
+        revision: 2,
+        nextAction: 'generate_handoff',
+        handoffExperience: 'critical',
+      });
+      savePortfolioEntryCurrentSession({ sessionId: eligible.id, credential: 'entry-token' });
+      serviceMocks.getPortfolioEntrySession
+        .mockResolvedValueOnce(eligible)
+        .mockResolvedValueOnce(makeSession({
+          ...eligible,
+          lifecycleStatus: 'HANDOFF_READY',
+          revision: 3,
+          nextAction: 'review_handoff',
+        }));
+      serviceMocks.materializePortfolioEntryCriticalHandoff.mockResolvedValueOnce({
+        kind: 'generating',
+        sessionRevision: 2,
+        generation: {
+          status: 'GENERATING',
+          sourceContextRevision: 2,
+          attempt: 1,
+          startedAt: new Date().toISOString(),
+          finishedAt: null,
+          failureClass: null,
+          retryable: false,
+        },
+      });
+
+      // Mount check returns null, 1st poll at 3s returns 429 with retryAfterSeconds 8, 2nd poll at 3s + 8s returns READY
+      serviceMocks.getPortfolioEntryCriticalHandoffGeneration
+        .mockResolvedValueOnce(null)
+        .mockRejectedValueOnce({
+          status: 429,
+          kind: 'rate_limited',
+          retryAfterSeconds: 8,
+        })
+        .mockResolvedValueOnce({
+          status: 'READY',
+          sourceContextRevision: 2,
+          attempt: 1,
+          startedAt: new Date().toISOString(),
+          finishedAt: new Date().toISOString(),
+          failureClass: null,
+          retryable: false,
+        });
+      serviceMocks.getPortfolioEntryCriticalHandoff.mockResolvedValue(makeCriticalHandoff());
+
+      renderExperience();
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(0);
+      });
+      expect(serviceMocks.materializePortfolioEntryCriticalHandoff).toHaveBeenCalledTimes(1);
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(3000);
+      });
+
+      expect(screen.queryByRole('button', { name: /reintentar/i })).not.toBeInTheDocument();
+      expect(screen.getByTestId('portfolio-entry-conclusion-pending')).toBeInTheDocument();
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(3000);
+      });
+      expect(serviceMocks.getPortfolioEntryCriticalHandoffGeneration).toHaveBeenCalledTimes(2);
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(5000);
+      });
+      expect(serviceMocks.getPortfolioEntryCriticalHandoffGeneration).toHaveBeenCalledTimes(3);
+      expect(screen.getByTestId('critical-handoff-review')).toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('stops polling and shows conclusion_failed_recoverable when 429 polls exceed 3 minutes from startedAt', async () => {
+    vi.useFakeTimers();
+    try {
+      const startTime = new Date('2026-10-24T16:00:00.000Z');
+      vi.setSystemTime(startTime);
+
+      const eligible = makeSession({
+        lifecycleStatus: 'HANDOFF_ELIGIBLE',
+        revision: 2,
+        nextAction: 'generate_handoff',
+        handoffExperience: 'critical',
+      });
+      savePortfolioEntryCurrentSession({ sessionId: eligible.id, credential: 'entry-token' });
+      serviceMocks.getPortfolioEntrySession.mockResolvedValue(eligible);
+      serviceMocks.materializePortfolioEntryCriticalHandoff.mockResolvedValue({
+        kind: 'generating',
+        sessionRevision: 2,
+        generation: {
+          status: 'GENERATING',
+          sourceContextRevision: 2,
+          attempt: 1,
+          startedAt: startTime.toISOString(),
+          finishedAt: null,
+          failureClass: null,
+          retryable: false,
+        },
+      });
+
+      serviceMocks.getPortfolioEntryCriticalHandoffGeneration
+        .mockResolvedValueOnce(null)
+        .mockRejectedValue({
+          status: 429,
+          kind: 'rate_limited',
+          retryAfterSeconds: 6,
+        });
+
+      renderExperience();
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(0);
+      });
+      expect(serviceMocks.materializePortfolioEntryCriticalHandoff).toHaveBeenCalledTimes(1);
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(150_000);
+      });
+      expect(screen.getByTestId('portfolio-entry-conclusion-pending')).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /reintentar/i })).not.toBeInTheDocument();
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(35_000);
+      });
+
+      expect(screen.getByTestId('portfolio-entry-conclusion-failed')).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Reintentar conclusión' })).toBeInTheDocument();
     } finally {
       vi.useRealTimers();
     }
