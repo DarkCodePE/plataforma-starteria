@@ -1,0 +1,52 @@
+{
+  "url": "http://127.0.0.1:5182/portfolio/inicio",
+  "checks": [
+    "login",
+    "guardar-no-envia",
+    "envio-solo-con-confirmacion-explicita",
+    "cierre-humano-persistido-no-envia",
+    "confirmacion-y-cancelacion-por-teclado-sin-cta-duplicado",
+    "reload-conserva-overview",
+    "logout-login-y-url-directa-conservan-overview",
+    "segundo-frente-por-teclado-sin-reiniciar-el-primero",
+    "primer-frente-preservado-con-segundo-en-preparacion",
+    "responsive-768-390-360",
+    "sin-errores-consola-ni-http-api"
+  ],
+  "screenshots": [
+    "01-configuracion-inicial-con-encargo-guardado.png",
+    "02-despues-de-envio-sandbox.png",
+    "03-confirmacion-humana-de-cierre.png",
+    "03b-confirmacion-tablet-768.png",
+    "03c-confirmacion-mobile-390.png",
+    "04-portfolio-overview-desktop-1440.png",
+    "05-segundo-frente-contextual-desktop.png",
+    "06-portfolio-overview-tablet-768.png",
+    "07-portfolio-overview-mobile-390.png",
+    "08-portfolio-overview-mobile-360.png"
+  ],
+  "mailpit": {
+    "beforeSave": 10,
+    "afterSave": 10,
+    "beforeSend": 10,
+    "afterSend": 11,
+    "beforeCompletion": 11,
+    "afterCompletion": 11,
+    "beforeCancel": 11,
+    "afterCancel": 11
+  },
+  "consoleErrors": [
+    "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+    "Failed to load resource: the server responded with a status of 401 (Unauthorized)"
+  ],
+  "failedResponses": [
+    {
+      "status": 401,
+      "path": "/api/v1/auth/refresh"
+    },
+    {
+      "status": 401,
+      "path": "/api/v1/auth/refresh"
+    }
+  ]
+}
