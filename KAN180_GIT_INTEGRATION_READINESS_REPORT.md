@@ -2,20 +2,17 @@
 
 Fecha: 2026-10-25  
 Rama: `feat/KAN-180-portfolio-lead-integration`  
-HEAD auditado: `d72223150fffa2b54082c2496f1f1b854334b090`  
+HEAD funcional y de reconciliación auditado: `d92b132` (este informe recibe después un commit documental de corrección)  
 Base remota auditada: `origin/main` en `270e6fbe12dd143c5c312fb238790a9405bd3ab7`  
 Resultado: **PASS**
 
 ## Dictamen
 
-La integración de Portfolio Lead es técnicamente segura para pasar a staging y commit cuando exista autorización expresa. El árbol candidato completo se verificó sobre una reconciliación sintética con el `origin/main` vigente, sin conflictos de contenido, y pasó frontend, backend, contratos Prisma, recorridos HTTP con PostgreSQL/Mailpit y navegador real.
+La integración de Portfolio Lead es técnicamente segura para publicación y revisión. El WIP autorizado ya fue respaldado, stageado y organizado en dos commits; `origin/main` se incorporó mediante merge explícito, sin rebase ni force push. El árbol real reconciliado pasó frontend, backend, contratos Prisma, recorridos HTTP con PostgreSQL/Mailpit y navegador real.
 
-No se ejecutaron staging, commit, push, apertura de PR, merge, deploy ni migraciones sobre bases protegidas o productivas. La autorización humana sigue pendiente.
+La autorización humana para staging, commits, push y creación de PR consta en KAN-180 comentario 10502. Ya se ejecutaron staging y commits. En este punto del informe aún no se ejecutaron push ni apertura de PR; merge a `main`, deploy y migraciones productivas siguen expresamente prohibidos.
 
-No hay un bloqueo técnico abierto. Antes de abrir el PR deben cumplirse dos puertas de proceso:
-
-1. autorización expresa para staging/commit/push/PR;
-2. recuperar desde Jira los CA textuales de KAN-180 para completar la plantilla del PR sin inventarlos. En este entorno no están configurados `JIRA_HOSTNAME`, `JIRA_USERNAME` ni `JIRA_API_TOKEN`.
+No hay un bloqueo técnico abierto. Los criterios literales se recuperaron de Jira mediante el conector autorizado: KAN-171 comentarios 10479/10480 y KAN-180 comentario 10498. La numeración CA-1…CA-12 es una normalización local y no se atribuye a Jira.
 
 ## 1. Respaldo e integridad del WIP
 
@@ -32,12 +29,12 @@ Se preservó el estado local previo a la auditoría en:
 
 Durante el primer intento de respaldo, una expansión incorrecta de PowerShell copió 92 duplicados en la raíz del worktree. Se identificaron por ruta, timestamp y hash, se eliminaron únicamente esos 92 duplicados y se comprobó que el `git status` volvió exactamente al estado inicial. El respaldo válido es exclusivamente el directorio `KAN-180-clean-20261025-003719` indicado arriba.
 
-El estado final sigue sin staging (`git diff --cached --name-only` vacío). `git diff --check` termina en PASS.
+El respaldo permanece intacto. Tras los commits, el índice está vacío y `git diff --check` termina en PASS. Sólo quedan fuera de Git cuatro grupos excluidos: `artifacts/KAN-163/**`, `artifacts/KAN-180/front-tests.json`, `backend/scripts/prepare-pl06b-simplification-runtime.ps1` y `artifacts/e2e-goal/**` generado por la repetición final de Playwright.
 
 ## 2. Topología Git y reconciliación con `origin/main`
 
 - Merge-base: `3eca69d6473f455735571c2407d275e90286b613`.
-- Rama candidata: 8 commits por delante y 11 por detrás de `origin/main`.
+- Estado previo conservado como historial: la rama estaba 8 commits por delante y 11 por detrás de `origin/main`.
 - Delta committed de la rama desde el merge-base: 68 archivos, 9.938 inserciones y 603 eliminaciones.
 - Delta de `origin/main` desde el merge-base: 29 archivos, 2.951 inserciones y 917 eliminaciones.
 - WIP tracked sobre HEAD: 34 archivos, 1.597 inserciones y 622 eliminaciones.
@@ -47,7 +44,7 @@ El estado final sigue sin staging (`git diff --cached --name-only` vacío). `git
 
 `C:\Users\User\proyect-starteria\_codex-integration-checks\KAN-180-20261025-003816\merged`
 
-La prueba de reconciliación no modificó la rama ni el índice reales.
+La prueba sintética no modificó la rama ni el índice. Después de autorizarse la publicación se creó `d92b132` (`merge(main): reconcilia base para KAN-180`): la rama real quedó 0 commits por detrás y 11 por delante de `origin/main`. El commit documental que corrige este informe eleva el contador final a 12 por delante, sin cambiar producto.
 
 ## 3. Cambios que forman la integración
 
@@ -57,9 +54,9 @@ La prueba de reconciliación no modificó la rama ni el índice reales.
 | PL-05 | commit `d2b9910` | Brief de activación versionado, confirmación inmutable, router/servicio/front y tres migraciones `20261020200000/201000/202000` | PL-04 materializado |
 | PL-06A | commit `9f1935b` | preparación de Assignment para reto o Project canónico y migración `20261022110000_add_pl06a_assignment_preparation` | Brief confirmado |
 | ADR-009 / PL-06A | commit `c482fa8` | canonicalización gobernada de iniciativas documentales y migración `20261023090000_add_adr009_imported_initiative_canonicalization` | autoridad humana; no Project implícito |
-| PL-06B | commit `d722231` + WIP | envío explícito por lote, retry/idempotencia, estados de entrega y migración `20261023120000_add_pl06b_handoff_delivery_batches` | Assignments preparados |
-| KAN-171/172 | WIP, identificado también en el encabezado de su migración | cierre contextual humano 7/7, proyección al Overview, reentrada y migración `20261024003000_add_portfolio_setup_completion` | PL-06B y materialización existentes |
-| KAN-180 | WIP | consolidación del Overview y nuevo frente: CTA único, intención idempotente y nueva sesión real en B1/1 de 7 | setup histórico completado |
+| PL-06B | commits `d722231` y `f854d37` | envío explícito por lote, retry/idempotencia, estados de entrega y migración `20261023120000_add_pl06b_handoff_delivery_batches` | Assignments preparados |
+| KAN-171/172 | commit `f854d37` | cierre contextual humano 7/7, proyección al Overview, reentrada y migración `20261024003000_add_portfolio_setup_completion` | PL-06B y materialización existentes |
+| KAN-180 | commits `f854d37` y `60e94e0` | consolidación del Overview y nuevo frente: CTA único, intención idempotente, nueva sesión real en B1/1 de 7, reportes y evidencia | setup histórico completado |
 
 Commits de soporte preservados: `c295317` (baseline de recuperación), `bc36a2c` (concurrencia de versiones) y `b5bd01a` (conservación de BriefVersion al reclamar).
 
@@ -113,12 +110,12 @@ Por tanto, KAN-178/179 no forman parte del staging propuesto. Si se desean despu
 | `npx prisma generate` | PASS |
 | `npx prisma validate` con DB descartable | PASS |
 | 62 migraciones sobre PostgreSQL 16 vacío | PASS; esquema al día |
-| `npm run test:front` | PASS, exit 0 |
+| `npm run test:front` | PASS; 303 archivos/963 tests en la ejecución completa registrada |
 | `npm run test:backend` aislado | PASS: 188 archivos/1.668 tests; 29 archivos/136 tests omitidos por flags |
 | `npm run typecheck:front` | PASS |
 | `npm run typecheck:backend` | PASS |
 | `npm run lint` | PASS (`Baseline lint passed`) |
-| `npm run build` | PASS; 2.688 módulos |
+| `npm run build` | PASS; 2.683 módulos en la repetición final |
 | `npm run build:backend` | PASS |
 | PL-04 Playwright con PostgreSQL efímero | PASS |
 | PL-05 Playwright `p12-r1-challenge-brief-runtime.spec.ts` | PASS, 1/1 |
@@ -128,7 +125,7 @@ Por tanto, KAN-178/179 no forman parte del staging propuesto. Si se desean despu
 | KAN-171 Home/Overview en Chromium | PASS: 19 checks, 15 capturas, 0 fallos API, 0 errores de consola |
 | KAN-180 nuevo frente en Chromium | PASS: 13 checks, 7 capturas |
 | `git diff --check` | PASS |
-| merge sintético con `origin/main` | PASS, sin conflictos ni colisiones no versionadas |
+| merge real con `origin/main` | PASS en `d92b132`, sin conflictos; rama 0 behind |
 
 Cobertura funcional observada: cierre contextual, creación de frentes, 1/7 real, idempotencia, nueva intención, reentrada, multi-frente, responsive, navegación por teclado, aislamiento tenant, envío exclusivamente explícito y ausencia de entidades/correo implícitos.
 
@@ -138,6 +135,8 @@ Cobertura funcional observada: cierre contextual, creación de frentes, 1/7 real
 - Los E2E PL-04/06A conservaban selectores de una UI anterior. Se reconciliaron sólo las aserciones con el DOM y los tests de componente aprobados; no se cambió producto. Ambos recorridos quedaron verdes.
 - Una ejecución inicial usó puertos ocupados por el worktree protegido KAN-153. Se repitió en 4120/5200/55454 sin detener ni escribir KAN-153.
 - `npm run build:frontend` no existe; el comando canónico `npm run build` pasó. Front y backend se construyeron secuencialmente para evitar competir por `dist/`.
+- En la repetición final ambos builds se lanzaron primero en paralelo y Vite encontró `ENOTEMPTY` al competir con TypeScript por `front/dist/backend`; repetidos secuencialmente, ambos pasaron. No fue un fallo de producto.
+- La primera repetición final de PL-06B omitió `PILOT_LEAD_NOTIFY_FROM`, por lo que el mailer se desactivó y fallaron 2 asserts; con el contrato SMTP completo la suite pasó 3/3. El intento fallido y su causa se conservan como evidencia operacional.
 - Playwright Chromium no estaba instalado; se instaló el binario local y luego los recorridos pasaron.
 
 Warnings no bloqueantes:
@@ -162,9 +161,16 @@ No hubo hallazgos bloqueantes. Hallazgos menores y tratamiento:
 
 El revisor cubrió diff committed y WIP, no versionados, autoridad/ADR, Prisma↔migraciones↔backend↔front, authz/tenant, ausencia de `.skip`, merge-tree y evidencia. No pudo leer Jira por falta de credenciales.
 
-## 7. Staging propuesto, aún NO ejecutado
+```text
+REVIEW  KAN-180  ronda 2  @ d92b132
+Veredicto: changes_required
+```
 
-Después de autorización expresa, separar código y evidencia. No usar `git add .`.
+La ronda 2 no encontró defectos funcionales, de seguridad ni de alcance. Detectó un único bloqueo documental: este informe seguía presentando como actuales la divergencia y los pasos previos a la autorización. La presente corrección actualiza HEAD/topología, commits, exclusiones y pasos restantes. La ronda 3 se ejecuta sobre este ajuste antes del push.
+
+## 7. Registro histórico del staging propuesto — EJECUTADO
+
+Este bloque se conserva como trazabilidad del plan previo a la autorización. Fue ejecutado de forma selectiva; no se usó `git add .`.
 
 ### Commit 1: producto, contratos técnicos y tests
 
@@ -199,6 +205,8 @@ Verificar antes del commit que NO estén staged:
 - `artifacts/KAN-163/**`
 - `artifacts/KAN-180/front-tests.json`
 
+Resultado real: commit `f854d374f8210ca682a792f3c76e7bbc79943f58`.
+
 ### Commit 2: reportes y evidencia revisable
 
 ```powershell
@@ -217,9 +225,11 @@ git diff --cached --stat
 git commit -m "docs(portfolio): documenta readiness de integración [KAN-180]"
 ```
 
-## 8. Pasos exactos para integrar en GitHub
+Resultado real: commit `60e94e08fc82484082a7ba129f266b6e66727e7d`. Las exclusiones permanecieron no rastreadas.
 
-Ejecutar sólo después de autorizar staging/commit/push/PR:
+## 8. Estado de los pasos para integrar en GitHub
+
+La siguiente lista era el plan previo. Los pasos 1–7 ya se completaron bajo la autorización 10502:
 
 1. Aplicar los dos bloques de staging/commit anteriores y confirmar las exclusiones con `git status --short`.
 2. Actualizar referencias: `git fetch origin main`.
@@ -228,13 +238,15 @@ Ejecutar sólo después de autorizar staging/commit/push/PR:
 5. Repetir, desde `front/`, `npm run typecheck:front`, `npm run typecheck:backend`, `npm run lint`, `npm run test:front`, `npm run test:backend`, `npm run build` y `npm run build:backend`.
 6. Repetir los E2E PL-04, PL-05, PL-06A y los HTTP PL-06B/setup-completion en infraestructura descartable.
 7. Confirmar `git diff --check`, ausencia de secretos y ausencia de KAN-178/179.
-8. Con autorización separada: `git push -u origin feat/KAN-180-portfolio-lead-integration`.
-9. Recuperar los CA de Jira y completar `.github/PULL_REQUEST_TEMPLATE.md`; no marcar ningún CA que no esté demostrado.
-10. Con autorización separada, abrir el PR con título: `feat(portfolio): consolida Portfolio Lead [KAN-180]`.
+8. Publicar sin force push: `git push -u origin feat/KAN-180-portfolio-lead-integration`.
+9. Los criterios de Jira ya se recuperaron y mapearon en la matriz CA-1…CA-12 de este informe; completar la plantilla sin atribuir esa numeración local a Jira.
+10. Abrir el PR autorizado con título: `feat(portfolio): consolida Portfolio Lead [KAN-180]` y comprobar que su diff coincide con el candidato.
 
 No hacer merge ni deploy. Las migraciones se incluyen como archivos revisables; su aplicación productiva queda exclusivamente en el flujo de despliegue autorizado.
 
-## 9. Cuerpo base del PR
+## 9. Registro histórico del cuerpo base — SUPERSEDED
+
+El borrador siguiente se conserva como historial preautorización. Fue reemplazado por un cuerpo completo que usa la matriz CA-1…CA-12 de la sección 3, las fuentes Jira 10479/10480/10498 y la evidencia final.
 
 ```markdown
 ## HU
@@ -244,7 +256,7 @@ Slice V2: Portfolio Lead PL-04 → PL-06B, cierre contextual y nuevo frente.
 
 ## Criterios de aceptación
 
-Pendiente: copiar literalmente los CA de Jira y vincular cada uno con los tests/evidencias de este informe.
+SUPERSEDED: los criterios ya están recuperados y vinculados en la sección 3.
 
 ## Resumen
 
@@ -269,7 +281,7 @@ Integra materialización PL-04, Briefs PL-05, preparación/entrega PL-06, cierre
 - [x] No toca workflows
 ```
 
-## V2_CHANGE_CLOSURE_CHECK — readiness
+## V2_CHANGE_PUBLICATION_CHECK — pre-PR
 
 - Slice: Portfolio Lead V2, PL-04 → PL-06B, cierre contextual y nuevo frente.
 - Autoridad humana: preservada; IA/Copilot propone, no confirma ni materializa por sí sola.
@@ -278,5 +290,5 @@ Integra materialización PL-04, Briefs PL-05, preparación/entrega PL-06, cierre
 - Contratos: Zod, servicio front, Prisma y migraciones alineados.
 - KAN-178/179: fuera del candidato.
 - Evidencia: suites completas, DB/SMTP descartables y navegador disponibles.
-- Revisión: `approved`, ronda 1, sin bloqueantes.
-- Estado de sesión: **lista para review**, con cuerpo de PR preparado; staging, commit, push y PR esperan autorización expresa.
+- Revisión: ronda 1 aprobada; el único bloqueo documental de ronda 2 fue corregido y queda sujeto a ronda 3 antes del push.
+- Estado de sesión: código, evidencia, commits y reconciliación listos; push y PR son los únicos pasos de publicación pendientes. El `V2_CHANGE_CLOSURE_CHECK` corresponde después del merge humano y no se declara completado aquí.
