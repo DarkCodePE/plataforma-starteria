@@ -39,7 +39,9 @@ export class FetchStructuredModelAdapter implements StructuredModelAdapter {
       } catch (error) {
         const duration = Math.round(performance.now() - started);
         const errorKind = classifyTechnicalError(error);
-        const decision = shouldRetryModelExecution({ errorType: errorKind, attempt });
+        const decision = errorKind === 'timeout' && this.config.retryOnTimeout === false
+          ? { retry: false }
+          : shouldRetryModelExecution({ errorType: errorKind, attempt });
         if (decision.retry) {
           retryReason = decision.reason;
           continue;
