@@ -1515,37 +1515,35 @@ test.describe('Portfolio Entry 114D Critical Handoff and explicit legacy compati
     await continueThroughAuthenticatedLegacyPortfolioEntry(page, user, organization, legacyFixture, { openPortfolioHomeForHomeCoverage: true });
     await expectScopedPortfolioAccess(page, api, user, organization.id);
 
-    const confirmAnchor = page.getByRole('button', { name: /Confirmar punto de partida/i });
+    const confirmAnchor = page.getByRole('button', { name: /Confirmar este punto de partida y continuar/i });
     if (await confirmAnchor.isVisible().catch(() => false)) {
       await confirmAnchor.click();
-      await expect(page.getByText('Confirmado', { exact: true })).toBeVisible({ timeout: 15_000 });
     }
     const beforeNoWork = await canonicalCounts();
-    await page.getByRole('button', { name: /Incorporar trabajo existente/i }).click();
+    await expect(page.getByTestId('portfolio-bootstrap-work-intake')).toBeVisible({ timeout: 15_000 });
     await page.getByRole('button', { name: /Todavia no tenemos iniciativas/i }).click();
     await page.getByRole('button', { name: /Todavia no tenemos iniciativas activas/i }).click();
 
-    await expect(page.getByText(/Perfecto. Starteria puede conservar este punto de partida/i)).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByTestId('portfolio-organization-cascade')).toBeVisible({ timeout: 15_000 });
     expect(await canonicalCounts()).toEqual(beforeNoWork);
 
     await page.reload();
-    await expect(page.getByTestId('portfolio-bootstrap-work-intake')).toBeVisible();
-    await expect(page.getByText(/Perfecto. Starteria puede conservar este punto de partida/i)).toBeVisible();
+    await expect(page.getByTestId('portfolio-organization-cascade')).toBeVisible();
     await expect(page.getByText(/Crear frente estrategico|Crear reto|Step 0|HMW|Test Card|experiment|prototype/i)).toHaveCount(0);
     legacyNavigation.expectClean();
     legacyNavigation.dispose();
   });
 
   for (const format of ['csv', 'xlsx'] as const) {
-    test(`[LEGACY_COMPAT] portfolio-first imports ${format.toUpperCase()} through B5 without canonical writes`, async ({ page }, testInfo) => {
+    test(`[LEGACY_COMPAT] portfolio-first imports ${format.toUpperCase()} through analysis handoff without canonical writes`, async ({ page }, testInfo) => {
       const legacyNavigation = watchForbiddenPortfolioEntryNavigation(page);
       const { continuationId, bootstrapSessionId, anchorId } = await startPortfolioBootstrapFromLegacyEntry(page);
       const beforeImport = await canonicalCounts();
       const importFile = createPortfolioImportFixture(format, testInfo);
 
-      await page.getByRole('button', { name: /Incorporar trabajo existente/i }).click();
-      await page.getByRole('button', { name: /Subir Excel o CSV/i }).click();
-      await page.getByLabel(/Subir Excel o CSV/i).setInputFiles(importFile);
+      await expect(page.getByTestId('portfolio-bootstrap-work-intake')).toBeVisible({ timeout: 15_000 });
+      await page.getByRole('button', { name: /Subir PDF, Excel o CSV/i }).click();
+      await page.getByLabel(/Subir PDF, Excel o CSV/i).setInputFiles(importFile);
       await expect(page.getByText(importFile.split(/[\\/]/).pop() ?? '')).toBeVisible({ timeout: 15_000 });
       await expect(page.getByText('Nuevo onboarding digital')).toBeVisible();
 
@@ -1555,12 +1553,11 @@ test.describe('Portfolio Entry 114D Critical Handoff and explicit legacy compati
       expect(await canonicalCounts()).toEqual(beforeImport);
 
       await page.reload();
-      await expect(page.getByRole('button', { name: /Incorporar trabajo existente/i })).toBeVisible({ timeout: 15_000 });
-      await page.getByRole('button', { name: /Incorporar trabajo existente/i }).click();
-      await page.getByRole('button', { name: /Subir Excel o CSV/i }).click();
+      await expect(page.getByTestId('portfolio-bootstrap-work-intake')).toBeVisible({ timeout: 15_000 });
+      await page.getByRole('button', { name: /Subir PDF, Excel o CSV/i }).click();
       await expect(page.getByText(importFile.split(/[\\/]/).pop() ?? '')).toBeVisible();
-      await page.getByRole('button', { name: /Incorporar como trabajo provisional/i }).dblclick();
-      await expect(page.getByText(/4 elementos detectados/i)).toBeVisible({ timeout: 15_000 });
+      await page.getByRole('button', { name: /Incorporar \d+ iniciativas/i }).dblclick();
+      await expect(page.getByText(/4 iniciativas detectadas/i).first()).toBeVisible({ timeout: 15_000 });
       await expect(page.getByText(/Provisional - importado desde archivo/i).first()).toBeVisible();
 
       dbState = await expectOneBootstrapSession(continuationId);
@@ -1578,40 +1575,34 @@ test.describe('Portfolio Entry 114D Critical Handoff and explicit legacy compati
       expect(await canonicalCounts()).toEqual(beforeImport);
 
       await page.reload();
-      await expect(page.getByText(/4 elementos detectados/i)).toBeVisible({ timeout: 15_000 });
+      await expect(page.getByText(/4 iniciativas detectadas/i).first()).toBeVisible({ timeout: 15_000 });
       dbState = await expectOneBootstrapSession(continuationId);
       expect(dbState.session.workItems).toHaveLength(4);
       expect(dbState.session.importBatches).toHaveLength(1);
       expect(await canonicalCounts()).toEqual(beforeImport);
 
-      await page.getByRole('button', { name: /Analizar trabajo detectado/i }).dblclick();
-      await expect(page.getByTestId('portfolio-bootstrap-proposed-structure').getByText(/Pendiente de tu revision/i)).toBeVisible({ timeout: 15_000 });
+      await page.getByRole('button', { name: /Analizar 4 iniciativas/i }).dblclick();
+      await expect(page.getByTestId('portfolio-bootstrap-material-review')).toBeVisible({ timeout: 15_000 });
       dbState = await expectOneBootstrapSession(continuationId);
       expect(dbState.session.analysisRuns).toHaveLength(1);
       expect(dbState.session.proposedMutations.length).toBeGreaterThan(0);
       const proposedMutationCount = dbState.session.proposedMutations.length;
       expect(await canonicalCounts()).toEqual(beforeImport);
 
-      await page.getByRole('button', { name: /Revisar propuesta/i }).click();
-      await expect(page.getByTestId('portfolio-bootstrap-material-review')).toBeVisible();
-      await page.getByTestId('portfolio-bootstrap-material-review').getByRole('button', { name: /^Confirmar$/i }).first().dblclick();
-      await expect(page.getByText(/1 confirmadas/i)).toBeVisible({ timeout: 15_000 });
-      await page.getByRole('button', { name: /Dejar pendientes restantes/i }).click();
-      await expect(page.getByRole('button', { name: /Generar primera lectura del portafolio/i })).toBeEnabled({ timeout: 15_000 });
+      await expect(page.getByTestId('portfolio-bootstrap-material-review').getByRole('button', { name: /Ver an.lisis/i }).first()).toBeVisible();
+      await expect(page.getByRole('button', { name: /Continuar a organizaci.n/i })).toBeEnabled({ timeout: 15_000 });
       dbState = await expectOneBootstrapSession(continuationId);
       expect(dbState.session.proposedMutations).toHaveLength(proposedMutationCount);
       expect(await canonicalCounts()).toEqual(beforeImport);
 
-      await page.getByRole('button', { name: /Generar primera lectura del portafolio/i }).dblclick();
-      await expect(page.getByTestId('portfolio-first-reading')).toBeVisible({ timeout: 15_000 });
-      await expect(page.getByText('Nuevo onboarding digital')).toBeVisible();
-      await expect(page.getByTestId('portfolio-reading-provenance')).toBeVisible();
+      await page.getByRole('button', { name: /Continuar a organizaci.n/i }).dblclick();
+      await expect(page.getByTestId('portfolio-organization-cascade')).toBeVisible({ timeout: 15_000 });
       dbState = await expectOneBootstrapSession(continuationId);
-      expect(dbState.session.status).toBe('reading_published');
-      expect(dbState.session.bootstrapPhase).toBe('B5_FIRST_READING');
-      expect(dbState.session.readings).toHaveLength(1);
       expect(dbState.session.workItems).toHaveLength(4);
+      expect(dbState.session.proposedMutations).toHaveLength(proposedMutationCount);
       expect(await canonicalCounts()).toEqual(beforeImport);
+      await page.reload();
+      await expect(page.getByTestId('portfolio-bootstrap-material-review')).toBeVisible({ timeout: 15_000 });
       await expect(page.getByText(/Crear frente estrategico|Crear reto|Crear iniciativa y continuar|Step 0|HMW|Test Card|experiment|prototype/i)).toHaveCount(0);
       await expect(page).not.toHaveURL(/\/initiatives\/|\/overview|\/step\/0/);
       legacyNavigation.expectClean();
@@ -1634,13 +1625,13 @@ async function startPortfolioBootstrapFromLegacyEntry(page: Page) {
   let dbState = await expectOneBootstrapSession(continuationId);
   const bootstrapSessionId = dbState.session.id;
   const anchorId = dbState.session.anchor.id;
-  const confirmAnchor = page.getByRole('button', { name: /Confirmar punto de partida/i });
+  const confirmAnchor = page.getByRole('button', { name: /Confirmar este punto de partida y continuar/i });
   if (await confirmAnchor.isVisible().catch(() => false)) {
     await confirmAnchor.click();
-    await expect(page.getByText('Confirmado', { exact: true })).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByTestId('portfolio-bootstrap-work-intake')).toBeVisible({ timeout: 15_000 });
   }
   await page.reload();
-  await expect(page.getByRole('button', { name: /Incorporar trabajo existente/i })).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByTestId('portfolio-bootstrap-work-intake')).toBeVisible({ timeout: 15_000 });
   dbState = await expectOneBootstrapSession(continuationId);
   expect(dbState.session.id).toBe(bootstrapSessionId);
   expect(dbState.session.anchor.id).toBe(anchorId);

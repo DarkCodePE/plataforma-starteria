@@ -715,7 +715,7 @@ model Project {
   lastModified            DateTime          @updatedAt
 
   ownerId  String?
-  owner    User?   @relation(fields: [ownerId], references: [id])
+  owner    User?   @relation(fields: [ownerId], references: [id], onDelete: Restrict)
   organization Organization? @relation(fields: [organizationId], references: [id], onDelete: Restrict)
   cohortId String?
   cohort   Cohort? @relation(fields: [cohortId], references: [id])
@@ -1762,7 +1762,7 @@ model ChallengeActivationBriefVersion {
   assignments PortfolioHandoffAssignment[]
 
   @@unique([briefId, versionNumber])
-  @@unique([id, organizationId, challengeId])
+  @@unique([id, organizationId, challengeId], map: "ChallengeActivationBriefVersion_id_organizationId_challengeId_k")
   @@index([organizationId])
   @@index([challengeId])
   @@index([briefId, versionNumber])
@@ -1784,7 +1784,7 @@ model PortfolioActivationCommandReceipt {
   resultAssignmentId String?
   createdAt          DateTime                       @default(now())
 
-  @@unique([organizationId, commandType, idempotencyKey])
+  @@unique([organizationId, commandType, idempotencyKey], map: "PortfolioActivationCommandReceipt_organizationId_commandType_id")
   @@index([organizationId, createdAt])
 }
 
@@ -3168,9 +3168,9 @@ model PortfolioOrganizationMaterialization {
   proposal         PortfolioOrganizationProposal @relation(fields: [proposalId], references: [id], onDelete: Restrict)
   bootstrapSession PortfolioBootstrapSession      @relation(fields: [bootstrapSessionId], references: [id], onDelete: Restrict)
 
-  @@unique([organizationId, idempotencyKey])
+  @@unique([organizationId, idempotencyKey], map: "PortfolioOrganizationMaterialization_organizationId_idempotency")
   @@index([organizationId])
-  @@index([bootstrapSessionId, proposalVersion])
+  @@index([bootstrapSessionId, proposalVersion], map: "PortfolioOrganizationMaterialization_bootstrapSessionId_proposa")
 }
 
 enum StrategicFramingProvisionalSourceMode {
@@ -3408,9 +3408,9 @@ model PortfolioImportedInitiativeLink {
   createdAt              DateTime                       @default(now())
   updatedAt              DateTime                       @updatedAt
 
-  @@unique([organizationId, idempotencyKey])
-  @@index([organizationId, workItemId, status])
-  @@index([organizationId, projectId, status])
+  @@unique([organizationId, idempotencyKey], map: "PortfolioImportedInitiativeLink_organizationId_idempotencyKey_k")
+  @@index([organizationId, workItemId, status], map: "PortfolioImportedInitiativeLink_organizationId_workItemId_statu")
+  @@index([organizationId, projectId, status], map: "PortfolioImportedInitiativeLink_organizationId_projectId_status")
   @@index([challengeId, status])
   @@index([bootstrapSessionId])
 }
