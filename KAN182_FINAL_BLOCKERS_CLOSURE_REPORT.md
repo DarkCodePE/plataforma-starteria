@@ -9,7 +9,7 @@ Modo Git: sin staging, commit, push, modificación del PR, merge ni deploy
 
 **READY_FOR_PR_UPDATE** para publicar una nueva revisión de código, sujeto a una nueva autorización de staging/commit/push.
 
-**Gate de producción/CD: BLOCKED.** Las seis bases persistentes locales ADR-009 autorizadas para inventario tienen checksums distintos del archivo publicado restaurado, y una de ellas conserva la migración sin `finished_at`. Antes de aprobar merge o un CD debe inventariarse el historial del destino real y aprobarse una reparación controlada por cohorte. Las pruebas en una base nueva no sustituyen ese gate.
+**Gate de producción/CD: BLOCKED.** Dos bases persistentes locales ADR-009 autorizadas para inventario conservan un checksum realmente divergente y una de ellas no tiene `finished_at`; las otras cuatro coinciden con el checkout canónico LF. Antes de aprobar merge o un CD debe inventariarse el historial del destino real y aprobarse una reparación controlada para cualquier cohorte divergente. Las pruebas en una base nueva no sustituyen ese gate.
 
 No se declara exactamente una entrega SMTP. La garantía implementada es: una sola ejecución automática por intención mientras exista resultado conocido; un resultado potencialmente aceptado por SMTP pero no persistido queda `UNKNOWN` y no se reenvía automáticamente.
 
@@ -51,7 +51,7 @@ No se declara exactamente una entrega SMTP. La garantía implementada es: una so
 
 **Corrección.**
 
-- La migración publicada `20261023090000...` se restauró byte a byte. SHA-256 local: `576354695820ce8de70ae9c089ac9c7ed125a3dc2a6db1765598631ed6e39285`.
+- La migración publicada `20261023090000...` conserva el blob de Git. SHA-256 canónico LF: `ae472002b0862a3b608e82abc6b6d2bdf1c50c12bd4a3411039fa383c6b990d8`; un checkout Windows CRLF produce `576354695820ce8de70ae9c089ac9c7ed125a3dc2a6db1765598631ed6e39285`. El clasificador reconoce ambas representaciones equivalentes sin modificar `_prisma_migrations`.
 - `20261025020000_add_kan182_adr009_forward_guard/migration.sql:1-63` es forward-only y aditiva: detecta owner inválido, Project multiorganización, falta de organización canónica y diferencia directa Project↔StrategicFront. No ejecuta ningún `UPDATE`, no elige tenant por inferencia y supera el patrón de rechazo de migraciones no aditivas de `scripts/ci/prod-db-migrate.sh:82-94`.
 - Las reservas antiguas quedan en cuarentena al primer acceso mediante CAS runtime; los batches `PROCESSING` antiguos se reclaman incrementando generación. Así no se necesita una mutación masiva en la migración.
 - `scripts/preflight/kan182-adr009-production-readonly.sql:1-160` usa `BEGIN TRANSACTION READ ONLY`, incluye el gate `project_front_tenant_mismatch`, nulos, owners, multiorganización y colisiones.
@@ -66,21 +66,21 @@ No se consultó producción. Se consultaron únicamente contenedores locales cuy
 |---|---|---|
 | `starteria-adr009-postgres` | `155045d9d30412a47727641200f63d3cdd7da076a990570e8501ccfc9f12e0f3` | finalizada |
 | `starteria-p12r1-adr009-runtime-db-20261023` | `155045d9d30412a47727641200f63d3cdd7da076a990570e8501ccfc9f12e0f3` | **sin `finished_at`** |
-| `starteria-p12r1-adr009-runtime-db-clean-20261023` | `ae472002b0862a3b608e82abc6b6d2bdf1c50c12bd4a3411039fa383c6b990d8` | finalizada |
-| `starteria-p12r1-adr009-tests-db-20261023` | `ae472002b0862a3b608e82abc6b6d2bdf1c50c12bd4a3411039fa383c6b990d8` | finalizada |
-| `starteria-p12r1-adr009-visual-db-20261023` | `ae472002b0862a3b608e82abc6b6d2bdf1c50c12bd4a3411039fa383c6b990d8` | finalizada |
-| `starteria-p12r1-adr009-visual-clean-db-20261023` | `ae472002b0862a3b608e82abc6b6d2bdf1c50c12bd4a3411039fa383c6b990d8` | finalizada |
+| `starteria-p12r1-adr009-runtime-db-clean-20261023` | `ae472002b0862a3b608e82abc6b6d2bdf1c50c12bd4a3411039fa383c6b990d8` | publicada LF, finalizada |
+| `starteria-p12r1-adr009-tests-db-20261023` | `ae472002b0862a3b608e82abc6b6d2bdf1c50c12bd4a3411039fa383c6b990d8` | publicada LF, finalizada |
+| `starteria-p12r1-adr009-visual-db-20261023` | `ae472002b0862a3b608e82abc6b6d2bdf1c50c12bd4a3411039fa383c6b990d8` | publicada LF, finalizada |
+| `starteria-p12r1-adr009-visual-clean-db-20261023` | `ae472002b0862a3b608e82abc6b6d2bdf1c50c12bd4a3411039fa383c6b990d8` | publicada LF, finalizada |
 
-Ninguna coincide con `57635469…39285`. No se modificó `_prisma_migrations`, no se ejecutó `migrate resolve` y no se aplicó reparación.
+Cuatro coinciden con el checksum canónico LF; `155045d9…f12e0f3` es una variante realmente divergente y una de sus aplicaciones está incompleta. No se modificó `_prisma_migrations`, no se ejecutó `migrate resolve` y no se aplicó reparación.
 
 ### Estrategia compatible propuesta
 
 1. Ejecutar los dos preflights READ-ONLY en cada destino autorizado, incluido staging y, sólo con autoridad explícita, producción.
-2. Separar destinos por checksum/estado: publicado, `155045…`, `ae472…`, incompleto o ausente.
+2. Separar destinos por checksum/estado: publicado LF `ae472…`, publicado CRLF `576354…`, divergente `155045…`, incompleto o ausente.
 3. Obtener y revisar el SQL exacto que generó cada checksum divergente; comparar esquema y datos reales con el contrato ADR-009 y los gates forward.
 4. Si hay filas reportadas, reconciliarlas mediante plan humano por Project; nunca mediante inferencia del owner ni actualización masiva automática.
 5. Sólo tras evidencia equivalente y backup validado, aprobar una reparación de historial específica por cohorte. Cualquier cambio a `_prisma_migrations` requiere runbook, doble revisión y rollback; este trabajo no lo ejecuta.
-6. Ejecutar `prisma migrate deploy` primero en una copia desechable de cada cohorte y comprobar que aplica `0100`, `0150` y `0200` sin drift ni pérdida.
+6. Ejecutar `prisma migrate deploy` primero en una copia desechable de cada cohorte y comprobar que aplica `0100`, `0150`, `0200` y `0250` sin drift ni pérdida.
 
 ## Pruebas ejecutadas
 
@@ -121,7 +121,7 @@ No se repitió la suite global: no había razón técnica tras limitar cambios y
 - `.github/workflows/cd.yml:1-15` se activa con push a `main`; el job productivo tiene aprobación humana en `environment: production` (`:176-182`) y aplica migraciones antes del rollout (`:287-295`). Un merge inicia el pipeline, aunque la migración productiva espera el gate humano.
 - Un destino con checksum divergente puede hacer fallar `prisma migrate deploy` antes de la migración forward. Por eso merge/CD sigue condicionado al inventario y reparación aprobada del historial real.
 - El guard `0200` puede detener correctamente el deploy si detecta datos ambiguos. Eso es fail-closed, no una regresión; requiere reconciliación humana y nuevo intento.
-- Las migraciones KAN-182 finales no coinciden con los patrones no aditivos que `prod-db-migrate.sh` rechaza; aun así, ese hecho no resuelve el checksum ADR-009 divergente del destino.
+- Las migraciones KAN-182 finales no coinciden con los patrones no aditivos que `prod-db-migrate.sh` rechaza; aun así, ese hecho no resuelve un checksum ADR-009 realmente divergente en el destino.
 - SMTP sigue sin deduplicación provider-side. `UNKNOWN` evita duplicados automáticos, pero requiere un procedimiento operativo de conciliación antes de un eventual reenvío manual.
 - Las pruebas limpias demuestran instalabilidad del historial nuevo, no compatibilidad automática con datos productivos existentes.
 

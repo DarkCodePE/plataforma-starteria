@@ -13,7 +13,12 @@ SELECT
   rolled_back_at,
   CASE
     WHEN migration_name = '20261023090000_add_adr009_imported_initiative_canonicalization'
-      AND checksum = '576354695820ce8de70ae9c089ac9c7ed125a3dc2a6db1765598631ed6e39285'
+      -- Prisma checksums raw migration bytes. Git's canonical LF checkout and
+      -- an authorized Windows CRLF checkout are semantically identical here.
+      AND checksum IN (
+        'ae472002b0862a3b608e82abc6b6d2bdf1c50c12bd4a3411039fa383c6b990d8',
+        '576354695820ce8de70ae9c089ac9c7ed125a3dc2a6db1765598631ed6e39285'
+      )
       AND finished_at IS NOT NULL
       AND rolled_back_at IS NULL
       THEN 'PUBLISHED_CHECKSUM_APPLIED'

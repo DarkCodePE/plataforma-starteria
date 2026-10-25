@@ -23,8 +23,9 @@ describe('KAN-182 ADR-009 production preflight', () => {
   });
 
   it('preserves the published ADR-009 checksum and adds a forward-only fail-closed guard', () => {
-    const published = readFileSync(resolve(process.cwd(), 'prisma/migrations/20261023090000_add_adr009_imported_initiative_canonicalization/migration.sql'));
-    expect(createHash('sha256').update(published).digest('hex')).toBe('576354695820ce8de70ae9c089ac9c7ed125a3dc2a6db1765598631ed6e39285');
+    const published = readFileSync(resolve(process.cwd(), 'prisma/migrations/20261023090000_add_adr009_imported_initiative_canonicalization/migration.sql'), 'utf8');
+    const canonicalLfBytes = published.replace(/\r\n/g, '\n');
+    expect(createHash('sha256').update(canonicalLfBytes).digest('hex')).toBe('ae472002b0862a3b608e82abc6b6d2bdf1c50c12bd4a3411039fa383c6b990d8');
 
     const forward = readFileSync(resolve(process.cwd(), 'prisma/migrations/20261025020000_add_kan182_adr009_forward_guard/migration.sql'), 'utf8');
     expect(forward).toContain('ADR009_PROJECT_MULTIPLE_FRONT_ORGANIZATIONS');
@@ -39,6 +40,7 @@ describe('KAN-182 ADR-009 production preflight', () => {
     expect(sql).toContain('PUBLISHED_CHECKSUM_APPLIED');
     expect(sql).toContain('DIFFERENT_CHECKSUM_APPLIED_REQUIRES_CONTROLLED_REPAIR');
     expect(sql).toContain('576354695820ce8de70ae9c089ac9c7ed125a3dc2a6db1765598631ed6e39285');
+    expect(sql).toContain('ae472002b0862a3b608e82abc6b6d2bdf1c50c12bd4a3411039fa383c6b990d8');
     expect(sql).toContain('ROLLBACK');
     const statements = sql.replace(/^\s*--.*$/gm, '');
     expect(statements).not.toMatch(/\b(?:INSERT|UPDATE|DELETE|ALTER|DROP|CREATE|TRUNCATE)\b/i);
