@@ -58,6 +58,11 @@ function fixture(options: { sent?: number; created?: number; failed?: number } =
         return Promise.resolve(session);
       }),
       update: vi.fn().mockImplementation(({ data }) => Promise.resolve({ ...session, ...data })),
+      updateMany: vi.fn().mockImplementation(({ where, data }) => {
+        if (where?.setupCompletedAt === null && session.setupCompletedAt) return Promise.resolve({ count: 0 });
+        Object.assign(session, data);
+        return Promise.resolve({ count: 1 });
+      }),
       create: vi.fn().mockImplementation(({ data }) => Promise.resolve({
         ...data,
         createdAt: new Date('2026-10-24T09:00:00.000Z'),
@@ -83,10 +88,38 @@ describe('PortfolioSetupCompletionService', () => {
     });
 
     expect(result).toMatchObject({ completed: true, summary: { sent: 2, unsent: 2, failed: 0 } });
-    expect(tx.portfolioBootstrapSession.update).toHaveBeenCalledWith(expect.objectContaining({
-      where: { id: 'setup-1' },
+    expect(tx.portfolioBootstrapSession.updateMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({ id: 'setup-1', setupCompletedAt: null }),
       data: expect.objectContaining({ setupCompletedByActorId: 'lead-1', setupCompletionIdempotencyKey: 'close-setup-1' }),
     }));
+  });
+
+  it('uses a CAS so two concurrent confirmations persist one completion audit', async () => {
+    const { prisma, tx, session } = fixture({ sent: 1, created: 1 });
+    const pendingReads: Array<(value: typeof session) => void> = [];
+    tx.portfolioBootstrapSession.findFirst.mockImplementation(({ where }) => {
+      if (where?.setupCompletedAt?.not === null) return Promise.resolve(session);
+      if (where?.id && where.id !== session.id) return Promise.resolve(null);
+      if (pendingReads.length >= 2) return Promise.resolve(session);
+      return new Promise<typeof session>((resolve) => {
+        pendingReads.push(resolve);
+        if (pendingReads.length === 2) {
+          const snapshot = { ...session, setupCompletedAt: null };
+          pendingReads.splice(0).forEach((release) => release(snapshot));
+        }
+      });
+    });
+    const service = new PortfolioSetupCompletionService(prisma as any, () => new Date('2026-10-24T08:00:00.000Z'));
+    const input = {
+      sessionId: 'setup-1', authenticatedUserId: 'lead-1', permissions,
+      confirmed: true, idempotencyKey: 'close-concurrent',
+    };
+
+    const [first, second] = await Promise.all([service.complete(input), service.complete(input)]);
+
+    expect(first.completedAt).toBe(second.completedAt);
+    expect(tx.portfolioBootstrapSession.updateMany).toHaveBeenCalledTimes(2);
+    expect(tx.auditLog.create).toHaveBeenCalledTimes(1);
   });
 
   it('does not close a setup with no successful invitation delivery', async () => {

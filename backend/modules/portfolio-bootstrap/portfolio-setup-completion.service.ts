@@ -70,18 +70,39 @@ export class PortfolioSetupCompletionService {
 
       const completedAt = session.setupCompletedAt ?? this.now();
       if (!session.setupCompletedAt) {
-        await db.portfolioBootstrapSession.update({
-          where: { id: session.id },
+        const claimed = await db.portfolioBootstrapSession.updateMany({
+          where: {
+            id: session.id,
+            userId: input.authenticatedUserId,
+            organizationId: actor.organizationId,
+            setupCompletedAt: null,
+          },
           data: {
             setupCompletedAt: completedAt,
             setupCompletedByActorId: input.authenticatedUserId,
             setupCompletionIdempotencyKey: input.idempotencyKey.trim(),
           },
         });
-        await this.audit(db, input.authenticatedUserId, 'portfolio_setup_completed', session.id, {
-          organizationId: actor.organizationId,
-          summary,
-        });
+        if (claimed.count === 1) {
+          await this.audit(db, input.authenticatedUserId, 'portfolio_setup_completed', session.id, {
+            organizationId: actor.organizationId,
+            summary,
+          });
+        } else {
+          const completed = await db.portfolioBootstrapSession.findFirst({
+            where: {
+              id: session.id,
+              userId: input.authenticatedUserId,
+              organizationId: actor.organizationId,
+              setupCompletedAt: { not: null },
+            },
+            select: { setupCompletedAt: true },
+          });
+          if (!completed?.setupCompletedAt) {
+            throw AppError.conflict('La configuraciÃ³n cambiÃ³ durante el cierre.', 'PORTFOLIO_SETUP_COMPLETION_CONFLICT');
+          }
+          return { completed: true as const, completedAt: completed.setupCompletedAt.toISOString(), summary };
+        }
       }
       return { completed: true as const, completedAt: completedAt.toISOString(), summary };
     });
