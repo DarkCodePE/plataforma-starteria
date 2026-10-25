@@ -1,4 +1,4 @@
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { AppError } from '../../../shared/errors/AppError';
 import type { HandoffAssignment } from '../domain/portfolio-handoff-assignment.types';
 import type { HandoffDeliveryBatch, HandoffDeliveryBatchRepository } from '../domain/portfolio-handoff-invitation.types';
@@ -31,6 +31,7 @@ export class PortfolioHandoffBatchDeliveryService {
     private readonly contexts: HandoffDeliveryContextRepository,
     private readonly delivery: PortfolioHandoffDeliveryService,
     private readonly now: () => Date = () => new Date(),
+    private readonly processingLeaseMs = 30_000,
   ) {}
 
   async send(input: SendHandoffInvitationBatchInput): Promise<HandoffDeliveryBatch> {
@@ -38,13 +39,14 @@ export class PortfolioHandoffBatchDeliveryService {
     const requestFingerprint = fingerprint(normalized);
     const existing = await this.batches.findByIdempotencyKey({ organizationId: normalized.organizationId, idempotencyKey: normalized.idempotencyKey });
     if (existing) {
-      return this.replayExistingBatch(normalized.organizationId, normalized.idempotencyKey, requestFingerprint, existing);
+      return this.replayExistingBatch(normalized, requestFingerprint, existing);
     }
 
     await this.assertRetrySelection(normalized);
     const contexts = await this.contexts.findManyByIds(normalized.items.map((item) => item.assignmentId));
     this.assertPreflight(normalized, contexts);
 
+    const reservedAt = this.now();
     const reservation = await this.batches.reserve({
       organizationId: normalized.organizationId,
       challengeId: normalized.challengeId,
@@ -57,15 +59,33 @@ export class PortfolioHandoffBatchDeliveryService {
       results: [],
       succeededCount: 0,
       failedCount: 0,
+      processingLeaseUntil: this.nextLease(reservedAt),
+      processingGeneration: 1,
+      processingOwnerId: randomUUID(),
       completedAt: null,
     });
     if (!reservation.reserved) {
-      return this.replayExistingBatch(normalized.organizationId, normalized.idempotencyKey, requestFingerprint, reservation.batch);
+      return this.replayExistingBatch(normalized, requestFingerprint, reservation.batch);
     }
-    let batch = reservation.batch;
+    return this.processReservedBatch(normalized, reservation.batch, contexts);
+  }
 
-    const byId = new Map(contexts.map((context) => [context.assignment.id, context]));
-    for (const item of normalized.items) {
+  private async processReservedBatch(
+    input: ReturnType<typeof normalize>,
+    initial: HandoffDeliveryBatch,
+    contexts?: HandoffDeliveryContext[],
+    recovering = false,
+  ): Promise<HandoffDeliveryBatch> {
+    let batch = initial;
+    const completedIds = new Set(batch.results.map((item) => item.assignmentId));
+    const pendingItems = input.items.filter((item) => !completedIds.has(item.assignmentId));
+    const resolvedContexts = contexts ?? await this.contexts.findManyByIds(pendingItems.map((item) => item.assignmentId));
+    if (pendingItems.length > 0) {
+      this.assertPreflight({ ...input, items: pendingItems }, resolvedContexts, recovering);
+    }
+
+    const byId = new Map(resolvedContexts.map((context) => [context.assignment.id, context]));
+    for (const item of pendingItems) {
       const context = byId.get(item.assignmentId)!;
       const assignment = context.assignment;
       const targetName = assignment.targetKind === 'EXISTING_INITIATIVE' ? context.initiativeName! : context.challengeName;
@@ -74,36 +94,90 @@ export class PortfolioHandoffBatchDeliveryService {
         : 'Este encargo no incorpora un Brief.';
       const result = await this.delivery.sendHandoffInvitation({
         assignmentId: assignment.id,
-        idempotencyKey: `${normalized.idempotencyKey}:${assignment.id}`,
-        requestFingerprint: fingerprint({ batch: requestFingerprint, assignmentId: assignment.id }),
+        idempotencyKey: `${input.idempotencyKey}:${assignment.id}`,
         title: `${assignment.targetKind === 'EXISTING_INITIATIVE' ? 'Iniciativa' : 'Reto'}: ${targetName}`,
         whyItMatters: [assignment.contextNote, briefContext].filter(Boolean).join('\n\n'),
       });
       const results = [...batch.results, {
         assignmentId: assignment.id,
-        status: result.attemptStatus === 'FAILED' ? 'FAILED' as const : 'SUCCEEDED' as const,
+        status: result.attemptStatus === 'FAILED'
+          ? 'FAILED' as const
+          : result.attemptStatus === 'UNKNOWN'
+            ? 'UNKNOWN' as const
+            : 'SUCCEEDED' as const,
         state: result.state,
         errorCategory: result.errorCategory,
         providerMessageRef: result.providerMessageRef,
       }];
-      batch = await this.batches.saveProgress({ batchId: batch.id, results, status: 'PROCESSING', completedAt: null });
+      const observedAt = this.now();
+      const progress = await this.batches.saveProgress({
+        batchId: batch.id,
+        executionGeneration: batch.processingGeneration,
+        executionOwnerId: batch.processingOwnerId!,
+        observedAt,
+        results,
+        status: 'PROCESSING',
+        completedAt: null,
+        processingLeaseUntil: this.nextLease(observedAt),
+      });
+      batch = progress.batch;
+      if (!progress.saved) return batch;
     }
 
     const succeededCount = batch.results.filter((item) => item.status === 'SUCCEEDED').length;
-    const failedCount = batch.results.length - succeededCount;
-    const status = failedCount === 0 ? 'COMPLETED' : succeededCount === 0 ? 'FAILED' : 'PARTIAL';
-    return this.batches.saveProgress({ batchId: batch.id, results: batch.results, status, completedAt: this.now() });
+    const failedCount = batch.results.filter((item) => item.status === 'FAILED').length;
+    const unknownCount = batch.results.filter((item) => item.status === 'UNKNOWN').length;
+    const status = unknownCount > 0
+      ? 'RECONCILIATION_REQUIRED'
+      : failedCount === 0
+        ? 'COMPLETED'
+        : succeededCount === 0
+          ? 'FAILED'
+          : 'PARTIAL';
+    const completedAt = this.now();
+    const terminal = await this.batches.saveProgress({
+      batchId: batch.id,
+      executionGeneration: batch.processingGeneration,
+      executionOwnerId: batch.processingOwnerId!,
+      observedAt: completedAt,
+      results: batch.results,
+      status,
+      completedAt,
+      processingLeaseUntil: null,
+    });
+    return terminal.batch;
   }
 
-  private async replayExistingBatch(organizationId: string, idempotencyKey: string, requestFingerprint: string, initial: HandoffDeliveryBatch): Promise<HandoffDeliveryBatch> {
+  private async replayExistingBatch(input: ReturnType<typeof normalize>, requestFingerprint: string, initial: HandoffDeliveryBatch): Promise<HandoffDeliveryBatch> {
     if (initial.requestFingerprint !== requestFingerprint) throw AppError.conflict('La clave de idempotencia ya se utilizo con otra seleccion', 'HANDOFF_BATCH_IDEMPOTENCY_CONFLICT');
     let batch = initial;
+    const immediate = await this.tryReclaimBatch(batch);
+    if (immediate.reclaimed) return this.resumeReclaimedBatch(input, immediate.batch);
     for (let index = 0; batch.status === 'PROCESSING' && index < 500; index += 1) {
       await new Promise((resolve) => setTimeout(resolve, 10));
-      batch = await this.batches.findByIdempotencyKey({ organizationId, idempotencyKey }) ?? batch;
+      batch = await this.batches.findByIdempotencyKey({ organizationId: input.organizationId, idempotencyKey: input.idempotencyKey }) ?? batch;
     }
-    if (batch.status === 'PROCESSING') throw AppError.conflict('El lote con esta clave sigue en proceso', 'HANDOFF_BATCH_IN_PROGRESS');
+    if (batch.status === 'PROCESSING') {
+      const reclaimed = await this.tryReclaimBatch(batch);
+      if (reclaimed.reclaimed) return this.resumeReclaimedBatch(input, reclaimed.batch);
+      throw AppError.conflict('El lote con esta clave sigue en proceso', 'HANDOFF_BATCH_IN_PROGRESS');
+    }
     return batch;
+  }
+
+  private async tryReclaimBatch(batch: HandoffDeliveryBatch) {
+    if (batch.status !== 'PROCESSING') return { batch, reclaimed: false };
+    const now = this.now();
+    return this.batches.reclaimProcessing({ batchId: batch.id, staleBefore: now, leaseUntil: this.nextLease(now), executionOwnerId: randomUUID() });
+  }
+
+  private async resumeReclaimedBatch(input: ReturnType<typeof normalize>, batch: HandoffDeliveryBatch): Promise<HandoffDeliveryBatch> {
+    await this.assertRetrySelection(input);
+    return this.processReservedBatch(input, batch, undefined, true);
+  }
+
+  private nextLease(from = this.now()): Date {
+    return new Date(from.getTime() + this.processingLeaseMs);
   }
 
   private async assertRetrySelection(input: ReturnType<typeof normalize>): Promise<void> {
@@ -118,15 +192,16 @@ export class PortfolioHandoffBatchDeliveryService {
     }
   }
 
-  private assertPreflight(input: ReturnType<typeof normalize>, contexts: HandoffDeliveryContext[]): void {
+  private assertPreflight(input: ReturnType<typeof normalize>, contexts: HandoffDeliveryContext[], recovering = false): void {
     const byId = new Map(contexts.map((context) => [context.assignment.id, context]));
     if (byId.size !== input.items.length) throw AppError.notFound('Asignacion', 'HANDOFF_ASSIGNMENT_NOT_FOUND');
     for (const item of input.items) {
       const context = byId.get(item.assignmentId)!;
       const assignment = context.assignment;
       if (assignment.organizationId !== input.organizationId || assignment.challengeId !== input.challengeId) throw AppError.notFound('Asignacion', 'HANDOFF_ASSIGNMENT_NOT_FOUND');
-      if (assignment.state !== 'CREATED') throw AppError.conflict('La asignacion ya no esta preparada', 'HANDOFF_INVITATION_NOT_SENDABLE');
-      if (assignment.version !== item.expectedVersion) throw AppError.conflict('La asignacion cambio durante la revision', 'STALE_VERSION');
+      const alreadyDeliveredDuringRecovery = recovering && (assignment.state === 'SENT' || assignment.state === 'VIEWED');
+      if (assignment.state !== 'CREATED' && !alreadyDeliveredDuringRecovery) throw AppError.conflict('La asignacion ya no esta preparada', 'HANDOFF_INVITATION_NOT_SENDABLE');
+      if (!alreadyDeliveredDuringRecovery && assignment.version !== item.expectedVersion) throw AppError.conflict('La asignacion cambio durante la revision', 'STALE_VERSION');
       const owner = assignment.members.find((member) => member.role === 'OWNER');
       if (!owner || owner.emailNormalized !== assignment.invitedEmailNormalized) throw AppError.conflict('La identidad destinataria no es consistente', 'HANDOFF_INVITED_IDENTITY_INVALID');
       if (assignment.targetKind === 'CHALLENGE' && (!assignment.briefVersion || assignment.briefVersion.status !== 'CONFIRMED' || assignment.briefVersion.id !== assignment.briefVersionId)) {

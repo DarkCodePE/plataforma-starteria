@@ -14,14 +14,14 @@ export type HandoffAssignment = {
   briefVersionId: string | null; contextNote: string | null; invitedEmailNormalized: string;
   initiative?: { id: string; name: string } | null;
   briefVersion?: ActivationBriefVersion | null;
-  deliveryAttempts?: Array<{ status: 'SUCCEEDED' | 'FAILED'; errorCategory: string | null; attemptedAt: string }>;
+  deliveryAttempts?: Array<{ status: 'SUCCEEDED' | 'FAILED' | 'UNKNOWN'; errorCategory: string | null; attemptedAt: string }>;
   members: HandoffAssignmentMember[]; createdAt?: string; updatedAt?: string;
   sentAt?: string | null; viewedAt?: string | null; acceptedAt?: string | null; rejectedAt?: string | null;
   portfolioResponse?: string | null;
 };
 export type HandoffDeliveryBatch = {
-  id: string; status: 'PROCESSING' | 'COMPLETED' | 'PARTIAL' | 'FAILED'; retryOfBatchId: string | null;
-  results: Array<{ assignmentId: string; status: 'SUCCEEDED' | 'FAILED'; state: string; errorCategory: string | null }>;
+  id: string; status: 'PROCESSING' | 'COMPLETED' | 'PARTIAL' | 'FAILED' | 'RECONCILIATION_REQUIRED'; retryOfBatchId: string | null;
+  results: Array<{ assignmentId: string; status: 'SUCCEEDED' | 'FAILED' | 'UNKNOWN'; state: string; errorCategory: string | null }>;
   succeededCount: number; failedCount: number;
 };
 export type ImportedInitiativeRecord = {

@@ -1,9 +1,9 @@
-import { createHash, randomBytes } from 'node:crypto';
+import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { AppError } from '../../../shared/errors/AppError';
 import { config } from '../../../config';
 import { hashRefreshToken } from '../../auth/token.service';
 import type { HandoffAssignment, HandoffAssignmentRepository, HandoffAssignmentState } from '../domain/portfolio-handoff-assignment.types';
-import { HANDOFF_DELIVERY_RESERVATION } from '../domain/portfolio-handoff-invitation.types';
+import { HANDOFF_DELIVERY_OUTCOME_UNKNOWN, HANDOFF_DELIVERY_RESERVATION } from '../domain/portfolio-handoff-invitation.types';
 import type { HandoffDeliveryAttempt, HandoffDeliveryAttemptRepository, HandoffInvitationAccessRepository } from '../domain/portfolio-handoff-invitation.types';
 import type { DurableHandoffEventPort } from './portfolio-handoff-semantic-event.projector';
 
@@ -20,6 +20,13 @@ export type SendHandoffInvitationInput = {
   requestFingerprint?: string;
 };
 
+type HandoffDeliveryResult = {
+  state: HandoffAssignmentState;
+  attemptStatus: 'SUCCEEDED' | 'FAILED' | 'UNKNOWN' | 'IDEMPOTENT';
+  providerMessageRef: string | null;
+  errorCategory: string | null;
+};
+
 export class PortfolioHandoffDeliveryService {
   constructor(
     private readonly assignments: HandoffAssignmentRepository,
@@ -31,7 +38,7 @@ export class PortfolioHandoffDeliveryService {
     private readonly reservationTtlMs = 30_000,
   ) {}
 
-  async sendHandoffInvitation(input: SendHandoffInvitationInput): Promise<{ state: HandoffAssignmentState; attemptStatus: 'SUCCEEDED' | 'FAILED' | 'IDEMPOTENT'; providerMessageRef: string | null; errorCategory: string | null }> {
+  async sendHandoffInvitation(input: SendHandoffInvitationInput): Promise<HandoffDeliveryResult> {
     if (!input.idempotencyKey.trim()) throw AppError.badRequest('Idempotency key requerida', 'HANDOFF_IDEMPOTENCY_REQUIRED');
     const requestFingerprint = input.requestFingerprint ?? fingerprintDeliveryRequest(input);
     const existingAttempt = await this.attempts.findByIdempotencyKey({ assignmentId: input.assignmentId, idempotencyKey: input.idempotencyKey });
@@ -39,96 +46,177 @@ export class PortfolioHandoffDeliveryService {
       if (existingAttempt.requestFingerprint !== requestFingerprint) {
         throw AppError.conflict('La clave de idempotencia ya se utilizo con otro contenido', 'HANDOFF_IDEMPOTENCY_CONFLICT');
       }
-      if (existingAttempt.errorCategory !== HANDOFF_DELIVERY_RESERVATION) {
-        return this.replayExistingAttempt(input.assignmentId, input.idempotencyKey, requestFingerprint, existingAttempt);
-      }
-      const reclaimedAt = this.now();
-      const reclaimed = await this.attempts.reclaimReservation({
-        attemptId: existingAttempt.id,
-        staleBefore: new Date(reclaimedAt.getTime() - this.reservationTtlMs),
-        attemptedAt: reclaimedAt,
-      });
-      if (!reclaimed.reclaimed) {
-        return this.replayExistingAttempt(input.assignmentId, input.idempotencyKey, requestFingerprint, reclaimed.attempt);
-      }
-      const assignment = await this.requireSendableAssignment(input.assignmentId);
-      if (assignment.state !== 'CREATED') {
-        await this.attempts.complete({ attemptId: reclaimed.attempt.id, status: 'SUCCEEDED', attemptedAt: this.now(), providerMessageRef: reclaimed.attempt.providerMessageRef, errorCategory: null });
-        return { state: assignment.state, attemptStatus: 'IDEMPOTENT', providerMessageRef: reclaimed.attempt.providerMessageRef, errorCategory: null };
-      }
-      await this.access.revokeForAssignment(assignment.id);
-      return this.deliverReserved(input, assignment, reclaimed.attempt);
+      return this.replayExistingAttempt(input.assignmentId, requestFingerprint, existingAttempt);
     }
 
-    const assignment = await this.requireSendableAssignment(input.assignmentId);
+    const foundIntent = await this.attempts.findByDeliveryIntent({ assignmentId: input.assignmentId, requestFingerprint });
+    if (foundIntent) {
+      // Confirmed failures bind the retry key atomically with their CAS claim.
+      // Every path that only replays an existing outcome binds first.
+      const existingIntent = foundIntent.status === 'FAILED' && foundIntent.errorCategory !== HANDOFF_DELIVERY_RESERVATION
+        ? foundIntent
+        : await this.attempts.bindIdempotencyKey({
+          assignmentId: input.assignmentId,
+          idempotencyKey: input.idempotencyKey,
+          attemptId: foundIntent.id,
+        });
+      if (existingIntent.requestFingerprint !== requestFingerprint) {
+        throw AppError.conflict('La clave de idempotencia ya se utilizo con otro contenido', 'HANDOFF_IDEMPOTENCY_CONFLICT');
+      }
+      // Pre-fencing reservations were persisted as FAILED without an owner or
+      // lease. Their provider outcome cannot be reconstructed, so they must be
+      // quarantined instead of entering the confirmed-failure retry path.
+      if (existingIntent.errorCategory === HANDOFF_DELIVERY_RESERVATION) {
+        return this.replayExistingAttempt(input.assignmentId, requestFingerprint, existingIntent);
+      }
+      if (existingIntent.status !== 'FAILED') {
+        return this.replayExistingAttempt(input.assignmentId, requestFingerprint, existingIntent);
+      }
+      const assignment = await this.requireCreatedAssignment(input.assignmentId);
+      const claimedAt = this.now();
+      const claimed = await this.attempts.claimConfirmedFailure({
+        attemptId: existingIntent.id,
+        expectedGeneration: existingIntent.executionGeneration,
+        executionOwnerId: randomUUID(),
+        idempotencyKey: input.idempotencyKey,
+        attemptedAt: claimedAt,
+        leaseUntil: new Date(claimedAt.getTime() + this.reservationTtlMs),
+      });
+      if (!claimed.claimed) {
+        const keyedAttempt = await this.attempts.findByIdempotencyKey({ assignmentId: input.assignmentId, idempotencyKey: input.idempotencyKey });
+        if (keyedAttempt && keyedAttempt.requestFingerprint !== requestFingerprint) {
+          throw AppError.conflict('La clave de idempotencia ya se utilizo con otro contenido', 'HANDOFF_IDEMPOTENCY_CONFLICT');
+        }
+        return this.replayExistingAttempt(input.assignmentId, requestFingerprint, keyedAttempt ?? claimed.attempt);
+      }
+      await this.access.revokeForAssignment(assignment.id);
+      return this.deliverReserved(input, assignment, claimed.attempt);
+    }
 
+    const assignment = await this.requireCreatedAssignment(input.assignmentId);
+
+    const reservedAt = this.now();
     const reservation = await this.attempts.reserve({
       assignmentId: assignment.id,
       channel: 'EMAIL',
-      status: 'FAILED',
-      attemptedAt: this.now(),
+      status: 'UNKNOWN',
+      attemptedAt: reservedAt,
       providerMessageRef: null,
       errorCategory: HANDOFF_DELIVERY_RESERVATION,
       idempotencyKey: input.idempotencyKey,
       requestFingerprint,
+      executionGeneration: 1,
+      executionOwnerId: randomUUID(),
+      leaseUntil: new Date(reservedAt.getTime() + this.reservationTtlMs),
     });
     if (!reservation.reserved) {
-      return this.replayExistingAttempt(input.assignmentId, input.idempotencyKey, requestFingerprint, reservation.attempt);
+      return this.replayExistingAttempt(input.assignmentId, requestFingerprint, reservation.attempt);
     }
 
     return this.deliverReserved(input, assignment, reservation.attempt);
   }
 
-  private async deliverReserved(input: SendHandoffInvitationInput, assignment: HandoffAssignment, reservedAttempt: HandoffDeliveryAttempt): Promise<{ state: HandoffAssignmentState; attemptStatus: 'SUCCEEDED' | 'FAILED'; providerMessageRef: string | null; errorCategory: string | null }> {
+  private async deliverReserved(input: SendHandoffInvitationInput, assignment: HandoffAssignment, reservedAttempt: HandoffDeliveryAttempt): Promise<HandoffDeliveryResult> {
     const token = randomBytes(32).toString('hex');
     await this.access.create({ assignmentId: assignment.id, tokenHash: hashRefreshToken(token), expiresAt: input.expiresAt ?? null });
     const message = renderInvitationEmail(assignment, token, input.title, input.whyItMatters);
-    let delivered = false;
-    let errorCategory: string | null = null;
-    let providerMessageRef: string | null = null;
+    let result: { delivered: boolean; providerMessageRef?: string };
     try {
-      const result = await this.delivery.send({ to: assignment.invitedEmailNormalized, ...message });
-      delivered = result.delivered;
-      providerMessageRef = result.providerMessageRef ?? null;
-      if (!delivered) errorCategory = 'MAILER_DISABLED';
-    } catch (error) {
-      errorCategory = classifyDeliveryError(error);
+      result = await this.delivery.send({ to: assignment.invitedEmailNormalized, ...message });
+    } catch {
+      const completedAt = this.now();
+      const completion = await this.attempts.completeOwned({
+        attemptId: reservedAttempt.id,
+        executionGeneration: reservedAttempt.executionGeneration,
+        executionOwnerId: reservedAttempt.executionOwnerId!,
+        status: 'UNKNOWN',
+        attemptedAt: completedAt,
+        providerMessageRef: null,
+        errorCategory: HANDOFF_DELIVERY_OUTCOME_UNKNOWN,
+      });
+      const durableAttempt = completion.completed
+        ? completion.attempt
+        : await this.attempts.markExpiredUnknown({ attemptId: reservedAttempt.id, observedAt: completedAt });
+      return {
+        state: assignment.state,
+        attemptStatus: 'UNKNOWN',
+        providerMessageRef: durableAttempt.providerMessageRef,
+        errorCategory: HANDOFF_DELIVERY_OUTCOME_UNKNOWN,
+      };
     }
 
-    if (!delivered) {
-      await this.attempts.complete({ attemptId: reservedAttempt.id, status: 'FAILED', attemptedAt: this.now(), providerMessageRef, errorCategory });
+    const providerMessageRef = result.providerMessageRef ?? null;
+    if (!result.delivered) {
+      const completion = await this.attempts.completeOwned({
+        attemptId: reservedAttempt.id,
+        executionGeneration: reservedAttempt.executionGeneration,
+        executionOwnerId: reservedAttempt.executionOwnerId!,
+        status: 'FAILED',
+        attemptedAt: this.now(),
+        providerMessageRef,
+        errorCategory: 'MAILER_DISABLED',
+      });
+      if (!completion.completed) {
+        const durableAttempt = await this.attempts.markExpiredUnknown({ attemptId: reservedAttempt.id, observedAt: this.now() });
+        return { state: assignment.state, attemptStatus: 'UNKNOWN', providerMessageRef: durableAttempt.providerMessageRef, errorCategory: HANDOFF_DELIVERY_OUTCOME_UNKNOWN };
+      }
       await this.access.revokeForAssignment(assignment.id);
-      return { state: assignment.state, attemptStatus: 'FAILED', providerMessageRef, errorCategory };
+      return { state: assignment.state, attemptStatus: 'FAILED', providerMessageRef, errorCategory: 'MAILER_DISABLED' };
     }
 
+    const completedAt = this.now();
+    const completion = await this.attempts.completeOwned({
+      attemptId: reservedAttempt.id,
+      executionGeneration: reservedAttempt.executionGeneration,
+      executionOwnerId: reservedAttempt.executionOwnerId!,
+      status: 'SUCCEEDED',
+      attemptedAt: completedAt,
+      providerMessageRef,
+      errorCategory: null,
+    });
+    if (!completion.completed) {
+      const durableAttempt = await this.attempts.markExpiredUnknown({ attemptId: reservedAttempt.id, observedAt: this.now() });
+      return { state: assignment.state, attemptStatus: 'UNKNOWN', providerMessageRef: durableAttempt.providerMessageRef, errorCategory: HANDOFF_DELIVERY_OUTCOME_UNKNOWN };
+    }
     const transitioned = assignment.state === 'CREATED'
       ? await this.assignments.transitionState({ assignmentId: assignment.id, from: ['CREATED'], to: 'SENT' })
       : assignment;
     const finalAssignment = transitioned ?? assignment;
     if (this.events) await this.events.publish({ type: 'invitation_sent', assignmentId: finalAssignment.id, version: finalAssignment.version, actorId: finalAssignment.createdByActorId, occurredAt: this.now(), interactionChannel: 'api', payload: { targetKind: finalAssignment.targetKind, initiativeId: finalAssignment.initiativeId } });
-    await this.attempts.complete({ attemptId: reservedAttempt.id, status: 'SUCCEEDED', attemptedAt: this.now(), providerMessageRef, errorCategory: null });
     return { state: finalAssignment.state, attemptStatus: 'SUCCEEDED', providerMessageRef, errorCategory: null };
   }
 
   private async replayExistingAttempt(
     assignmentId: string,
-    idempotencyKey: string,
     requestFingerprint: string,
-    initial: Awaited<ReturnType<HandoffDeliveryAttemptRepository['findByIdempotencyKey']>>,
-  ): Promise<{ state: HandoffAssignmentState; attemptStatus: 'IDEMPOTENT'; providerMessageRef: string | null; errorCategory: string | null }> {
+    initial: HandoffDeliveryAttempt | null,
+  ): Promise<HandoffDeliveryResult> {
     if (!initial) throw new Error('Existing delivery attempt is required');
     if (initial.requestFingerprint !== requestFingerprint) {
       throw AppError.conflict('La clave de idempotencia ya se utilizo con otro contenido', 'HANDOFF_IDEMPOTENCY_CONFLICT');
     }
     let attempt = initial;
-    for (let index = 0; attempt.errorCategory === HANDOFF_DELIVERY_RESERVATION && index < 500; index += 1) {
+    for (let index = 0; attempt.errorCategory === HANDOFF_DELIVERY_RESERVATION && attempt.leaseUntil && attempt.leaseUntil.getTime() > this.now().getTime() && index < 500; index += 1) {
       await new Promise((resolve) => setTimeout(resolve, 10));
-      attempt = await this.attempts.findByIdempotencyKey({ assignmentId, idempotencyKey }) ?? attempt;
+      attempt = await this.attempts.findByDeliveryIntent({ assignmentId, requestFingerprint }) ?? attempt;
     }
     if (attempt.errorCategory === HANDOFF_DELIVERY_RESERVATION) {
-      throw AppError.conflict('El envio con esta clave sigue en proceso', 'HANDOFF_DELIVERY_IN_PROGRESS');
+      if (attempt.leaseUntil && attempt.leaseUntil.getTime() > this.now().getTime()) {
+        throw AppError.conflict('El envio con esta clave sigue en proceso', 'HANDOFF_DELIVERY_IN_PROGRESS');
+      }
+      attempt = await this.attempts.markExpiredUnknown({ attemptId: attempt.id, observedAt: this.now() });
     }
-    return { state: (await this.requireAssignment(assignmentId)).state, attemptStatus: 'IDEMPOTENT', providerMessageRef: attempt.providerMessageRef, errorCategory: attempt.errorCategory };
+    if (attempt.status === 'SUCCEEDED') {
+      const assignment = await this.requireAssignment(assignmentId);
+      if (assignment.state === 'CREATED') {
+        await this.assignments.transitionState({ assignmentId, from: ['CREATED'], to: 'SENT' });
+      }
+      return { state: (await this.requireAssignment(assignmentId)).state, attemptStatus: 'IDEMPOTENT', providerMessageRef: attempt.providerMessageRef, errorCategory: null };
+    }
+    if (attempt.status === 'UNKNOWN') {
+      return { state: (await this.requireAssignment(assignmentId)).state, attemptStatus: 'UNKNOWN', providerMessageRef: attempt.providerMessageRef, errorCategory: HANDOFF_DELIVERY_OUTCOME_UNKNOWN };
+    }
+    return { state: (await this.requireAssignment(assignmentId)).state, attemptStatus: 'FAILED', providerMessageRef: attempt.providerMessageRef, errorCategory: attempt.errorCategory };
   }
 
   async markHandoffInvitationViewed(token: string): Promise<{ state: HandoffAssignmentState }> {
@@ -162,9 +250,9 @@ export class PortfolioHandoffDeliveryService {
     return assignment;
   }
 
-  private async requireSendableAssignment(id: string): Promise<HandoffAssignment> {
+  private async requireCreatedAssignment(id: string): Promise<HandoffAssignment> {
     const assignment = await this.requireAssignment(id);
-    if (!(['CREATED', 'SENT', 'VIEWED'] as HandoffAssignmentState[]).includes(assignment.state)) {
+    if (assignment.state !== 'CREATED') {
       throw AppError.conflict('La invitacion ya no puede enviarse', 'HANDOFF_INVITATION_NOT_SENDABLE');
     }
     return assignment;
@@ -189,12 +277,6 @@ export function renderInvitationEmail(assignment: HandoffAssignment, token: stri
   const escapedRecipient = escapeHtml(assignment.invitedEmailNormalized);
   const escapedContext = whyItMatters?.trim() ? `<p>${escapeHtml(whyItMatters.trim()).replace(/\n/g, '<br>')}</p>` : '';
   return { subject: 'Te han invitado a revisar una asignación', text, html: `<p><strong>Starteria</strong></p><p>Te han invitado a revisar una asignación</p><p><strong>Para:</strong> ${escapedRecipient}</p><p>${escapedTitle}</p>${escapedContext}<p><a href="${escapedUrl}">Revisar asignación</a></p><p>Al abrir Starteria podrás revisar el contexto antes de decidir.</p>` };
-}
-
-function classifyDeliveryError(error: unknown): string {
-  if (error instanceof Error && /timeout/i.test(error.message)) return 'TIMEOUT';
-  if (error instanceof Error && /auth|credential/i.test(error.message)) return 'PROVIDER_AUTH';
-  return 'PROVIDER_FAILURE';
 }
 
 function escapeHtml(value: string): string {

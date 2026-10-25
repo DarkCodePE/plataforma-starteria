@@ -6,7 +6,10 @@ import { PortfolioHandoffAssignmentService } from '../application/portfolio-hand
 import { PortfolioHandoffDeliveryService, type HandoffInvitationDeliveryPort } from '../application/portfolio-handoff-delivery.service';
 import { hashRefreshToken } from '../../auth/token.service';
 
-async function context(send: HandoffInvitationDeliveryPort['send'] = async () => ({ delivered: true })) {
+async function context(
+  send: HandoffInvitationDeliveryPort['send'] = async () => ({ delivered: true }),
+  options: { now?: () => Date; reservationTtlMs?: number } = {},
+) {
   const assignments = new InMemoryPortfolioHandoffAssignmentRepository();
   const refs = new InMemoryHandoffReferenceRepository();
   refs.addChallenge({ id: 'challenge-1', organizationId: 'org-1' });
@@ -16,7 +19,13 @@ async function context(send: HandoffInvitationDeliveryPort['send'] = async () =>
   });
   const access = new InMemoryHandoffInvitationAccessRepository();
   const attempts = new InMemoryHandoffDeliveryAttemptRepository();
-  return { assignment, assignments, access, attempts, service: new PortfolioHandoffDeliveryService(assignments, access, attempts, { send }) };
+  return {
+    assignment,
+    assignments,
+    access,
+    attempts,
+    service: new PortfolioHandoffDeliveryService(assignments, access, attempts, { send }, undefined, options.now, options.reservationTtlMs),
+  };
 }
 
 describe('PortfolioHandoffDeliveryService / H-TECH-04', () => {
@@ -32,9 +41,10 @@ describe('PortfolioHandoffDeliveryService / H-TECH-04', () => {
     expect(sent[0].text).toContain('/handoff/invitations/');
   });
 
-  it('does not mark sent when mailer is disabled or transport fails, and permits retry', async () => {
+  it('does not mark sent on a confirmed rejection and permits an explicit retry', async () => {
     let fail = true;
-    const ctx = await context(async () => { if (fail) throw new Error('SMTP down'); return { delivered: true }; });
+    const ctx = await context(async () => fail ? { delivered: false } : { delivered: true });
+    expect(await ctx.service.sendHandoffInvitation({ assignmentId: ctx.assignment.id, idempotencyKey: 'send-1' })).toMatchObject({ state: 'CREATED', attemptStatus: 'FAILED' });
     expect(await ctx.service.sendHandoffInvitation({ assignmentId: ctx.assignment.id, idempotencyKey: 'send-1' })).toMatchObject({ state: 'CREATED', attemptStatus: 'FAILED' });
     expect((await ctx.assignments.findById(ctx.assignment.id))?.state).toBe('CREATED');
     fail = false;
@@ -78,7 +88,31 @@ describe('PortfolioHandoffDeliveryService / H-TECH-04', () => {
     expect(replay).toMatchObject({ state: 'SENT', attemptStatus: 'IDEMPOTENT', providerMessageRef: 'provider-concurrent' });
   });
 
-  it('reclaims an abandoned reservation without exposing it as a permanent failed send', async () => {
+  it('reserves the delivery intent across different HTTP keys so concurrent batches send once', async () => {
+    let calls = 0;
+    let releaseDelivery!: () => void;
+    const deliveryGate = new Promise<void>((resolve) => { releaseDelivery = resolve; });
+    const ctx = await context(async () => {
+      calls += 1;
+      await deliveryGate;
+      return { delivered: true, providerMessageRef: 'provider-intent' };
+    });
+    const request = { assignmentId: ctx.assignment.id, title: 'Misma intención', whyItMatters: 'Mismo contexto' };
+
+    const first = ctx.service.sendHandoffInvitation({ ...request, idempotencyKey: 'batch-a:assignment' });
+    await vi.waitFor(() => expect(calls).toBe(1));
+    const second = ctx.service.sendHandoffInvitation({ ...request, idempotencyKey: 'batch-b:assignment' });
+    await Promise.resolve();
+    releaseDelivery();
+
+    const [winner, replay] = await Promise.all([first, second]);
+    expect(calls).toBe(1);
+    expect(winner).toMatchObject({ state: 'SENT', attemptStatus: 'SUCCEEDED' });
+    expect(replay).toMatchObject({ state: 'SENT', attemptStatus: 'IDEMPOTENT', providerMessageRef: 'provider-intent' });
+    expect(ctx.access.accesses.filter((item) => item.revokedAt === null)).toHaveLength(1);
+  });
+
+  it('does not resend an expired reservation because its SMTP outcome is unknown', async () => {
     let calls = 0;
     const ctx = await context(async () => {
       calls += 1;
@@ -87,12 +121,15 @@ describe('PortfolioHandoffDeliveryService / H-TECH-04', () => {
     await ctx.attempts.reserve({
       assignmentId: ctx.assignment.id,
       channel: 'EMAIL',
-      status: 'FAILED',
+      status: 'UNKNOWN',
       attemptedAt: new Date(Date.now() - 60_000),
       providerMessageRef: null,
       errorCategory: 'IDEMPOTENCY_RESERVED',
       idempotencyKey: 'abandoned-key',
       requestFingerprint: 'abandoned-fingerprint',
+      executionGeneration: 1,
+      executionOwnerId: 'abandoned-worker',
+      leaseUntil: new Date(Date.now() - 30_000),
     });
 
     const result = await ctx.service.sendHandoffInvitation({
@@ -101,8 +138,140 @@ describe('PortfolioHandoffDeliveryService / H-TECH-04', () => {
       requestFingerprint: 'abandoned-fingerprint',
     });
 
-    expect(result).toMatchObject({ state: 'SENT', attemptStatus: 'SUCCEEDED', providerMessageRef: 'provider-reclaimed' });
+    expect(result).toMatchObject({ state: 'CREATED', attemptStatus: 'UNKNOWN', errorCategory: 'DELIVERY_OUTCOME_UNKNOWN' });
+    expect(calls).toBe(0);
+  });
+
+  it('quarantines a pre-fencing reservation at runtime without retrying SMTP', async () => {
+    let calls = 0;
+    const ctx = await context(async () => {
+      calls += 1;
+      return { delivered: true };
+    });
+    await ctx.attempts.reserve({
+      assignmentId: ctx.assignment.id,
+      channel: 'EMAIL',
+      status: 'FAILED',
+      attemptedAt: new Date('2026-10-20T10:00:00.000Z'),
+      providerMessageRef: null,
+      errorCategory: 'IDEMPOTENCY_RESERVED',
+      idempotencyKey: 'legacy-reservation',
+      requestFingerprint: 'legacy-intent',
+      executionGeneration: 0,
+      executionOwnerId: null,
+      leaseUntil: null,
+    });
+
+    const result = await ctx.service.sendHandoffInvitation({
+      assignmentId: ctx.assignment.id,
+      idempotencyKey: 'new-key-for-legacy-intent',
+      requestFingerprint: 'legacy-intent',
+    });
+
+    expect(result).toMatchObject({ attemptStatus: 'UNKNOWN', errorCategory: 'DELIVERY_OUTCOME_UNKNOWN' });
+    expect(ctx.attempts.attempts[0]).toMatchObject({ status: 'UNKNOWN', errorCategory: 'DELIVERY_OUTCOME_UNKNOWN' });
+    expect(calls).toBe(0);
+  });
+
+  it('fences two overlapping workers when SMTP exceeds the lease and never sends twice', async () => {
+    let current = new Date('2026-10-25T10:00:00.000Z');
+    let calls = 0;
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    const ctx = await context(async () => {
+      calls += 1;
+      await gate;
+      return { delivered: true, providerMessageRef: 'accepted-but-late' };
+    }, { now: () => current, reservationTtlMs: 30_000 });
+    const request = { assignmentId: ctx.assignment.id, title: 'Misma intención', whyItMatters: 'Mismo contexto' };
+
+    const first = ctx.service.sendHandoffInvitation({ ...request, idempotencyKey: 'slow-a' });
+    await vi.waitFor(() => expect(calls).toBe(1));
+    current = new Date('2026-10-25T10:00:31.000Z');
+    const second = await ctx.service.sendHandoffInvitation({ ...request, idempotencyKey: 'slow-b' });
+    release();
+    const original = await first;
+
     expect(calls).toBe(1);
+    expect(second).toMatchObject({ state: 'CREATED', attemptStatus: 'UNKNOWN', errorCategory: 'DELIVERY_OUTCOME_UNKNOWN' });
+    expect(original).toMatchObject({ state: 'CREATED', attemptStatus: 'UNKNOWN', errorCategory: 'DELIVERY_OUTCOME_UNKNOWN' });
+    expect(ctx.access.accesses.filter((item) => item.revokedAt === null)).toHaveLength(1);
+  });
+
+  it('treats a transport exception as unknown and does not retry it automatically', async () => {
+    let calls = 0;
+    const ctx = await context(async () => {
+      calls += 1;
+      throw new Error('connection closed after DATA');
+    });
+    const request = { assignmentId: ctx.assignment.id, title: 'Resultado ambiguo' };
+
+    const first = await ctx.service.sendHandoffInvitation({ ...request, idempotencyKey: 'unknown-a' });
+    const replay = await ctx.service.sendHandoffInvitation({ ...request, idempotencyKey: 'unknown-b' });
+
+    expect(first).toMatchObject({ state: 'CREATED', attemptStatus: 'UNKNOWN', errorCategory: 'DELIVERY_OUTCOME_UNKNOWN' });
+    expect(replay).toMatchObject({ state: 'CREATED', attemptStatus: 'UNKNOWN', errorCategory: 'DELIVERY_OUTCOME_UNKNOWN' });
+    expect(await ctx.attempts.findByIdempotencyKey({ assignmentId: ctx.assignment.id, idempotencyKey: 'unknown-b' }))
+      .toMatchObject({ id: ctx.attempts.attempts[0].id, status: 'UNKNOWN' });
+    await expect(ctx.service.sendHandoffInvitation({ ...request, title: 'Contenido distinto', idempotencyKey: 'unknown-b' }))
+      .rejects.toMatchObject({ code: 'HANDOFF_IDEMPOTENCY_CONFLICT' });
+    expect(calls).toBe(1);
+  });
+
+  it('binds a new idempotency key when retrying a confirmed failure', async () => {
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    let calls = 0;
+    const ctx = await context(async () => {
+      calls += 1;
+      if (calls === 1) return { delivered: false };
+      await gate;
+      return { delivered: true };
+    });
+    await ctx.service.sendHandoffInvitation({ assignmentId: ctx.assignment.id, idempotencyKey: 'failed-key', title: 'Original' });
+
+    const retry = ctx.service.sendHandoffInvitation({ assignmentId: ctx.assignment.id, idempotencyKey: 'retry-key', title: 'Original' });
+    await vi.waitFor(() => expect(calls).toBe(2));
+    await expect(ctx.service.sendHandoffInvitation({ assignmentId: ctx.assignment.id, idempotencyKey: 'retry-key', title: 'Changed' }))
+      .rejects.toMatchObject({ code: 'HANDOFF_IDEMPOTENCY_CONFLICT' });
+    release();
+    await expect(retry).resolves.toMatchObject({ attemptStatus: 'SUCCEEDED' });
+    await expect(ctx.service.sendHandoffInvitation({ assignmentId: ctx.assignment.id, idempotencyKey: 'failed-key', title: 'Changed' }))
+      .rejects.toMatchObject({ code: 'HANDOFF_IDEMPOTENCY_CONFLICT' });
+    await expect(ctx.service.sendHandoffInvitation({ assignmentId: ctx.assignment.id, idempotencyKey: 'failed-key', title: 'Original' }))
+      .resolves.toMatchObject({ attemptStatus: 'IDEMPOTENT', state: 'SENT' });
+    expect(calls).toBe(2);
+  });
+
+  it('rejects completion from a stale execution generation', async () => {
+    const now = new Date('2026-10-25T10:00:00.000Z');
+    const ctx = await context();
+    const reserved = await ctx.attempts.reserve({
+      assignmentId: ctx.assignment.id,
+      channel: 'EMAIL',
+      status: 'UNKNOWN',
+      attemptedAt: now,
+      providerMessageRef: null,
+      errorCategory: 'IDEMPOTENCY_RESERVED',
+      idempotencyKey: 'fenced-key',
+      requestFingerprint: 'fenced-intent',
+      executionGeneration: 2,
+      executionOwnerId: 'new-worker',
+      leaseUntil: new Date(now.getTime() + 30_000),
+    });
+
+    const stale = await ctx.attempts.completeOwned({
+      attemptId: reserved.attempt.id,
+      executionGeneration: 1,
+      executionOwnerId: 'old-worker',
+      status: 'SUCCEEDED',
+      providerMessageRef: 'stale-provider-ref',
+      errorCategory: null,
+      attemptedAt: now,
+    });
+
+    expect(stale.completed).toBe(false);
+    expect(stale.attempt).toMatchObject({ status: 'UNKNOWN', executionGeneration: 2, executionOwnerId: 'new-worker', providerMessageRef: null });
   });
 
   it('rejects the same idempotency key when the invitation content fingerprint changes', async () => {
@@ -118,7 +287,7 @@ describe('PortfolioHandoffDeliveryService / H-TECH-04', () => {
   it('revokes the unusable token when SMTP fails so a safe retry has one active invitation', async () => {
     let fail = true;
     const ctx = await context(async () => {
-      if (fail) throw new Error('SMTP down');
+      if (fail) return { delivered: false };
       return { delivered: true };
     });
 

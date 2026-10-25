@@ -285,7 +285,7 @@ describe('ChallengeAssignmentPreparationPanel - PL-06A multiple preparation', ()
     ]);
     api.sendHandoffInvitationBatch.mockResolvedValue({
       id: 'batch-1', status: 'COMPLETED', idempotent: false,
-      results: [{ assignmentId: 'assignment-1', status: 'SENT', providerMessageRef: 'smtp-1', errorCategory: null }],
+      results: [{ assignmentId: 'assignment-1', status: 'SUCCEEDED', providerMessageRef: 'smtp-1', errorCategory: null }],
       counts: { sent: 1, failed: 0, skipped: 0 },
     });
 
@@ -332,13 +332,13 @@ describe('ChallengeAssignmentPreparationPanel - PL-06A multiple preparation', ()
       .mockResolvedValueOnce({
         id: 'batch-partial', status: 'PARTIAL', idempotent: false, succeededCount: 1, failedCount: 1,
         results: [
-          { assignmentId: 'assignment-sent', status: 'SENT', state: 'SENT', providerMessageRef: 'smtp-1', errorCategory: null },
+          { assignmentId: 'assignment-sent', status: 'SUCCEEDED', state: 'SENT', providerMessageRef: 'smtp-1', errorCategory: null },
           { assignmentId: 'assignment-failed', status: 'FAILED', state: 'CREATED', providerMessageRef: null, errorCategory: 'SMTP_TEMPORARY' },
         ],
       })
       .mockResolvedValueOnce({
         id: 'batch-retry', retryOfBatchId: 'batch-partial', status: 'COMPLETED', idempotent: false, succeededCount: 1, failedCount: 0,
-        results: [{ assignmentId: 'assignment-failed', status: 'SENT', state: 'SENT', providerMessageRef: 'smtp-2', errorCategory: null }],
+        results: [{ assignmentId: 'assignment-failed', status: 'SUCCEEDED', state: 'SENT', providerMessageRef: 'smtp-2', errorCategory: null }],
       });
 
     render(<ChallengeAssignmentPreparationPanel target={target} />);
@@ -355,6 +355,27 @@ describe('ChallengeAssignmentPreparationPanel - PL-06A multiple preparation', ()
     await waitFor(() => expect(api.sendHandoffInvitationBatch).toHaveBeenLastCalledWith('challenge-1', [
       { assignmentId: 'assignment-failed', expectedVersion: 1 },
     ], expect.any(String), 'batch-partial'));
+  });
+
+  it('requires reconciliation and never offers automatic retry for an unknown SMTP outcome', async () => {
+    const user = userEvent.setup();
+    api.listChallengeHandoffAssignments.mockResolvedValue([
+      { id: 'assignment-unknown', state: 'CREATED', version: 1, targetKind: 'CHALLENGE', initiativeId: null, contextNote: 'Ambigua.', briefVersionId: 'version-5', invitedEmailNormalized: 'unknown@starteria.test', members: [] },
+    ]);
+    api.sendHandoffInvitationBatch.mockResolvedValue({
+      id: 'batch-unknown', status: 'RECONCILIATION_REQUIRED', retryOfBatchId: null, succeededCount: 0, failedCount: 0,
+      results: [{ assignmentId: 'assignment-unknown', status: 'UNKNOWN', state: 'CREATED', providerMessageRef: null, errorCategory: 'DELIVERY_OUTCOME_UNKNOWN' }],
+    });
+
+    render(<ChallengeAssignmentPreparationPanel target={target} />);
+    await user.click(await screen.findByRole('checkbox', { name: 'Seleccionar invitación para unknown@starteria.test' }));
+    await user.click(screen.getByRole('button', { name: 'Revisar y enviar seleccionados (1)' }));
+    await user.click(screen.getByRole('button', { name: 'Confirmar envío de 1 invitación' }));
+
+    expect(await screen.findByText('1 resultado por conciliar')).toBeInTheDocument();
+    expect(screen.getByRole('alert')).toHaveTextContent('No reenviaremos automáticamente');
+    expect(screen.queryByRole('button', { name: 'Reintentar solo fallidas' })).not.toBeInTheDocument();
+    expect(screen.getByText('Motivo técnico: DELIVERY_OUTCOME_UNKNOWN')).toBeInTheDocument();
   });
 
   it('re-enters every prepared Assignment for the Challenge by assignmentId without collapsing Brief versions', async () => {

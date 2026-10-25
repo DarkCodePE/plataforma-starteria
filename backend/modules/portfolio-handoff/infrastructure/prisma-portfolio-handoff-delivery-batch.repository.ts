@@ -28,13 +28,43 @@ export class PrismaPortfolioHandoffDeliveryBatchRepository implements HandoffDel
     }
   }
 
-  async saveProgress(input: { batchId: string; results: HandoffDeliveryBatchItemResult[]; status: HandoffDeliveryBatch['status']; completedAt: Date | null }): Promise<HandoffDeliveryBatch> {
-    const succeededCount = input.results.filter((item) => item.status === 'SUCCEEDED').length;
-    const record = await (this.prisma as any).portfolioHandoffDeliveryBatch.update({
-      where: { id: input.batchId },
-      data: { results: input.results, status: input.status, completedAt: input.completedAt, succeededCount, failedCount: input.results.length - succeededCount },
+  async reclaimProcessing(input: { batchId: string; staleBefore: Date; leaseUntil: Date; executionOwnerId: string }): Promise<{ batch: HandoffDeliveryBatch; reclaimed: boolean }> {
+    const claimed = await (this.prisma as any).portfolioHandoffDeliveryBatch.updateMany({
+      where: {
+        id: input.batchId,
+        status: 'PROCESSING',
+        OR: [{ processingLeaseUntil: null }, { processingLeaseUntil: { lte: input.staleBefore } }],
+      },
+      data: { processingLeaseUntil: input.leaseUntil, processingOwnerId: input.executionOwnerId, processingGeneration: { increment: 1 } },
     });
-    return mapBatch(record);
+    const record = await (this.prisma as any).portfolioHandoffDeliveryBatch.findUnique({ where: { id: input.batchId } });
+    if (!record) throw new Error('Delivery batch not found');
+    return { batch: mapBatch(record), reclaimed: claimed.count === 1 };
+  }
+
+  async saveProgress(input: { batchId: string; executionGeneration: number; executionOwnerId: string; observedAt: Date; results: HandoffDeliveryBatchItemResult[]; status: HandoffDeliveryBatch['status']; completedAt: Date | null; processingLeaseUntil: Date | null }): Promise<{ batch: HandoffDeliveryBatch; saved: boolean }> {
+    const succeededCount = input.results.filter((item) => item.status === 'SUCCEEDED').length;
+    const saved = await (this.prisma as any).portfolioHandoffDeliveryBatch.updateMany({
+      where: {
+        id: input.batchId,
+        status: 'PROCESSING',
+        processingGeneration: input.executionGeneration,
+        processingOwnerId: input.executionOwnerId,
+        processingLeaseUntil: { gte: input.observedAt },
+      },
+      data: {
+        results: input.results,
+        status: input.status,
+        completedAt: input.completedAt,
+        processingLeaseUntil: input.processingLeaseUntil,
+        processingOwnerId: input.status === 'PROCESSING' ? input.executionOwnerId : null,
+        succeededCount,
+        failedCount: input.results.filter((item) => item.status === 'FAILED').length,
+      },
+    });
+    const record = await (this.prisma as any).portfolioHandoffDeliveryBatch.findUnique({ where: { id: input.batchId } });
+    if (!record) throw new Error('Delivery batch not found');
+    return { batch: mapBatch(record), saved: saved.count === 1 };
   }
 
   async findManyByIds(ids: string[]): Promise<HandoffDeliveryContext[]> {

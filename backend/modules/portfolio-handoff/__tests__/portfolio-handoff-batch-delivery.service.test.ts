@@ -16,10 +16,36 @@ class BatchMemory implements HandoffDeliveryBatchRepository {
     this.records.push(batch);
     return { batch, reserved: true };
   }
-  async saveProgress(input: { batchId: string; results: HandoffDeliveryBatchItemResult[]; status: HandoffDeliveryBatch['status']; completedAt: Date | null }) {
+  async reclaimProcessing(input: { batchId: string; staleBefore: Date; leaseUntil: Date; executionOwnerId: string }) {
     const record = (await this.findById(input.batchId))!;
+    const reclaimed = record.status === 'PROCESSING' && (!record.processingLeaseUntil || record.processingLeaseUntil <= input.staleBefore);
+    if (reclaimed) Object.assign(record, {
+      processingLeaseUntil: input.leaseUntil,
+      processingOwnerId: input.executionOwnerId,
+      processingGeneration: record.processingGeneration + 1,
+    });
+    return { batch: record, reclaimed };
+  }
+  async saveProgress(input: { batchId: string; results: HandoffDeliveryBatchItemResult[]; status: HandoffDeliveryBatch['status']; completedAt: Date | null; processingLeaseUntil: Date | null; executionOwnerId: string; executionGeneration: number; observedAt: Date }) {
+    const record = (await this.findById(input.batchId))!;
+    const saved = record.status === 'PROCESSING'
+      && record.processingOwnerId === input.executionOwnerId
+      && record.processingGeneration === input.executionGeneration
+      && Boolean(record.processingLeaseUntil && record.processingLeaseUntil >= input.observedAt);
+    if (!saved) return { batch: record, saved: false };
     Object.assign(record, input, { succeededCount: input.results.filter((item) => item.status === 'SUCCEEDED').length, failedCount: input.results.filter((item) => item.status === 'FAILED').length });
-    return record;
+    return { batch: record, saved: true };
+  }
+}
+
+class CrashBeforeFirstProgressBatchMemory extends BatchMemory {
+  private crash = true;
+  override async saveProgress(input: Parameters<BatchMemory['saveProgress']>[0]) {
+    if (this.crash) {
+      this.crash = false;
+      throw new Error('simulated crash after durable FAILED attempt');
+    }
+    return super.saveProgress(input);
   }
 }
 
@@ -97,5 +123,87 @@ describe('PortfolioHandoffBatchDeliveryService / PL-06B', () => {
     expect(first).toMatchObject({ status: 'COMPLETED', succeededCount: 1 });
     expect(second).toMatchObject({ id: first.id, status: 'COMPLETED', succeededCount: 1 });
     expect(ctx.sendHandoffInvitation).toHaveBeenCalledTimes(1);
+  });
+
+  it('reclaims a stale PROCESSING batch and resumes its unfinished assignments', async () => {
+    vi.useFakeTimers();
+    try {
+      const now = new Date('2026-10-25T10:00:00.000Z');
+      const delivered = assignment('a-1');
+      const ctx = setup([delivered]);
+      const input = { organizationId: 'org-1', challengeId: 'challenge-1', actorId: 'actor-1', idempotencyKey: 'recoverable-batch', items: [{ assignmentId: 'a-1', expectedVersion: 1 }] };
+      const completed = await ctx.service.send(input);
+      Object.assign(completed, {
+        status: 'PROCESSING', results: [], succeededCount: 0, failedCount: 0, completedAt: null,
+        processingLeaseUntil: new Date(now.getTime() - 1),
+      });
+      Object.assign(delivered, { state: 'SENT', version: 2 });
+      ctx.sendHandoffInvitation.mockClear();
+      const recovering = new PortfolioHandoffBatchDeliveryService(
+        ctx.batches,
+        { findManyByIds: ctx.findManyByIds },
+        { sendHandoffInvitation: ctx.sendHandoffInvitation } as unknown as PortfolioHandoffDeliveryService,
+        () => now,
+      );
+
+      const resultPromise = recovering.send(input);
+      await vi.runAllTimersAsync();
+      await expect(resultPromise).resolves.toMatchObject({ status: 'COMPLETED', succeededCount: 1 });
+      expect(ctx.sendHandoffInvitation).toHaveBeenCalledTimes(1);
+      expect(completed.processingGeneration).toBeGreaterThan(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('preserves a durable FAILED result when recovering after a crash before batch progress', async () => {
+    let now = new Date('2026-10-25T10:00:00.000Z');
+    const value = assignment('a-failed-recovery');
+    const batches = new CrashBeforeFirstProgressBatchMemory();
+    const contexts = { findManyByIds: async () => [context(value)] };
+    const delivery = { sendHandoffInvitation: vi.fn(async () => ({ state: 'CREATED' as const, attemptStatus: 'FAILED' as const, providerMessageRef: null, errorCategory: 'MAILER_DISABLED' })) };
+    const service = new PortfolioHandoffBatchDeliveryService(batches, contexts, delivery as unknown as PortfolioHandoffDeliveryService, () => now);
+    const input = { organizationId: 'org-1', challengeId: 'challenge-1', actorId: 'actor-1', idempotencyKey: 'failed-recovery', items: [{ assignmentId: value.id, expectedVersion: 1 }] };
+
+    await expect(service.send(input)).rejects.toThrow('simulated crash after durable FAILED attempt');
+    expect(batches.records[0]).toMatchObject({ status: 'PROCESSING', results: [] });
+    now = new Date('2026-10-25T10:00:31.000Z');
+
+    await expect(service.send(input)).resolves.toMatchObject({
+      status: 'FAILED', succeededCount: 0, failedCount: 1,
+      results: [{ assignmentId: value.id, status: 'FAILED', errorCategory: 'MAILER_DISABLED' }],
+    });
+  });
+
+  it('fences a stale batch worker from overwriting progress after lease reclamation', async () => {
+    const now = new Date('2026-10-25T10:00:31.000Z');
+    const batches = new BatchMemory();
+    const reserved = await batches.reserve({
+      organizationId: 'org-1', challengeId: 'challenge-1', actorId: 'actor-1', idempotencyKey: 'batch-fenced',
+      requestFingerprint: 'fingerprint', retryOfBatchId: null, assignmentIds: ['a-1'], status: 'PROCESSING', results: [],
+      succeededCount: 0, failedCount: 0, processingLeaseUntil: new Date('2026-10-25T10:00:30.000Z'),
+      processingGeneration: 1, processingOwnerId: 'old-worker', completedAt: null,
+    });
+    const reclaimed = await batches.reclaimProcessing({
+      batchId: reserved.batch.id,
+      staleBefore: now,
+      leaseUntil: new Date(now.getTime() + 30_000),
+      executionOwnerId: 'new-worker',
+    });
+
+    const staleWrite = await batches.saveProgress({
+      batchId: reserved.batch.id,
+      results: [{ assignmentId: 'a-1', status: 'SUCCEEDED', state: 'SENT', errorCategory: null, providerMessageRef: 'stale' }],
+      status: 'COMPLETED',
+      completedAt: now,
+      processingLeaseUntil: null,
+      executionGeneration: 1,
+      executionOwnerId: 'old-worker',
+      observedAt: now,
+    });
+
+    expect(reclaimed).toMatchObject({ reclaimed: true, batch: { processingGeneration: 2, processingOwnerId: 'new-worker' } });
+    expect(staleWrite.saved).toBe(false);
+    expect(staleWrite.batch).toMatchObject({ status: 'PROCESSING', results: [], processingGeneration: 2, processingOwnerId: 'new-worker' });
   });
 });

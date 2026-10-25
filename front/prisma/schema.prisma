@@ -1889,6 +1889,7 @@ model PortfolioHandoffInvitation {
 enum PortfolioHandoffDeliveryAttemptStatus {
   SUCCEEDED
   FAILED
+  UNKNOWN
 }
 
 enum PortfolioHandoffDeliveryBatchStatus {
@@ -1896,6 +1897,7 @@ enum PortfolioHandoffDeliveryBatchStatus {
   COMPLETED
   PARTIAL
   FAILED
+  RECONCILIATION_REQUIRED
 }
 
 model PortfolioHandoffDeliveryAttempt {
@@ -1909,9 +1911,27 @@ model PortfolioHandoffDeliveryAttempt {
   errorCategory      String?
   idempotencyKey     String
   requestFingerprint String
+  executionGeneration Int                                 @default(0)
+  executionOwnerId  String?
+  leaseUntil         DateTime?
+  idempotencyKeys    PortfolioHandoffDeliveryAttemptKey[]
 
   @@unique([assignmentId, idempotencyKey])
+  @@unique([assignmentId, requestFingerprint], map: "HandoffDeliveryAttempt_assignment_intent_key")
   @@index([assignmentId, attemptedAt])
+  @@index([status, leaseUntil])
+}
+
+model PortfolioHandoffDeliveryAttemptKey {
+  id                 String                          @id @default(cuid())
+  assignmentId       String
+  idempotencyKey     String
+  attemptId          String
+  attempt            PortfolioHandoffDeliveryAttempt @relation(fields: [attemptId], references: [id], onDelete: Cascade)
+  createdAt          DateTime                        @default(now())
+
+  @@unique([assignmentId, idempotencyKey])
+  @@index([attemptId])
 }
 
 model PortfolioHandoffDeliveryBatch {
@@ -1927,10 +1947,14 @@ model PortfolioHandoffDeliveryBatch {
   results            Json
   succeededCount     Int                                 @default(0)
   failedCount        Int                                 @default(0)
+  processingLeaseUntil DateTime?
+  processingGeneration Int                              @default(0)
+  processingOwnerId  String?
   createdAt          DateTime                            @default(now())
   completedAt        DateTime?
 
   @@unique([organizationId, idempotencyKey])
+  @@index([status, processingLeaseUntil])
   @@index([challengeId, createdAt])
   @@index([retryOfBatchId])
 }
