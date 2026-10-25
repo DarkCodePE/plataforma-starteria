@@ -93,7 +93,7 @@ Ninguna coincide con `57635469…39285`. No se modificó `_prisma_migrations`, n
 | `npm run typecheck` front+backend | PASS |
 | `npm run lint` (baseline/guard de arquitectura) | PASS |
 | `prisma validate` | PASS |
-| `prisma migrate deploy` desde cero (`65` migraciones) | PASS |
+| `prisma migrate deploy` desde cero (`66` migraciones, incluida alineación metadata-only del índice) | PASS |
 | Preflight de base limpia | PASS, cero gates |
 | Preflight con fixture inconsistente | PASS, detecta ambos mismatches y hace rollback |
 | `git diff --check` | PASS |
