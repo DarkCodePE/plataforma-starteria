@@ -110,7 +110,7 @@ Por tanto, KAN-178/179 no forman parte del staging propuesto. Si se desean despu
 | `npx prisma generate` | PASS |
 | `npx prisma validate` con DB descartable | PASS |
 | 62 migraciones sobre PostgreSQL 16 vacío | PASS; esquema al día |
-| `npm run test:front` | PASS; 303 archivos/963 tests en la ejecución completa registrada |
+| `npm run test:front` | PASS; 303 suites/963 tests en la ejecución completa registrada |
 | `npm run test:backend` aislado | PASS: 188 archivos/1.668 tests; 29 archivos/136 tests omitidos por flags |
 | `npm run typecheck:front` | PASS |
 | `npm run typecheck:backend` | PASS |
