@@ -178,6 +178,9 @@ export class PortfolioEntryConversionService {
             name: mapped.projectName,
             description: mapped.projectDescription,
             ownerId: input.authenticatedUserId,
+            // Portfolio Entry conversion is a personal LEGACY_COMPAT path. A user's primary
+            // organization is not authority to canonicalize this Project into a tenant.
+            organizationId: null,
             status: 'DRAFT',
             currentStep: 0,
             step0Status: 'IN_PROGRESS',

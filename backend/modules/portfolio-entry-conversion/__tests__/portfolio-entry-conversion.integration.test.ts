@@ -129,6 +129,7 @@ describeIntegration('Portfolio Entry Conversion Boundary', () => {
 
     expect(project).toMatchObject({
       ownerId,
+      organizationId: null,
       currentStep: 0,
       step0Status: 'IN_PROGRESS',
       origin: 'from_portfolio_entry',

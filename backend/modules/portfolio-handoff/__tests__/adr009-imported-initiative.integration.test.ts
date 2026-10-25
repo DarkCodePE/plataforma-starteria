@@ -1,4 +1,6 @@
 import { PrismaClient } from '@prisma/client';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { ImportedInitiativeCanonicalizationService } from '../imported-initiative-canonicalization.service';
 
@@ -21,6 +23,18 @@ suite('ADR-009 canonical documentary initiative persistence', () => {
   let linkVersion = '';
 
   beforeAll(async () => {
+    await prisma.portfolioImportedInitiativeLink.deleteMany({ where: { organizationId: { in: [ids.organization, ids.otherOrganization] } } });
+    await prisma.initiativePortfolioMeta.deleteMany({ where: { OR: [{ projectId: ids.existingProject }, { challengeId: ids.challenge }] } });
+    await prisma.project.deleteMany({ where: { id: ids.existingProject } });
+    await prisma.portfolioOrganizationMaterialization.deleteMany({ where: { bootstrapSessionId: { in: [ids.session, ids.otherSession] } } });
+    await prisma.portfolioOrganizationProposal.deleteMany({ where: { bootstrapSessionId: { in: [ids.session, ids.otherSession] } } });
+    await prisma.portfolioBootstrapWorkItem.deleteMany({ where: { bootstrapSessionId: { in: [ids.session, ids.otherSession] } } });
+    await prisma.portfolioBootstrapWorkIntakeSource.deleteMany({ where: { bootstrapSessionId: { in: [ids.session, ids.otherSession] } } });
+    await prisma.portfolioBootstrapSession.deleteMany({ where: { id: { in: [ids.session, ids.otherSession] } } });
+    await prisma.challenge.deleteMany({ where: { id: ids.challenge } });
+    await prisma.strategicFront.deleteMany({ where: { id: ids.front } });
+    await prisma.user.deleteMany({ where: { id: { in: [ids.lead, ids.owner, ids.otherLead] } } });
+    await prisma.organization.deleteMany({ where: { id: { in: [ids.organization, ids.otherOrganization] } } });
     await prisma.organization.createMany({ data: [
       { id: ids.organization, name: 'ADR009 Disposable', slug: ids.organization },
       { id: ids.otherOrganization, name: 'ADR009 Other', slug: ids.otherOrganization },
@@ -53,33 +67,26 @@ suite('ADR-009 canonical documentary initiative persistence', () => {
 
   afterAll(async () => { await prisma.$disconnect(); });
 
-  it('registers atomically with owner pending, no Steps and stable IDs across concurrent/re-keyed retries', async () => {
-    const invitationsBefore = await prisma.portfolioHandoffInvitation.count();
+  it('blocks REGISTER_EXISTING without creating Project, TeamMember, Step, Assignment or invitation', async () => {
+    const before = await Promise.all([
+      prisma.project.count(), prisma.teamMember.count(), prisma.step.count(),
+      prisma.portfolioHandoffAssignment.count(), prisma.portfolioHandoffInvitation.count(),
+      prisma.portfolioImportedInitiativeLink.count(),
+    ]);
     const input = {
       organizationId: ids.organization, challengeId: ids.challenge, workItemId: ids.workRegister,
       mode: 'REGISTER_EXISTING' as const, expectedWorkItemUpdatedAt: registerVersion,
       identityConfirmed: true as const, alignmentConfirmed: true as const,
       actorId: ids.lead, idempotencyKey: 'adr009-register-1',
     };
-    const concurrent = await Promise.all([service.execute(input), service.execute(input)]);
-    expect(concurrent[0].project.id).toBe(concurrent[1].project.id);
-    const differentKey = await service.execute({ ...input, idempotencyKey: 'adr009-register-2' });
-    expect(differentKey.project.id).toBe(concurrent[0].project.id);
-    expect(differentKey.link.id).toBe(concurrent[0].link.id);
-
-    const project = await prisma.project.findUniqueOrThrow({ where: { id: concurrent[0].project.id }, include: { steps: true, teamMembers: true, initiativeCycles: true, portfolioMeta: true } });
-    expect(project).toMatchObject({ organizationId: ids.organization, ownerId: null, origin: 'imported', activationStatus: 'OWNER_PENDING', retrospectiveAssessmentStatus: 'PENDING_RETROACTIVE_ASSESSMENT' });
-    expect(project.steps).toHaveLength(0);
-    expect(project.teamMembers).toHaveLength(0);
-    expect(project.initiativeCycles).toHaveLength(0);
-    expect(project.portfolioMeta).toEqual([expect.objectContaining({ challengeId: ids.challenge, status: 'pending_retroactive_assessment', currentStep: null })]);
-    expect(await prisma.portfolioHandoffInvitation.count()).toBe(invitationsBefore);
-    expect(await prisma.portfolioImportedInitiativeLink.count({ where: { workItemId: ids.workRegister, status: 'ACTIVE' } })).toBe(1);
-    expect(await prisma.portfolioHandoffAssignment.count({ where: { initiativeId: project.id } })).toBe(0);
-    expect(await prisma.portfolioHandoffInvitation.count()).toBe(invitationsBefore);
-
-    await expect(service.execute({ ...input, idempotencyKey: 'adr009-register-conflict', name: 'Changed identity' }))
-      .rejects.toMatchObject({ code: 'IMPORTED_INITIATIVE_CORRESPONDENCE_CONFLICT', statusCode: 409 });
+    await expect(Promise.all([service.execute(input), service.execute({ ...input, idempotencyKey: 'adr009-register-2' })]))
+      .rejects.toMatchObject({ code: 'IMPORTED_INITIATIVE_REGISTER_EXISTING_BLOCKED', statusCode: 409 });
+    const after = await Promise.all([
+      prisma.project.count(), prisma.teamMember.count(), prisma.step.count(),
+      prisma.portfolioHandoffAssignment.count(), prisma.portfolioHandoffInvitation.count(),
+      prisma.portfolioImportedInitiativeLink.count(),
+    ]);
+    expect(after).toEqual(before);
   });
 
   it('links an existing same-tenant Project without changing owner, Steps or progress', async () => {
@@ -103,14 +110,31 @@ suite('ADR-009 canonical documentary initiative persistence', () => {
   it('rejects stale source state, unconfirmed alignment and cross-tenant references without partial writes', async () => {
     await expect(service.execute({
       organizationId: ids.organization, challengeId: ids.challenge, workItemId: ids.otherWork,
-      mode: 'REGISTER_EXISTING', expectedWorkItemUpdatedAt: new Date().toISOString(), identityConfirmed: true,
+      mode: 'LINK_EXISTING', projectId: ids.existingProject, expectedWorkItemUpdatedAt: new Date().toISOString(), identityConfirmed: true,
       alignmentConfirmed: true, actorId: ids.lead, idempotencyKey: 'adr009-cross-tenant',
     })).rejects.toMatchObject({ code: 'IMPORTED_INITIATIVE_NOT_FOUND' });
     await expect(service.execute({
       organizationId: ids.organization, challengeId: ids.challenge, workItemId: ids.workRegister,
-      mode: 'REGISTER_EXISTING', expectedWorkItemUpdatedAt: '2020-01-01T00:00:00.000Z', identityConfirmed: true,
+      mode: 'LINK_EXISTING', projectId: ids.existingProject, expectedWorkItemUpdatedAt: '2020-01-01T00:00:00.000Z', identityConfirmed: true,
       alignmentConfirmed: true, actorId: ids.lead, idempotencyKey: 'adr009-stale',
     })).rejects.toMatchObject({ code: 'IMPORTED_INITIATIVE_SOURCE_VERSION_CONFLICT' });
     expect(await prisma.portfolioImportedInitiativeLink.count({ where: { idempotencyKey: { in: ['adr009-cross-tenant', 'adr009-stale'] } } })).toBe(0);
+  });
+
+  it('fails the forward migration closed for a historical Project whose tenant differs from its canonical StrategicFront', async () => {
+    const forwardSql = readFileSync(resolve(process.cwd(), 'prisma/migrations/20261025020000_add_kan182_adr009_forward_guard/migration.sql'), 'utf8');
+    const guardSql = forwardSql.slice(0, forwardSql.indexOf('END $$;') + 'END $$;'.length);
+    await expect(prisma.$transaction(async (tx) => {
+      await tx.project.create({ data: {
+        id: 'adr009-historical-mismatch', name: 'Historical mismatch', ownerId: ids.otherLead,
+        organizationId: ids.otherOrganization, currentStep: 0, status: 'IN_PROGRESS',
+      } });
+      await tx.initiativePortfolioMeta.create({ data: {
+        id: 'adr009-historical-mismatch-meta', projectId: 'adr009-historical-mismatch', challengeId: ids.challenge,
+      } });
+      await tx.$executeRawUnsafe(guardSql);
+    })).rejects.toThrow('ADR009_PROJECT_FRONT_TENANT_MISMATCH');
+
+    expect(await prisma.project.findUnique({ where: { id: 'adr009-historical-mismatch' } })).toBeNull();
   });
 });

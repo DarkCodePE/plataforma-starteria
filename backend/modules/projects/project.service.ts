@@ -13,6 +13,8 @@ import { CreateProjectInput, UpdateProjectInput, UpdateSponsorDataInput } from '
 import { calculateContextScore } from '../companies/context-score';
 import { TEAM_MEMBER_USER_SELECT } from '../users/user.service';
 import { ensureChallengeGovernanceTx } from '../adaptive-core/initiative-governance';
+import { resolvePortfolioScope } from '../portfolio/portfolio-scope';
+import { scopeAllows } from '../portfolio/portfolio-resource-guard';
 
 export const DEFAULT_STEPS = [
   {
@@ -250,6 +252,14 @@ export class ProjectService {
       });
     }
 
+    const linkedOrganizationId = linkedChallenge?.strategicFront?.organizationId ?? null;
+    if (linkedOrganizationId) {
+      const scope = await resolvePortfolioScope(this.prisma, { id: userId, role });
+      if (!scopeAllows(scope, { found: true, organizationId: linkedOrganizationId })) {
+        throw AppError.notFound('Recurso de portafolio', 'PORTFOLIO_RESOURCE_NOT_FOUND');
+      }
+    }
+
     // ADR-030 decision 4: un reto en pausa o cerrado NO acepta iniciativas nuevas.
     // Se comprueba en el servidor y no solo en la UI: pintar el boton deshabilitado
     // seria decoracion — es el mismo error que ADR-029 erradico en autorizacion.
@@ -290,6 +300,7 @@ export class ProjectService {
           name: data.name,
           description: data.description,
           ownerId: userId,
+          organizationId: linkedOrganizationId,
           cohortId: data.cohort,
           status: 'DRAFT',
           currentStep: linkedChallenge ? 0 : 1,

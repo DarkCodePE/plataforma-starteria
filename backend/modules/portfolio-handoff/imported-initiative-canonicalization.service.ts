@@ -70,6 +70,12 @@ export class ImportedInitiativeCanonicalizationService {
   constructor(private readonly prisma: any) {}
 
   async execute(input: CanonicalizeImportedInitiativeInput) {
+    if (input.mode === 'REGISTER_EXISTING') {
+      throw AppError.conflict(
+        'Registrar una iniciativa documental permanece bloqueado hasta disponer de un consumidor downstream autorizado para resolver su owner.',
+        'IMPORTED_INITIATIVE_REGISTER_EXISTING_BLOCKED',
+      );
+    }
     const fingerprint = importedInitiativeFingerprint(input);
     let lastError: unknown;
     for (let attempt = 1; attempt <= 3; attempt += 1) {
