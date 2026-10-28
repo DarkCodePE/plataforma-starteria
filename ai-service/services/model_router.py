@@ -135,6 +135,9 @@ AGENT_MODELS: dict[str, str] = {
     # Harness GROUND/INTERPRET. The model itself lives in harness/config/methodology.yaml
     # (model.stage_model); this entry exists so cost lookups resolve for that agent_id.
     "methodology-harness": "deepseek/deepseek-v4-flash",
+    # AI-01 QA: structured Step 0 reasoning. Per-call price is registered above,
+    # which lets the endpoint reject a cost cap before invoking the provider.
+    "step-reasoning-v1": "deepseek/deepseek-v4-flash",
 }
 
 

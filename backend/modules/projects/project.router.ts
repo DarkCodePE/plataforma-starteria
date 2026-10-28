@@ -14,11 +14,22 @@ import { authenticate } from '../auth/auth.middleware';
 import type { AuthenticatedRequest } from '../../shared/types/auth.types';
 import { requireEntitlement } from '../billing/entitlement.middleware';
 import { requireProjectCapability, requireProjectTeamAccess } from './project-team-access';
+import { StepContextBuilder } from '../step-reasoning/context-builder';
+import { PrismaStepReasoningRepository } from '../step-reasoning/repository';
+import { StepReasoningService } from '../step-reasoning/service';
+import { StepReasoningController } from '../step-reasoning/controller';
+import { stepReasoningTurnSchema } from '../step-reasoning/step-reasoning.schemas';
 const service = new ProjectService(prisma);
 const controller = new ProjectController(service);
 const adaptiveCoreService = new AdaptiveCoreService(prisma);
 const adaptiveCoreController = new AdaptiveCoreController(adaptiveCoreService);
 const missionReview = new MissionReviewReadService(prisma);
+const stepReasoning = new StepReasoningController(
+  new StepReasoningService(
+    new StepContextBuilder(prisma),
+    new PrismaStepReasoningRepository(prisma),
+  ),
+);
 
 export const projectRouter = Router();
 // Escribir la iniciativa es del OWNER o EDITOR; archivarla, del OWNER (project-team-access.ts).
@@ -45,6 +56,8 @@ projectRouter.patch('/:id', canWrite, validate(updateProjectSchema), controller.
 projectRouter.delete('/:id', canManage, controller.archive);
 projectRouter.get('/:id/step0', canRead, controller.getStep0);
 projectRouter.patch('/:id/step0', canWrite, validate(updateStep0Schema), controller.updateStep0);
+projectRouter.get('/:id/steps/:stepNumber/copilot/session', canRead, stepReasoning.getSession);
+projectRouter.post('/:id/steps/:stepNumber/copilot/turn', canWrite, validate(stepReasoningTurnSchema), stepReasoning.postTurn);
 projectRouter.get('/:id/adaptive-core', canRead, adaptiveCoreController.get);
 projectRouter.post('/:id/adaptive-core/activation', requireProjectCapability(prisma, 'cycle:activate'), validate(initiativeCycleActivationSchema), adaptiveCoreController.activateInitiativeCycle);
 // Modos del Copilot por intención (E2E Job-Driven §20): lectura del estado persistido, igual en

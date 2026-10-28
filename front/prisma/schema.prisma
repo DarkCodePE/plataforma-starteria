@@ -683,6 +683,8 @@ model User {
   @@index([googleId])
   @@index([organizationId])
   copilotConversations     CopilotConversation[]
+  stepReasoningSessionsCreated StepReasoningSession[] @relation("StepReasoningSessionCreator")
+  stepReasoningTurns            StepReasoningTurn[]    @relation("StepReasoningTurnActor")
 }
 
 model Project {
@@ -747,6 +749,7 @@ model Project {
   adaptiveProgressSignal AdaptiveProgressSignal?
   adaptiveEvents AdaptiveAdaptationEvent[]
   initiativeCycles InitiativeCycle[]
+  stepReasoningSessions StepReasoningSession[]
   criticalChanges CriticalChange[]
   initiativeGovernance InitiativeGovernance?
   decisionRequests DecisionRequest[]
@@ -952,6 +955,7 @@ model InitiativeCycle {
   decisionRequests        DecisionRequest[]
   decisions               Decision[]
   resultingContinuationRoutes ContinuationRoute[]
+  stepReasoningSessions   StepReasoningSession[]
 
   @@unique([projectId, cycleNumber])
   @@index([projectId])
@@ -2653,6 +2657,7 @@ model Organization {
   portfolioAccessGrants OrganizationPortfolioAccessGrant[]
   projects        Project[]
   importedInitiativeLinks PortfolioImportedInitiativeLink[]
+  stepReasoningSessions StepReasoningSession[]
 
   @@index([cohortId])
 }
@@ -4007,6 +4012,63 @@ model CopilotMessage {
   @@index([conversationId, createdAt])
   @@index([role])
   @@index([messageType])
+}
+
+// AI-01/AI-02 QA: hilo individual y no canónico por actor/Project/ciclo/Step.
+// Estas tablas almacenan conversación y observabilidad; nunca reemplazan Adaptive Core.
+model StepReasoningSession {
+  id              String   @id @default(cuid())
+  organizationId  String
+  organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  projectId       String
+  project         Project @relation(fields: [projectId], references: [id], onDelete: Restrict)
+  cycleId         String
+  cycle           InitiativeCycle @relation(fields: [cycleId], references: [id], onDelete: Restrict)
+  stepNumber      Int
+  createdById     String
+  createdBy       User @relation("StepReasoningSessionCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  status          String   @default("ACTIVE")
+  lastContextHash String
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  turns StepReasoningTurn[]
+
+  @@unique([organizationId, projectId, cycleId, stepNumber, createdById], map: "StepReasoningSession_organizationId_projectId_cycleId_stepNumbe")
+  @@index([projectId, cycleId, stepNumber])
+  @@index([createdById, status])
+}
+
+model StepReasoningTurn {
+  id                    String   @id @default(cuid())
+  sessionId             String
+  session               StepReasoningSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  clientTurnId          String
+  actorId               String
+  actor                 User @relation("StepReasoningTurnActor", fields: [actorId], references: [id], onDelete: Restrict)
+  inputText             String
+  sourceContextHash     String
+  contextSnapshotJson   Json
+  status                String   @default("PENDING")
+  assistantText         String?
+  structuredOutputJson  Json?
+  executionMode         String?
+  requestId             String
+  providerModel         String?
+  providerRunId         String?
+  promptVersion         String?
+  promptHash            String?
+  tokensUsed            Int?
+  costUsd               Float?
+  latencyMs             Int?
+  errorCode             String?
+  createdAt             DateTime @default(now())
+  completedAt           DateTime?
+
+  @@unique([sessionId, clientTurnId])
+  @@index([sessionId, createdAt])
+  @@index([actorId, status])
+  @@index([requestId])
 }
 
 model IntentAssessment {

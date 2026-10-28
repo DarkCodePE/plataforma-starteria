@@ -39,8 +39,11 @@ import { LeaderFeedbackStatusCard } from '../components/LeaderFeedbackStatusCard
 import { DeckFeedbackPanel } from '../components/deck-feedback/DeckFeedbackPanel';
 import type { DeckFeedback } from '../services/deckFeedbackService';
 import { AdaptiveCheckpointWorkspace } from '../../features/adaptive-core/components';
+import { ContinuityStepWorkspace } from '../../features/initiative-continuity/components/ContinuityExperience';
 import { confirmAdaptiveCheckpoint, explainCheckpointError, confirmStep4Output, getAdaptiveCore } from '../../features/adaptive-core/services/adaptiveCoreService';
 import { canNavigateToAdaptiveStep } from '../../features/adaptive-core/domain/adaptiveAuthority';
+import { StepReasoningPanel } from '../../features/step-reasoning/components';
+import { isStepReasoningCopilotEnabled } from '../services/featureFlags';
 
 type ModuleId = 'overview' | 'A' | 'B' | 'C';
 type Audiencia =
@@ -1284,6 +1287,7 @@ ${meetingOwner} / ${meetingRole}
     try {
       const nextCore = await confirmAdaptiveCheckpoint(projectId, {
         idempotencyKey: `${projectId}-${adaptiveActiveCheckpoint.checkpointKey}-${Date.now()}-ui-confirm`,
+        expectedVersion: adaptiveActiveCheckpoint.version,
         checkpointKey: adaptiveActiveCheckpoint.checkpointKey,
         responses,
       });
@@ -1298,6 +1302,57 @@ ${meetingOwner} / ${meetingRole}
       setAdaptiveConfirming(false);
     }
   };
+
+  return (
+    <ContinuityStepWorkspace
+      projectName={project.name}
+      step={4}
+      core={adaptiveCore}
+      state="loaded"
+      readOnly={!canEdit}
+      copilot={isStepReasoningCopilotEnabled(user?.id) ? (
+        <StepReasoningPanel
+          projectId={project.id}
+          step={4}
+          core={adaptiveCore}
+          readOnly={!canEdit}
+          onReviewCheckpoint={() => document.getElementById('official-checkpoint-workspace')?.scrollIntoView({ behavior: 'smooth' })}
+        />
+      ) : undefined}
+      onRetry={() => {
+        if (!projectId) return;
+        setAdaptiveCoreLoading(true);
+        getAdaptiveCore(projectId)
+          .then((core) => { setAdaptiveCore(core); setAdaptiveCoreError(''); })
+          .catch(() => setAdaptiveCoreError('No pudimos recargar el cierre adaptativo.'))
+          .finally(() => setAdaptiveCoreLoading(false));
+      }}
+      onBack={() => navigate(`/projects/${projectId}`)}
+    >
+      <ReadOnlyNotice reason={readOnlyReason} className="mb-5" />
+      <AdaptiveCheckpointWorkspace
+        readOnly={!canEdit}
+        core={adaptiveCore!}
+        step={4}
+        checkpoint={adaptiveActiveCheckpoint}
+        questions={adaptiveActiveCheckpoint?.step === 4 ? adaptiveActiveCheckpoint.questions ?? [] : []}
+        outputPreview={adaptiveStep4Output}
+        outputConfirmed={adaptiveAlreadyConfirmed}
+        saving={adaptiveCoreLoading || adaptiveConfirming}
+        error={adaptiveCoreError || adaptiveOutputError || null}
+        onConfirmCheckpoint={adaptiveActiveCheckpoint?.step === 4 ? confirmAdaptiveStep4Checkpoint : undefined}
+        onConfirmOutput={adaptiveStep4Draft ? confirmAdaptiveStep4Output : undefined}
+        onRefresh={() => {
+          if (!projectId) return;
+          setAdaptiveCoreLoading(true);
+          getAdaptiveCore(projectId)
+            .then((core) => { setAdaptiveCore(core); setAdaptiveCoreError(''); })
+            .catch(() => setAdaptiveCoreError('No pudimos recargar el cierre adaptativo.'))
+            .finally(() => setAdaptiveCoreLoading(false));
+        }}
+      />
+    </ContinuityStepWorkspace>
+  );
 
   const mobileTabs = (
     <div className="flex gap-1 mb-5 md:hidden overflow-x-auto pb-1">

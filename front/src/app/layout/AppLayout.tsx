@@ -334,10 +334,10 @@ const links = [
           </div>
           <div className="flex-1 text-left min-w-0">
             <p className="text-sm text-slate-800 truncate" style={{ fontWeight: 500 }}>{user?.name}</p>
-            <p className="text-xs text-slate-400">{userRoleLabel(user)}</p>
+          <p className="text-xs text-slate-600">{userRoleLabel(user)}</p>
           </div>
         </button>
-        <button onClick={logout} className="w-full flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors">
+        <button onClick={logout} className="w-full flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs text-slate-600 hover:text-red-700 hover:bg-red-50 transition-colors">
           <LogOut size={13} /> Cerrar sesión
         </button>
       </div>
@@ -357,7 +357,7 @@ const links = [
           <div className="absolute inset-0 bg-black/30" onClick={() => setSidebarOpen(false)} />
           <aside className="absolute left-0 top-0 bottom-0 w-64 bg-white shadow-xl z-10">
             <div className="flex justify-end p-3 border-b border-slate-100">
-              <button onClick={() => setSidebarOpen(false)}><X size={18} className="text-slate-400" /></button>
+              <button type="button" aria-label="Cerrar navegación" onClick={() => setSidebarOpen(false)}><X size={18} className="text-slate-600" /></button>
             </div>
             <SidebarContent />
           </aside>
@@ -368,7 +368,7 @@ const links = [
       <div className="flex-1 flex flex-col overflow-hidden">
         {/* Top bar (mobile) */}
         <header className="md:hidden flex items-center justify-between px-4 py-3 bg-white border-b border-slate-200">
-          <button onClick={() => setSidebarOpen(true)}>
+          <button type="button" aria-label="Abrir navegación" onClick={() => setSidebarOpen(true)}>
             <Menu size={20} className="text-slate-600" />
           </button>
           <div className="flex items-center gap-2">

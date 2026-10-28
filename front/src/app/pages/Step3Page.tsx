@@ -20,6 +20,9 @@ import { LeaderFeedbackStatusCard } from '../components/LeaderFeedbackStatusCard
 import type { AdaptiveInitiativeCore } from '../../features/adaptive-core/domain/types';
 import { canNavigateToAdaptiveStep, latestAdaptiveStepOutput } from '../../features/adaptive-core/domain/adaptiveAuthority';
 import { AdaptiveCheckpointWorkspace } from '../../features/adaptive-core/components';
+import { ContinuityStepWorkspace } from '../../features/initiative-continuity/components/ContinuityExperience';
+import { StepReasoningPanel } from '../../features/step-reasoning/components';
+import { isStepReasoningCopilotEnabled } from '../services/featureFlags';
 import { confirmAdaptiveCheckpoint, explainCheckpointError, confirmStep3Output, getAdaptiveCore } from '../../features/adaptive-core/services/adaptiveCoreService';
 
 type ModuleId = 'A' | 'B' | 'C';
@@ -794,6 +797,7 @@ export function Step3Page() {
     try {
       const nextCore = await confirmAdaptiveCheckpoint(projectId, {
         idempotencyKey: `${projectId}-${adaptiveCore.activeCheckpoint.checkpointKey}-${Date.now()}-ui-confirm`,
+        expectedVersion: adaptiveCore.activeCheckpoint.version,
         checkpointKey: adaptiveCore.activeCheckpoint.checkpointKey,
         responses,
         truthBindings,
@@ -811,42 +815,41 @@ export function Step3Page() {
   const adaptiveStep3Allowed = adaptiveCoreStatus === 'loaded' && canNavigateToAdaptiveStep(adaptiveCore, 3);
   if (adaptiveCoreStatus === 'loading') {
     return (
-      <div className="p-8 max-w-lg mx-auto text-center">
-        <div className="w-14 h-14 rounded-2xl bg-slate-100 flex items-center justify-center mx-auto mb-4"><Lock size={24} className="text-slate-400" /></div>
-        <h2 className="text-slate-900 mb-2" style={{ fontWeight: 600 }}>Cargando estado adaptativo</h2>
-        <p className="text-sm text-slate-500">Validando con backend si Step 3 esta disponible.</p>
-      </div>
+      <ContinuityStepWorkspace projectName={project.name} step={3} core={adaptiveCore} state="loading" readOnly={!canEdit} onRetry={() => void loadAdaptiveCore()} onBack={() => navigate(`/projects/${projectId}`)} />
     );
   }
-  if (adaptiveCoreStatus === 'error' || !adaptiveStep3Allowed) {
+  if (adaptiveCoreStatus === 'error') {
     return (
-      <div className="p-8 max-w-lg mx-auto text-center">
-        <div className="w-14 h-14 rounded-2xl bg-slate-100 flex items-center justify-center mx-auto mb-4"><Lock size={24} className="text-slate-400" /></div>
-        <h2 className="text-slate-900 mb-2" style={{ fontWeight: 600 }}>Step 3 bloqueado</h2>
-        <p className="text-sm text-slate-500 mb-4">
-          {adaptiveCoreStatus === 'error'
-            ? adaptiveAuthorityError
-            : 'El backend Adaptive Core todavia no habilita Step 3.'}
-        </p>
-        <div className="flex justify-center gap-2">
-          {adaptiveCoreStatus === 'error' ? (
-            <button onClick={() => void loadAdaptiveCore()} className="bg-indigo-600 text-white px-5 py-2.5 rounded-xl text-sm hover:bg-indigo-700 transition-colors" style={{ fontWeight: 500 }}>Reintentar</button>
-          ) : null}
-          <button onClick={() => navigate(`/projects/${projectId}/step/2`)} className="border border-slate-200 text-slate-600 px-5 py-2.5 rounded-xl text-sm hover:bg-slate-50 transition-colors" style={{ fontWeight: 500 }}>Ir al Step 2</button>
-        </div>
-      </div>
+      <ContinuityStepWorkspace projectName={project.name} step={3} core={adaptiveCore} state="error" error={adaptiveAuthorityError} readOnly={!canEdit} onRetry={() => void loadAdaptiveCore()} onBack={() => navigate(`/projects/${projectId}`)} />
     );
   }
+  if (!adaptiveStep3Allowed) return <div className="p-8 max-w-lg mx-auto text-center"><Lock size={24} className="mx-auto text-slate-400" /><h2 className="mt-4 font-bold text-slate-900">Step 3 bloqueado</h2><p className="mt-2 text-sm text-slate-600">El Adaptive Core todavía no habilita Step 3.</p><button onClick={() => navigate(`/projects/${projectId}/step/2`)} className="mt-4 min-h-11 rounded-xl border border-slate-200 bg-white px-5 py-2.5 text-sm font-bold text-slate-700">Ir al Step 2</button></div>;
 
   // ── Helpers ───────────────────────────────────────────────────────────────────
   const adaptiveStep3Checkpoint = adaptiveCore?.activeCheckpoint?.step === 3 ? adaptiveCore.activeCheckpoint : null;
   const adaptiveStep3Draft = latestAdaptiveStepOutput(adaptiveCore, 3, 'draft');
   const adaptiveStep3Confirmed = Boolean(latestAdaptiveStepOutput(adaptiveCore, 3, 'confirmed'));
   return (
-    <main className="min-h-full overflow-y-auto bg-slate-50 p-4 md:p-8">
-      <div className="mx-auto max-w-6xl">
-        <button type="button" onClick={() => navigate(`/projects/${projectId}`)} className="mb-5 text-sm text-slate-500 hover:text-slate-800">Volver al proyecto</button>
-        <ReadOnlyNotice reason={readOnlyReason} className="mb-5" />
+    <ContinuityStepWorkspace
+      projectName={project.name}
+      step={3}
+      core={adaptiveCore}
+      state="loaded"
+      readOnly={!canEdit}
+      onRetry={() => void loadAdaptiveCore()}
+      onBack={() => navigate(`/projects/${projectId}`)}
+      onContinueNext={() => navigate(`/projects/${projectId}/step/4`)}
+      copilot={isStepReasoningCopilotEnabled(user?.id) ? (
+        <StepReasoningPanel
+          projectId={project.id}
+          step={3}
+          core={adaptiveCore}
+          readOnly={!canEdit}
+          onReviewCheckpoint={() => document.getElementById('official-checkpoint-workspace')?.scrollIntoView({ behavior: 'smooth' })}
+        />
+      ) : undefined}
+    >
+      <ReadOnlyNotice reason={readOnlyReason} className="mb-5" />
         <AdaptiveCheckpointWorkspace
           readOnly={!canEdit}
           core={adaptiveCore!}
@@ -862,8 +865,7 @@ export function Step3Page() {
           onConfirmOutput={adaptiveStep3Draft ? confirmStep3Transition : undefined}
           onRefresh={() => void loadAdaptiveCore()}
         />
-      </div>
-    </main>
+    </ContinuityStepWorkspace>
   );
 
   const modules: { id: ModuleId; label: string; completed: boolean }[] = [
