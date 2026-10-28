@@ -57,6 +57,8 @@ spec:
         # Provider/model/URL/timeouts may be overridden in that Secret too.
         - name: PORTFOLIO_ENTRY_RUNTIME_MODE
           value: "live"
+        - name: PORTFOLIO_ENTRY_SYNTHESIS_REASONING_EFFORT
+          value: "low"
         - name: PORTFOLIO_ENTRY_SYNTHESIS_TIMEOUT_MS
           value: "120000"
         - name: PORTFOLIO_ENTRY_CRITICAL_HANDOFF_MAX_MS

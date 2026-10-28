@@ -6,6 +6,8 @@ export type PortfolioEntryProviderConfig = {
   temperature?: number;
   seed?: string | number;
   timeoutMs: number;
+  /** Sólo se configura para la síntesis crítica; undefined conserva el body habitual. */
+  reasoningEffort?: 'low' | 'medium' | 'high';
   /** Reintentar cuando el proveedor no responde a tiempo. Por defecto sí. */
   retryOnTimeout?: boolean;
 };
@@ -19,6 +21,7 @@ export function loadCriticalSynthesisProviderConfig(env: NodeJS.ProcessEnv = pro
     ...loadPortfolioEntryProviderConfig(env),
     timeoutMs: positiveNumber(env.PORTFOLIO_ENTRY_SYNTHESIS_TIMEOUT_MS, 120_000, 'PORTFOLIO_ENTRY_SYNTHESIS_TIMEOUT_MS'),
     retryOnTimeout: false,
+    reasoningEffort: synthesisReasoningEffort(env.PORTFOLIO_ENTRY_SYNTHESIS_REASONING_EFFORT),
   };
 }
 
@@ -48,4 +51,11 @@ function positiveNumber(raw: string | undefined, fallback: number, name = 'PORTF
   const value = Number(raw);
   if (!Number.isFinite(value) || value <= 0) throw new Error(`${name} must be positive.`);
   return value;
+}
+
+function synthesisReasoningEffort(raw: string | undefined): PortfolioEntryProviderConfig['reasoningEffort'] {
+  const value = raw === undefined ? 'low' : raw.trim();
+  if (value === '' || value === 'none') return undefined;
+  if (value === 'low' || value === 'medium' || value === 'high') return value;
+  throw new Error('PORTFOLIO_ENTRY_SYNTHESIS_REASONING_EFFORT must be low, medium, high, none or empty.');
 }
