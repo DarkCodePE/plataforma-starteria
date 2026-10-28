@@ -1,6 +1,7 @@
 import { mkdirSync } from 'node:fs';
 import path from 'node:path';
 import { devices, expect, test, type APIRequestContext, type Page } from '@playwright/test';
+import { PrismaClient } from '@prisma/client';
 
 const EMAIL = process.env.E2E_USER_EMAIL || 'portfolio.e2e@starteria.test';
 const PASSWORD = process.env.E2E_USER_PASSWORD || 'demo123';
@@ -13,14 +14,39 @@ async function loginApi(api: APIRequestContext) {
   return { token: body.data.accessToken as string, userId: body.data.user.id as string };
 }
 
-async function createProject(api: APIRequestContext, token: string): Promise<string> {
+async function createProject(api: APIRequestContext, token: string, userId: string): Promise<string> {
   const response = await api.post('/api/v1/projects', {
     headers: { Authorization: `Bearer ${token}` },
     data: { name: `AI Step 0 Synthetic ${Date.now()}`, description: 'Caso sintético: retrabajo entre operaciones y ventas.' },
     failOnStatusCode: false,
   });
   expect(response.status(), await response.text()).toBe(201);
-  return (await response.json()).data.id;
+  const projectId = (await response.json()).data.id as string;
+  // The legacy standalone create command does not materialize tenant scope.
+  // This fixture establishes it directly in the disposable database before
+  // exercising the explicit SEC-02B activation boundary.
+  const prisma = new PrismaClient({ datasourceUrl: process.env.E2E_DATABASE_URL });
+  try {
+    const actor = await prisma.user.findUniqueOrThrow({ where: { id: userId }, select: { organizationId: true } });
+    expect(actor.organizationId).toBeTruthy();
+    await prisma.project.update({
+      where: { id: projectId },
+      data: { organizationId: actor.organizationId, currentStep: 0 },
+    });
+  } finally {
+    await prisma.$disconnect();
+  }
+  const activation = await api.post(`/api/v1/projects/${projectId}/adaptive-core/activation`, {
+    headers: { Authorization: `Bearer ${token}` },
+    data: {
+      idempotencyKey: `step-reasoning-e2e-${projectId}`,
+      expectedVersion: 0,
+      origin: { kind: 'DIRECT_PROJECT' },
+    },
+    failOnStatusCode: false,
+  });
+  expect(activation.status(), await activation.text()).toBe(200);
+  return projectId;
 }
 
 async function loginUi(page: Page) {
@@ -33,7 +59,7 @@ async function loginUi(page: Page) {
 
 async function openStepReasoning(page: Page, projectId: string) {
   await page.goto(`/projects/${projectId}/step/0`);
-  await expect(page.getByRole('heading', { name: 'Aclara el trabajo conversando' })).toBeVisible({ timeout: 20_000 });
+  await expect(page.getByRole('heading', { name: 'Conversa con Startería' })).toBeVisible({ timeout: 20_000 });
 }
 
 async function send(page: Page, message: string) {
@@ -47,7 +73,7 @@ test('Step 0 reasoning QA: three durable turns, explicit fallback, desktop and P
   mkdirSync(ARTIFACTS, { recursive: true });
   const session = await loginApi(request);
   expect(session.userId).toBe(process.env.STEP_REASONING_QA_USER_ID);
-  const projectId = await createProject(request, session.token);
+  const projectId = await createProject(request, session.token, session.userId);
 
   await loginUi(page);
   await openStepReasoning(page, projectId);
