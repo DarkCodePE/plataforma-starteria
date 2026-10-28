@@ -4,6 +4,7 @@ import { TruthService } from '../truth.service';
 const projectId = 'cproject0000000000000000';
 const otherProjectId = 'cproject1111111111111111';
 const actor = { id: 'cuser0000000000000000000', role: 'participante' };
+const validatorActor = { id: 'cmentor00000000000000000', role: 'mentor' };
 
 function makePrisma() {
   const store: any = {
@@ -189,6 +190,63 @@ describe('TruthService R1 truth foundation', () => {
     await expect(service.getClaimReadiness(projectId, claim.id)).resolves.toMatchObject({ satisfiesValidatedSupport: true });
   });
 
+  it('derives validator identity, type and role from the trusted actor instead of spoofable payload fields', async () => {
+    const { prisma } = makePrisma();
+    const service = new TruthService(prisma as any);
+    const source = await service.createSourceRef({ projectId, sourceType: 'USER_INPUT', reference: 'interview-spoof' }, actor);
+    const claim = await service.createClaim({ projectId, subjectType: 'initiative', claimType: 'hypothesis', statement: 'Claim', createdByType: 'ai', sourceRefIds: [] }, actor);
+    const evidence = await service.attachEvidence({ projectId, targetClaimId: claim.id, sourceRefId: source.id, name: 'Evidence', evidenceType: 'OTHER', truthStatus: 'supports', stepRef: 1 }, actor);
+
+    const validation = await service.recordValidation({
+      projectId,
+      claimId: claim.id,
+      evidenceId: evidence.id,
+      result: 'supported',
+      validatorType: 'ai',
+      validatorRole: 'admin',
+      rationale: 'Intento de suplantacion.',
+    }, { id: 'real-mentor', role: 'mentor', type: 'human' });
+
+    expect(validation).toMatchObject({
+      validatedById: 'real-mentor',
+      validatorType: 'human',
+      validatorRole: 'mentor',
+    });
+    expect(claim.createdByType).toBe('human');
+  });
+
+  it('increments validation versions for evidence-only validation streams', async () => {
+    const { prisma } = makePrisma();
+    const service = new TruthService(prisma as any);
+    const source = await service.createSourceRef({ projectId, sourceType: 'USER_INPUT', reference: 'evidence-version' }, actor);
+    const evidence = await service.attachEvidence({ projectId, sourceRefId: source.id, name: 'Evidence only', evidenceType: 'OTHER', truthStatus: 'insufficient', stepRef: 1 }, actor);
+
+    const first = await service.recordValidation({ projectId, evidenceId: evidence.id, result: 'insufficient', validatorType: 'human' }, validatorActor);
+    const second = await service.recordValidation({ projectId, evidenceId: evidence.id, result: 'contradicted', validatorType: 'human' }, validatorActor);
+
+    expect([first.version, second.version]).toEqual([1, 2]);
+  });
+
+  it('rejects a stale expectedVersion under the validation stream lock', async () => {
+    const { prisma, store } = makePrisma();
+    const service = new TruthService(prisma as any);
+    const source = await service.createSourceRef({ projectId, sourceType: 'USER_INPUT', reference: 'cas-source' }, actor);
+    const claim = await service.createClaim({ projectId, subjectType: 'initiative', claimType: 'hypothesis', statement: 'CAS claim', createdByType: 'human', sourceRefIds: [] }, actor);
+    const evidence = await service.attachEvidence({ projectId, targetClaimId: claim.id, sourceRefId: source.id, name: 'CAS evidence', evidenceType: 'OTHER', truthStatus: 'supports', stepRef: 1 }, actor);
+    await service.recordValidation({ projectId, claimId: claim.id, evidenceId: evidence.id, result: 'supported', validatorType: 'human', rationale: 'First.', expectedVersion: 0 }, validatorActor);
+
+    await expect(service.recordValidation({
+      projectId,
+      claimId: claim.id,
+      evidenceId: evidence.id,
+      result: 'contradicted',
+      validatorType: 'human',
+      rationale: 'Stale.',
+      expectedVersion: 0,
+    }, validatorActor)).rejects.toMatchObject({ code: 'STALE_VERSION' });
+    expect(store.validations).toHaveLength(1);
+  });
+
   it('keeps contradicted and insufficient evidence from satisfying validation-required gates', async () => {
     const { prisma, store } = makePrisma();
     const service = new TruthService(prisma as any);
@@ -196,7 +254,7 @@ describe('TruthService R1 truth foundation', () => {
     const claim = await service.createClaim({ projectId, subjectType: 'initiative', claimType: 'metric', statement: 'La metrica mejoro', createdByType: 'human', sourceRefIds: [] }, actor);
     const evidence = await service.attachEvidence({ projectId, targetClaimId: claim.id, sourceRefId: source.id, name: 'Metrica', evidenceType: 'OTHER', truthStatus: 'contradicts', stepRef: 3 }, actor);
 
-    await service.recordValidation({ projectId, claimId: claim.id, evidenceId: evidence.id, result: 'contradicted', validatorType: 'system_rule', rationale: 'La metrica no alcanza el umbral.' }, { id: 'rule-r1', role: 'system_rule' });
+    await service.recordValidation({ projectId, claimId: claim.id, evidenceId: evidence.id, result: 'contradicted', validatorType: 'system_rule', rationale: 'La metrica no alcanza el umbral.' }, { id: 'rule-r1', role: 'system_rule', type: 'system' });
 
     expect(store.evidence[0].truthStatus).toBe('contradicts');
     await expect(service.getClaimReadiness(projectId, claim.id)).resolves.toMatchObject({
@@ -371,7 +429,7 @@ describe('TruthService R1 truth foundation', () => {
     const source = await service.createSourceRef({ projectId: otherProjectId, sourceType: 'API', reference: 'other-metric' }, actor);
     const claim = await service.createClaim({ projectId: otherProjectId, subjectType: 'initiative', claimType: 'impact', statement: 'Impacto externo', createdByType: 'human', sourceRefIds: [] }, actor);
     const evidence = await service.attachEvidence({ projectId: otherProjectId, targetClaimId: claim.id, sourceRefId: source.id, name: 'Metrica externa', evidenceType: 'OTHER', truthStatus: 'supports', stepRef: 3 }, actor);
-    const validation = await service.recordValidation({ projectId: otherProjectId, claimId: claim.id, evidenceId: evidence.id, result: 'supported', validatorType: 'human', rationale: 'Soportado externo.' }, actor);
+    const validation = await service.recordValidation({ projectId: otherProjectId, claimId: claim.id, evidenceId: evidence.id, result: 'supported', validatorType: 'human', rationale: 'Soportado externo.' }, validatorActor);
     const impact = await service.createImpactAssertion({ projectId, subjectType: 'initiative', metric: 'Horas', status: 'declared' }, actor);
 
     await expect(service.transitionImpact(projectId, impact.id, { status: 'validated', validationId: validation.id }, actor))
@@ -384,7 +442,7 @@ describe('TruthService R1 truth foundation', () => {
     const source = await service.createSourceRef({ projectId, sourceType: 'API', reference: 'metric-negative' }, actor);
     const claim = await service.createClaim({ projectId, subjectType: 'initiative', claimType: 'impact', statement: 'Impacto no demostrado', createdByType: 'human', sourceRefIds: [] }, actor);
     const evidence = await service.attachEvidence({ projectId, targetClaimId: claim.id, sourceRefId: source.id, name: 'Metrica negativa', evidenceType: 'OTHER', truthStatus: 'supports', stepRef: 3 }, actor);
-    const validation = await service.recordValidation({ projectId, claimId: claim.id, evidenceId: evidence.id, result: 'contradicted', validatorType: 'human', rationale: 'La metrica contradice.' }, actor);
+    const validation = await service.recordValidation({ projectId, claimId: claim.id, evidenceId: evidence.id, result: 'contradicted', validatorType: 'human', rationale: 'La metrica contradice.' }, validatorActor);
     const impact = await service.createImpactAssertion({ projectId, subjectType: 'initiative', claimId: claim.id, metric: 'Horas', status: 'declared' }, actor);
 
     await expect(service.transitionImpact(projectId, impact.id, { status: 'validated', validationId: validation.id }, actor))
@@ -397,7 +455,7 @@ describe('TruthService R1 truth foundation', () => {
     const source = await service.createSourceRef({ projectId, sourceType: 'API', reference: 'metric-positive' }, actor);
     const claim = await service.createClaim({ projectId, subjectType: 'initiative', claimType: 'impact', statement: 'Impacto demostrado', createdByType: 'human', sourceRefIds: [] }, actor);
     const evidence = await service.attachEvidence({ projectId, targetClaimId: claim.id, sourceRefId: source.id, name: 'Metrica positiva', evidenceType: 'OTHER', truthStatus: 'supports', stepRef: 3 }, actor);
-    const validation = await service.recordValidation({ projectId, claimId: claim.id, evidenceId: evidence.id, result: 'supported', validatorType: 'human', rationale: 'La metrica soporta.' }, actor);
+    const validation = await service.recordValidation({ projectId, claimId: claim.id, evidenceId: evidence.id, result: 'supported', validatorType: 'human', rationale: 'La metrica soporta.' }, validatorActor);
     const impact = await service.createImpactAssertion({ projectId, subjectType: 'initiative', claimId: claim.id, metric: 'Horas', status: 'declared' }, actor);
 
     await expect(service.transitionImpact(projectId, impact.id, { status: 'validated', validationId: validation.id }, actor))
@@ -461,7 +519,7 @@ describe('TruthService R1 truth foundation', () => {
     const source = await service.createSourceRef({ projectId, sourceType: 'USER_INPUT', reference: 'interview-supported' }, actor);
     const claim = await service.createClaim({ projectId, subjectType: 'initiative', claimType: 'hypothesis', statement: 'El foco esta soportado', createdByType: 'human', sourceRefIds: [] }, actor);
     const evidence = await service.attachEvidence({ projectId, targetClaimId: claim.id, sourceRefId: source.id, name: 'Entrevista', evidenceType: 'OTHER', truthStatus: 'supports', stepRef: 1 }, actor);
-    await service.recordValidation({ projectId, claimId: claim.id, evidenceId: evidence.id, result: 'supported', validatorType: 'human', rationale: 'Coherente.' }, actor);
+    await service.recordValidation({ projectId, claimId: claim.id, evidenceId: evidence.id, result: 'supported', validatorType: 'human', rationale: 'Coherente.' }, validatorActor);
 
     await expect(service.evaluateValidatedSupportBinding(projectId, {
       claimId: claim.id,
@@ -482,7 +540,7 @@ describe('TruthService R1 truth foundation', () => {
     const source = await service.createSourceRef({ projectId, sourceType: 'API', reference: 'metric-contradicted-binding' }, actor);
     const claim = await service.createClaim({ projectId, subjectType: 'initiative', claimType: 'metric', statement: 'La metrica mejoro', createdByType: 'human', sourceRefIds: [] }, actor);
     const evidence = await service.attachEvidence({ projectId, targetClaimId: claim.id, sourceRefId: source.id, name: 'Metrica', evidenceType: 'OTHER', truthStatus: 'contradicts', stepRef: 1 }, actor);
-    await service.recordValidation({ projectId, claimId: claim.id, evidenceId: evidence.id, result: 'contradicted', validatorType: 'human', rationale: 'Contradice.' }, actor);
+    await service.recordValidation({ projectId, claimId: claim.id, evidenceId: evidence.id, result: 'contradicted', validatorType: 'human', rationale: 'Contradice.' }, validatorActor);
 
     await expect(service.evaluateValidatedSupportBinding(projectId, {
       claimId: claim.id,
@@ -500,7 +558,7 @@ describe('TruthService R1 truth foundation', () => {
     const source = await service.createSourceRef({ projectId, sourceType: 'USER_INPUT', reference: 'note-insufficient-binding' }, actor);
     const claim = await service.createClaim({ projectId, subjectType: 'initiative', claimType: 'hypothesis', statement: 'La evidencia basta', createdByType: 'human', sourceRefIds: [] }, actor);
     const evidence = await service.attachEvidence({ projectId, targetClaimId: claim.id, sourceRefId: source.id, name: 'Nota parcial', evidenceType: 'OTHER', truthStatus: 'insufficient', stepRef: 1 }, actor);
-    await service.recordValidation({ projectId, claimId: claim.id, evidenceId: evidence.id, result: 'insufficient', validatorType: 'human', rationale: 'No alcanza.' }, actor);
+    await service.recordValidation({ projectId, claimId: claim.id, evidenceId: evidence.id, result: 'insufficient', validatorType: 'human', rationale: 'No alcanza.' }, validatorActor);
 
     await expect(service.evaluateValidatedSupportBinding(projectId, {
       claimId: claim.id,
@@ -606,7 +664,7 @@ describe('TruthService R1 truth foundation', () => {
     const source = await service.createSourceRef({ projectId, sourceType: 'USER_INPUT', reference: 'source-bad-status' }, actor);
     const claim = await service.createClaim({ projectId, subjectType: 'initiative', claimType: 'hypothesis', statement: 'Claim supported', createdByType: 'human', sourceRefIds: [] }, actor);
     const evidence = await service.attachEvidence({ projectId, targetClaimId: claim.id, sourceRefId: source.id, name: 'Evidence', evidenceType: 'OTHER', truthStatus: 'supports', stepRef: 1 }, actor);
-    await service.recordValidation({ projectId, claimId: claim.id, evidenceId: evidence.id, result: 'supported', validatorType: 'human', rationale: 'Supported.' }, actor);
+    await service.recordValidation({ projectId, claimId: claim.id, evidenceId: evidence.id, result: 'supported', validatorType: 'human', rationale: 'Supported.' }, validatorActor);
     store.evidence.find((item: any) => item.id === evidence.id).truthStatus = 'insufficient';
 
     await expect(service.evaluateValidatedSupportBinding(projectId, {

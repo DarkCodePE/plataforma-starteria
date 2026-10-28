@@ -9,6 +9,7 @@ import { RouteConfirmationService } from '../route-confirmation.service';
 
 vi.mock('../../adaptive-core/adaptive-core.service', () => ({
   AdaptiveCoreService: vi.fn().mockImplementation(() => ({
+    activateInitiativeCycle: vi.fn(async () => ({})),
     ensureInitialized: vi.fn(async () => ({})),
   })),
 }));

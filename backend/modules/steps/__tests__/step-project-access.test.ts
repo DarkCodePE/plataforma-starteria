@@ -36,8 +36,8 @@ describe('requireStepProjectAccess', () => {
   });
 
   it('un usuario ajeno no lee ni escribe', async () => {
-    expect(await run(makePrisma(), 'GET', { id: 'u2', role: 'participante' })).toMatchObject({ code: 'PROJECT_ACCESS_DENIED' });
-    expect(await run(makePrisma(), 'PUT', { id: 'u2', role: 'participante' })).toMatchObject({ code: 'PROJECT_ACCESS_DENIED' });
+    expect(await run(makePrisma(), 'GET', { id: 'u2', role: 'participante' })).toMatchObject({ code: 'PROJECT_NOT_FOUND' });
+    expect(await run(makePrisma(), 'PUT', { id: 'u2', role: 'participante' })).toMatchObject({ code: 'PROJECT_NOT_FOUND' });
   });
 
   it('el Portfolio Lead asignado lee pero no escribe', async () => {
@@ -48,7 +48,7 @@ describe('requireStepProjectAccess', () => {
   });
 
   it('otro Portfolio Lead no lee', async () => {
-    expect(await run(makePrisma({ leadUserId: 'lead-1' }), 'GET', { id: 'lead-2', role: 'portfolio_lead' })).toMatchObject({ code: 'PROJECT_ACCESS_DENIED' });
+    expect(await run(makePrisma({ leadUserId: 'lead-1' }), 'GET', { id: 'lead-2', role: 'portfolio_lead' })).toMatchObject({ code: 'PROJECT_NOT_FOUND' });
   });
 
   it('admin del tenant y mentor asignado pasan; mentor no asignado no', async () => {

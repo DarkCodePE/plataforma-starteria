@@ -12,6 +12,7 @@ import { DecisionAuthorityResolver } from './decision-authority.resolver';
 import { DecisionReadinessResolver } from './decision-readiness.resolver';
 import { InitiativeCompletionResolver } from './initiative-completion.resolver';
 import { AdaptiveCycleService } from './cycle.service';
+import { intentFingerprint } from '../../shared/commands/intent-fingerprint';
 import type {
   AdaptiveCoreState,
   AdaptiveDepthLevel,
@@ -39,6 +40,7 @@ import type {
 import type {
   ApplyDecisionEffectsInput,
   CheckpointResponseInput,
+  InitiativeCycleActivationInput,
   ConfirmBriefInput,
   ConfirmCriticalChangeTransitionInput,
   ConfirmStep1OutputInput,
@@ -197,52 +199,129 @@ export class AdaptiveCoreService {
   async initializeFromProject(project: any, userId?: string, cycleId?: string): Promise<void> {
     const db = this.prisma as any;
     const cycle = cycleId ? { id: cycleId } : await this.cycles.ensureActiveCycle(project.id);
-    const existing = await db.adaptiveStepConfiguration.findFirst({
-      where: { projectId: project.id, cycleId: cycle.id, stepNumber: 0, status: 'active' },
+    await db.$transaction(async (tx: any) => {
+      await this.initializeCycleStepTx(tx, project, userId, cycle.id, 0);
+    });
+  }
+
+  async activateInitiativeCycle(
+    projectId: string,
+    userId: string,
+    role: Role,
+    input: InitiativeCycleActivationInput,
+  ): Promise<{ activation: { cycleId: string; status: 'activated' | 'already_active' | 'replayed'; step: StepNumber }; state: AdaptiveCoreState }> {
+    const project = await this.getAccessibleProject(projectId, userId, role);
+    const ownerRelation = project.ownerId === userId || (project.teamMembers ?? []).some((member: any) =>
+      member.userId === userId && member.role === 'OWNER' && member.status === 'ACTIVE'
+    );
+    if (!ownerRelation) throw AppError.forbidden('Solo el Owner puede activar el ciclo de la iniciativa.', 'PROJECT_OWNER_REQUIRED');
+    if (!project.organizationId) {
+      throw AppError.conflict('La iniciativa no tiene organizacion configurada.', 'PROJECT_TENANT_NOT_CONFIGURED');
+    }
+    const tenantMember = await (this.prisma as any).organizationMember.findFirst({
+      where: { userId, organizationId: project.organizationId },
+      select: { id: true },
+    });
+    if (!tenantMember) throw AppError.notFound('Proyecto', 'PROJECT_NOT_FOUND');
+
+    const fingerprint = intentFingerprint({ operation: 'cycle:activate', projectId, actorId: userId, ...input });
+    const receiptKey = `initiative-activation:${input.idempotencyKey}`;
+    const result = await (this.prisma as any).$transaction(async (tx: any) => {
+      if (typeof tx.$queryRawUnsafe === 'function') {
+        await tx.$queryRawUnsafe('SELECT id FROM "Project" WHERE id = $1 FOR UPDATE', projectId);
+      }
+
+      const priorReceipt = await tx.adaptiveAdaptationEvent.findUnique({ where: { idempotencyKey: receiptKey } });
+      if (priorReceipt) {
+        const payload = priorReceipt.payloadJson as Record<string, unknown> | null;
+        if (priorReceipt.projectId !== projectId || payload?.fingerprint !== fingerprint) {
+          throw AppError.conflict('La idempotencyKey ya fue usada para otra intencion.', 'IDEMPOTENCY_KEY_REUSED');
+        }
+        return { cycleId: String(payload.cycleId), status: 'replayed' as const, step: this.toStepNumber(payload.step) };
+      }
+
+      const existingCycle = await tx.initiativeCycle.findFirst({
+        where: { projectId },
+        orderBy: { cycleNumber: 'desc' },
+      });
+      if (existingCycle) {
+        return {
+          cycleId: existingCycle.id,
+          status: 'already_active' as const,
+          step: this.toStepNumber(existingCycle.currentStep),
+        };
+      }
+      if (input.expectedVersion !== 0) {
+        throw AppError.conflict(
+          `La activacion cambio: esperabas la version ${input.expectedVersion} y la vigente es 0.`,
+          'STALE_VERSION',
+        );
+      }
+
+      const step = this.toStepNumber(project.currentStep);
+      const cycle = await this.cycles.ensureActiveCycle(projectId, tx);
+      await this.initializeCycleStepTx(tx, project, userId, cycle.id, step);
+      await this.recordEventTx(tx, projectId, 'initiative_cycle_activated', 'Ciclo de iniciativa activado explicitamente.', {
+        contractVersion: 'sec02b-v1',
+        fingerprint,
+        cycleId: cycle.id,
+        step,
+        origin: input.origin,
+      }, userId, receiptKey);
+      return { cycleId: cycle.id, status: 'activated' as const, step };
+    });
+
+    return { activation: result, state: await this.getState(projectId, userId, role) };
+  }
+
+  private async initializeCycleStepTx(tx: any, project: any, userId: string | undefined, cycleId: string, step: StepNumber): Promise<void> {
+    const existing = await tx.adaptiveStepConfiguration.findFirst({
+      where: { projectId: project.id, cycleId, status: 'active' },
       select: { id: true },
     });
     if (existing) return;
 
     const masterContext = this.buildMasterContext(project);
-    const config = this.buildStepConfiguration(0, 1, masterContext);
-    await db.$transaction(async (tx: any) => {
-      const createdConfig = await tx.adaptiveStepConfiguration.create({
-        data: {
-          projectId: project.id,
-          cycleId: cycle.id,
-          stepNumber: 0,
-          version: 1,
-          status: 'active',
-          routeType: masterContext.routeType,
-          depthLevel: masterContext.depthLevel,
-          maturity: masterContext.maturity,
-          configurationJson: config,
-          sourceContextJson: masterContext,
-        },
-      });
-      await this.materializeCheckpointTx(tx, project.id, createdConfig, 'CP-0.1', [], userId, `checkpoint_started:${project.id}:CP-0.1:1`);
-      await this.upsertProgressSignalTx(tx, project.id, {
-        step: 0,
-        checkpointCode: 'CP-0.1',
-        checkpointTitle: 'Enmarcar la iniciativa',
-        health: masterContext.risks.length > 0 ? 'attention' : 'healthy',
-        hypothesis: masterContext.assumptions[0] ?? 'Hipotesis pendiente de definir en Step 0.',
-        evidence: masterContext.knownFacts[0] ?? 'Sin evidencia robusta aun; Step 0 ordena contexto.',
-        evidenceStrength: masterContext.knownFacts.length > 1 ? 'weak' : 'none',
-        blocker: masterContext.risks[0] ?? '',
-        actorRequired: masterContext.challengeSnapshot ? 'Challenge Owner' : 'Owner de iniciativa',
-        nextAction: 'Iniciar CP-0.1: Enmarcar la iniciativa.',
-        upcomingDecision: masterContext.decisions[0] ?? 'Definir decision futura en CP-0.3.',
-        updatedAt: new Date().toISOString(),
-      });
-      await this.recordEventTx(tx, project.id, 'step_configuration_created', 'Step 0 configurado por checkpoints.', { step: 0, version: 1 }, userId, `step-config-created:${project.id}:0:1`);
+    const config = this.buildStepConfiguration(step, 1, masterContext);
+    const checkpointKey = `CP-${step}.1`;
+    const checkpoint = [...STEP0_CHECKPOINTS, ...STEP1_CHECKPOINTS, ...STEP2_CHECKPOINTS, ...STEP3_CHECKPOINTS, ...STEP4_CHECKPOINTS]
+      .find((candidate) => candidate.key === checkpointKey);
+    const createdConfig = await tx.adaptiveStepConfiguration.create({
+      data: {
+        projectId: project.id,
+        cycleId,
+        stepNumber: step,
+        version: 1,
+        status: 'active',
+        routeType: masterContext.routeType,
+        depthLevel: masterContext.depthLevel,
+        maturity: masterContext.maturity,
+        configurationJson: config,
+        sourceContextJson: masterContext,
+      },
     });
+    await this.materializeCheckpointTx(tx, project.id, createdConfig, checkpointKey, [], userId, `checkpoint_started:${project.id}:${checkpointKey}:1`);
+    await this.upsertProgressSignalTx(tx, project.id, {
+      step,
+      checkpointCode: checkpointKey,
+      checkpointTitle: checkpoint?.title ?? checkpointKey,
+      health: masterContext.risks.length > 0 ? 'attention' : 'healthy',
+      hypothesis: masterContext.assumptions[0] ?? `Hipotesis pendiente de definir en Step ${step}.`,
+      evidence: masterContext.knownFacts[0] ?? `Sin evidencia robusta aun; Step ${step} ordena contexto.`,
+      evidenceStrength: masterContext.knownFacts.length > 1 ? 'weak' : 'none',
+      blocker: masterContext.risks[0] ?? '',
+      actorRequired: masterContext.challengeSnapshot ? 'Challenge Owner' : 'Owner de iniciativa',
+      nextAction: `Iniciar ${checkpointKey}: ${checkpoint?.title ?? checkpointKey}.`,
+      upcomingDecision: masterContext.decisions[0] ?? 'Definir la siguiente decision con evidencia.',
+      updatedAt: new Date().toISOString(),
+    });
+    await this.recordEventTx(tx, project.id, 'step_configuration_created', `Step ${step} configurado por checkpoints.`, { step, version: 1 }, userId, `step-config-created:${project.id}:${step}:1`);
   }
 
   async getState(projectId: string, userId: string, role: Role): Promise<AdaptiveCoreState> {
     await this.getAccessibleProject(projectId, userId, role);
     const db = this.prisma as any;
-const cycle = await this.cycles.getOperationalCycle(projectId);
+const cycle = await this.getOperationalCycleReadOnly(projectId);
 
 const [configs, instances, outputs, signal, events] = await Promise.all([
   db.adaptiveStepConfiguration.findMany({
@@ -280,11 +359,17 @@ const responses = instanceIds.length > 0
     // no salian del backend, asi que el frontend reconstruia las variables raspando el
     // formulario legacy de Step 0 y terminaban existiendo dos verdades para el mismo dato.
     const responsesByInstance = new Map<string, Record<string, unknown>>();
+    const responseVersionsByInstance = new Map<string, number>();
     for (const response of responses) {
+      const publicResponse = this.publicCheckpointResponse(response.responseJson);
       responsesByInstance.set(response.checkpointInstanceId, {
         ...(responsesByInstance.get(response.checkpointInstanceId) ?? {}),
-        ...((response.responseJson ?? {}) as Record<string, unknown>),
+        ...publicResponse,
       });
+      responseVersionsByInstance.set(
+        response.checkpointInstanceId,
+        (responseVersionsByInstance.get(response.checkpointInstanceId) ?? 0) + 1,
+      );
     }
     const activeConfig = configs.find((c: any) => c.status === 'active' && c.stepNumber === 4)
       ?? configs.find((c: any) => c.status === 'active' && c.stepNumber === 3)
@@ -297,17 +382,38 @@ const responses = instanceIds.length > 0
       schemaVersion: 'PRD-03-v0.4',
       masterContext: activeConfig?.sourceContextJson ?? {},
       activeStepConfigurationId: activeConfig?.id ?? '',
-      stepConfigurations: configs.map((c: any) => ({ ...c.configurationJson, id: c.id, version: c.version, status: c.status, requiresReview: c.requiresReview })),
-      activeCheckpoint: activeCheckpoint ? this.serializeCheckpoint(activeCheckpoint, responsesByInstance.get(activeCheckpoint.id)) : null,
-      checkpointInstances: instances.map((i: any) => this.serializeCheckpoint(i, responsesByInstance.get(i.id))),
+      stepConfigurations: configs.map((c: any) => ({
+        routeType: c.routeType,
+        depthLevel: c.depthLevel,
+        maturity: c.maturity,
+        ...c.configurationJson,
+        id: c.id,
+        version: c.version,
+        status: c.status,
+        requiresReview: c.requiresReview,
+      })),
+      activeCheckpoint: activeCheckpoint ? this.serializeCheckpoint(activeCheckpoint, responsesByInstance.get(activeCheckpoint.id), responseVersionsByInstance.get(activeCheckpoint.id) ?? 0) : null,
+      checkpointInstances: instances.map((i: any) => this.serializeCheckpoint(i, responsesByInstance.get(i.id), responseVersionsByInstance.get(i.id) ?? 0)),
       // Vista fusionada en orden cronologico: es la misma semantica que el servicio usa
       // internamente para construir los outputs (Object.assign sobre las respuestas), y
       // deja el merge en un solo lugar en vez de duplicarlo en el frontend.
       confirmedResponses: responses.reduce(
-        (acc: Record<string, unknown>, response: any) => Object.assign(acc, (response.responseJson ?? {}) as Record<string, unknown>),
+        (acc: Record<string, unknown>, response: any) => Object.assign(acc, this.publicCheckpointResponse(response.responseJson)),
         {} as Record<string, unknown>,
       ),
-      stepOutputs: outputs.map((o: any) => ({ id: o.id, step: o.stepNumber, version: o.version, status: o.status, outputKey: o.outputKey, output: o.outputJson, requiresReview: o.requiresReview })),
+      stepOutputs: outputs.map((o: any) => ({
+        id: o.id,
+        step: o.stepNumber,
+        version: o.version,
+        status: o.status,
+        outputKey: o.outputKey,
+        output: o.outputJson,
+        requiresReview: o.requiresReview,
+        sourceConfigurationId: o.sourceConfigurationId ?? null,
+        confirmedAt: o.confirmedAt ?? null,
+        createdAt: o.createdAt ?? null,
+        updatedAt: o.updatedAt ?? null,
+      })),
       progressSignal: signal?.signalJson ?? null,
       events,
       cycle: {
@@ -702,12 +808,29 @@ const responses = instanceIds.length > 0
   }
 
   async confirmCheckpoint(projectId: string, userId: string, role: Role, input: CheckpointResponseInput): Promise<AdaptiveCoreState> {
-    this.assertTeamWorkAccess(await this.getAccessibleProject(projectId, userId, role), userId, role);
-    await this.ensureInitialized(projectId, userId, role);
+    const cycle = await this.requireActivatedCycle(projectId, userId, role);
     const db = this.prisma as any;
-    const cycle = await this.cycles.ensureActiveCycle(projectId);
+    const fingerprint = intentFingerprint({
+      operation: 'checkpoint:confirm',
+      projectId,
+      actorId: userId,
+      checkpointKey: input.checkpointKey,
+      expectedVersion: input.expectedVersion ?? null,
+      responses: input.responses,
+      truthBindings: input.truthBindings ?? null,
+      evidenceBindings: input.evidenceBindings ?? null,
+    });
     const existingResponse = await db.adaptiveCheckpointResponse.findUnique({ where: { idempotencyKey: input.idempotencyKey } });
-    if (existingResponse) return this.getState(projectId, userId, role);
+    if (existingResponse) {
+      const command = this.checkpointCommandMetadata(existingResponse.responseJson);
+      if (existingResponse.projectId !== projectId || !command || command.fingerprint !== fingerprint) {
+        throw AppError.conflict(
+          'La idempotencyKey ya fue usada para otra intencion.',
+          'IDEMPOTENCY_KEY_REUSED',
+        );
+      }
+      return this.getState(projectId, userId, role);
+    }
     this.assertCycleMutable(cycle);
 
     const instance = await db.adaptiveCheckpointInstance.findFirst({
@@ -750,9 +873,42 @@ const sufficiency = this.evaluateCheckpoint(
       });
     }
     const readiness = await this.evaluateCheckpointReadiness(projectId, instance.checkpointKey, input);
-    const responseJson = this.responseWithPolicyBindings(input.responses, input.truthBindings, input.evidenceBindings);
+    const publicResponseJson = this.responseWithPolicyBindings(input.responses, input.truthBindings, input.evidenceBindings);
+    const responseJson = {
+      ...publicResponseJson,
+      __sec02bCommand: {
+        contractVersion: 'sec02b-v1',
+        operation: 'checkpoint:confirm',
+        fingerprint,
+        expectedVersion: input.expectedVersion ?? null,
+      },
+    };
 
     await db.$transaction(async (tx: any) => {
+      if (input.expectedVersion !== undefined) {
+        if (typeof tx.$queryRawUnsafe === 'function') {
+          await tx.$queryRawUnsafe(
+            'SELECT id FROM "AdaptiveCheckpointInstance" WHERE id = $1 FOR UPDATE',
+            instance.id,
+          );
+        }
+        const currentVersion = await tx.adaptiveCheckpointResponse.count({
+          where: { checkpointInstanceId: instance.id },
+        });
+        if (currentVersion !== input.expectedVersion) {
+          throw AppError.conflict(
+            `El checkpoint cambio: esperabas la version ${input.expectedVersion} y la vigente es ${currentVersion}.`,
+            'STALE_VERSION',
+          );
+        }
+        const currentInstance = await tx.adaptiveCheckpointInstance.findUnique({ where: { id: instance.id } });
+        if (!currentInstance || !['ready', 'in_progress'].includes(currentInstance.status)) {
+          throw AppError.conflict(
+            'El checkpoint no esta activo o ya fue confirmado.',
+            'CHECKPOINT_NOT_ACTIVE',
+          );
+        }
+      }
       await tx.adaptiveCheckpointResponse.create({
         data: {
           projectId,
@@ -771,7 +927,7 @@ const sufficiency = this.evaluateCheckpoint(
 
       const nextKey = this.nextCheckpointKey(instance.checkpointKey);
       if (nextKey === 'CP-2.5' && !this.shouldActivateReadiness(stepConfiguration.sourceContextJson ?? {}, input.responses)) {
-        const allResponses = [...previousResponses.map((r: any) => r.responseJson), responseJson];
+        const allResponses = [...previousResponses.map((r: any) => this.publicCheckpointResponse(r.responseJson)), publicResponseJson];
         const output = this.buildStep2Output(stepConfiguration.sourceContextJson, allResponses);
         await this.upsertStepOutputTx(tx, projectId, 2, stepConfiguration.id, output.outputKey, output as unknown as Record<string, unknown>, 'draft');
         await this.upsertProgressSignalTx(tx, projectId, {
@@ -793,7 +949,7 @@ const sufficiency = this.evaluateCheckpoint(
         });
         await this.recordEventTx(tx, projectId, 'actor_action_required', 'El owner debe confirmar el output de Step 2.', { step: 2, outputKey: output.outputKey, readinessSkipped: true }, userId, `step2-output-review-required:${projectId}:2`);
       } else if (nextKey === 'CP-3.5' && !this.shouldActivateOperationalReadiness(stepConfiguration.sourceContextJson ?? {}, [...previousResponses.map((r: any) => r.responseJson), input.responses])) {
-        const allResponses = [...previousResponses.map((r: any) => r.responseJson), responseJson];
+        const allResponses = [...previousResponses.map((r: any) => this.publicCheckpointResponse(r.responseJson)), publicResponseJson];
         const output = this.buildStep3Output(stepConfiguration.sourceContextJson, allResponses);
         await this.upsertStepOutputTx(tx, projectId, 3, stepConfiguration.id, output.outputKey, output as unknown as Record<string, unknown>, 'draft');
         await this.upsertProgressSignalTx(tx, projectId, {
@@ -945,10 +1101,9 @@ const sufficiency = this.evaluateCheckpoint(
   }
 
   async confirmStep0Brief(projectId: string, userId: string, role: Role, input: ConfirmBriefInput): Promise<AdaptiveCoreState> {
-    await this.ensureInitialized(projectId, userId, role);
+    const cycle = await this.requireActivatedCycle(projectId, userId, role);
     if (!input.confirmed) throw AppError.badRequest('El Brief debe ser confirmado por el usuario.', 'BRIEF_CONFIRMATION_REQUIRED');
     const db = this.prisma as any;
-    const cycle = await this.cycles.ensureActiveCycle(projectId);
     const existingEvent = await db.adaptiveAdaptationEvent.findUnique({ where: { idempotencyKey: input.idempotencyKey } });
     if (existingEvent) return this.getState(projectId, userId, role);
     this.assertCycleMutable(cycle);
@@ -1004,10 +1159,9 @@ const sufficiency = this.evaluateCheckpoint(
   }
 
   async confirmStep1Output(projectId: string, userId: string, role: Role, input: ConfirmStep1OutputInput): Promise<AdaptiveCoreState> {
-    await this.ensureInitialized(projectId, userId, role);
+    const cycle = await this.requireActivatedCycle(projectId, userId, role);
     if (!input.confirmed) throw AppError.badRequest('El output de Step 1 debe ser confirmado por el usuario.', 'STEP1_CONFIRMATION_REQUIRED');
     const db = this.prisma as any;
-    const cycle = await this.cycles.ensureActiveCycle(projectId);
     const existingEvent = await db.adaptiveAdaptationEvent.findUnique({ where: { idempotencyKey: input.idempotencyKey } });
     if (existingEvent) return this.getState(projectId, userId, role);
     this.assertCycleMutable(cycle);
@@ -1086,10 +1240,9 @@ const sufficiency = this.evaluateCheckpoint(
   }
 
   async confirmStep2Output(projectId: string, userId: string, role: Role, input: ConfirmStep2OutputInput): Promise<AdaptiveCoreState> {
-    await this.ensureInitialized(projectId, userId, role);
+    const cycle = await this.requireActivatedCycle(projectId, userId, role);
     if (!input.confirmed) throw AppError.badRequest('El output de Step 2 debe ser confirmado por el usuario.', 'STEP2_CONFIRMATION_REQUIRED');
     const db = this.prisma as any;
-    const cycle = await this.cycles.ensureActiveCycle(projectId);
     const existingEvent = await db.adaptiveAdaptationEvent.findUnique({ where: { idempotencyKey: input.idempotencyKey } });
     if (existingEvent) return this.getState(projectId, userId, role);
     this.assertCycleMutable(cycle);
@@ -1159,10 +1312,9 @@ const sufficiency = this.evaluateCheckpoint(
   }
 
   async confirmStep3Output(projectId: string, userId: string, role: Role, input: ConfirmStep3OutputInput): Promise<AdaptiveCoreState> {
-    await this.ensureInitialized(projectId, userId, role);
+    const cycle = await this.requireActivatedCycle(projectId, userId, role);
     if (!input.confirmed) throw AppError.badRequest('El output de Step 3 debe ser confirmado por el usuario.', 'STEP3_CONFIRMATION_REQUIRED');
     const db = this.prisma as any;
-    const cycle = await this.cycles.ensureActiveCycle(projectId);
     const existingEvent = await db.adaptiveAdaptationEvent.findUnique({ where: { idempotencyKey: input.idempotencyKey } });
     if (existingEvent) return this.getState(projectId, userId, role);
     this.assertCycleMutable(cycle);
@@ -1231,10 +1383,9 @@ const sufficiency = this.evaluateCheckpoint(
   }
 
   async confirmStep4Output(projectId: string, userId: string, role: Role, input: ConfirmStep4OutputInput): Promise<AdaptiveCoreState> {
-    await this.ensureInitialized(projectId, userId, role);
+    const cycle = await this.requireActivatedCycle(projectId, userId, role);
     if (!input.confirmed) throw AppError.badRequest('El output de Step 4 debe ser confirmado por el usuario.', 'STEP4_CONFIRMATION_REQUIRED');
     const db = this.prisma as any;
-    const cycle = await this.cycles.ensureActiveCycle(projectId);
     const existingEvent = await db.adaptiveAdaptationEvent.findUnique({ where: { idempotencyKey: input.idempotencyKey } });
     if (existingEvent) return this.getState(projectId, userId, role);
     this.assertCycleMutable(cycle);
@@ -1331,9 +1482,8 @@ const sufficiency = this.evaluateCheckpoint(
   }
 
   async registerCriticalChange(projectId: string, userId: string, role: Role, input: CriticalChangeInput): Promise<AdaptiveCoreState> {
-    await this.ensureInitialized(projectId, userId, role);
+    const cycle = await this.requireActivatedCycle(projectId, userId, role);
     const db = this.prisma as any;
-    const cycle = await this.cycles.getOperationalCycle(projectId);
     const existing = await db.criticalChange.findUnique({ where: { idempotencyKey: input.idempotencyKey } });
     if (existing) return this.getState(projectId, userId, role);
 
@@ -2064,6 +2214,23 @@ const sufficiency = this.evaluateCheckpoint(
     throw AppError.conflict('La iniciativa no tiene un ciclo operativo inicializado.', 'NO_OPERATIONAL_CYCLE');
   }
 
+  private async requireActivatedCycle(projectId: string, userId: string, role: Role) {
+    const project = await this.getAccessibleProject(projectId, userId, role);
+    this.assertTeamWorkAccess(project, userId, role);
+    const cycle = await this.getOperationalCycleReadOnly(projectId);
+    const activeConfiguration = await (this.prisma as any).adaptiveStepConfiguration.findFirst({
+      where: { projectId, cycleId: cycle.id, status: 'active' },
+      select: { id: true },
+    });
+    if (!activeConfiguration) {
+      throw AppError.conflict(
+        'El ciclo debe activarse explicitamente antes de ejecutar comandos Adaptive Core.',
+        'INITIATIVE_CYCLE_NOT_ACTIVATED',
+      );
+    }
+    return cycle;
+  }
+
   private assertCycleMutable(cycle: any) {
     if (cycle?.status === 'completed' || cycle?.status === 'superseded') {
       throw AppError.conflict('El contenido confirmado de un ciclo historico es de solo lectura. Continua la iniciativa mediante un nuevo ciclo.', 'HISTORICAL_CYCLE_READ_ONLY');
@@ -2254,8 +2421,12 @@ const sufficiency = this.evaluateCheckpoint(
 
   private assertTeamWorkAccess(project: any, userId: string, role: Role) {
     if (role === 'admin') return;
-    if (role === 'mentor' && (project.mentorSessions ?? []).length > 0) return;
-    if ((project.teamMembers ?? []).some((m: any) => m.userId === userId && m.status === 'ACTIVE')) return;
+    if (project.ownerId === userId) return;
+    if ((project.teamMembers ?? []).some((m: any) =>
+      m.userId === userId
+      && m.status !== 'PENDING'
+      && (m.role === 'OWNER' || m.role === 'EDITOR')
+    )) return;
     throw AppError.forbidden('Sólo el equipo de la iniciativa puede avanzar sus Steps.', 'PROJECT_TEAM_ACCESS_REQUIRED');
   }
 
@@ -4292,7 +4463,21 @@ const sufficiency = this.evaluateCheckpoint(
     return next;
   }
 
-  private serializeCheckpoint(instance: any, responses?: Record<string, unknown>) {
+  private checkpointCommandMetadata(raw: unknown): { fingerprint: string } | null {
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+    const command = (raw as Record<string, unknown>).__sec02bCommand;
+    if (!command || typeof command !== 'object' || Array.isArray(command)) return null;
+    const fingerprint = (command as Record<string, unknown>).fingerprint;
+    return typeof fingerprint === 'string' ? { fingerprint } : null;
+  }
+
+  private publicCheckpointResponse(raw: unknown): Record<string, unknown> {
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {};
+    const { __sec02bCommand: _command, ...publicResponse } = raw as Record<string, unknown>;
+    return publicResponse;
+  }
+
+  private serializeCheckpoint(instance: any, responses?: Record<string, unknown>, version = 0) {
     const spec = [...STEP0_CHECKPOINTS, ...STEP1_CHECKPOINTS, ...STEP2_CHECKPOINTS, ...STEP3_CHECKPOINTS, ...STEP4_CHECKPOINTS].find((cp) => cp.key === instance.checkpointKey);
     return {
       id: instance.id,
@@ -4302,6 +4487,7 @@ const sufficiency = this.evaluateCheckpoint(
       outputKey: spec?.outputKey ?? instance.checkpointKey,
       status: instance.status,
       sequence: instance.sequence,
+      version,
       questions: instance.materializedQuestionsJson,
       sufficiency: instance.sufficiencyJson,
       responses: responses ?? {},

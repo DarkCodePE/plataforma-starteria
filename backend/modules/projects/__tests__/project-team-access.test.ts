@@ -1,5 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
-import { assertProjectTeamAccess, requireProjectTeamAccess, type ProjectTeamNeed } from '../project-team-access';
+import {
+  assertProjectTeamAccess,
+  requireProjectTeamAccess,
+  type ProjectTeamNeed,
+} from '../project-team-access';
 
 const check = (
   platformRole: string,
@@ -43,8 +47,8 @@ describe('assertProjectTeamAccess', () => {
   });
 
   it('keeps a pending invite outside corporate Project data', () => {
-    expect(check('participante', 'EDITOR', 'read', { teamStatus: 'PENDING' })).toBe('TEAM_INVITATION_PENDING');
-    expect(check('participante', 'EDITOR', 'write', { teamStatus: 'PENDING' })).toBe('TEAM_INVITATION_PENDING');
+    expect(check('participante', 'EDITOR', 'read', { teamStatus: 'PENDING' })).toBe('TEAM_MEMBERSHIP_INACTIVE');
+    expect(check('participante', 'EDITOR', 'write', { teamStatus: 'PENDING' })).toBe('TEAM_MEMBERSHIP_INACTIVE');
   });
 
   it('requires a same-tenant assignment for mentors', () => {

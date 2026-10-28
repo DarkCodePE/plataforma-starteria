@@ -112,7 +112,12 @@ export interface InitiativeMasterContext {
   /** Empresa elegida para la iniciativa: su Contexto de Aplicación (E2E Job-Driven §16). */
   companySnapshot?: { name: string; area: string | null; coverage: number; lowCoverage: boolean } | null;
   /** Reto heredado, si la iniciativa está asignada a uno. */
-  challengeSnapshot?: { id: string; title?: string } | null;
+  challengeSnapshot?: {
+    id: string;
+    title?: string;
+    objective?: string | null;
+    successCriteria?: string | null;
+  } | null;
   createdAt: string;
 }
 
@@ -164,6 +169,12 @@ export interface ChallengeContribution {
 
 export interface AdaptiveInitiativeCore {
   schemaVersion: 'PRD-03-v0.4';
+  cycle?: {
+    id: string;
+    currentStep: 0 | 1 | 2 | 3 | 4;
+    startStep?: 0 | 1 | 2 | 3 | 4;
+    status?: string;
+  };
   masterContext: InitiativeMasterContext;
   stepConfigurations: StepConfiguration[];
   activeStepConfigurationId: string;
@@ -175,6 +186,8 @@ export interface AdaptiveInitiativeCore {
     checkpointKey: string;
     status: AdaptiveCheckpointStatus;
     sequence: number;
+    /** Versión CAS: número de respuestas ya aceptadas para esta instancia. */
+    version: number;
     questions: AdaptiveQuestion[];
     sufficiency?: unknown;
     /** Respuestas ya confirmadas para este checkpoint (vacio si aun no se confirmo). */

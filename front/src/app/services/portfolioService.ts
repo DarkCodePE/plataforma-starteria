@@ -523,7 +523,9 @@ export interface PortfolioHomeReadModel {
         title: string | null;
         activationVisibility: 'initiative_exists' | 'initiative_active' | 'unknown';
         currentExecutionState: { projectStatus: string | null; step0Status: string | null; currentStep: number | null };
+        lastConfirmedOutput: { id: string; cycleId: string; stepNumber: number; version: number; status: string; outputKey: string; sourceConfigurationId: string | null; confirmedAt: string | null; updatedAt: string | null } | null;
         blockers: Array<{ summary: string; severity: string | null; source: string }>;
+        updatedAt: string | null;
       }>;
     }>;
     initiativeSummary: { total: number; activeExecution: number; pendingActivation: number };

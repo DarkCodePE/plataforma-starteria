@@ -8,7 +8,7 @@ export class AdaptiveCoreController {
   get = async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
     try {
       const user = req.user!;
-      const data = await this.service.ensureInitialized(req.params.id, user.id, user.role);
+      const data = await this.service.getState(req.params.id, user.id, user.role);
       res.json({ success: true, data });
     } catch (err) {
       next(err);
@@ -19,6 +19,16 @@ export class AdaptiveCoreController {
     try {
       const user = req.user!;
       const data = await this.service.confirmCheckpoint(req.params.id, user.id, user.role, req.body);
+      res.json({ success: true, data });
+    } catch (err) {
+      next(err);
+    }
+  };
+
+  activateInitiativeCycle = async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+    try {
+      const user = req.user!;
+      const data = await this.service.activateInitiativeCycle(req.params.id, user.id, user.role, req.body);
       res.json({ success: true, data });
     } catch (err) {
       next(err);

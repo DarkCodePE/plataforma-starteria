@@ -57,6 +57,17 @@ export type InitiativePortfolioView = {
     step0Status: string | null;
     currentStep: number | null;
   };
+  lastConfirmedOutput: {
+    id: string;
+    cycleId: string;
+    stepNumber: number;
+    version: number;
+    status: string;
+    outputKey: string;
+    sourceConfigurationId: string | null;
+    confirmedAt: string | null;
+    updatedAt: string | null;
+  } | null;
   activationVisibility: 'initiative_exists' | 'initiative_active' | 'unknown';
   blockers: Array<{ summary: string; severity: string | null; source: string }>;
   evidenceSummary: { count: number | null } | null;
@@ -226,6 +237,12 @@ const PROJECT_READ_INCLUDE = {
   attentionItems: true,
   decisionRequests: { include: { decision: true, authorityUser: { select: { id: true, name: true, email: true } } } },
   decisions: true,
+  adaptiveStepOutputs: {
+    where: { status: 'confirmed' },
+    orderBy: [{ confirmedAt: 'desc' }, { version: 'desc' }],
+    take: 1,
+    select: { id: true, cycleId: true, stepNumber: true, version: true, status: true, outputKey: true, sourceConfigurationId: true, confirmedAt: true, updatedAt: true },
+  },
   _count: { select: { evidence: true } },
 };
 
@@ -470,6 +487,7 @@ export class PortfolioHomeReadService {
 
   private mapInitiative(meta: any): InitiativePortfolioView & { nextActionRecommended?: string | null; __project?: any } {
     const project = meta.project ?? null;
+    const lastConfirmedOutput = project?.adaptiveStepOutputs?.[0] ?? null;
     const executionActive = Boolean(project && (Number(project.currentStep) > 0 || ['ACTIVE', 'IN_PROGRESS', 'active'].includes(project.status)));
     const blockers = (project?.attentionItems ?? [])
       .filter((item: any) => item.status === undefined || item.status === 'open')
@@ -488,6 +506,17 @@ export class PortfolioHomeReadService {
         step0Status: project?.step0Status ?? null,
         currentStep: typeof project?.currentStep === 'number' ? project.currentStep : null,
       },
+      lastConfirmedOutput: lastConfirmedOutput ? {
+        id: lastConfirmedOutput.id,
+        cycleId: lastConfirmedOutput.cycleId,
+        stepNumber: lastConfirmedOutput.stepNumber,
+        version: lastConfirmedOutput.version,
+        status: lastConfirmedOutput.status,
+        outputKey: lastConfirmedOutput.outputKey,
+        sourceConfigurationId: lastConfirmedOutput.sourceConfigurationId,
+        confirmedAt: toIso(lastConfirmedOutput.confirmedAt),
+        updatedAt: toIso(lastConfirmedOutput.updatedAt),
+      } : null,
       activationVisibility: project ? (executionActive ? 'initiative_active' : 'initiative_exists') : 'unknown',
       blockers,
       evidenceSummary: project?._count ? { count: project._count.evidence ?? null } : null,

@@ -164,6 +164,9 @@ function seedProject(store: ReturnType<typeof createStore>, overrides: Row = {})
 }
 
 async function completeStep0(service: AdaptiveCoreService, projectId: string) {
+  // Test setup uses the legacy helper deliberately; production commands no longer
+  // create a cycle implicitly.
+  await service.ensureInitialized(projectId, 'u1', 'participante');
   await service.confirmCheckpoint(projectId, 'u1', 'participante', {
     idempotencyKey: `${projectId}-cp01`,
     checkpointKey: 'CP-0.1',
@@ -314,6 +317,7 @@ async function seedHistoricalCp13AndActivateCp14(
   store.adaptiveCheckpointInstance.push({
     id: id('adaptiveCheckpointInstance'),
     projectId,
+    cycleId: config.cycleId,
     stepConfigurationId: config.id,
     stepConfiguration: config,
     stepNumber: 1,
@@ -1294,6 +1298,7 @@ describe('AdaptiveCoreService Step 0 cycle', () => {
     store.adaptiveCheckpointInstance.push({
       id: id('adaptiveCheckpointInstance'),
       projectId: project.id,
+      cycleId: config.cycleId,
       stepConfigurationId: config.id,
       stepConfiguration: config,
       stepNumber: 1,
@@ -1338,6 +1343,7 @@ describe('AdaptiveCoreService Step 0 cycle', () => {
     const step1Config = await (service as any).prisma.adaptiveStepConfiguration.create({
       data: {
         projectId: project.id,
+        cycleId: store.initiativeCycle[0].id,
         stepNumber: 1,
         version: 1,
         status: 'active',
@@ -1351,6 +1357,7 @@ describe('AdaptiveCoreService Step 0 cycle', () => {
     await (service as any).prisma.adaptiveStepOutput.create({
       data: {
         projectId: project.id,
+        cycleId: store.initiativeCycle[0].id,
         stepNumber: 1,
         version: 1,
         sourceConfigurationId: step1Config.id,
@@ -1389,6 +1396,7 @@ describe('AdaptiveCoreService Step 0 cycle', () => {
     const step1Config = await (service as any).prisma.adaptiveStepConfiguration.create({
       data: {
         projectId: project.id,
+        cycleId: store.initiativeCycle[0].id,
         stepNumber: 1,
         version: 1,
         status: 'active',
@@ -1402,6 +1410,7 @@ describe('AdaptiveCoreService Step 0 cycle', () => {
     await (service as any).prisma.adaptiveStepOutput.create({
       data: {
         projectId: project.id,
+        cycleId: store.initiativeCycle[0].id,
         stepNumber: 1,
         version: 1,
         sourceConfigurationId: step1Config.id,

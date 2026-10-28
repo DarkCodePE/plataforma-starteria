@@ -50,7 +50,7 @@ export class TruthService {
         reference: input.reference,
         location: input.location,
         originActorId: actor.id,
-        originActorType: input.originActorType ?? actor.type ?? 'human',
+        originActorType: actor.type ?? 'human',
         contentHash: input.contentHash,
         version: input.version,
         metadataJson: input.metadataJson as Prisma.InputJsonValue,
@@ -74,7 +74,7 @@ export class TruthService {
         statement: input.statement,
         valueJson: input.valueJson === undefined ? undefined : input.valueJson as Prisma.InputJsonValue,
         createdById: actor.id,
-        createdByType: input.createdByType,
+        createdByType: actor.type ?? 'human',
         verificationState: 'unvalidated',
         sourceRefsJson: input.sourceRefIds as Prisma.InputJsonValue,
         sourceRefLinks: input.sourceRefIds.length > 0
@@ -113,6 +113,17 @@ export class TruthService {
   }
 
   async recordValidation(input: RecordValidationInput, actor: Actor) {
+    const db = this.prisma as any;
+    if (typeof db.$transaction === 'function') {
+      return db.$transaction((tx: PrismaClient) => new TruthService(tx).recordValidationInCurrentClient(input, actor));
+    }
+    if (process.env.NODE_ENV !== 'test') {
+      throw AppError.internal('La persistencia de validaciones requiere una transaccion disponible.');
+    }
+    return this.recordValidationInCurrentClient(input, actor);
+  }
+
+  private async recordValidationInCurrentClient(input: RecordValidationInput, actor: Actor) {
     await this.ensureProject(input.projectId);
     const claim = input.claimId ? await this.ensureClaim(input.projectId, input.claimId) : null;
     if (input.sourceRefId) await this.ensureSourceRefs([input.sourceRefId], input.projectId);
@@ -120,18 +131,29 @@ export class TruthService {
       ? await this.ensureEvidenceForValidation(input.projectId, input.evidenceId, input.claimId)
       : null;
 
-    if (input.validatorType === 'ai' && FINAL_VALIDATION_RESULTS.has(input.result)) {
+    const validatorType = actor.type ?? 'human';
+    if (validatorType === 'ai' && FINAL_VALIDATION_RESULTS.has(input.result)) {
       throw AppError.forbidden(
         'La IA no puede cambiar la validacion autorizada de una afirmacion.',
         'AI_CANNOT_VALIDATE_CLAIM',
         { hint: 'Registra el analisis IA como assessment no autoritativo o usa una validacion humana/regla.' },
       );
     }
-    if (FINAL_VALIDATION_RESULTS.has(input.result) && input.validatorType !== 'human' && input.validatorType !== 'system_rule') {
+    if (FINAL_VALIDATION_RESULTS.has(input.result) && validatorType !== 'human' && validatorType !== 'system') {
       throw AppError.forbidden('ValidatorType no autorizado para validacion final.', 'VALIDATOR_NOT_AUTHORIZED');
     }
     if (input.result === 'supported') {
       this.ensureSupportedValidationInput({ claim, evidence, input });
+    }
+    if (
+      FINAL_VALIDATION_RESULTS.has(input.result)
+      && validatorType === 'human'
+      && (claim?.createdById === actor.id || (!claim && evidence?.ownerId === actor.id))
+    ) {
+      throw AppError.forbidden(
+        'La validacion final debe realizarla una persona distinta de quien creo el material.',
+        'VALIDATOR_INDEPENDENCE_REQUIRED',
+      );
     }
 
     const validationSourceRefId = evidence?.sourceRefId ?? input.sourceRefId;
@@ -139,13 +161,36 @@ export class TruthService {
       throw AppError.badRequest('La validacion debe usar el SourceRef de la evidencia.', 'VALIDATION_SOURCE_REF_MISMATCH');
     }
 
-    const latest = input.claimId
+    const db = this.prisma as any;
+    if (typeof db.$queryRawUnsafe === 'function') {
+      if (input.claimId) {
+        await db.$queryRawUnsafe('SELECT id FROM "TruthClaim" WHERE id = $1 FOR UPDATE', input.claimId);
+      } else if (input.evidenceId) {
+        await db.$queryRawUnsafe('SELECT id FROM "Evidence" WHERE id = $1 FOR UPDATE', input.evidenceId);
+      }
+    } else if (process.env.NODE_ENV !== 'test') {
+      throw AppError.internal('La persistencia de validaciones requiere bloqueo del recurso.');
+    }
+
+    const versionScope = input.claimId
+      ? { claimId: input.claimId }
+      : input.evidenceId
+        ? { evidenceId: input.evidenceId }
+        : null;
+    const latest = versionScope
       ? await this.prisma.truthValidation.findFirst({
-          where: { claimId: input.claimId },
+          where: versionScope,
           orderBy: { version: 'desc' },
           select: { version: true },
         })
       : null;
+    const currentVersion = latest?.version ?? 0;
+    if (input.expectedVersion !== undefined && input.expectedVersion !== currentVersion) {
+      throw AppError.conflict(
+        `La validacion cambio: esperabas la version ${input.expectedVersion} y la vigente es ${currentVersion}.`,
+        'STALE_VERSION',
+      );
+    }
 
     const validation = await this.prisma.truthValidation.create({
       data: {
@@ -155,10 +200,10 @@ export class TruthService {
         sourceRefId: validationSourceRefId,
         result: input.result,
         validatedById: actor.id,
-        validatorType: input.validatorType,
-        validatorRole: input.validatorRole ?? actor.role,
+        validatorType: validatorType === 'system' ? 'system_rule' : validatorType,
+        validatorRole: actor.role,
         rationale: input.rationale,
-        version: latest ? latest.version + 1 : 1,
+        version: currentVersion + 1,
       },
     });
 

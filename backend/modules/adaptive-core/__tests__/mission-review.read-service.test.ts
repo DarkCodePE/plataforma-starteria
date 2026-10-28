@@ -125,13 +125,13 @@ describe('MissionReviewReadService', () => {
 
   it('niega el acceso a quien no es del equipo', async () => {
     const service = new MissionReviewReadService(makePrisma(project()));
-    await expect(service.get('p1', 'stranger', 'participante')).rejects.toMatchObject({ code: 'PROJECT_ACCESS_DENIED' });
+    await expect(service.get('p1', 'stranger', 'participante')).rejects.toMatchObject({ code: 'PROJECT_NOT_FOUND' });
   });
 
   it('el Portfolio Lead asignado la lee sin ser del equipo; otro lead no', async () => {
     const service = new MissionReviewReadService(makePrisma(project(), { portfolioLeadUserId: 'lead-1' }));
     await expect(service.get('p1', 'lead-1', 'portfolio_lead')).resolves.toBeTruthy();
-    await expect(service.get('p1', 'lead-2', 'portfolio_lead')).rejects.toMatchObject({ code: 'PROJECT_ACCESS_DENIED' });
+    await expect(service.get('p1', 'lead-2', 'portfolio_lead')).rejects.toMatchObject({ code: 'PROJECT_NOT_FOUND' });
   });
 
   it('el Mentor necesita una asignacion explicita', async () => {

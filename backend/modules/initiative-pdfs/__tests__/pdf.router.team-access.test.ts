@@ -81,8 +81,8 @@ describe('initiative-pdfs: acceso por equipo', () => {
   });
 
   it('un usuario ajeno a la iniciativa no lee ni escribe', async () => {
-    for (const path of reads) expect((await request(app).get(path)).status, path).toBe(403);
-    for (const w of writes) expect((await post(w)).status, w.path).toBe(403);
+    for (const path of reads) expect((await request(app).get(path)).status, path).toBe(404);
+    for (const w of writes) expect((await post(w)).status, w.path).toBe(404);
   });
 
   it('un VIEWER del equipo lee pero no sube, extrae ni resuelve propuestas', async () => {
