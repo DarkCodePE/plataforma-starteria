@@ -7,6 +7,7 @@ import {
   continuePortfolioEntryToPortfolio,
   createPortfolioEntrySession,
   getPortfolioEntryCriticalHandoff,
+  getPortfolioEntryCriticalHandoffGeneration,
   getPortfolioEntryStarteriaPath,
   getPortfolioEntryHandoff,
   getPortfolioEntrySession,
@@ -321,6 +322,8 @@ describe('portfolioEntryPublicService', () => {
       { expectedRevision: 8, idempotencyKey: 'critical-materialization-1' },
     );
 
+    expect(response.kind).toBe('ready');
+    if (response.kind !== 'ready') throw new Error('Expected ready materialization');
     expect(response.sessionRevision).toBe(9);
     expect(response.criticalHandoff).toMatchObject({
       id: 'artifact-current',
@@ -331,6 +334,91 @@ describe('portfolioEntryPublicService', () => {
       confirmedAt: null,
     });
     expect(JSON.stringify(response)).not.toMatch(/provenance|recommended_approach|starteria_path|recommended_cta|selected_lenses|reasoning_metadata|raw_synthesis|confirmedByUserId/i);
+  });
+
+  it('handles 202 accepted response for asynchronous critical handoff generation', async () => {
+    server.use(http.post('*/public/portfolio-entry/sessions/:sessionId/critical-handoff', async ({ request, params }) => {
+      expect(params.sessionId).toBe('11111111-1111-4111-8111-111111111111');
+      expect(request.headers.get('X-Starteria-Entry-Token')).toBe('entry-token');
+      expect(request.headers.get('Idempotency-Key')).toBe('critical-materialization-async-1');
+      return HttpResponse.json({
+        success: true,
+        data: {
+          sessionRevision: 8,
+          generation: {
+            status: 'GENERATING',
+            sourceContextRevision: 5,
+            attempt: 1,
+            startedAt: '2026-10-24T16:00:00.000Z',
+            finishedAt: null,
+            failureClass: null,
+            retryable: false,
+          },
+        },
+      }, { status: 202 });
+    }));
+
+    const response = await materializePortfolioEntryCriticalHandoff(
+      '11111111-1111-4111-8111-111111111111',
+      'entry-token',
+      { expectedRevision: 8, idempotencyKey: 'critical-materialization-async-1' },
+    );
+
+    expect(response).toEqual({
+      kind: 'generating',
+      sessionRevision: 8,
+      generation: {
+        status: 'GENERATING',
+        sourceContextRevision: 5,
+        attempt: 1,
+        startedAt: '2026-10-24T16:00:00.000Z',
+        finishedAt: null,
+        failureClass: null,
+        retryable: false,
+      },
+    });
+  });
+
+  it('reads critical handoff generation from dedicated endpoint', async () => {
+    server.use(http.get('*/public/portfolio-entry/sessions/:sessionId/critical-handoff/generation', async ({ request, params }) => {
+      expect(params.sessionId).toBe('session-gen-1');
+      expect(request.headers.get('X-Starteria-Entry-Token')).toBe('token-gen-1');
+      return HttpResponse.json({
+        success: true,
+        data: {
+          status: 'GENERATING',
+          sourceContextRevision: 3,
+          attempt: 1,
+          startedAt: '2026-10-24T16:00:00.000Z',
+          finishedAt: null,
+          failureClass: null,
+          retryable: false,
+        },
+      });
+    }));
+
+    const generation = await getPortfolioEntryCriticalHandoffGeneration('session-gen-1', 'token-gen-1');
+    expect(generation).toEqual({
+      status: 'GENERATING',
+      sourceContextRevision: 3,
+      attempt: 1,
+      startedAt: '2026-10-24T16:00:00.000Z',
+      finishedAt: null,
+      failureClass: null,
+      retryable: false,
+    });
+  });
+
+  it('returns null when critical handoff generation is null or 404', async () => {
+    server.use(http.get('*/public/portfolio-entry/sessions/:sessionId/critical-handoff/generation', async () => {
+      return HttpResponse.json({ success: true, data: null });
+    }));
+    await expect(getPortfolioEntryCriticalHandoffGeneration('session-null', 'token-1')).resolves.toBeNull();
+
+    server.use(http.get('*/public/portfolio-entry/sessions/:sessionId/critical-handoff/generation', async () => {
+      return HttpResponse.json({ success: false, error: { code: 'NOT_FOUND' } }, { status: 404 });
+    }));
+    await expect(getPortfolioEntryCriticalHandoffGeneration('session-404', 'token-1')).resolves.toBeNull();
   });
 
   it('posts only explicit artifact identity and currentness expectations to the dedicated confirmation endpoint', async () => {

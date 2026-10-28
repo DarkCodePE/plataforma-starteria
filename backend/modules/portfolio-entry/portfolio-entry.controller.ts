@@ -120,7 +120,12 @@ export class PortfolioEntryController {
         principal: req.user ? { id: req.user.id } : undefined,
         idempotencyKey: getIdempotencyKey(req),
       });
-      res.json({ success: true, data });
+      if (data.kind === 'generating') {
+        res.status(202).json({ success: true, data: { sessionRevision: data.sessionRevision, generation: data.generation } });
+      } else {
+        const { kind: _kind, ...ready } = data;
+        res.json({ success: true, data: ready });
+      }
     } catch (err) {
       next(mapPortfolioEntryError(err));
     }
@@ -168,6 +173,18 @@ export class PortfolioEntryController {
     } catch (err) {
       next(mapPortfolioEntryError(err));
     }
+  };
+
+  readCriticalHandoffGeneration = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const { sessionId } = sessionParamsSchema.parse(req.params);
+      const data = await this.service.readCriticalHandoffGeneration({
+        sessionId,
+        publicAccessToken: getPublicToken(req),
+        principal: req.user ? { id: req.user.id } : undefined,
+      });
+      res.json({ success: true, data });
+    } catch (err) { next(mapPortfolioEntryError(err)); }
   };
 
   confirmCriticalHandoff = async (req: Request, res: Response, next: NextFunction): Promise<void> => {

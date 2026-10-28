@@ -711,9 +711,13 @@ async function reachCriticalHandoff(page: Page, scenario: Scenario, testInfo: Te
 
   await expect(page.getByTestId('critical-handoff-review')).toBeVisible({ timeout: 30_000 });
   const [materializationResponse, criticalResponse] = await Promise.all([handoffMaterialization, criticalHandoffRead]);
-  expect(materializationResponse.status(), `Critical Handoff materialization response: ${materializationResponse.url()}`).toBe(200);
+  expect([200, 202], `Critical Handoff materialization response: ${materializationResponse.url()}`).toContain(materializationResponse.status());
   const materializationBody = await materializationResponse.json();
-  expect(Object.keys(materializationBody.data).sort()).toEqual(['criticalHandoff', 'sessionRevision']);
+  if (materializationResponse.status() === 202) {
+    expect(Object.keys(materializationBody.data).sort()).toEqual(['generation', 'sessionRevision']);
+  } else {
+    expect(Object.keys(materializationBody.data).sort()).toEqual(['criticalHandoff', 'sessionRevision']);
+  }
   expect(JSON.stringify(materializationBody.data)).not.toMatch(/handoffPayload|provenance_summary|provenance|recommended_approach|starteria_path|recommended_cta|reasoning_metadata|selected_lenses|source_refs|sourceTurnId|provider|model|raw_synthesis|confirmedByUserId/i);
   expect(criticalResponse.status(), `Critical Handoff read response: ${criticalResponse.url()}`).toBe(200);
   const sessionId = await page.evaluate(() => {
@@ -764,9 +768,13 @@ async function closeCriticalHandoffAfterCorrection(page: Page, answerText: strin
       await closeExploration.click();
       expect((await guidedResponse).status()).toBe(200);
       const [materialized, read] = await Promise.all([handoffResponse, criticalRead]);
-      expect(materialized.status()).toBe(200);
+      expect([200, 202]).toContain(materialized.status());
       const materializedBody = await materialized.json();
-      expect(Object.keys(materializedBody.data).sort()).toEqual(['criticalHandoff', 'sessionRevision']);
+      if (materialized.status() === 202) {
+        expect(Object.keys(materializedBody.data).sort()).toEqual(['generation', 'sessionRevision']);
+      } else {
+        expect(Object.keys(materializedBody.data).sort()).toEqual(['criticalHandoff', 'sessionRevision']);
+      }
       expect(JSON.stringify(materializedBody.data)).not.toMatch(/handoffPayload|provenance_summary|provenance|recommended_approach|starteria_path|recommended_cta|reasoning_metadata|selected_lenses|source_refs|sourceTurnId|provider|model|raw_synthesis|confirmedByUserId/i);
       expect(read.status()).toBe(200);
       break;

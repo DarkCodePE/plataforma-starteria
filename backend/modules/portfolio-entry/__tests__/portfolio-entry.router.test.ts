@@ -381,6 +381,20 @@ describe('Portfolio Entry Experimental Session API', () => {
     expect(read.body.data.publicAccessToken).toBeUndefined();
   });
 
+  it('allows more than 20 generation reads without hitting the submit rate limit', async () => {
+    const { app } = makeApp({ options: { maxSubmitRequests: 20, windowMs: 10 * 60_000 } });
+    const created = await createSession(app);
+    const path = `${base}/sessions/${created.sessionId}/critical-handoff/generation`;
+
+    for (let index = 0; index < 25; index += 1) {
+      const response = await request(app).get(path)
+        .set('X-Starteria-Entry-Token', created.token)
+        .expect(200);
+      if (index === 0) expect(response.headers['x-ratelimit-limit']).toBe('300');
+      expect(response.body.data).toBeNull();
+    }
+  });
+
   it('keeps a historical handoff out of generic session reads and exposes it through the explicit legacy route', async () => {
     const { app } = makeApp();
     const ready = await legacyHandoffReadySession(app);

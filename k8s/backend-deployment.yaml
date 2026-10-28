@@ -57,6 +57,10 @@ spec:
         # Provider/model/URL/timeouts may be overridden in that Secret too.
         - name: PORTFOLIO_ENTRY_RUNTIME_MODE
           value: "live"
+        - name: PORTFOLIO_ENTRY_SYNTHESIS_TIMEOUT_MS
+          value: "120000"
+        - name: PORTFOLIO_ENTRY_CRITICAL_HANDOFF_MAX_MS
+          value: "180000"
         # Revisión inicial guiada (CC-02/CC-03): "real" usa el ai-service
         # (/api/v1/ai/initial-review) con fallback automático al mock si falla
         # (un fallback aparece como warn "initial-review AI fallback" en logs).

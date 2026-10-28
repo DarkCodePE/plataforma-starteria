@@ -243,10 +243,31 @@ export type PortfolioEntryCriticalHandoffDto = {
   projection: CriticalHandoffProjection;
 };
 
-export type PortfolioEntryCriticalHandoffMaterializationDto = {
+export type CriticalHandoffGenerationDto = {
+  status: 'GENERATING' | 'READY' | 'FAILED';
+  sourceContextRevision: number;
+  attempt: number;
+  startedAt: string;
+  finishedAt: string | null;
+  failureClass: string | null;
+  retryable: boolean;
+};
+
+export type PortfolioEntryCriticalHandoffMaterializationReady = {
+  kind: 'ready';
   sessionRevision: number;
   criticalHandoff: PortfolioEntryCriticalHandoffDto;
 };
+
+export type PortfolioEntryCriticalHandoffMaterializationGenerating = {
+  kind: 'generating';
+  sessionRevision: number;
+  generation: CriticalHandoffGenerationDto;
+};
+
+export type PortfolioEntryCriticalHandoffMaterializationDto =
+  | PortfolioEntryCriticalHandoffMaterializationReady
+  | PortfolioEntryCriticalHandoffMaterializationGenerating;
 
 export type PortfolioEntryConfirmationDto = {
   id: string;

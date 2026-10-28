@@ -2792,6 +2792,7 @@ model PortfolioEntrySession {
   turns           PortfolioEntryTurn[]
   handoffs        PortfolioEntryHandoff[]
   criticalHandoffs PortfolioEntryCriticalHandoff[]
+  criticalHandoffGenerations PortfolioEntryCriticalHandoffGeneration[]
   confirmations   PortfolioEntryConfirmation[]
   modelExecutions PortfolioEntryModelExecution[]
   conversion      PortfolioEntryConversion?
@@ -3386,6 +3387,25 @@ model PortfolioEntryCriticalHandoff {
   @@unique([sessionId, artifactVersion])
   @@index([sourceTurnId])
   @@index([confirmationState])
+}
+
+model PortfolioEntryCriticalHandoffGeneration {
+  id                      String   @id @default(cuid())
+  sessionId               String
+  sourceContextRevision   Int
+  expectedSessionRevision Int
+  status                  String
+  failureClass            String?
+  attempt                 Int      @default(1)
+  startedAt               DateTime
+  finishedAt              DateTime?
+  createdAt               DateTime @default(now())
+  updatedAt               DateTime @updatedAt
+
+  session PortfolioEntrySession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@unique([sessionId, sourceContextRevision])
+  @@index([status])
 }
 
 model PortfolioEntryConfirmation {

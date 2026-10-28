@@ -111,10 +111,25 @@ export type PortfolioEntryCriticalHandoffClientDto = {
   projection: CriticalHandoffProjection;
 };
 
-export type PortfolioEntryCriticalHandoffMaterializationClientDto = {
+export type PortfolioEntryCriticalHandoffReadyClientDto = {
+  kind: 'ready';
   sessionRevision: number;
   criticalHandoff: PortfolioEntryCriticalHandoffClientDto;
 };
+
+export type CriticalHandoffGenerationDto = {
+  status: 'GENERATING' | 'READY' | 'FAILED';
+  sourceContextRevision: number;
+  attempt: number;
+  startedAt: string;
+  finishedAt: string | null;
+  failureClass: string | null;
+  retryable: boolean;
+};
+
+export type PortfolioEntryCriticalHandoffMaterializationClientDto =
+  | PortfolioEntryCriticalHandoffReadyClientDto
+  | { kind: 'generating'; sessionRevision: number; generation: CriticalHandoffGenerationDto };
 
 export type PortfolioEntryConfirmationClientDto = {
   id: string;

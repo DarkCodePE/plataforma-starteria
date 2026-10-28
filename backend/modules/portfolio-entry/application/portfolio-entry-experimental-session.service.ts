@@ -54,6 +54,11 @@ import type {
   PortfolioEntryIdempotencyRecord,
   PortfolioEntryIdempotencyRepository,
 } from './portfolio-entry-idempotency.repository';
+import type {
+  CriticalHandoffGenerationFailureClass,
+  CriticalHandoffGenerationRepository,
+} from './critical-handoff-generation.repository';
+import { InMemoryCriticalHandoffGenerationRepository } from '../infrastructure/in-memory-critical-handoff-generation.repository';
 
 type Principal = { id: string };
 type RequestContext = {
@@ -95,6 +100,7 @@ type RecoveryHint = {
 
 export type PortfolioEntryExperimentalSessionConfig = {
   idempotencyTtlMs: number;
+  criticalHandoffMaxMs?: number;
   versioning: PortfolioEntrySession['versioning'];
 };
 
@@ -127,6 +133,7 @@ export class PortfolioEntryExperimentalSessionService {
     private readonly liveUnderstandingSynthesizer: PortfolioEntryLiveUnderstandingSynthesizer,
     private readonly criticalHandoffProjector: (source: unknown) => CriticalHandoffProjection = toCriticalHandoffProjection,
     private readonly now: () => Date = () => new Date(),
+    private readonly criticalHandoffGenerationRepository: CriticalHandoffGenerationRepository = new InMemoryCriticalHandoffGenerationRepository(),
   ) {}
 
   async createAnonymousSession(body: CreateSessionBody) {
@@ -398,15 +405,66 @@ export class PortfolioEntryExperimentalSessionService {
   ): Promise<PortfolioEntryCriticalHandoffMaterializationClientDto> {
     const initial = await this.authorize(sessionId, context);
     assertNotConverted(initial);
+    if (initial.semanticState.pendingInput?.status === 'ANALYSIS_PENDING') {
+      throw PortfolioEntrySessionError.conflict();
+    }
     const existing = await this.sessionService.getLatestCriticalHandoff(sessionId);
     if (!isCurrentCriticalHandoffSession(initial) && !existing?.isCurrent) {
       throw PortfolioEntrySessionError.invalidTransition('Critical Handoff materialization requires the current Portfolio Entry checkpoint.');
     }
+    if (!context.idempotencyKey) throw PortfolioEntryApiError.missingIdempotencyKey();
 
     return this.withIdempotency('materialize_critical_handoff', sessionId, { expectedRevision }, context, async () => {
-      const completed = await this.performCriticalHandoffMaterialization(sessionId, expectedRevision, context);
-      return this.criticalHandoffMaterializationDto(completed);
-    }, (record) => this.recoverCriticalHandoffMaterialization(sessionId, record, expectedRevision));
+      const session = await this.authorize(sessionId, context);
+      assertNotConverted(session);
+      const existing = await this.sessionService.getLatestCriticalHandoff(sessionId);
+      this.assertCriticalHandoffMaterializationRevision(session, expectedRevision, existing?.isCurrent === true);
+      const turns = await this.sessionRepository.listTurns(sessionId);
+      if (!latestAnalyzedContextTurn(turns)) throw PortfolioEntrySessionError.invalidTransition('No analyzed user context is available for Critical Handoff.');
+      const latest = await this.sessionService.getLatestCriticalHandoff(sessionId);
+      if (latest?.isCurrent && latest.artifact.sourceContextRevision === session.contextRevision) {
+        await this.closeGenerationAsReady(session);
+        return { kind: 'ready', ...(await this.criticalHandoffMaterializationDto(session)) };
+      }
+      const claim = await this.criticalHandoffGenerationRepository.claim({
+        sessionId, sourceContextRevision: session.contextRevision, expectedSessionRevision: expectedRevision,
+        now: this.now(), maxDurationMs: this.config.criticalHandoffMaxMs ?? 180_000,
+      });
+      if (claim.claimed) {
+        const backgroundContext = {
+          requestId: context.requestId,
+          publicAccessToken: context.publicAccessToken,
+          principal: context.principal,
+        };
+        void this.performCriticalHandoffMaterialization(sessionId, expectedRevision, backgroundContext)
+          .then(() => this.criticalHandoffGenerationRepository.markReady(
+            sessionId, session.contextRevision, claim.generation.attempt, this.now(),
+          ))
+          .catch((error: unknown) => {
+            const failureClass = criticalHandoffFailureClass(error);
+            logger.warn({ event: 'portfolio_entry_critical_handoff_failure', sessionId,
+              stage: 'background', failureClass, error: safeErrorName(error) }, 'Critical Handoff materialization failed.');
+            return this.criticalHandoffGenerationRepository
+              .markFailed(sessionId, session.contextRevision, claim.generation.attempt, failureClass, this.now())
+              .catch((markError: unknown) => {
+                logger.error({ event: 'portfolio_entry_critical_handoff_generation_state_failure', sessionId,
+                  failureClass: 'persistence_failure', error: safeErrorName(markError) }, 'Could not persist Critical Handoff generation failure.');
+              });
+          });
+      }
+      return { kind: 'generating', sessionRevision: session.revision, generation: toCriticalHandoffGenerationDto(claim.generation) };
+    }, (record) => this.recoverCriticalHandoffMaterialization(sessionId, record, expectedRevision), {
+      resolveCompletedSnapshot: true,
+      cacheResponseSnapshot: (result) => result.kind === 'ready',
+    });
+  }
+
+  async readCriticalHandoffGeneration(input: { sessionId: string; publicAccessToken?: string; principal?: Principal }) {
+    const session = await this.authorize(input.sessionId, input);
+    const generation = await this.criticalHandoffGenerationRepository.findLatest(
+      session.id, this.now(), this.config.criticalHandoffMaxMs ?? 180_000,
+    );
+    return generation ? toCriticalHandoffGenerationDto(generation) : null;
   }
 
   async readHandoff(input: { sessionId: string; publicAccessToken?: string; principal?: Principal }): Promise<PortfolioEntrySessionClientDto> {
@@ -528,7 +586,7 @@ export class PortfolioEntryExperimentalSessionService {
     } catch (error) {
       await this.recordFailure(session.id, error, true);
       this.logCriticalHandoffFailure(session.id, 'provider', classifyThrownSynthesisFailure(error));
-      throw PortfolioEntryApiError.criticalHandoffSynthesisUnavailable();
+      throw new CriticalHandoffGenerationError(classifyThrownSynthesisFailure(error));
     }
     if (!synthesis) {
       this.logCriticalHandoffFailure(
@@ -536,20 +594,20 @@ export class PortfolioEntryExperimentalSessionService {
         nullFailureClass === 'schema_invalid' ? 'validation' : 'provider',
         nullFailureClass,
       );
-      throw PortfolioEntryApiError.criticalHandoffSynthesisUnavailable();
+      throw new CriticalHandoffGenerationError(nullFailureClass);
     }
     let validated: CriticalSituationSynthesis;
     try {
       validated = criticalSituationSynthesisSchema.parse(synthesis);
     } catch {
       this.logCriticalHandoffFailure(session.id, 'validation', 'schema_invalid');
-      throw PortfolioEntryApiError.criticalHandoffSynthesisUnavailable();
+      throw new CriticalHandoffGenerationError('schema_invalid');
     }
     try {
       return this.criticalHandoffProjector(validated);
     } catch {
       this.logCriticalHandoffFailure(session.id, 'projection', 'projection_failure');
-      throw PortfolioEntryApiError.criticalHandoffSynthesisUnavailable();
+      throw new CriticalHandoffGenerationError('projection_failure');
     }
   }
 
@@ -743,10 +801,10 @@ export class PortfolioEntryExperimentalSessionService {
           return currentSession;
         }
         this.logCriticalHandoffFailure(sessionId, 'publication', 'revision_conflict');
-        throw error;
+        throw new CriticalHandoffGenerationError('revision_conflict');
       }
       this.logCriticalHandoffFailure(sessionId, 'publication', 'persistence_failure');
-      throw PortfolioEntryApiError.criticalHandoffSynthesisUnavailable();
+      throw new CriticalHandoffGenerationError('persistence_failure');
     }
   }
 
@@ -802,7 +860,7 @@ export class PortfolioEntryExperimentalSessionService {
 
   private async criticalHandoffMaterializationDto(
     session: PortfolioEntrySession,
-  ): Promise<PortfolioEntryCriticalHandoffMaterializationClientDto> {
+  ): Promise<Omit<Extract<PortfolioEntryCriticalHandoffMaterializationClientDto, { kind: 'ready' }>, 'kind'>> {
     const latest = await this.sessionService.getLatestCriticalHandoff(session.id);
     if (!latest) throw PortfolioEntryApiError.criticalHandoffSynthesisUnavailable();
     return {
@@ -811,21 +869,38 @@ export class PortfolioEntryExperimentalSessionService {
     };
   }
 
+  /** Si el artefacto ya está publicado pero el proceso murió antes de markReady, cierra la generación vigente. */
+  private async closeGenerationAsReady(session: PortfolioEntrySession): Promise<void> {
+    const generation = await this.criticalHandoffGenerationRepository.find(
+      session.id, session.contextRevision, this.now(), this.config.criticalHandoffMaxMs ?? 180_000,
+    );
+    if (generation?.status === 'GENERATING') {
+      await this.criticalHandoffGenerationRepository.markReady(session.id, session.contextRevision, generation.attempt, this.now());
+    }
+  }
+
   private async recoverCriticalHandoffMaterialization(
     sessionId: string,
-    record: PortfolioEntryIdempotencyRecord,
+    _record: PortfolioEntryIdempotencyRecord,
     expectedRevision: number,
   ): Promise<PortfolioEntryCriticalHandoffMaterializationClientDto | null> {
-    const hint = recoveryHint(record, 'materialize_critical_handoff', expectedRevision);
-    if (!hint) return null;
     const session = await this.requireSession(sessionId);
     // Fresh publication advances the session revision; conclusion-only
     // recovery publishes against the already-materialized legacy checkpoint
     // and deliberately leaves that revision unchanged.
     if (session.revision !== expectedRevision && session.revision !== expectedRevision + 1) return null;
     const latest = await this.sessionService.getLatestCriticalHandoff(sessionId);
-    if (!latest?.isCurrent) return null;
-    return this.criticalHandoffMaterializationDto(session);
+    if (latest?.isCurrent && latest.artifact.sourceContextRevision === session.contextRevision) {
+      await this.closeGenerationAsReady(session);
+      return { kind: 'ready', ...(await this.criticalHandoffMaterializationDto(session)) };
+    }
+    const generation = await this.criticalHandoffGenerationRepository.find(
+      sessionId, session.contextRevision, this.now(), this.config.criticalHandoffMaxMs ?? 180_000,
+    );
+    // Una generación FAILED (o stale) no se devuelve: run() la vuelve a reclamar.
+    return generation && generation.status !== 'FAILED'
+      ? { kind: 'generating', sessionRevision: session.revision, generation: toCriticalHandoffGenerationDto(generation) }
+      : null;
   }
 
   private async toDto(
@@ -872,25 +947,55 @@ export class PortfolioEntryExperimentalSessionService {
     if (session.revision !== expectedRevision) throw PortfolioEntrySessionError.conflict();
   }
 
-  private async withIdempotency<T>(operation: Operation, sessionId: string, payload: unknown, context: RequestContext, run: () => Promise<T>, recover: (record: PortfolioEntryIdempotencyRecord) => Promise<T | null>): Promise<T> {
+  private assertCriticalHandoffMaterializationRevision(
+    session: PortfolioEntrySession,
+    expectedRevision: number,
+    hasCurrentArtifact: boolean,
+  ): void {
+    const recoverablePartial = session.lifecycleStatus === 'HANDOFF_READY'
+      && Boolean(session.latestHandoff)
+      && isCurrentCriticalHandoffSession(session);
+    if (hasCurrentArtifact || recoverablePartial) {
+      if (expectedRevision !== session.revision && expectedRevision !== session.revision - 1) {
+        throw PortfolioEntrySessionError.conflict();
+      }
+      return;
+    }
+    this.assertExpectedRevision(session, expectedRevision);
+    if (!isCriticalHandoffCheckpoint(session)) {
+      throw PortfolioEntrySessionError.invalidTransition('Critical Handoff materialization requires the current Portfolio Entry checkpoint.');
+    }
+  }
+
+  private async withIdempotency<T>(operation: Operation, sessionId: string, payload: unknown, context: RequestContext, run: () => Promise<T>, recover: (record: PortfolioEntryIdempotencyRecord) => Promise<T | null>, options: {
+    resolveCompletedSnapshot?: boolean;
+    cacheResponseSnapshot?: (result: T) => boolean;
+  } = {}): Promise<T> {
     const key = context.idempotencyKey;
     if (!key) throw PortfolioEntryApiError.missingIdempotencyKey();
+    const shouldCache = options.cacheResponseSnapshot ?? (() => true);
     const now = this.now();
     const hash = createHash('sha256').update(stableJson(payload)).digest('hex');
     const existing = await this.idempotencyRepository.findActive(operation, sessionId, key, now);
     if (existing) {
       if (existing.requestPayloadHash !== hash) throw PortfolioEntryApiError.idempotencyConflict();
-      if (existing.status === 'COMPLETED') return existing.responseSnapshot as T;
+      if (existing.status === 'COMPLETED') {
+        if (options.resolveCompletedSnapshot) {
+          const resolved = await recover(existing);
+          if (resolved !== null) return resolved;
+        }
+        return existing.responseSnapshot as T;
+      }
       const recovered = await recover(existing);
       if (recovered !== null) {
-        await this.idempotencyRepository.complete({ id: existing.id, responseSnapshot: recovered });
+        if (shouldCache(recovered)) await this.idempotencyRepository.complete({ id: existing.id, responseSnapshot: recovered });
         return recovered;
       }
       if (existing.status === 'FAILED') {
         context.idempotencyRecordId = existing.id;
         try {
           const result = await run();
-          await this.idempotencyRepository.complete({ id: existing.id, responseSnapshot: result });
+          await this.settleIdempotency(existing.id, result, shouldCache);
           return result;
         } catch (error) {
           await this.idempotencyRepository.markFailed(existing.id).catch(() => undefined);
@@ -911,10 +1016,16 @@ export class PortfolioEntryExperimentalSessionService {
     });
     if (record.id !== candidateId) {
       if (record.requestPayloadHash !== hash) throw PortfolioEntryApiError.idempotencyConflict();
-      if (record.status === 'COMPLETED') return record.responseSnapshot as T;
+      if (record.status === 'COMPLETED') {
+        if (options.resolveCompletedSnapshot) {
+          const resolved = await recover(record);
+          if (resolved !== null) return resolved;
+        }
+        return record.responseSnapshot as T;
+      }
       const recovered = await recover(record);
       if (recovered !== null) {
-        await this.idempotencyRepository.complete({ id: record.id, responseSnapshot: recovered });
+        if (shouldCache(recovered)) await this.idempotencyRepository.complete({ id: record.id, responseSnapshot: recovered });
         return recovered;
       }
       if (record.status !== 'FAILED') throw PortfolioEntryApiError.idempotencyInProgress();
@@ -922,12 +1033,21 @@ export class PortfolioEntryExperimentalSessionService {
     context.idempotencyRecordId = record.id;
     try {
       const result = await run();
-      await this.idempotencyRepository.complete({ id: record.id, responseSnapshot: result });
+      await this.settleIdempotency(record.id, result, shouldCache);
       return result;
     } catch (error) {
       await this.idempotencyRepository.markFailed(record.id).catch(() => undefined);
       throw error;
     }
+  }
+
+  /**
+   * Un resultado que no se cachea (p. ej. una generación en curso) no deja el registro en IN_PROGRESS:
+   * se libera como FAILED para que repetir la misma key vuelva a ejecutar run(), que une o relanza.
+   */
+  private async settleIdempotency<T>(id: string, result: T, shouldCache: (result: T) => boolean): Promise<void> {
+    if (shouldCache(result)) await this.idempotencyRepository.complete({ id, responseSnapshot: result });
+    else await this.idempotencyRepository.markFailed(id);
   }
 
   private async storeRecovery(context: RequestContext, hint: RecoveryHint): Promise<void> {
@@ -1026,6 +1146,40 @@ export class PortfolioEntryExperimentalSessionService {
       failureClass,
     }, 'Critical Handoff materialization failed.');
   }
+}
+
+class CriticalHandoffGenerationError extends Error {
+  constructor(readonly failureClass: CriticalHandoffGenerationFailureClass) {
+    super('Critical Handoff generation failed.');
+  }
+}
+
+function criticalHandoffFailureClass(error: unknown): CriticalHandoffGenerationFailureClass {
+  if (error instanceof CriticalHandoffGenerationError) return error.failureClass;
+  if (error instanceof PortfolioEntrySessionError
+    && ['PORTFOLIO_ENTRY_SESSION_CONFLICT', 'PORTFOLIO_ENTRY_SESSION_INVALID_TRANSITION'].includes(error.code)) {
+    return 'revision_conflict';
+  }
+  return 'persistence_failure';
+}
+
+function safeErrorName(error: unknown): string {
+  return error instanceof Error ? error.name : 'UnknownError';
+}
+
+function toCriticalHandoffGenerationDto(generation: {
+  status: 'GENERATING' | 'READY' | 'FAILED'; sourceContextRevision: number; attempt: number;
+  startedAt: Date; finishedAt: Date | null; failureClass: string | null;
+}) {
+  return {
+    status: generation.status,
+    sourceContextRevision: generation.sourceContextRevision,
+    attempt: generation.attempt,
+    startedAt: generation.startedAt.toISOString(),
+    finishedAt: generation.finishedAt?.toISOString() ?? null,
+    failureClass: generation.status === 'FAILED' ? generation.failureClass : null,
+    retryable: generation.status === 'FAILED',
+  } as const;
 }
 
 export class UnconfiguredPortfolioEntryAgentAdapter implements PortfolioEntryAgentAdapterV2 {

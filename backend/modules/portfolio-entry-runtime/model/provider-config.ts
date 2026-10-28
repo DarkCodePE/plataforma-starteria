@@ -11,14 +11,13 @@ export type PortfolioEntryProviderConfig = {
 };
 
 /**
- * La síntesis crítica genera una salida grande (~6-7k tokens) y tarda 50-60 s. Un timeout de 30 s con
- * reintento la hace fallar siempre; se le da un límite propio, sin reintento por timeout, para que la
- * petición quede por debajo del corte de ~100 s de Cloudflare.
+ * La síntesis crítica genera una salida grande (~6-7k tokens) y tarda 50-60 s. Usa un timeout propio,
+ * sin reintento por timeout; al ejecutarse en segundo plano, comparte el límite de 3 minutos del job.
  */
 export function loadCriticalSynthesisProviderConfig(env: NodeJS.ProcessEnv = process.env): PortfolioEntryProviderConfig {
   return {
     ...loadPortfolioEntryProviderConfig(env),
-    timeoutMs: positiveNumber(env.PORTFOLIO_ENTRY_SYNTHESIS_TIMEOUT_MS, 90_000, 'PORTFOLIO_ENTRY_SYNTHESIS_TIMEOUT_MS'),
+    timeoutMs: positiveNumber(env.PORTFOLIO_ENTRY_SYNTHESIS_TIMEOUT_MS, 120_000, 'PORTFOLIO_ENTRY_SYNTHESIS_TIMEOUT_MS'),
     retryOnTimeout: false,
   };
 }
