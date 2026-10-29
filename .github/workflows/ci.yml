@@ -11,14 +11,11 @@ name: CI
 on:
   pull_request:
     branches: ['**']
-  # No standalone `push: main` trigger: cd.yml runs on every push to main and
-  # its `tests` gate calls this workflow, so a separate run would duplicate the
-  # exact same suite.
-  # Note: this workflow's `concurrency` group below uses `github.workflow`, which
-  # in a `workflow_call` resolves to the CALLER (`CD`). Two concurrent CD runs
-  # would therefore cancel each other's CI. That is currently impossible because
-  # cd.yml serializes on `group: starteria-production` with
-  # `cancel-in-progress: false`. Do not loosen that without fixing this group.
+  # A merge to main runs CI only. Production CD is manual and cannot be reached
+  # from this event.
+  push:
+    branches: [main]
+  # Manual CD reuses the same suite after its production authorization gate.
   workflow_call:
 
 # Cancel superseded runs on the same branch/PR to save minutes.
