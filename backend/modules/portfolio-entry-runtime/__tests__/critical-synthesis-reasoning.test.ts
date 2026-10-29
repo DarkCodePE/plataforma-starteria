@@ -17,10 +17,11 @@ async function captureBody(config: ReturnType<typeof loadCriticalSynthesisProvid
 }
 
 describe('Critical synthesis reasoning effort', () => {
-  it('defaults only synthesis to low and requires parameter support', async () => {
+  // low bajó la conformance de 8/8 a 4/8 en las fixtures KAN-114: por defecto queda apagado.
+  it('defaults to no reasoning parameters', async () => {
     const body = await captureBody(loadCriticalSynthesisProviderConfig(env));
-    expect(body.reasoning).toEqual({ effort: 'low' });
-    expect(body.provider).toEqual({ require_parameters: true });
+    expect(body).not.toHaveProperty('reasoning');
+    expect(body).not.toHaveProperty('provider');
   });
 
   it.each(['low', 'medium', 'high'])('sends configured effort %s', async (effort) => {

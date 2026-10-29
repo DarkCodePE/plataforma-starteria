@@ -47,8 +47,9 @@ describe('ResilientStructuredModelAdapter', () => {
     }
   });
 
-  it('keeps fallback for rate limiting', async () => {
-    const primary = { generate: vi.fn().mockResolvedValue({ ...result('primary', null, 'TECHNICAL_ERROR'), technical_error: 'Provider request failed status=429' }) } as unknown as StructuredModelAdapter;
+  // 402 = la cuenta del proveedor principal se quedó sin saldo: el respaldo sí ayuda.
+  it.each([429, 402])('keeps fallback for status %s', async (status) => {
+    const primary = { generate: vi.fn().mockResolvedValue({ ...result('primary', null, 'TECHNICAL_ERROR'), technical_error: `Provider request failed status=${status}` }) } as unknown as StructuredModelAdapter;
     const fallback = { generate: vi.fn().mockResolvedValue(result('fallback', { ok: true })) } as unknown as StructuredModelAdapter;
     expect((await new ResilientStructuredModelAdapter(primary, fallback).generate(input)).validated_output).toEqual({ ok: true });
     expect(fallback.generate).toHaveBeenCalledOnce();

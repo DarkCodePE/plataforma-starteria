@@ -54,7 +54,7 @@ function positiveNumber(raw: string | undefined, fallback: number, name = 'PORTF
 }
 
 function synthesisReasoningEffort(raw: string | undefined): PortfolioEntryProviderConfig['reasoningEffort'] {
-  const value = raw === undefined ? 'low' : raw.trim();
+  const value = raw === undefined ? 'none' : raw.trim();
   if (value === '' || value === 'none') return undefined;
   if (value === 'low' || value === 'medium' || value === 'high') return value;
   throw new Error('PORTFOLIO_ENTRY_SYNTHESIS_REASONING_EFFORT must be low, medium, high, none or empty.');
