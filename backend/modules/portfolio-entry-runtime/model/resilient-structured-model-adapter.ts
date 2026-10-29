@@ -35,11 +35,11 @@ function isFallbackEligibleResult(result: ModelExecutionResult<unknown>): boolea
   if (result.error_type === 'SCHEMA_ERROR') return true;
   const technical = result.technical_error ?? '';
   return /timeout|transport|status=(429|5\d\d)|status=429|provider request failed/i.test(technical)
-    && !/status=(401|403)|auth|configuration|config/i.test(technical);
+    && !/status=4(?!29|02)\d\d|auth|configuration|config/i.test(technical);
 }
 
 function isFallbackEligibleError(error: unknown): boolean {
   const message = error instanceof Error ? error.message : String(error);
   return /timeout|transport|status=(429|5\d\d)|provider request failed|schema/i.test(message)
-    && !/status=(401|403)|auth|configuration|config/i.test(message);
+    && !/status=4(?!29|02)\d\d|auth|configuration|config/i.test(message);
 }

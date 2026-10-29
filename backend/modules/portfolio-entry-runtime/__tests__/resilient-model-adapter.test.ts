@@ -33,6 +33,28 @@ describe('ResilientStructuredModelAdapter', () => {
     expect(output.validated_output).toEqual({ valid: true });
   });
 
+  it.each([400, 404, 422])('does not use fallback for request rejection %s, returned or thrown', async (status) => {
+    const message = `Provider request failed status=${status}`;
+    for (const thrown of [false, true]) {
+      const failure = { ...result('primary', null, 'TECHNICAL_ERROR'), technical_error: message };
+      const generate = thrown ? vi.fn().mockRejectedValue(new Error(message)) : vi.fn().mockResolvedValue(failure);
+      const primary = { generate } as unknown as StructuredModelAdapter;
+      const fallback = { generate: vi.fn() } as unknown as StructuredModelAdapter;
+      const attempt = new ResilientStructuredModelAdapter(primary, fallback).generate(input);
+      if (thrown) await expect(attempt).rejects.toThrow(message);
+      else expect(await attempt).toEqual(failure);
+      expect(fallback.generate).not.toHaveBeenCalled();
+    }
+  });
+
+  // 402 = la cuenta del proveedor principal se quedó sin saldo: el respaldo sí ayuda.
+  it.each([429, 402])('keeps fallback for status %s', async (status) => {
+    const primary = { generate: vi.fn().mockResolvedValue({ ...result('primary', null, 'TECHNICAL_ERROR'), technical_error: `Provider request failed status=${status}` }) } as unknown as StructuredModelAdapter;
+    const fallback = { generate: vi.fn().mockResolvedValue(result('fallback', { ok: true })) } as unknown as StructuredModelAdapter;
+    expect((await new ResilientStructuredModelAdapter(primary, fallback).generate(input)).validated_output).toEqual({ ok: true });
+    expect(fallback.generate).toHaveBeenCalledOnce();
+  });
+
   it('does not use fallback for auth failures', async () => {
     const primary = { generate: vi.fn().mockResolvedValue({ ...result('primary', null, 'TECHNICAL_ERROR'), technical_error: 'Provider request failed status=401' }) } as unknown as StructuredModelAdapter;
     const fallback = { generate: vi.fn() } as unknown as StructuredModelAdapter;

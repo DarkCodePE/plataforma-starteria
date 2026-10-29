@@ -23,7 +23,7 @@ import type { PortfolioEntryLiveUnderstandingSynthesisRequest, PortfolioEntryLiv
 import type { CompletePortfolioEntryIdempotencyInput } from '../application/portfolio-entry-idempotency.repository';
 import { InMemoryCriticalHandoffGenerationRepository } from '../infrastructure/in-memory-critical-handoff-generation.repository';
 import { InMemoryPortfolioEntryIdempotencyRepository } from '../infrastructure/in-memory-portfolio-entry-idempotency.repository';
-import { buildPortfolioEntryRouter } from '../portfolio-entry.router';
+import { buildPortfolioEntryRouter, configuredLiveUnderstandingSynthesizer } from '../portfolio-entry.router';
 
 const base = '/api/v1/public/portfolio-entry';
 
@@ -1615,6 +1615,63 @@ describe('Portfolio Entry Critical Handoff generation API', () => {
     const ready = await waitForGeneration(app, sessionId, turn.token, 'READY');
     expect(ready.body.data).toMatchObject({ status: 'READY', failureClass: null, retryable: false });
     expect((await repository.getLatestCriticalHandoff(sessionId)).artifact).not.toBeNull();
+  });
+
+  it.each([400, 404])('permits retry after the reasoning parameters are rejected with HTTP %s', async (status) => {
+    vi.stubEnv('PORTFOLIO_ENTRY_API_KEY', 'test-key');
+    vi.stubEnv('PORTFOLIO_ENTRY_SYNTHESIS_REASONING_EFFORT', 'low');
+    vi.stubEnv('PORTFOLIO_ENTRY_FALLBACK_API_KEY', 'test-fallback-key');
+    const fetchImpl = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ error: {
+        code: 'unsupported_parameters', message: 'No endpoints support the requested parameters',
+      } }), { status }))
+      .mockImplementationOnce(async (_url: string, init: RequestInit) => {
+        const body = JSON.parse(init.body as string);
+        const snapshot = JSON.parse(body.input[1].content);
+        const synthesis = supportedSynthesis({ basis_status: 'insufficient_basis' });
+        synthesis.candidate_first_movement = null;
+        synthesis.reasoning_metadata.selected_lenses = [];
+        synthesis.decision_frame.decision_authority = 'unknown';
+        synthesis.provenance = [{
+          id: 'authority-unknown', claim_ref: 'decision_frame.decision_authority',
+          origin: 'AI_INFERRED', review_disposition: 'UNREVIEWED',
+          source_refs: [snapshot.source_refs[0]], source_path: null, source_text: null, recorded_at: null,
+        }];
+        return new Response(JSON.stringify({ output_text: JSON.stringify(synthesis) }));
+      });
+    vi.stubGlobal('fetch', fetchImpl);
+    try {
+      const live = configuredLiveUnderstandingSynthesizer();
+      const { app } = makeApp({
+        synthesize: (input) => input.purpose === 'critical_handoff' ? live.synthesize(input) : Promise.resolve(supportedSynthesis()),
+        synthesizeDetailed: (input) => input.purpose === 'critical_handoff'
+          ? live.synthesizeDetailed!(input) : Promise.resolve({ synthesis: supportedSynthesis(), modelExecution: undefined }),
+      });
+      const turn = await submitTurn(app);
+      const sessionId = turn.body.data.id as string;
+      const checkpoint = await request(app).post(`${base}/sessions/${sessionId}/guided-exploration`)
+        .set('X-Starteria-Entry-Token', turn.token).set('Idempotency-Key', `reasoning-${status}-checkpoint`)
+        .send({ expectedRevision: turn.body.data.revision, choice: 'provisional_route' }).expect(200);
+      const handoffPath = `${base}/sessions/${sessionId}/critical-handoff`;
+      const materialize = () => request(app).post(handoffPath)
+        .set('X-Starteria-Entry-Token', turn.token).set('Idempotency-Key', `reasoning-${status}-generate`)
+        .send({ expectedRevision: checkpoint.body.data.revision });
+      await materialize().expect(202);
+      const failed = await waitForGeneration(app, sessionId, turn.token, 'FAILED');
+      expect(failed.body.data).toMatchObject({ status: 'FAILED', failureClass: 'provider_failure', retryable: true, attempt: 1 });
+      expect(JSON.stringify(failed.body)).not.toMatch(/unsupported_parameters|No endpoints|test-key/);
+      expect(fetchImpl).toHaveBeenCalledTimes(1);
+      const retry = await materialize().expect(202);
+      expect(retry.body.data.generation).toMatchObject({ status: 'GENERATING', attempt: 2 });
+      await waitForGeneration(app, sessionId, turn.token, 'READY');
+      expect(fetchImpl).toHaveBeenCalledTimes(2);
+      for (const [, init] of fetchImpl.mock.calls) {
+        expect(JSON.parse(init.body)).toMatchObject({ reasoning: { effort: 'low' }, provider: { require_parameters: true } });
+      }
+    } finally {
+      vi.unstubAllGlobals();
+      vi.unstubAllEnvs();
+    }
   });
 
   it('exposes sanitized failure and permits a retry after FAILED', async () => {
