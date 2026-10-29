@@ -20,7 +20,9 @@ export function PortfolioOverviewHome({
   copilotAvailable = false,
 }: Props) {
   const fronts = model.strategicUnits ?? [];
-  const initiatives = fronts.flatMap((front) => front.challenges.flatMap((challenge) => challenge.initiatives));
+  const linkedInitiatives = fronts.flatMap((front) => front.challenges.flatMap((challenge) => challenge.initiatives));
+  const independentInitiatives = model.independentInitiatives ?? [];
+  const initiatives = [...linkedInitiatives, ...independentInitiatives];
   const assignments = model.handoffAssignments ?? [];
   const challengeAssignments = assignments.filter((assignment) => assignment.targetKind === 'CHALLENGE');
   const activeFront = fronts[0] ?? null;
@@ -104,7 +106,7 @@ export function PortfolioOverviewHome({
     </section>
 
     <section className="grid gap-3 sm:grid-cols-3" aria-label="Resumen del portafolio">
-      <Counter icon={<BriefcaseBusiness size={18} />} label="Projects canónicos" value={initiatives.length} dataMetric="canonical-projects" detail="Sólo Project + InitiativePortfolioMeta" />
+      <Counter icon={<BriefcaseBusiness size={18} />} label="Projects canónicos" value={initiatives.length} dataMetric="canonical-projects" detail={`${linkedInitiatives.length} vinculados · ${independentInitiatives.length} independientes`} />
       <Counter icon={<CheckSquare size={18} />} label="Assignments" value={assignments.length} dataMetric="assignments" detail={`${sentCount} procesadas · ${viewedCount} con enlace abierto`} />
       <Counter icon={<AlertTriangle size={18} />} label="Alertas o decisiones" value={actionableCount} dataMetric="actionable" detail="Intervenciones y decisiones persistidas" />
     </section>
@@ -146,6 +148,15 @@ export function PortfolioOverviewHome({
         })}</div>
       </article>)}</div>}
       {challengeAssignments.length > 0 ? <p className="mt-4 text-xs leading-5 text-slate-500">Los encargos CHALLENGE permanecen vinculados al reto hasta que exista una iniciativa canónica resultante.</p> : null}
+      {independentInitiatives.length > 0 ? <section className="mt-5 rounded-xl border border-slate-200 bg-slate-50 p-4 md:p-5" aria-labelledby="independent-initiatives-title">
+        <p className="text-xs font-bold uppercase tracking-wide text-violet-700">Sin frente o reto principal</p>
+        <h3 id="independent-initiatives-title" className="mt-1 text-lg font-semibold text-slate-950">Iniciativas independientes</h3>
+        <p className="mt-1 text-sm text-slate-600">Projects de tu organización que conservan identidad propia sin heredar un reto ficticio.</p>
+        <ul className="mt-3 grid gap-2 sm:grid-cols-2">{independentInitiatives.map((initiative) => <li key={initiative.initiativeId} className="rounded-lg border border-slate-200 bg-white p-3">
+          <a href={`/portfolio/iniciativas?initiativeId=${encodeURIComponent(initiative.initiativeId)}`} className="font-semibold text-violet-900 underline-offset-4 hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2">Abrir iniciativa {initiative.title ?? initiative.initiativeId}</a>
+          <p className="mt-1 text-xs text-slate-600">Project: {initiative.currentExecutionState.projectStatus ?? 'estado no disponible'} · sin vinculación estratégica inventada</p>
+        </li>)}</ul>
+      </section> : null}
     </section>
   </div>;
 }

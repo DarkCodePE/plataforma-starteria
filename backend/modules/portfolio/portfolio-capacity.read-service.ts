@@ -43,7 +43,7 @@ export interface PortfolioCapacityReading {
 export class PortfolioCapacityReadService {
   constructor(private prisma: PrismaClient) {}
 
-  async get(scope: PortfolioScope = { all: true, organizationIds: [] }): Promise<PortfolioCapacityReading> {
+  async get(scope: PortfolioScope = { all: false, organizationIds: [] }): Promise<PortfolioCapacityReading> {
     const fronts = await this.prisma.strategicFront.findMany({
       where: { status: { in: ['draft', 'active'] }, ...frontScopeWhere(scope) },
       include: { challenges: { include: { initiativeMetas: { select: { status: true, requiresExternalCapability: true } } } } },

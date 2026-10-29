@@ -56,13 +56,11 @@ export class PortfolioService {
 
   async createStrategicFront(input: CreateStrategicFrontInput, authority: PortfolioWriteAuthority) {
     return tenantWriteTransaction(this.prisma, async (tx) => {
-      const organizationId = authority.platformAdmin
-        ? input.organizationId ?? authority.organizationId
-        : authority.organizationId;
-      if (!organizationId || (!authority.platformAdmin && input.organizationId && input.organizationId !== organizationId)) {
+      const organizationId = authority.organizationId;
+      if (!organizationId || (input.organizationId && input.organizationId !== organizationId)) {
         throw AppError.notFound('Portfolio resource', 'PORTFOLIO_RESOURCE_NOT_FOUND');
       }
-      if (!authority.platformAdmin) await assertUserInTenant(tx, authority.actorUserId, organizationId);
+      await assertUserInTenant(tx, authority.actorUserId, organizationId);
       await assertUserInTenant(tx, input.ownerId, organizationId);
       return tx.strategicFront.create({
         data: { ...input, organizationId } as any,
@@ -107,7 +105,7 @@ export class PortfolioService {
       where: { id: strategicFrontId },
     });
     // Un frente de otra organización responde igual que uno inexistente (no confirma IDs ajenos).
-    const inScope = !scope || scope.all || Boolean(front?.organizationId && scope.organizationIds.includes(front.organizationId));
+    const inScope = !scope || Boolean(front?.organizationId && scope.organizationIds.includes(front.organizationId));
     if (!front || !inScope) throw AppError.notFound('Frente estratégico', 'FRONT_NOT_FOUND', { hint: 'Confirma el ID del frente.' });
 
     return this.prisma.challenge.findMany({

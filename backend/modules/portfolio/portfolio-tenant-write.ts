@@ -5,7 +5,6 @@ type TenantDb = any;
 export type PortfolioWriteAuthority = {
   organizationId: string | null | undefined;
   actorUserId: string | null | undefined;
-  platformAdmin?: boolean;
 };
 
 const denied = (): never => {
@@ -55,12 +54,7 @@ export async function assertUserInTenant(tx: TenantDb, userId: string | null | u
     select: { id: true, organizationId: true },
   });
   if (!user) denied();
-  if (user.organizationId === organizationId) return;
-  const membership = await tx.organizationMember?.findFirst?.({
-    where: { userId, organizationId },
-    select: { id: true },
-  });
-  if (!membership) denied();
+  if (user.organizationId !== organizationId) denied();
 }
 
 export function assertSameTenant(expected: string, actual: string | null | undefined): void {

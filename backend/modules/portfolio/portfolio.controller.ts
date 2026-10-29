@@ -68,13 +68,10 @@ export class PortfolioController {
         ownerId: req.body.ownerId ?? req.user?.id,
         // Sin organización explícita, el frente queda en la organización de quien lo crea
         // (portfolio-scope.ts): deja de verse desde otras organizaciones.
-        organizationId: req.user?.role === 'admin'
-          ? req.body.organizationId ?? primaryOrganizationId ?? undefined
-          : primaryOrganizationId ?? undefined,
+        organizationId: primaryOrganizationId ?? undefined,
       }, {
         organizationId: primaryOrganizationId,
         actorUserId: req.user?.id,
-        platformAdmin: req.user?.role === 'admin',
       });
       res.status(201).json({ success: true, data });
     } catch (err) {

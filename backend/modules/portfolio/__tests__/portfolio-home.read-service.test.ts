@@ -1,16 +1,18 @@
 import { describe, expect, it, vi } from 'vitest';
 import { PortfolioHomeReadService } from '../portfolio-home.read-service';
 
-function makePrisma(fronts: any[] = [], reading: any | null = null) {
+function makePrisma(fronts: any[] = [], reading: any | null = null, independentProjects: any[] = []) {
   const strategicFrontFindMany = vi.fn().mockResolvedValue(fronts);
+  const projectFindMany = vi.fn().mockResolvedValue(independentProjects);
   const portfolioBootstrapSessionFindFirst = vi.fn().mockResolvedValue(
     reading ? { readings: [reading] } : null,
   );
 
   return {
     strategicFront: { findMany: strategicFrontFindMany },
+    project: { findMany: projectFindMany },
     portfolioBootstrapSession: { findFirst: portfolioBootstrapSessionFindFirst },
-    spies: { strategicFrontFindMany, portfolioBootstrapSessionFindFirst },
+    spies: { strategicFrontFindMany, projectFindMany, portfolioBootstrapSessionFindFirst },
   };
 }
 
@@ -112,10 +114,38 @@ describe('PortfolioHomeReadService', () => {
     const result = await new PortfolioHomeReadService(makePrisma()).getHome('user-1');
 
     expect(result.strategicUnits).toEqual([]);
+    expect(result.independentInitiatives).toEqual([]);
     expect(result.attention).toEqual([]);
     expect(result.pendingDecisions).toEqual([]);
     expect(result.recommendations).toEqual([]);
     expect(result.portfolioReading.source).toBe('unavailable');
+  });
+
+  it('includes same-tenant Projects that are independent from fronts and challenges', async () => {
+    const independent = project({ id: 'project-independent', name: 'Independent initiative' });
+    const prisma = makePrisma(
+      [front({ challenges: [challenge({ initiativeMetas: [initiativeMeta(project())] })] })],
+      null,
+      [independent],
+    );
+
+    const result = await new PortfolioHomeReadService(prisma as any)
+      .getHome('user-1', { all: false, organizationIds: ['org-a'] });
+
+    expect(result.independentInitiatives).toEqual([
+      expect.objectContaining({
+        initiativeId: 'project-independent',
+        title: 'Independent initiative',
+        strategicFrontId: null,
+        challengeId: null,
+      }),
+    ]);
+    expect(prisma.spies.projectFindMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({
+        organizationId: { in: ['org-a'] },
+        portfolioMeta: { none: {} },
+      }),
+    }));
   });
 
   it('preserves challenges without initiatives and derives invitation visibility factually', async () => {
@@ -322,10 +352,11 @@ describe('PortfolioHomeReadService — asignaciones de handoff por organización
     expect(JSON.stringify(home)).not.toContain('orphan');
   });
 
-  it('el admin ve todas', async () => {
+  it('el admin solo ve su organizacion canonica', async () => {
     const prisma = prismaWithProjections(rows);
-    const home = await new PortfolioHomeReadService(prisma as any).getHome('u1', { all: true, organizationIds: [] });
-    expect(JSON.stringify(home)).toContain('b-1');
+    const home = await new PortfolioHomeReadService(prisma as any).getHome('u1', { all: true, organizationIds: ['org-a'] });
+    expect(JSON.stringify(home)).toContain('a-1');
+    expect(JSON.stringify(home)).not.toContain('b-1');
   });
 
   it('no presenta una reserva idempotente en curso como fallo SMTP', async () => {

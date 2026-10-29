@@ -8,6 +8,10 @@ import { createCycleStore, makeCyclePrisma, seedCycleProject } from './cycle-tes
 function seed(governance?: { mode: string; portfolioLeadUserId: string | null }) {
   const store = createCycleStore();
   const project = seedCycleProject(store, { currentStep: 4 });
+  store.user.push(
+    { id: 'lead-1', organizationId: project.organizationId },
+    { id: 'lead-2', organizationId: project.organizationId },
+  );
   store.initiativeCycle.push({ id: 'cycle-1', projectId: project.id, cycleNumber: 1, startStep: 0, currentStep: 4, status: 'active' });
   if (governance) store.initiativeGovernance.push({ id: 'gov-1', projectId: project.id, ...governance });
   return { service: new AdaptiveCoreService(makeCyclePrisma(store) as any), projectId: project.id };

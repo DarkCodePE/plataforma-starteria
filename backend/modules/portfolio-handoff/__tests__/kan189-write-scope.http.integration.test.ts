@@ -1,10 +1,8 @@
-import express from 'express';
 import request from 'supertest';
 import { PrismaClient } from '@prisma/client';
-import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createApp } from '../../../app';
 import { generateAccessToken } from '../../auth/token.service';
-import { buildPortfolioHandoffDeliveryRouter } from '../portfolio-handoff-invitation.router';
 
 const enabled = process.env.KAN189_DB_E2E === '1';
 const databaseUrl = process.env.E2E_DATABASE_URL;
@@ -156,7 +154,7 @@ suite('KAN-189 target-scoped write authorization with PostgreSQL', () => {
     await prisma.$disconnect();
   });
 
-  it('denies secondary membership B, allows an explicit B grant, then fails closed for C, revoke and legacy null', async () => {
+  it('denies secondary membership and explicit grants outside the canonical organization', async () => {
     const auth = { Authorization: `Bearer ${token()}` };
     const beforeBriefs = await prisma.challengeActivationBrief.count({ where: { challengeId: ids.challengeB } });
     const beforeAssignments = await prisma.portfolioHandoffAssignment.count({ where: { challengeId: ids.challengeB } });
@@ -192,37 +190,15 @@ suite('KAN-189 target-scoped write authorization with PostgreSQL', () => {
       .set(auth)
       .set('Idempotency-Key', 'kan189-granted-brief')
       .send(briefBody)
-      .expect(201);
-    const assignment = await request(app)
+      .expect(404);
+    await request(app)
       .post(`/api/v1/portfolio/challenges/${ids.challengeB}/handoff-assignments`)
       .set(auth)
       .set('Idempotency-Key', 'kan189-granted-assignment')
       .send(assignmentBody)
-      .expect(201);
-
-    const batchSend = vi.fn().mockResolvedValue({ status: 'COMPLETED', id: 'kan189-batch' });
-    const deliveryApp = express();
-    deliveryApp.use(express.json());
-    deliveryApp.use(buildPortfolioHandoffDeliveryRouter(
-      {} as any,
-      ((req: any, _res: any, next: any) => {
-        req.user = { id: ids.leadA, email: 'kan189-scope-lead-a@starteria.test', role: 'portfolio_lead', roles: ['portfolio_lead'] };
-        next();
-      }) as any,
-      ((_req: any, _res: any, next: any) => next()) as any,
-      ((_req: any, _res: any, next: any) => next()) as any,
-      { send: batchSend } as any,
-    ));
-    deliveryApp.use((error: any, _req: any, res: any, _next: any) => {
-      res.status(error?.statusCode ?? 500).json({ error: { code: error?.code ?? 'INTERNAL_ERROR', message: error?.message } });
-    });
-
-    await request(deliveryApp)
-      .post('/batch/invitations')
-      .set('Idempotency-Key', 'kan189-granted-batch')
-      .send({ challengeId: ids.challengeB, items: [{ assignmentId: assignment.body.data.assignment.id, expectedVersion: 1 }] })
-      .expect(200);
-    expect(batchSend).toHaveBeenCalledOnce();
+      .expect(404);
+    expect(await prisma.challengeActivationBrief.count({ where: { challengeId: ids.challengeB } })).toBe(beforeBriefs);
+    expect(await prisma.portfolioHandoffAssignment.count({ where: { challengeId: ids.challengeB } })).toBe(beforeAssignments);
 
     await request(app)
       .post(`/api/v1/portfolio/challenges/${ids.challengeC}/activation-briefs`)
@@ -231,36 +207,12 @@ suite('KAN-189 target-scoped write authorization with PostgreSQL', () => {
       .send({ ...briefBody, strategicContextRefs: { challengeId: ids.challengeC } })
       .expect(404);
 
-    await prisma.organizationPortfolioAccessGrant.deleteMany({
-      where: { userId: ids.leadA, organizationId: ids.orgB, capability: 'portfolio:write' },
-    });
-    await request(app)
-      .patch(`/api/v1/portfolio/handoff-assignments/${assignment.body.data.assignment.id}/preparation`)
-      .set(auth)
-      .set('Idempotency-Key', 'kan189-revoked-assignment')
-      .send({
-        expectedVersion: 1,
-        contextNote: 'Must remain unchanged',
-        invitedEmailNormalized: assignmentBody.invitedEmailNormalized,
-        members: assignmentBody.members,
-      })
-      .expect(404);
-    await request(deliveryApp)
-      .post('/batch/invitations')
-      .set('Idempotency-Key', 'kan189-revoked-batch')
-      .send({ challengeId: ids.challengeB, items: [{ assignmentId: assignment.body.data.assignment.id, expectedVersion: 1 }] })
-      .expect(404);
-    expect(batchSend).toHaveBeenCalledOnce();
-
     await request(app)
       .post(`/api/v1/portfolio/challenges/${ids.challengeLegacy}/activation-briefs`)
       .set(auth)
       .set('Idempotency-Key', 'kan189-legacy-denied')
       .send({ ...briefBody, strategicContextRefs: { challengeId: ids.challengeLegacy } })
       .expect(404);
-    expect(await prisma.portfolioHandoffAssignment.findUniqueOrThrow({
-      where: { id: assignment.body.data.assignment.id },
-      select: { version: true, contextNote: true },
-    })).toEqual({ version: 1, contextNote: assignmentBody.contextNote });
+    expect(await prisma.portfolioHandoffAssignment.count({ where: { challengeId: ids.challengeB } })).toBe(beforeAssignments);
   });
 });

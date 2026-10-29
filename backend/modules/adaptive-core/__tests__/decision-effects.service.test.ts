@@ -21,6 +21,10 @@ function seedPresentedDecision(store: ReturnType<typeof createCycleStore>, outco
   ];
   store.teamMember.push({ userId: ownerId, projectId, status: 'ACTIVE' });
   store.teamMember.push({ userId: leadId, projectId, status: 'ACTIVE' });
+  store.user.push(
+    { id: ownerId, organizationId: project.organizationId },
+    { id: leadId, organizationId: project.organizationId },
+  );
   const cycle = {
     id: `cycle-${projectId}`,
     projectId,

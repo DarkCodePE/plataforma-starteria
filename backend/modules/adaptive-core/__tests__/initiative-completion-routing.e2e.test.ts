@@ -207,15 +207,15 @@ describeC2BE2E('R3-C2B completion routing E2E', () => {
       prisma.adaptiveStepOutput.findUniqueOrThrow({ where: { id: seeded.output.id } }),
       prisma.adaptiveAdaptationEvent.findMany({ where: { projectId: selfProjectId } }),
     ]);
-    expect(project.status).toBe('COMPLETED');
+    expect(project.status).toBe('IN_PROGRESS');
     expect(cycle.status).toBe('completed');
     expect(cycle.completedAt).toBeTruthy();
     expect(output.status).toBe('confirmed');
     expect(output.outputJson).toMatchObject({ lifecycleProjection: 'completed', completionRoute: 'owner_completed' });
-    expect(events.some((event) => event.eventType === 'initiative_completed')).toBe(true);
+    expect(events.some((event) => event.eventType === 'cycle_completed')).toBe(true);
     expect(events.some((event) => event.eventType === 'initiative_closed')).toBe(false);
     const selfHistory = await service.getInitiativeHistory(selfProjectId, ownerId, 'participante');
-    expect(selfHistory.summary.status).toBe('COMPLETED');
+    expect(selfHistory.summary.status).toBe('IN_PROGRESS');
     expect(selfHistory.lifecycleProjection).toBe('completed');
     expect(selfHistory.cycles[0]).toMatchObject({ id: seeded.cycle.id, status: 'completed' });
     await expect(service.confirmStep4Output(selfProjectId, ownerId, 'participante', {

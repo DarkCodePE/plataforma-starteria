@@ -77,7 +77,6 @@ async function childOfChallenge(delegate: any, childId: string, challengeId: str
 
 export function scopeAllows(scope: PortfolioScope, resolved: Resolved): boolean {
   if (!resolved.found) return false;
-  if (scope.all) return true;
   return resolved.organizationId !== null && scope.organizationIds.includes(resolved.organizationId);
 }
 

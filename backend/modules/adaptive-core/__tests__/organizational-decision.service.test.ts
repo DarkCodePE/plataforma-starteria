@@ -23,6 +23,11 @@ function seedPresented(store: ReturnType<typeof createCycleStore>, overrides: Re
   store.teamMember.push({ userId: ownerId, projectId, status: 'ACTIVE' });
   store.teamMember.push({ userId: leadId, projectId, status: 'ACTIVE' });
   if (overrides.otherId) store.teamMember.push({ userId: overrides.otherId, projectId, status: 'ACTIVE' });
+  store.user.push(
+    { id: ownerId, organizationId: project.organizationId },
+    { id: leadId, organizationId: project.organizationId },
+    ...(overrides.otherId ? [{ id: overrides.otherId, organizationId: project.organizationId }] : []),
+  );
   store.initiativeGovernance.push({
     id: `gov-${projectId}`,
     projectId,

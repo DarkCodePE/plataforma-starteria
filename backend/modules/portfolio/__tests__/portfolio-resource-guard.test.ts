@@ -184,9 +184,10 @@ describe('escrituras de portafolio por ID respetan la organización (F-03)', () 
     expect(res.body?.error?.code).toBe('PORTFOLIO_RESOURCE_NOT_FOUND');
   });
 
-  it('el admin de plataforma puede escribir en cualquier organización', async () => {
-    currentUser = { id: 'admin-1', email: 'adm@x.io', role: 'admin' };
-    expect((await request(app()).delete('/api/v1/portfolio/strategic-fronts/front-b')).status).toBe(200);
+  it('admin no obtiene un bypass interorganización por su rol', async () => {
+    currentUser = { id: 'lead-a', email: 'adm@x.io', role: 'admin' };
+    expect((await request(app()).delete('/api/v1/portfolio/strategic-fronts/front-b')).status).toBe(404);
+    expect((await request(app()).delete('/api/v1/portfolio/strategic-fronts/front-a')).status).toBe(200);
   });
 
   it('una membresia secundaria no concede escritura sin grant target-scoped', async () => {
@@ -196,8 +197,8 @@ describe('escrituras de portafolio por ID respetan la organización (F-03)', () 
     expect(ok).not.toHaveBeenCalled();
 
     writeGrants['lead-multi'] = ['org-b'];
-    const allowed = await request(app()).delete('/api/v1/portfolio/strategic-fronts/front-b');
-    expect(allowed.status).toBe(200);
-    expect(ok).toHaveBeenCalledOnce();
+    const stillDenied = await request(app()).delete('/api/v1/portfolio/strategic-fronts/front-b');
+    expect(stillDenied.status).toBe(404);
+    expect(ok).not.toHaveBeenCalled();
   });
 });

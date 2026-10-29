@@ -1,12 +1,12 @@
-// Acceso a una iniciativa según el rol en su equipo (TeamMember.role). Lo encontró el swarm de roles
-// en producción (2026-10-10): las rutas de /api/v1/projects/:id sólo comprobaban que fueras miembro,
-// así que un VIEWER (o un sponsor, que entra como VIEWER) editaba la descripción, Step 0 y los Steps,
-// y cualquier usuario autenticado gestionaba el equipo de cualquier proyecto.
-//
-//   read   → cualquier miembro, y el Portfolio Lead asignado en InitiativeGovernance (§23).
-//   write  → OWNER o EDITOR: el trabajo de la iniciativa (Steps, checkpoints, datos del proyecto).
-//   manage → OWNER: el equipo y archivar.
-// admin pasa siempre; mentor lee y escribe como antes, pero no gestiona el equipo.
+/**
+ * Project authorization for the MVP v1.2 tenant and assignment invariants.
+ *
+ * - Every role, including admin, is constrained to its canonical organization.
+ * - Admin may operate within that tenant, never globally by role alone.
+ * - Mentor requires an explicit MentorSession (or an active TeamMember row).
+ * - Portfolio Lead assignment is read-only.
+ * - Pending team invitations do not expose corporate Project data.
+ */
 import type { NextFunction, Response } from 'express';
 import type { PrismaClient } from '@prisma/client';
 import type { AuthenticatedRequest } from '../../shared/types/auth.types';
@@ -19,32 +19,51 @@ const WRITE_ROLES = new Set(['OWNER', 'EDITOR']);
 export function assertProjectTeamAccess(input: {
   platformRole: string;
   teamRole: string | null;
-  /** TeamMember.status: una invitación PENDING lee, pero no escribe hasta aceptarla. */
   teamStatus?: string | null;
   isAssignedPortfolioLead: boolean;
+  isAssignedMentor?: boolean;
+  sameOrganization?: boolean;
   need: ProjectTeamNeed;
 }): void {
-  const { platformRole, teamRole, teamStatus, isAssignedPortfolioLead, need } = input;
+  const {
+    platformRole,
+    teamRole,
+    teamStatus,
+    isAssignedPortfolioLead,
+    isAssignedMentor = false,
+    sameOrganization = true,
+    need,
+  } = input;
+
+  if (!sameOrganization) {
+    throw AppError.notFound('Proyecto', 'PROJECT_NOT_FOUND');
+  }
   if (platformRole === 'admin') return;
-  if (platformRole === 'mentor' && need !== 'manage') return;
+
+  if (platformRole === 'mentor' && isAssignedMentor) {
+    if (need === 'manage') {
+      throw AppError.forbidden('Solo el owner de la iniciativa puede hacer esto.', 'PROJECT_OWNER_REQUIRED');
+    }
+    return;
+  }
 
   if (!teamRole) {
     if (!isAssignedPortfolioLead) throw AppError.forbidden('No tienes acceso a este proyecto.', 'PROJECT_ACCESS_DENIED');
-    if (need !== 'read') throw AppError.forbidden('Sólo el equipo de la iniciativa puede avanzar sus Steps.', 'PROJECT_TEAM_ACCESS_REQUIRED');
+    if (need !== 'read') throw AppError.forbidden('Solo el equipo de la iniciativa puede avanzar sus Steps.', 'PROJECT_TEAM_ACCESS_REQUIRED');
     return;
   }
-  if (need !== 'read' && teamStatus === 'PENDING') {
-    throw AppError.forbidden('Tu invitación a esta iniciativa está pendiente.', 'TEAM_INVITATION_PENDING', {
-      hint: 'Acepta la invitación desde la iniciativa para empezar a trabajar en ella.',
+  if (teamStatus === 'PENDING') {
+    throw AppError.forbidden('Tu invitacion a esta iniciativa esta pendiente.', 'TEAM_INVITATION_PENDING', {
+      hint: 'Acepta la invitacion para acceder al contenido corporativo.',
     });
   }
   if (need === 'write' && !WRITE_ROLES.has(teamRole)) {
-    throw AppError.forbidden('Tu rol en el equipo es de sólo lectura.', 'PROJECT_TEAM_ROLE_REQUIRED', {
-      hint: 'Pide al owner de la iniciativa que te dé rol de editor.',
+    throw AppError.forbidden('Tu rol en el equipo es de solo lectura.', 'PROJECT_TEAM_ROLE_REQUIRED', {
+      hint: 'Pide al owner de la iniciativa que te de rol de editor.',
     });
   }
   if (need === 'manage' && teamRole !== 'OWNER') {
-    throw AppError.forbidden('Sólo el owner de la iniciativa puede hacer esto.', 'PROJECT_OWNER_REQUIRED');
+    throw AppError.forbidden('Solo el owner de la iniciativa puede hacer esto.', 'PROJECT_OWNER_REQUIRED');
   }
 }
 
@@ -58,17 +77,28 @@ export function requireProjectTeamAccess(
       const projectId = req.params[param];
       const { id: userId, role } = req.user!;
       const resolvedNeed = typeof need === 'function' ? need(req) : need;
-      if (role === 'admin' || (role === 'mentor' && resolvedNeed !== 'manage')) return next();
-
-      const member = await prisma.teamMember.findFirst({ where: { projectId, userId }, select: { role: true, status: true } });
-      const isAssignedPortfolioLead = !member && Boolean(
-        (await (prisma as any).initiativeGovernance.findUnique({ where: { projectId } }))?.portfolioLeadUserId === userId,
+      const db = prisma as any;
+      const [project, user, member, governance, mentorSession] = await Promise.all([
+        db.project.findUnique({ where: { id: projectId }, select: { organizationId: true } }),
+        db.user.findUnique({ where: { id: userId }, select: { organizationId: true } }),
+        db.teamMember.findFirst({ where: { projectId, userId }, select: { role: true, status: true } }),
+        db.initiativeGovernance?.findUnique?.({ where: { projectId } }) ?? null,
+        role === 'mentor'
+          ? db.mentorSession?.findFirst?.({ where: { projectId, mentorId: userId }, select: { id: true } }) ?? null
+          : null,
+      ]);
+      const sameOrganization = Boolean(
+        project?.organizationId
+        && user?.organizationId
+        && project.organizationId === user.organizationId,
       );
       assertProjectTeamAccess({
         platformRole: role,
         teamRole: member?.role ?? null,
         teamStatus: member?.status ?? null,
-        isAssignedPortfolioLead,
+        isAssignedPortfolioLead: !member && governance?.portfolioLeadUserId === userId,
+        isAssignedMentor: Boolean(mentorSession),
+        sameOrganization,
         need: resolvedNeed,
       });
       next();

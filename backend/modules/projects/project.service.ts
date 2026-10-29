@@ -99,26 +99,30 @@ export class ProjectService {
   } as const;
 
   async listProjects(userId: string, role: Role): Promise<Project[]> {
+    const user = await this.prisma.user.findUnique({ where: { id: userId }, select: { organizationId: true } });
+    if (!user?.organizationId) return [];
     switch (role) {
       case 'admin':
         return this.prisma.project.findMany({
+          where: { organizationId: user.organizationId },
           include: this.projectInclude,
         }) as unknown as Project[];
 
       case 'mentor':
         return this.prisma.project.findMany({
           where: {
-            OR: [
-              { mentorSessions: { some: { mentorId: userId } } },
-              { status: 'EXPERT_SESSION_PENDING' },
-            ],
+            organizationId: user.organizationId,
+            mentorSessions: { some: { mentorId: userId } },
           },
           include: this.projectInclude,
         }) as unknown as Project[];
 
       default:
         return this.prisma.project.findMany({
-          where: { teamMembers: { some: { userId } } },
+          where: {
+            organizationId: user.organizationId,
+            teamMembers: { some: { userId, status: 'ACTIVE' } },
+          },
           include: this.projectInclude,
         }) as unknown as Project[];
     }
@@ -131,18 +135,22 @@ export class ProjectService {
     companyId: string;
     areaId?: string;
   }) {
-    const company = await tx.company.findFirst({
-      where: {
-        id: input.companyId,
-        deletedAt: null,
-        OR: [
-          { ownerUserId: input.userId },
-          { memberships: { some: { userId: input.userId, status: 'APPROVED' } } },
-          ...(input.role === 'admin' ? [{}] : []),
-        ],
-      },
-    });
-    if (!company) {
+    const [company, actor, project] = await Promise.all([
+      tx.company.findUnique({ where: { id: input.companyId }, include: { memberships: true } }),
+      tx.user.findUnique({ where: { id: input.userId }, select: { organizationId: true } }),
+      tx.project.findUnique({ where: { id: input.projectId }, select: { organizationId: true } }),
+    ]);
+    const sameTenant = Boolean(
+      company
+      && !company.deletedAt
+      && actor?.organizationId
+      && project?.organizationId === actor.organizationId
+      && (company.organizationId == null || company.organizationId === actor.organizationId),
+    );
+    const hasCompanyAccess = company?.ownerUserId === input.userId
+      || company?.memberships?.some((membership: any) => membership.userId === input.userId && membership.status === 'APPROVED')
+      || (input.role === 'admin' && company?.organizationId === actor?.organizationId);
+    if (!sameTenant || !hasCompanyAccess) {
       throw AppError.forbidden('No tienes acceso a esta empresa.', 'COMPANY_ACCESS_DENIED');
     }
     if (input.areaId) {
@@ -428,24 +436,28 @@ export class ProjectService {
   }
 
   async getProject(projectId: string, userId: string, role: Role): Promise<Project> {
-    const project = await this.prisma.project.findUnique({
-      where: { id: projectId },
-      include: this.projectInclude,
-    });
+    const [project, user] = await Promise.all([
+      this.prisma.project.findUnique({ where: { id: projectId }, include: this.projectInclude }),
+      this.prisma.user.findUnique({ where: { id: userId }, select: { organizationId: true } }),
+    ]);
 
-    if (!project) {
+    if (!project?.organizationId || !user?.organizationId || project.organizationId !== user.organizationId) {
       throw AppError.notFound('Proyecto', 'PROJECT_NOT_FOUND', {
         hint: 'Verifica el ID o vuelve al listado.',
       });
     }
 
-    if (role !== 'admin' && role !== 'mentor') {
-      const isMember = (project as any).teamMembers.some((m: any) => m.userId === userId);
-      if (!isMember) {
-        throw AppError.forbidden('No tienes acceso a este proyecto.', 'PROJECT_ACCESS_DENIED', {
-          hint: 'Solicita acceso al owner del proyecto.',
-        });
-      }
+    if (role === 'admin') return project as unknown as Project;
+
+    const isMember = (project as any).teamMembers.some((member: any) => member.userId === userId && member.status === 'ACTIVE');
+    const isAssignedMentor = role === 'mentor' && Boolean(await this.prisma.mentorSession.findFirst({
+      where: { projectId, mentorId: userId },
+      select: { id: true },
+    }));
+    if (!isMember && !isAssignedMentor) {
+      throw AppError.forbidden('No tienes acceso a este proyecto.', 'PROJECT_ACCESS_DENIED', {
+        hint: 'Solicita acceso al owner del proyecto.',
+      });
     }
 
     return project as unknown as Project;

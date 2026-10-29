@@ -90,5 +90,5 @@ projectRouter.post('/:id/adaptive-core/step1/output/confirm', canWrite, validate
 projectRouter.post('/:id/adaptive-core/step2/output/confirm', canWrite, validate(confirmBriefSchema), adaptiveCoreController.confirmStep2Output);
 projectRouter.post('/:id/adaptive-core/step3/output/confirm', canWrite, validate(confirmBriefSchema), adaptiveCoreController.confirmStep3Output);
 projectRouter.post('/:id/adaptive-core/step4/output/confirm', canWrite, validate(confirmBriefSchema), adaptiveCoreController.confirmStep4Output);
-projectRouter.patch('/:id/position', controller.updatePosition);
-projectRouter.patch('/:id/sponsor-data', validate(updateSponsorDataSchema), controller.updateSponsorData);
+projectRouter.patch('/:id/position', canWrite, controller.updatePosition);
+projectRouter.patch('/:id/sponsor-data', canWrite, validate(updateSponsorDataSchema), controller.updateSponsorData);

@@ -15,12 +15,13 @@ const model = {
     }], activationVisibility: 'initiative_exists' as const }],
     initiativeSummary: { total: 1, activeExecution: 1, pendingActivation: 1 }, attentionSummary: { total: 0, blockers: 0 }, nextGovernanceAction: null,
   }],
+  independentInitiatives: [],
   attention: [],
   pendingDecisions: [{ decisionId: null, requestId: 'decision-1', initiativeId: 'project-1', requestedDecision: 'Continuar', status: 'pending', recommendation: null, evidenceSummary: null, decisionAuthority: null, updatedAt: null }],
   recommendations: [],
   handoffAssignments: [{ assignmentId: 'assignment-challenge', targetKind: 'CHALLENGE', challengeRef: 'challenge-1', initiativeRef: null, initiativeOwnerRef: null, executionTeam: [], observers: [], handoffState: 'SENT', acceptedAt: null, rejectedAt: null, rejectionReason: null, portfolioResponse: null, startedAt: null, resultingInitiativeRef: null, lastMaterialEvent: 'sent', sourceEventRefs: [], projectionVersion: 1, generatedAt: '2026-10-24T08:00:00.000Z' }],
   generatedAt: '2026-10-24T08:00:00.000Z', learnings: [], learningsUnavailable: false,
-  availability: { strategicUnits: 'available', portfolioReading: 'available', handoffAssignments: 'available', learnings: 'available', capacity: 'available' },
+  availability: { strategicUnits: 'available', independentInitiatives: 'available', portfolioReading: 'available', handoffAssignments: 'available', learnings: 'available', capacity: 'available' },
   capacity: { unit: 'active_initiatives', totalActiveInitiatives: 1, fronts: [], signals: [], note: 'Capacidad medida en iniciativas activas.' },
 };
 
@@ -55,6 +56,28 @@ describe('PortfolioOverviewHome', () => {
     expect(screen.getAllByRole('button', { name: 'Crear nuevo frente estratégico' })).toHaveLength(1);
     fireEvent.click(action);
     expect(onOpenAdditionalFront).toHaveBeenCalledOnce();
+  });
+
+  it('shows independent same-organization Projects without inventing a front or challenge', () => {
+    const withIndependent = {
+      ...model,
+      independentInitiatives: [{
+        initiativeId: 'project-independent',
+        title: 'Iniciativa independiente',
+        strategicFrontId: null,
+        challengeId: null,
+        activationVisibility: 'initiative_active',
+        currentExecutionState: { projectStatus: 'IN_PROGRESS', step0Status: 'COMPLETED', currentStep: 2 },
+        blockers: [],
+      }],
+    };
+
+    render(<PortfolioOverviewHome model={withIndependent as any} onOpenCopilot={vi.fn()} onOpenAdditionalFront={vi.fn()} />);
+
+    expect(screen.getByRole('heading', { name: 'Iniciativas independientes' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Abrir iniciativa Iniciativa independiente' }))
+      .toHaveAttribute('href', '/portfolio/iniciativas?initiativeId=project-independent');
+    expect(screen.getByText('2', { selector: '[data-metric="canonical-projects"]' })).toBeInTheDocument();
   });
 
   it('uses the approved assignment labels in Portfolio Overview attention', () => {

@@ -175,7 +175,7 @@ suite('KAN-189 nested Portfolio writes with PostgreSQL A/B isolation', () => {
     expect(await prisma.executiveOutput.findUnique({ where: { id: output.id } })).toMatchObject({ initiativeId: null });
   });
 
-  it('does not turn secondary membership into write authority without an explicit portfolio:write grant', async () => {
+  it('does not let secondary memberships or grants widen the canonical tenant', async () => {
     await prisma.organizationMember.create({
       data: { organizationId: ids.orgB, userId: ids.userA, role: 'member' },
     });
@@ -192,8 +192,7 @@ suite('KAN-189 nested Portfolio writes with PostgreSQL A/B isolation', () => {
       },
     });
 
-    const granted = await resolvePortfolioWriteScope(prisma, { id: ids.userA, role: 'portfolio_lead' });
-    expect(granted.all).toBe(false);
-    expect(new Set(granted.organizationIds)).toEqual(new Set([ids.orgA, ids.orgB]));
+    await expect(resolvePortfolioWriteScope(prisma, { id: ids.userA, role: 'portfolio_lead' }))
+      .resolves.toEqual({ all: false, organizationIds: [ids.orgA] });
   });
 });

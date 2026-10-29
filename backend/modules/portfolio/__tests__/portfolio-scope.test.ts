@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { defaultOrganizationId, frontScopeWhere, resolvePortfolioScope } from '../portfolio-scope';
+import { defaultOrganizationId, frontScopeWhere, resolvePortfolioScope, resolvePortfolioWriteScope } from '../portfolio-scope';
 
 function prisma({ primary = null as string | null, members = [] as string[], grants = [] as string[] } = {}) {
   return {
@@ -10,61 +10,56 @@ function prisma({ primary = null as string | null, members = [] as string[], gra
 }
 
 describe('resolvePortfolioScope', () => {
-  it('admin de plataforma ve todas las organizaciones', async () => {
-    expect(await resolvePortfolioScope(prisma(), { id: 'u', role: 'admin' })).toEqual({ all: true, organizationIds: [] });
+  it('limits admin to the canonical organization', async () => {
+    expect(await resolvePortfolioScope(prisma({ primary: 'org-a', members: ['org-b'], grants: ['org-c'] }), { id: 'u', role: 'admin' }))
+      .toEqual({ all: false, organizationIds: ['org-a'] });
   });
 
-  // Auditoría E2E F-01: antes devolvía { all: true } — sin permiso de portafolio se veía todo.
-  it('quien no tiene acceso de portafolio NO recibe alcance global: sólo sus organizaciones', async () => {
+  it('never gives a global scope to a user without portfolio access', async () => {
     expect(await resolvePortfolioScope(prisma({ primary: 'org-a' }), { id: 'u', role: 'participante', permissions: new Set(['project:own']) }))
       .toEqual({ all: false, organizationIds: ['org-a'] });
     expect(await resolvePortfolioScope(prisma(), { id: 'u', role: 'participante', permissions: new Set() }))
       .toEqual({ all: false, organizationIds: [] });
   });
 
-  it('con portfolio:read ve su organización primaria, sus membresías y sus grants, sin repetir', async () => {
-    const scope = await resolvePortfolioScope(prisma({ primary: 'org-a', members: ['org-a', 'org-b'], grants: ['org-c'] }), { id: 'u', role: 'portfolio_lead', permissions: new Set(['portfolio:read', 'portfolio:write']) });
-    expect(scope.all).toBe(false);
-    expect(scope.organizationIds.sort()).toEqual(['org-a', 'org-b', 'org-c']);
+  it('does not let memberships or grants widen the canonical tenant', async () => {
+    const db = prisma({ primary: 'org-a', members: ['org-a', 'org-b'], grants: ['org-c'] });
+    await expect(resolvePortfolioScope(db, { id: 'u', role: 'portfolio_lead' }))
+      .resolves.toEqual({ all: false, organizationIds: ['org-a'] });
+    await expect(resolvePortfolioWriteScope(db, { id: 'u', role: 'portfolio_lead' }))
+      .resolves.toEqual({ all: false, organizationIds: ['org-a'] });
+    expect(db.organizationMember.findMany).not.toHaveBeenCalled();
+    expect(db.organizationPortfolioAccessGrant.findMany).not.toHaveBeenCalled();
   });
 
-  it('sin organización no ve ningún frente, tampoco legacy sin tenant', async () => {
-    const scope = await resolvePortfolioScope(prisma(), { id: 'u', role: 'portfolio_lead', permissions: new Set(['portfolio:read']) });
+  it('fails closed when there is no canonical organization', async () => {
+    const scope = await resolvePortfolioScope(prisma(), { id: 'u', role: 'portfolio_lead' });
     expect(scope).toEqual({ all: false, organizationIds: [] });
     expect(frontScopeWhere(scope)).toEqual({ organizationId: { in: [] } });
+  });
+
+  it('fails closed instead of throwing when the canonical source is unavailable', async () => {
+    const db = prisma();
+    db.user.findUnique = vi.fn().mockRejectedValue(new Error('down'));
+    await expect(resolvePortfolioScope(db, { id: 'u', role: 'portfolio_lead' }))
+      .resolves.toEqual({ all: false, organizationIds: [] });
   });
 });
 
 describe('frontScopeWhere', () => {
-  it('admin no filtra', () => {
-    expect(frontScopeWhere({ all: true, organizationIds: [] })).toEqual({});
+  it('does not turn the legacy all flag into a cross-tenant bypass', () => {
+    expect(frontScopeWhere({ all: true, organizationIds: ['org-a'] })).toEqual({ organizationId: { in: ['org-a'] } });
   });
-  it('filtra estrictamente por organización y excluye frentes legacy sin tenant', () => {
+
+  it('filters strictly by canonical organization', () => {
     expect(frontScopeWhere({ all: false, organizationIds: ['org-a'] })).toEqual({ organizationId: { in: ['org-a'] } });
   });
 });
 
 describe('defaultOrganizationId', () => {
-  it('usa la organización primaria de quien crea', async () => {
+  it('uses the creator canonical organization', async () => {
     expect(await defaultOrganizationId(prisma({ primary: 'org-a' }), 'u')).toBe('org-a');
     expect(await defaultOrganizationId(prisma(), 'u')).toBeNull();
     expect(await defaultOrganizationId(prisma(), undefined)).toBeNull();
-  });
-});
-
-describe('resolvePortfolioScope con schema incompleto (hotfix 500 en producción)', () => {
-  it('si la tabla de grants no existe, sigue con la organización primaria y las membresías', async () => {
-    const p = prisma({ primary: 'org-a', members: ['org-b'] });
-    p.organizationPortfolioAccessGrant.findMany = vi.fn().mockRejectedValue(new Error('relation "OrganizationPortfolioAccessGrant" does not exist'));
-    const scope = await resolvePortfolioScope(p, { id: 'u', role: 'portfolio_lead', permissions: new Set(['portfolio:read']) });
-    expect(scope.all).toBe(false);
-    expect(scope.organizationIds.sort()).toEqual(['org-a', 'org-b']);
-  });
-
-  it('si fallan todas las fuentes, el alcance queda vacío (nunca abierto) y no tira', async () => {
-    const boom = vi.fn().mockRejectedValue(new Error('down'));
-    const p = { user: { findUnique: boom }, organizationMember: { findMany: boom }, organizationPortfolioAccessGrant: { findMany: boom } };
-    await expect(resolvePortfolioScope(p, { id: 'u', role: 'portfolio_lead', permissions: new Set(['portfolio:read']) }))
-      .resolves.toEqual({ all: false, organizationIds: [] });
   });
 });

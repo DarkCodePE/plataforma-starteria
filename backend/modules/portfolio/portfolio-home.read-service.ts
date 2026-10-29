@@ -155,6 +155,7 @@ export type PortfolioLearningView = {
 export type PortfolioHomeReadModel = {
   availability: {
     strategicUnits: 'available' | 'unavailable';
+    independentInitiatives: 'available' | 'unavailable';
     portfolioReading: 'available' | 'unavailable';
     handoffAssignments: 'available' | 'unavailable';
     learnings: 'available' | 'unavailable';
@@ -169,6 +170,7 @@ export type PortfolioHomeReadModel = {
     decisionAuthorities: PortfolioHomePersonView[];
   };
   strategicUnits: StrategicUnitView[];
+  independentInitiatives: InitiativePortfolioView[];
   attention: AttentionView[];
   pendingDecisions: PendingDecisionView[];
   recommendations: Array<{
@@ -213,9 +215,18 @@ export type PortfolioHomeReadModel = {
 
 type PrismaLike = {
   strategicFront: { findMany: (args: unknown) => Promise<any[]> };
+  project?: { findMany: (args: unknown) => Promise<any[]> };
   portfolioBootstrapSession?: { findFirst: (args: unknown) => Promise<any | null> };
   portfolioHandoffProjection?: { findMany: (args: unknown) => Promise<any[]> };
   portfolioLearning?: { findMany: (args: unknown) => Promise<any[]> };
+};
+
+const PROJECT_READ_INCLUDE = {
+  owner: { select: { id: true, name: true, email: true } },
+  attentionItems: true,
+  decisionRequests: { include: { decision: true, authorityUser: { select: { id: true, name: true, email: true } } } },
+  decisions: true,
+  _count: { select: { evidence: true } },
 };
 
 const READ_INCLUDE = {
@@ -224,15 +235,7 @@ const READ_INCLUDE = {
       selectedPeople: true,
       initiativeMetas: {
         include: {
-          project: {
-            include: {
-              owner: { select: { id: true, name: true, email: true } },
-              attentionItems: true,
-              decisionRequests: { include: { decision: true, authorityUser: { select: { id: true, name: true, email: true } } } },
-              decisions: true,
-              _count: { select: { evidence: true } },
-            },
-          },
+          project: { include: PROJECT_READ_INCLUDE },
         },
       },
     },
@@ -246,9 +249,10 @@ export class PortfolioHomeReadService {
     this.capacityReadService = new PortfolioCapacityReadService(prisma as any);
   }
 
-  async getHome(userId: string, scope: PortfolioScope = { all: true, organizationIds: [] }): Promise<PortfolioHomeReadModel> {
-    const [frontResult, readingResult, handoffResult, learnings, capacityResult] = await Promise.all([
+  async getHome(userId: string, scope: PortfolioScope = { all: false, organizationIds: [] }): Promise<PortfolioHomeReadModel> {
+    const [frontResult, independentResult, readingResult, handoffResult, learnings, capacityResult] = await Promise.all([
       this.safeRead('strategic_units', () => this.prisma.strategicFront.findMany({ where: frontScopeWhere(scope), include: READ_INCLUDE, orderBy: { updatedAt: 'desc' } }), []),
+      this.safeRead('independent_initiatives', () => this.loadIndependentInitiatives(scope), []),
       this.safeRead('portfolio_reading', () => this.loadLatestReading(userId), null),
       this.safeRead('handoff_assignments', () => this.loadHandoffAssignments(scope), []),
       this.loadLearnings(scope),
@@ -259,21 +263,27 @@ export class PortfolioHomeReadService {
     const handoffAssignments = handoffResult.value;
 
     const strategicUnits = (fronts ?? []).map((front) => this.mapStrategicUnit(front));
-    const initiatives = strategicUnits.flatMap((unit) => unit.challenges.flatMap((challenge) => challenge.initiatives));
+    const independentInitiatives = independentResult.value;
+    const initiatives = [
+      ...strategicUnits.flatMap((unit) => unit.challenges.flatMap((challenge) => challenge.initiatives)),
+      ...independentInitiatives,
+    ];
     const attention = [
       ...this.mapReadingAttention(reading?.primaryAttentionItems),
       ...strategicUnits.flatMap((unit) => unit.challenges.flatMap((challenge) =>
         challenge.initiatives.flatMap((initiative) => this.mapInitiativeAttention(initiative, fronts)),
       )),
+      ...independentInitiatives.flatMap((initiative) => this.mapInitiativeAttention(initiative, fronts)),
     ];
     const pendingDecisions = strategicUnits.flatMap((unit) => unit.challenges.flatMap((challenge) =>
       challenge.initiatives.flatMap((initiative) => this.mapPendingDecisions(initiative, fronts)),
-    ));
+    )).concat(independentInitiatives.flatMap((initiative) => this.mapPendingDecisions(initiative, fronts)));
 
     const generatedAt = new Date().toISOString();
     return {
       availability: {
         strategicUnits: frontResult.unavailable ? 'unavailable' : 'available',
+        independentInitiatives: independentResult.unavailable ? 'unavailable' : 'available',
         portfolioReading: readingResult.unavailable ? 'unavailable' : 'available',
         handoffAssignments: handoffResult.unavailable ? 'unavailable' : 'available',
         learnings: learnings.unavailable ? 'unavailable' : 'available',
@@ -282,6 +292,7 @@ export class PortfolioHomeReadService {
       portfolioReading: this.mapReading(reading, strategicUnits, initiatives, attention, pendingDecisions),
       governance: this.mapGovernance(fronts, initiatives, pendingDecisions),
       strategicUnits,
+      independentInitiatives,
       attention,
       pendingDecisions,
       recommendations: this.mapRecommendations(reading, strategicUnits),
@@ -309,7 +320,7 @@ export class PortfolioHomeReadService {
       // Portfolio Home tiene que seguir cargando.
       const rows = await this.prisma.portfolioLearning.findMany({
         // Fuera de admin, sólo aprendizajes de frentes en el alcance (los sin frente no tienen dueño visible).
-        where: scope.all ? undefined : { strategicFront: frontScopeWhere(scope) },
+        where: { strategicFront: frontScopeWhere(scope) },
         orderBy: { decidedAt: 'desc' },
         take: 20,
         include: { project: { select: { name: true } }, challenge: { select: { title: true } } },
@@ -342,7 +353,7 @@ export class PortfolioHomeReadService {
   private async loadHandoffAssignments(scope: PortfolioScope): Promise<PortfolioHomeReadModel['handoffAssignments']> {
     if (!this.prisma.portfolioHandoffProjection?.findMany) return [];
     const rows = await this.prisma.portfolioHandoffProjection.findMany({
-      where: scope.all ? undefined : { organizationId: { in: scope.organizationIds } },
+      where: { organizationId: { in: scope.organizationIds } },
       orderBy: { generatedAt: 'desc' },
       include: { assignment: { include: { deliveryAttempts: { orderBy: { attemptedAt: 'desc' }, take: 1 } } } },
     });
@@ -375,6 +386,25 @@ export class PortfolioHomeReadService {
       generatedAt: toIso(row.generatedAt) ?? new Date().toISOString(),
       });
     });
+  }
+
+  private async loadIndependentInitiatives(scope: PortfolioScope): Promise<InitiativePortfolioView[]> {
+    if (!this.prisma.project?.findMany) return [];
+    const projects = await this.prisma.project.findMany({
+      where: {
+        organizationId: { in: scope.organizationIds },
+        isArchived: false,
+        portfolioMeta: { none: {} },
+      },
+      include: PROJECT_READ_INCLUDE,
+      orderBy: { lastModified: 'desc' },
+    });
+    return (projects ?? []).map((project: any) => this.mapInitiative({
+      projectId: project.id,
+      strategicFrontId: null,
+      challengeId: null,
+      project,
+    }));
   }
 
   private async loadLatestReading(userId: string): Promise<any | null> {

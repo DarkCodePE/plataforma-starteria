@@ -24,8 +24,11 @@ vi.mock('../../auth/auth.middleware', async (importOriginal) => {
 
 vi.mock('../../../shared/db/prisma', () => {
   const prisma = {
+    project: { findUnique: vi.fn(async () => ({ organizationId: 'org-1' })) },
+    user: { findUnique: vi.fn(async () => ({ organizationId: 'org-1' })) },
     teamMember: { findFirst: vi.fn(async () => (teamRole ? { role: teamRole, status: 'ACTIVE' } : null)) },
     initiativeGovernance: { findUnique: vi.fn(async () => null) },
+    mentorSession: { findFirst: vi.fn(async () => null) },
   };
   return { default: prisma, prisma };
 });

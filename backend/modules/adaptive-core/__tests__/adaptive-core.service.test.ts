@@ -6,6 +6,9 @@ type Row = Record<string, any>;
 function createStore() {
   return {
     project: [] as Row[],
+    user: [] as Row[],
+    mentorSession: [] as Row[],
+    initiativeGovernance: [] as Row[],
     adaptiveStepConfiguration: [] as Row[],
     adaptiveCheckpointInstance: [] as Row[],
     adaptiveCheckpointResponse: [] as Row[],
@@ -104,6 +107,9 @@ function collection(store: ReturnType<typeof createStore>, name: keyof ReturnTyp
 function makePrisma(store = createStore()) {
   const prisma: any = {
     project: collection(store, 'project'),
+    user: collection(store, 'user'),
+    mentorSession: collection(store, 'mentorSession'),
+    initiativeGovernance: collection(store, 'initiativeGovernance'),
     adaptiveStepConfiguration: collection(store, 'adaptiveStepConfiguration'),
     adaptiveCheckpointInstance: collection(store, 'adaptiveCheckpointInstance'),
     adaptiveCheckpointResponse: collection(store, 'adaptiveCheckpointResponse'),
@@ -128,6 +134,8 @@ function seedProject(store: ReturnType<typeof createStore>, overrides: Row = {})
     id: overrides.id ?? id('project'),
     name: 'Iniciativa',
     ownerId: 'u1',
+    organizationId: 'org-1',
+    status: 'IN_PROGRESS',
     initialReviewSnapshotId: overrides.initialReviewSnapshotId ?? 'snap-1',
     step0Status: 'IN_PROGRESS',
     step0Data: {
@@ -139,13 +147,17 @@ function seedProject(store: ReturnType<typeof createStore>, overrides: Row = {})
       pendingQuestions: overrides.pendingQuestions ?? [{ question: 'Que evidencia falta?' }],
       nextRecommendedStep: overrides.nextRecommendedStep ?? 'Completar Step 0',
     },
-    teamMembers: [{ userId: 'u1' }],
+    teamMembers: [{ userId: 'u1', status: 'ACTIVE' }],
+    mentorSessions: [],
     portfolioMeta: overrides.portfolioMeta ?? [],
     contextSnapshots: overrides.contextSnapshots ?? [],
     steps: [],
     ...overrides,
   };
   store.project.push(project);
+  if (!store.user.some((user) => user.id === project.ownerId)) {
+    store.user.push({ id: project.ownerId, organizationId: project.organizationId });
+  }
   store.teamMember.push(...project.teamMembers.map((member: Row) => ({ ...member, projectId: project.id, status: 'ACTIVE' })));
   if (overrides.portfolioMeta) store.initiativePortfolioMeta.push(...overrides.portfolioMeta);
   return project;
@@ -2156,9 +2168,9 @@ describe('AdaptiveCoreService Step 0 cycle', () => {
       confirmed: true,
     });
 
-    expect(store.project[0].status).toBe('COMPLETED');
+    expect(store.project[0].status).toBe('IN_PROGRESS');
     expect(store.adaptiveStepOutput.filter((item) => item.stepNumber === 4 && item.status === 'confirmed')).toHaveLength(1);
-    expect(store.adaptiveAdaptationEvent.filter((event) => event.eventType === 'initiative_completed')).toHaveLength(1);
+    expect(store.adaptiveAdaptationEvent.filter((event) => event.eventType === 'cycle_completed')).toHaveLength(1);
     expect(store.adaptiveAdaptationEvent.filter((event) => event.eventType === 'initiative_closed')).toHaveLength(0);
   });
 
@@ -2219,7 +2231,7 @@ describe('AdaptiveCoreService Step 0 cycle', () => {
     });
 
     expect(closed.legacyFallback).toBe(true);
-    expect(store.project[0].status).toBe('COMPLETED');
+    expect(store.project[0].status).toBe('IN_PROGRESS');
     expect(closed.progressSignal?.finalState).toBe('completed');
     expect(closed.progressSignal?.completionRoute).toBe('owner_completed');
   });

@@ -1285,10 +1285,6 @@ const sufficiency = this.evaluateCheckpoint(
         },
       });
       await this.cycles.completeCycleTx(tx, projectId, cycle.id, 4);
-      await tx.project.update({
-        where: { id: projectId },
-        data: { status: routing.initiativeCompleted ? 'COMPLETED' : 'IN_PROGRESS', lastModified: new Date() } as any,
-      });
       await this.upsertProgressSignalTx(tx, projectId, {
         step: 4,
         checkpointCode: routing.route,
@@ -1328,7 +1324,7 @@ const sufficiency = this.evaluateCheckpoint(
         }).catch(() => null);
       }
       await this.recordEventTx(tx, projectId, 'step_completed', 'Step 4 confirmado por el usuario.', { step: 4, outputId: draft.id, completionRoute: routing.route }, userId, input.idempotencyKey);
-      await this.recordEventTx(tx, projectId, routing.route === 'owner_completed' ? 'initiative_completed' : 'initiative_presented', routing.route === 'owner_completed' ? 'Iniciativa metodologicamente completada.' : 'Iniciativa presentada para revision posterior de portafolio.', { completionRouting: routing, challengeCoverage: step4Output.challengeCoverage }, userId, `initiative-completion:${projectId}:4:${draft.version}`);
+      await this.recordEventTx(tx, projectId, routing.route === 'owner_completed' ? 'cycle_completed' : 'initiative_presented', routing.route === 'owner_completed' ? 'Ciclo metodologico completado; la iniciativa permanece abierta a decision humana.' : 'Iniciativa presentada para revision posterior de portafolio.', { completionRouting: routing, challengeCoverage: step4Output.challengeCoverage }, userId, `cycle-completion:${projectId}:4:${draft.version}`);
     });
     await syncInitiativeProgress(this.prisma, projectId);
     return this.getState(projectId, userId, role);
@@ -2229,32 +2225,37 @@ const sufficiency = this.evaluateCheckpoint(
   }
 
   private async getAccessibleProject(projectId: string, userId: string, role: Role) {
-    const project = await this.prisma.project.findUnique({
+    const [project, user] = await Promise.all([this.prisma.project.findUnique({
       where: { id: projectId },
       include: {
         teamMembers: true,
+        mentorSessions: { where: { mentorId: userId }, select: { id: true } },
         portfolioMeta: { include: { challenge: { include: { strategicFront: true } } } },
         contextSnapshots: { orderBy: { createdAt: 'desc' }, take: 1 },
         steps: true,
       },
-    });
-    if (!project) throw AppError.notFound('Proyecto', 'PROJECT_NOT_FOUND');
-    if (role !== 'admin' && role !== 'mentor') {
-      const isMember = (project as any).teamMembers.some((m: any) => m.userId === userId);
+    }), (this.prisma as any).user.findUnique({ where: { id: userId }, select: { organizationId: true } })]);
+    if (!project?.organizationId || !user?.organizationId || project.organizationId !== user.organizationId) {
+      throw AppError.notFound('Proyecto', 'PROJECT_NOT_FOUND');
+    }
+    if (role !== 'admin') {
+      const isMember = (project as any).teamMembers.some((m: any) => m.userId === userId && m.status === 'ACTIVE');
+      const isAssignedMentor = role === 'mentor' && (project as any).mentorSessions?.length > 0;
       // El Portfolio Lead asignado lee y decide sin ser miembro del equipo (§23, ADR-025); la
       // autoridad para decidir la resuelve resolveDecisionAuthority. El trabajo del equipo
       // (checkpoints, cambios críticos) exige además assertTeamWorkAccess.
       const isAssignedPortfolioLead = !isMember && Boolean(
         (await (this.prisma as any).initiativeGovernance.findUnique({ where: { projectId } }))?.portfolioLeadUserId === userId,
       );
-      if (!isMember && !isAssignedPortfolioLead) throw AppError.forbidden('No tienes acceso a este proyecto.', 'PROJECT_ACCESS_DENIED');
+      if (!isMember && !isAssignedMentor && !isAssignedPortfolioLead) throw AppError.forbidden('No tienes acceso a este proyecto.', 'PROJECT_ACCESS_DENIED');
     }
     return project as any;
   }
 
   private assertTeamWorkAccess(project: any, userId: string, role: Role) {
-    if (role === 'admin' || role === 'mentor') return;
-    if ((project.teamMembers ?? []).some((m: any) => m.userId === userId)) return;
+    if (role === 'admin') return;
+    if (role === 'mentor' && (project.mentorSessions ?? []).length > 0) return;
+    if ((project.teamMembers ?? []).some((m: any) => m.userId === userId && m.status === 'ACTIVE')) return;
     throw AppError.forbidden('Sólo el equipo de la iniciativa puede avanzar sus Steps.', 'PROJECT_TEAM_ACCESS_REQUIRED');
   }
 

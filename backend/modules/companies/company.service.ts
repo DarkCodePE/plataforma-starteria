@@ -144,14 +144,20 @@ export class CompanyService {
   ) {}
 
   private async access(companyId: string, actor: Actor): Promise<CompanyAccess & { company: any }> {
-    const company = await this.prisma.company.findUnique({
-      where: { id: companyId },
-      include: { memberships: true },
-    });
+    const [company, actorUser] = await Promise.all([
+      this.prisma.company.findUnique({
+        where: { id: companyId },
+        include: { memberships: true },
+      }),
+      this.prisma.user.findUnique({ where: { id: actor.id }, select: { organizationId: true } }),
+    ]);
     if (!company || company.deletedAt) {
       throw AppError.notFound('Empresa', 'COMPANY_NOT_FOUND');
     }
-    if (actor.role === 'admin') {
+    if (company.organizationId && (!actorUser?.organizationId || company.organizationId !== actorUser.organizationId)) {
+      throw AppError.notFound('Empresa', 'COMPANY_NOT_FOUND');
+    }
+    if (actor.role === 'admin' && company.organizationId === actorUser?.organizationId) {
       return { company, canRead: true, canEdit: true, canPublish: true, canAdmin: true };
     }
     const owner = company.ownerUserId === actor.id && company.scope === 'PERSONAL';
@@ -162,6 +168,17 @@ export class CompanyService {
     const canPublish = role === 'OWNER' || role === 'CURATOR';
     const canAdmin = owner || role === 'OWNER';
     return { company, canRead, canEdit, canPublish, canAdmin };
+  }
+
+  private async initiativeProject(initiativeId: string, actor: Actor) {
+    const [project, actorUser] = await Promise.all([
+      this.prisma.project.findUnique({ where: { id: initiativeId }, include: { teamMembers: true } }),
+      this.prisma.user.findUnique({ where: { id: actor.id }, select: { organizationId: true } }),
+    ]);
+    if (!project?.organizationId || !actorUser?.organizationId || project.organizationId !== actorUser.organizationId) {
+      throw AppError.notFound('Proyecto', 'PROJECT_NOT_FOUND');
+    }
+    return project;
   }
 
   private assertRead(access: CompanyAccess): void {
@@ -268,23 +285,30 @@ export class CompanyService {
   }
 
   async list(actor: Actor) {
-    return this.prisma.company.findMany({
+    const actorUser = await this.prisma.user.findUnique({ where: { id: actor.id }, select: { organizationId: true } });
+    if (!actorUser?.organizationId) return [];
+    const companies = await this.prisma.company.findMany({
       where: {
         deletedAt: null,
         OR: [
           { ownerUserId: actor.id },
           { memberships: { some: { userId: actor.id, status: 'APPROVED' } } },
-          ...(actor.role === 'admin' ? [{}] : []),
+          ...(actor.role === 'admin' ? [{ organizationId: actorUser.organizationId }] : []),
         ],
       },
       include: publicCompanySelect(),
       orderBy: { updatedAt: 'desc' },
     });
+    return companies.filter((company) => company.organizationId == null || company.organizationId === actorUser.organizationId);
   }
 
   async create(actor: Actor, data: CreateCompanyInput) {
     if (data.scope === 'ORGANIZATION' && actor.role !== 'admin') {
       throw AppError.forbidden('Solo un administrador puede crear una empresa organizacional.', 'COMPANY_ORG_CREATE_DENIED');
+    }
+    const actorUser = await this.prisma.user.findUnique({ where: { id: actor.id }, select: { organizationId: true } });
+    if (data.scope === 'ORGANIZATION' && (!actorUser?.organizationId || (data.organizationId && data.organizationId !== actorUser.organizationId))) {
+      throw AppError.notFound('Empresa', 'COMPANY_NOT_FOUND');
     }
     const websiteUrl = data.websiteUrl || undefined;
     const linkedinUrl = data.linkedinUrl || undefined;
@@ -300,7 +324,7 @@ export class CompanyService {
           websiteUrl,
           linkedinUrl,
           ownerUserId: data.scope === 'ORGANIZATION' ? null : actor.id,
-          organizationId: data.scope === 'ORGANIZATION' ? data.organizationId ?? null : null,
+          organizationId: data.scope === 'ORGANIZATION' ? actorUser?.organizationId ?? null : null,
           scope: data.scope ?? 'PERSONAL',
           memberships: {
             create: {
@@ -458,7 +482,7 @@ export class CompanyService {
 
   async publish(actor: Actor, companyId: string) {
     const access = await this.access(companyId, actor);
-    if (!access.canPublish && actor.role !== 'admin') {
+    if (!access.canPublish) {
       throw AppError.forbidden('No puedes publicar contexto organizacional.', 'COMPANY_PUBLISH_DENIED');
     }
     const version = await this.createVersion(companyId, actor.id, 'PUBLISHED');
@@ -545,6 +569,8 @@ export class CompanyService {
   async deleteArea(actor: Actor, companyId: string, areaId: string) {
     const access = await this.access(companyId, actor);
     this.assertEdit(access);
+    const area = await this.prisma.companyArea.findFirst({ where: { id: areaId, companyId } });
+    if (!area) throw AppError.notFound('Area', 'COMPANY_AREA_NOT_FOUND');
     await this.prisma.companyArea.update({ where: { id: areaId }, data: { status: 'ARCHIVED' } });
     await this.createVersion(companyId, actor.id);
   }
@@ -562,6 +588,10 @@ export class CompanyService {
   async createUrlSource(actor: Actor, companyId: string, input: CreateUrlSourceInput) {
     const access = await this.access(companyId, actor);
     this.assertEdit(access);
+    if (input.areaId) {
+      const area = await this.prisma.companyArea.findFirst({ where: { id: input.areaId, companyId, status: 'ACTIVE' } });
+      if (!area) throw AppError.notFound('Area', 'COMPANY_AREA_NOT_FOUND');
+    }
     if (input.sourceType === 'LINKEDIN' && !/linkedin\.com$/i.test(new URL(input.url).hostname.replace(/^www\./, ''))) {
       throw AppError.badRequest('La fuente LinkedIn debe apuntar a linkedin.com.', 'CONTEXT_LINKEDIN_URL_INVALID');
     }
@@ -585,6 +615,10 @@ export class CompanyService {
   async uploadSource(actor: Actor, companyId: string, input: { fileName: string; mimeType?: string; bytes: Buffer; areaId?: string; requestId?: string }) {
     const access = await this.access(companyId, actor);
     this.assertEdit(access);
+    if (input.areaId) {
+      const area = await this.prisma.companyArea.findFirst({ where: { id: input.areaId, companyId, status: 'ACTIVE' } });
+      if (!area) throw AppError.notFound('Area', 'COMPANY_AREA_NOT_FOUND');
+    }
     if (!input.bytes.byteLength) throw AppError.badRequest('Archivo vacio.', 'CONTEXT_FILE_EMPTY');
     if (input.bytes.byteLength > MAX_CONTEXT_FILE_BYTES) {
       throw AppError.badRequest('El archivo excede el limite permitido.', 'CONTEXT_FILE_TOO_LARGE');
@@ -751,7 +785,7 @@ export class CompanyService {
 
   async addMembership(actor: Actor, companyId: string, input: AddMembershipInput) {
     const access = await this.access(companyId, actor);
-    if (!access.canAdmin && actor.role !== 'admin') throw AppError.forbidden('No puedes administrar miembros.', 'COMPANY_MEMBER_DENIED');
+    if (!access.canAdmin) throw AppError.forbidden('No puedes administrar miembros.', 'COMPANY_MEMBER_DENIED');
     return this.prisma.companyMembership.upsert({
       where: { companyId_userId: { companyId, userId: input.userId } },
       create: { companyId, userId: input.userId, role: input.role as any, status: 'PENDING' },
@@ -761,7 +795,9 @@ export class CompanyService {
 
   async updateMembership(actor: Actor, companyId: string, membershipId: string, input: UpdateMembershipInput) {
     const access = await this.access(companyId, actor);
-    if (!access.canAdmin && actor.role !== 'admin') throw AppError.forbidden('No puedes administrar miembros.', 'COMPANY_MEMBER_DENIED');
+    if (!access.canAdmin) throw AppError.forbidden('No puedes administrar miembros.', 'COMPANY_MEMBER_DENIED');
+    const membership = await this.prisma.companyMembership.findFirst({ where: { id: membershipId, companyId } });
+    if (!membership) throw AppError.notFound('Miembro', 'COMPANY_MEMBERSHIP_NOT_FOUND');
     return this.prisma.companyMembership.update({
       where: { id: membershipId },
       data: {
@@ -798,7 +834,9 @@ export class CompanyService {
 
   async reviewContribution(actor: Actor, companyId: string, id: string, approved: boolean) {
     const access = await this.access(companyId, actor);
-    if (!access.canPublish && actor.role !== 'admin') throw AppError.forbidden('No puedes revisar aportes.', 'COMPANY_CONTRIBUTION_REVIEW_DENIED');
+    if (!access.canPublish) throw AppError.forbidden('No puedes revisar aportes.', 'COMPANY_CONTRIBUTION_REVIEW_DENIED');
+    const existing = await this.prisma.companyContribution.findFirst({ where: { id, companyId } });
+    if (!existing) throw AppError.notFound('Aporte', 'COMPANY_CONTRIBUTION_NOT_FOUND');
     const contribution = await this.prisma.companyContribution.update({
       where: { id },
       data: { status: approved ? 'APPROVED' : 'REJECTED', reviewedByUserId: actor.id, reviewedAt: new Date() },
@@ -822,9 +860,8 @@ export class CompanyService {
   }
 
   async createInitiativeSnapshot(actor: Actor, initiativeId: string, input: CreateSnapshotInput) {
-    const project = await this.prisma.project.findUnique({ where: { id: initiativeId }, include: { teamMembers: true } });
-    if (!project) throw AppError.notFound('Proyecto', 'PROJECT_NOT_FOUND');
-    const isOwner = project.ownerId === actor.id || project.teamMembers.some((m: any) => m.userId === actor.id && m.role === 'OWNER');
+    const project = await this.initiativeProject(initiativeId, actor);
+    const isOwner = project.ownerId === actor.id || project.teamMembers.some((m: any) => m.userId === actor.id && m.role === 'OWNER' && m.status === 'ACTIVE');
     if (!isOwner && actor.role !== 'admin') throw AppError.forbidden('Solo el owner puede administrar el contexto de la iniciativa.', 'INITIATIVE_CONTEXT_DENIED');
     const access = await this.access(input.companyId, actor);
     this.assertRead(access);
@@ -853,9 +890,8 @@ export class CompanyService {
   }
 
   async readInitiativeSnapshot(actor: Actor, initiativeId: string) {
-    const project = await this.prisma.project.findUnique({ where: { id: initiativeId }, include: { teamMembers: true } });
-    if (!project) throw AppError.notFound('Proyecto', 'PROJECT_NOT_FOUND');
-    const isMember = actor.role === 'admin' || project.teamMembers.some((m: any) => m.userId === actor.id);
+    const project = await this.initiativeProject(initiativeId, actor);
+    const isMember = actor.role === 'admin' || project.teamMembers.some((m: any) => m.userId === actor.id && m.status === 'ACTIVE');
     if (!isMember) throw AppError.forbidden('No tienes acceso a esta iniciativa.', 'PROJECT_ACCESS_DENIED');
     return this.prisma.initiativeContextSnapshot.findFirst({
       where: { initiativeId },
@@ -871,9 +907,8 @@ export class CompanyService {
   }
 
   async createInitiativeNote(actor: Actor, initiativeId: string, input: CreateNoteInput) {
-    const project = await this.prisma.project.findUnique({ where: { id: initiativeId }, include: { teamMembers: true } });
-    if (!project) throw AppError.notFound('Proyecto', 'PROJECT_NOT_FOUND');
-    const canWrite = project.ownerId === actor.id || project.teamMembers.some((m: any) => m.userId === actor.id && (m.role === 'OWNER' || m.role === 'EDITOR'));
+    const project = await this.initiativeProject(initiativeId, actor);
+    const canWrite = project.ownerId === actor.id || project.teamMembers.some((m: any) => m.userId === actor.id && m.status === 'ACTIVE' && (m.role === 'OWNER' || m.role === 'EDITOR'));
     if (!canWrite && actor.role !== 'admin') throw AppError.forbidden('No puedes agregar notas al contexto.', 'INITIATIVE_CONTEXT_NOTE_DENIED');
     return this.prisma.initiativeContextNote.create({
       data: { initiativeId, authorUserId: actor.id, content: input.content, sourceType: 'PROJECT_NOTE' },

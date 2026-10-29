@@ -489,7 +489,7 @@ export async function listPortfolioLearnings(): Promise<PortfolioLearning[]> {
 }
 
 export interface PortfolioHomeReadModel {
-  availability?: { strategicUnits: 'available' | 'unavailable'; portfolioReading: 'available' | 'unavailable'; handoffAssignments: 'available' | 'unavailable'; learnings: 'available' | 'unavailable'; capacity: 'available' | 'unavailable' };
+  availability?: { strategicUnits: 'available' | 'unavailable'; independentInitiatives: 'available' | 'unavailable'; portfolioReading: 'available' | 'unavailable'; handoffAssignments: 'available' | 'unavailable'; learnings: 'available' | 'unavailable'; capacity: 'available' | 'unavailable' };
   portfolioReading: {
     summary: string | null;
     strategicUnitCount: number | null;
@@ -529,6 +529,15 @@ export interface PortfolioHomeReadModel {
     initiativeSummary: { total: number; activeExecution: number; pendingActivation: number };
     attentionSummary: { total: number; blockers: number };
     nextGovernanceAction: string | null;
+  }>;
+  independentInitiatives: Array<{
+    initiativeId: string;
+    title: string | null;
+    strategicFrontId: null;
+    challengeId: null;
+    activationVisibility: 'initiative_exists' | 'initiative_active' | 'unknown';
+    currentExecutionState: { projectStatus: string | null; step0Status: string | null; currentStep: number | null };
+    blockers: Array<{ summary: string; severity: string | null; source: string }>;
   }>;
   attention: Array<{ type: string; summary: string; reason: string | null; severity: string | null; suggestedAction: string | null; entity: { type: string; id: string | null } }>;
   pendingDecisions: Array<{ requestId: string; initiativeId: string; requestedDecision: string | null; status: string | null }>;
