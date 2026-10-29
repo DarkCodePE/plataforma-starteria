@@ -62,7 +62,7 @@ function assignment(id: string, version = 1): HandoffAssignment {
 }
 
 function context(value: HandoffAssignment): HandoffDeliveryContext {
-  return { assignment: value, challengeName: 'Reto de crecimiento', initiativeName: null, initiativeOrganizationId: null, initiativeChallengeIds: [] };
+  return { assignment: value, organizationName: 'OrganizaciÃ³n A', challengeName: 'Reto de crecimiento', initiativeName: null, initiativeOrganizationId: null, initiativeChallengeIds: [] };
 }
 
 function setup(values = [assignment('a-1'), assignment('a-2')]) {
@@ -74,6 +74,15 @@ function setup(values = [assignment('a-1'), assignment('a-2')]) {
 }
 
 describe('PortfolioHandoffBatchDeliveryService / PL-06B', () => {
+  it('rejects a batch over the configured maximum before repository or SMTP work', async () => {
+    const ctx = setup([]);
+    const items = Array.from({ length: 26 }, (_, index) => ({ assignmentId: `a-${index}`, expectedVersion: 1 }));
+    await expect(ctx.service.send({ organizationId: 'org-1', challengeId: 'challenge-1', actorId: 'actor-1', idempotencyKey: 'oversized-batch', items }))
+      .rejects.toMatchObject({ code: 'HANDOFF_BATCH_TOO_LARGE' });
+    expect(ctx.findManyByIds).not.toHaveBeenCalled();
+    expect(ctx.sendHandoffInvitation).not.toHaveBeenCalled();
+  });
+
   it('preflights every selected assignment before sending any invitation', async () => {
     const ctx = setup([assignment('a-1'), { ...assignment('a-2'), version: 2 }]);
     await expect(ctx.service.send({ organizationId: 'org-1', challengeId: 'challenge-1', actorId: 'actor-1', idempotencyKey: 'batch-1', items: [{ assignmentId: 'a-1', expectedVersion: 1 }, { assignmentId: 'a-2', expectedVersion: 1 }] }))
@@ -193,7 +202,7 @@ describe('PortfolioHandoffBatchDeliveryService / PL-06B', () => {
 
     const staleWrite = await batches.saveProgress({
       batchId: reserved.batch.id,
-      results: [{ assignmentId: 'a-1', status: 'SUCCEEDED', state: 'SENT', errorCategory: null, providerMessageRef: 'stale' }],
+      results: [{ assignmentId: 'a-1', status: 'SUCCEEDED', state: 'SENT', errorCategory: null, providerMessageRef: 'stale', transportReceiptStatus: 'SMTP_ACCEPTED' }],
       status: 'COMPLETED',
       completedAt: now,
       processingLeaseUntil: null,

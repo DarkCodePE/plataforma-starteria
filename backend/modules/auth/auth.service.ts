@@ -13,9 +13,18 @@ import {
 } from './token.service';
 import { RegisterInput } from './auth.schemas';
 import { verifyGoogleIdToken } from './google.service';
+import { config } from '../../config';
 
 const MAX_FAILED_ATTEMPTS = 5;
 const LOCKOUT_DURATION_MS = 15 * 60 * 1000; // 15 minutes
+// A short overlap absorbs legitimate parallel browser refreshes. Reuse after
+// this window is treated as credential theft and contains the whole family.
+const REFRESH_CONCURRENT_GRACE_MS = 5_000;
+
+export interface AuthServiceConcurrencyHooks {
+  afterRefreshFamilyLock?: (family: string) => Promise<void> | void;
+  afterLogoutFamilyLock?: (family: string) => Promise<void> | void;
+}
 
 /**
  * Precomputed bcrypt hash of the empty string.
@@ -171,7 +180,10 @@ function computeInitials(name: string): string {
 }
 
 export class AuthService {
-  constructor(private prisma: PrismaClient) {}
+  constructor(
+    private prisma: PrismaClient,
+    private readonly concurrencyHooks: AuthServiceConcurrencyHooks = {},
+  ) {}
 
   /**
    * Register a new user. Only 'participante' can self-register;
@@ -365,56 +377,148 @@ export class AuthService {
    */
   async refreshTokens(rawRefreshToken: string): Promise<AuthTokens> {
     const tokenHash = hashRefreshToken(rawRefreshToken);
+    const now = new Date();
 
-    const storedToken = await this.prisma.refreshToken.findUnique({
-      where: { tokenHash },
-      include: { user: true },
-    });
+    const outcome = await this.prisma.$transaction(async (tx) => {
+      let storedToken = await tx.refreshToken.findUnique({
+        where: { tokenHash },
+        include: { user: true },
+      });
 
-    if (!storedToken) {
-      throw AppError.refreshInvalid();
-    }
+      if (!storedToken) return { kind: 'invalid' as const };
 
-    // Token already revoked — potential reuse attack. Revoke entire family.
-    if (storedToken.revokedAt) {
-      logger.warn(
-        { family: storedToken.family, userId: storedToken.userId },
-        'Refresh token reuse detected — revoking entire family',
+      await tx.$queryRaw(Prisma.sql`
+        SELECT "id"
+        FROM "RefreshTokenFamily"
+        WHERE "id" = ${storedToken.family}
+        FOR UPDATE
+      `);
+      await this.concurrencyHooks.afterRefreshFamilyLock?.(storedToken.family);
+
+      const family = await tx.refreshTokenFamily.findUnique({
+        where: { id: storedToken.family },
+        select: { revokedAt: true },
+      });
+      storedToken = await tx.refreshToken.findUnique({
+        where: { tokenHash },
+        include: { user: true },
+      });
+      if (!storedToken || !family) return { kind: 'invalid' as const };
+      if (family.revokedAt) {
+        await tx.refreshToken.updateMany({
+          where: { family: storedToken.family, revokedAt: null },
+          data: { revokedAt: family.revokedAt },
+        });
+        return {
+          kind: 'reused' as const,
+          family: storedToken.family,
+          userId: storedToken.userId,
+          generation: storedToken.generation,
+          familyContained: true,
+        };
+      }
+
+      if (storedToken.revokedAt) {
+        const concurrentRotation = now.getTime() - storedToken.revokedAt.getTime() <= REFRESH_CONCURRENT_GRACE_MS;
+        if (!concurrentRotation) {
+          await tx.refreshTokenFamily.updateMany({
+            where: { id: storedToken.family, revokedAt: null },
+            data: { revokedAt: now },
+          });
+          await tx.refreshToken.updateMany({
+            where: { family: storedToken.family, revokedAt: null },
+            data: { revokedAt: now },
+          });
+        }
+        return {
+          kind: 'reused' as const,
+          family: storedToken.family,
+          userId: storedToken.userId,
+          generation: storedToken.generation,
+          familyContained: !concurrentRotation,
+        };
+      }
+
+      if (storedToken.expiresAt <= now) {
+        await tx.refreshTokenFamily.updateMany({
+          where: { id: storedToken.family, revokedAt: null },
+          data: { revokedAt: now },
+        });
+        await tx.refreshToken.updateMany({
+          where: { family: storedToken.family, revokedAt: null },
+          data: { revokedAt: now },
+        });
+        return { kind: 'expired' as const };
+      }
+
+      if (!storedToken.user.isActive) {
+        await tx.refreshTokenFamily.updateMany({
+          where: { id: storedToken.family, revokedAt: null },
+          data: { revokedAt: now },
+        });
+        await tx.refreshToken.updateMany({
+          where: { family: storedToken.family, revokedAt: null },
+          data: { revokedAt: now },
+        });
+        return { kind: 'inactive' as const };
+      }
+
+      // PostgreSQL rechecks this predicate after waiting for a concurrent row
+      // lock. Exactly one request can consume this token generation.
+      const consumed = await tx.refreshToken.updateMany({
+        where: {
+          id: storedToken.id,
+          tokenHash,
+          generation: storedToken.generation,
+          revokedAt: null,
+          expiresAt: { gt: now },
+        },
+        data: { revokedAt: now },
+      });
+      if (consumed.count !== 1) {
+        await tx.refreshTokenFamily.updateMany({
+          where: { id: storedToken.family, revokedAt: null },
+          data: { revokedAt: now },
+        });
+        await tx.refreshToken.updateMany({
+          where: { family: storedToken.family, revokedAt: null },
+          data: { revokedAt: now },
+        });
+        return {
+          kind: 'reused' as const,
+          family: storedToken.family,
+          userId: storedToken.userId,
+          generation: storedToken.generation,
+          familyContained: false,
+        };
+      }
+
+      const { user } = storedToken;
+      const tokens = await this.issueTokenPair(
+        user.id,
+        user.email,
+        user.role,
+        user.roles,
+        user.cohortId,
+        storedToken.family,
+        storedToken.generation + 1,
+        tx,
       );
-      await this.prisma.refreshToken.updateMany({
-        where: { family: storedToken.family },
-        data: { revokedAt: new Date() },
-      });
-      throw AppError.refreshReused();
-    }
-
-    // Token expired
-    if (new Date(storedToken.expiresAt) < new Date()) {
-      await this.prisma.refreshToken.update({
-        where: { id: storedToken.id },
-        data: { revokedAt: new Date() },
-      });
-      throw AppError.refreshExpired();
-    }
-
-    // Revoke current token
-    await this.prisma.refreshToken.update({
-      where: { id: storedToken.id },
-      data: { revokedAt: new Date() },
+      return { kind: 'success' as const, tokens };
     });
 
-    // Issue new pair with same token family
-    const { user } = storedToken;
-    const tokens = await this.issueTokenPair(
-      user.id,
-      user.email,
-      user.role,
-      user.roles,
-      user.cohortId,
-      storedToken.family,
-    );
+    if (outcome.kind === 'success') return outcome.tokens;
+    if (outcome.kind === 'invalid') throw AppError.refreshInvalid();
+    if (outcome.kind === 'expired') throw AppError.refreshExpired();
+    if (outcome.kind === 'inactive') throw AppError.authWaitlisted();
 
-    return tokens;
+    logger.warn(
+      { userId: outcome.userId, generation: outcome.generation },
+      outcome.familyContained
+        ? 'Refresh token replay detected — active family contained'
+        : 'Concurrent refresh rotation rejected within grace window',
+    );
+    throw AppError.refreshReused();
   }
 
   /**
@@ -428,10 +532,23 @@ export class AuthService {
     });
 
     if (storedToken) {
-      // Revoke entire token family
-      await this.prisma.refreshToken.updateMany({
-        where: { family: storedToken.family },
-        data: { revokedAt: new Date() },
+      const revokedAt = new Date();
+      await this.prisma.$transaction(async (tx) => {
+        await tx.$queryRaw(Prisma.sql`
+          SELECT "id"
+          FROM "RefreshTokenFamily"
+          WHERE "id" = ${storedToken.family}
+          FOR UPDATE
+        `);
+        await this.concurrencyHooks.afterLogoutFamilyLock?.(storedToken.family);
+        await tx.refreshTokenFamily.updateMany({
+          where: { id: storedToken.family, revokedAt: null },
+          data: { revokedAt },
+        });
+        await tx.refreshToken.updateMany({
+          where: { family: storedToken.family, revokedAt: null },
+          data: { revokedAt },
+        });
       });
       logger.info({ userId: storedToken.userId }, 'User logged out — token family revoked');
     }
@@ -570,6 +687,8 @@ export class AuthService {
     roles: TokenPayload['roles'],
     cohort?: string | null,
     existingFamily?: string,
+    generation = 0,
+    db: PrismaClient | Prisma.TransactionClient = this.prisma,
   ): Promise<AuthTokens> {
     const payload: TokenPayload = {
       sub: userId,
@@ -583,12 +702,19 @@ export class AuthService {
     const rawRefreshToken = generateRefreshToken();
     const family = existingFamily || crypto.randomUUID();
 
-    await this.prisma.refreshToken.create({
+    if (!existingFamily) {
+      await db.refreshTokenFamily.create({
+        data: { id: family, userId },
+      });
+    }
+
+    await db.refreshToken.create({
       data: {
         tokenHash: hashRefreshToken(rawRefreshToken),
         userId,
         family,
-        expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7 days
+        generation,
+        expiresAt: new Date(Date.now() + config.jwtRefreshTtlMs),
       },
     });
 

@@ -28,10 +28,10 @@ describe('resolvePortfolioScope', () => {
     expect(scope.organizationIds.sort()).toEqual(['org-a', 'org-b', 'org-c']);
   });
 
-  it('sin organización no ve ninguna (sólo los frentes sin organización)', async () => {
+  it('sin organización no ve ningún frente, tampoco legacy sin tenant', async () => {
     const scope = await resolvePortfolioScope(prisma(), { id: 'u', role: 'portfolio_lead', permissions: new Set(['portfolio:read']) });
     expect(scope).toEqual({ all: false, organizationIds: [] });
-    expect(frontScopeWhere(scope)).toEqual({ OR: [{ organizationId: { in: [] } }, { organizationId: null }] });
+    expect(frontScopeWhere(scope)).toEqual({ organizationId: { in: [] } });
   });
 });
 
@@ -39,8 +39,8 @@ describe('frontScopeWhere', () => {
   it('admin no filtra', () => {
     expect(frontScopeWhere({ all: true, organizationIds: [] })).toEqual({});
   });
-  it('filtra por organización y mantiene visibles los frentes sin organización (transición)', () => {
-    expect(frontScopeWhere({ all: false, organizationIds: ['org-a'] })).toEqual({ OR: [{ organizationId: { in: ['org-a'] } }, { organizationId: null }] });
+  it('filtra estrictamente por organización y excluye frentes legacy sin tenant', () => {
+    expect(frontScopeWhere({ all: false, organizationIds: ['org-a'] })).toEqual({ organizationId: { in: ['org-a'] } });
   });
 });
 

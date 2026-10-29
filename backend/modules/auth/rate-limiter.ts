@@ -115,6 +115,13 @@ export const googleLimiter: RequestHandler = createRateLimiter(
   (req) => req.ip || req.socket.remoteAddress || 'unknown',
 );
 
+/** Refresh limiter: caps anonymous cookie rotation attempts per trusted client IP. */
+export const refreshLimiter: RequestHandler = createRateLimiter(
+  15 * 60_000,
+  10,
+  (req) => req.ip || req.socket.remoteAddress || 'unknown',
+);
+
 /**
  * API rate limiter: 100 requests per minute per user (or IP if unauthenticated).
  * On limit, emits AUTH_RATE_LIMITED via the canonical error envelope.

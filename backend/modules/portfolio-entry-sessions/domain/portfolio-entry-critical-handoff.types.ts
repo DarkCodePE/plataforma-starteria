@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import { z } from 'zod/v3';
 import type { CriticalHandoffProjection } from '../../portfolio-entry/presentation/critical-handoff-projection';
 
 export const PORTFOLIO_ENTRY_CRITICAL_HANDOFF_SCHEMA_VERSION = 'critical-handoff-projection-v0.1' as const;

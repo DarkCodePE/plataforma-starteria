@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import { z } from 'zod/v3';
 
 export const createProjectSchema = z.object({
   name: z.string().min(3).max(200),

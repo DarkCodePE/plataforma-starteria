@@ -77,8 +77,14 @@ export class PrismaPortfolioHandoffDeliveryBatchRepository implements HandoffDel
         initiative: { select: { id: true, name: true, organizationId: true, portfolioMeta: { select: { challengeId: true } } } },
       },
     });
+    const organizationIds = [...new Set(records.map((record: any) => record.organizationId).filter(Boolean))] as string[];
+    const organizations = organizationIds.length
+      ? await this.prisma.organization.findMany({ where: { id: { in: organizationIds } }, select: { id: true, name: true } })
+      : [];
+    const organizationNameById = new Map(organizations.map((organization) => [organization.id, organization.name]));
     return records.map((record: any) => ({
       assignment: mapAssignment(record),
+      organizationName: organizationNameById.get(record.organizationId) ?? '',
       challengeName: record.challenge.title,
       initiativeName: record.initiative?.name ?? null,
       initiativeOrganizationId: record.initiative?.organizationId ?? null,

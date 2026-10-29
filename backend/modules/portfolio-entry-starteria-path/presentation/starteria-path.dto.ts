@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import { z } from 'zod/v3';
 import { conversionPresentationSchema } from './conversion-presentation.dto';
 import {
   BUSINESS_CAPABILITY_BOUNDARY_VERSION,

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import pino from 'pino';
-import { LOG_REDACT_PATHS } from '../logger';
+import { LOG_REDACT_PATHS, redactSensitiveRequestUrl } from '../logger';
 
 describe('shared/utils/logger redaction', () => {
   it('redacts request and response credentials from structured logs', () => {
@@ -32,5 +32,16 @@ describe('shared/utils/logger redaction', () => {
     } } }, 'conversion request');
     expect(lines).toHaveLength(1);
     expect(lines[0]).not.toMatch(/private-entry-credential|private-auth-credential|private-idempotency-key|private@example.org|Private Name|Private Organization|Private decision text/);
+  });
+
+  it('redacts pilot bearer codes embedded in request paths', () => {
+    const code = `ST-PILOT-${'A1'.repeat(32)}`;
+    const sanitized = redactSensitiveRequestUrl(`/api/v1/public/pilot-leads/${code}/claim?source=test`);
+    const lowercase = redactSensitiveRequestUrl(`/api/v1/public/pilot-leads/${code.toLowerCase()}`);
+
+    expect(sanitized).toBe('/api/v1/public/pilot-leads/[REDACTED]/claim?source=test');
+    expect(sanitized).not.toContain(code);
+    expect(lowercase).toBe('/api/v1/public/pilot-leads/[REDACTED]');
+    expect(lowercase).not.toContain(code.toLowerCase());
   });
 });

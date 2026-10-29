@@ -33,7 +33,7 @@ export class PilotClaimController {
       const { claimToken } = claimConsumeBodySchema.parse(req.body);
       const data = await this.service.consume(
         claimToken,
-        { id: req.user.id, role: req.user.role },
+        { id: req.user.id, role: req.user.role, email: req.user.email },
         { ipAddress: req.ip, userAgent: req.get('user-agent') ?? undefined },
       );
       res.status(data.alreadyExisted ? 200 : 201).json({ success: true, data });

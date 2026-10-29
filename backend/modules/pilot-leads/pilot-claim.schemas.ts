@@ -5,7 +5,7 @@
  * authenticates, the token is consumed to import the lead's proposal into a
  * Project. The pilotCode param validation is reused from pilot-lead.schemas.
  */
-import { z } from 'zod';
+import { z } from 'zod/v3';
 
 export { pilotCodeParamSchema } from './pilot-lead.schemas';
 

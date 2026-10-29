@@ -3,12 +3,18 @@ import { InMemoryHandoffReferenceRepository, InMemoryPortfolioHandoffAssignmentR
 import { InMemoryHandoffInvitationAccessRepository } from '../infrastructure/in-memory-portfolio-handoff-invitation.repository';
 import { InMemoryHandoffDeliveryAttemptRepository } from '../infrastructure/in-memory-portfolio-handoff-delivery-attempt.repository';
 import { PortfolioHandoffAssignmentService } from '../application/portfolio-handoff-assignment.service';
-import { PortfolioHandoffDeliveryService, type HandoffInvitationDeliveryPort } from '../application/portfolio-handoff-delivery.service';
+import { PortfolioHandoffDeliveryService, renderInvitationEmail, type HandoffEmailAuthorizationPort, type HandoffInvitationDeliveryPort } from '../application/portfolio-handoff-delivery.service';
+import { AppError } from '../../../shared/errors/AppError';
 import { hashRefreshToken } from '../../auth/token.service';
 
 async function context(
-  send: HandoffInvitationDeliveryPort['send'] = async () => ({ delivered: true }),
-  options: { now?: () => Date; reservationTtlMs?: number } = {},
+  send: HandoffInvitationDeliveryPort['send'] = async () => ({ acceptedByTransport: true }),
+  options: {
+    now?: () => Date;
+    reservationTtlMs?: number;
+    authorize?: HandoffEmailAuthorizationPort['authorize'];
+    consumeSendQuota?: HandoffEmailAuthorizationPort['consumeSendQuota'];
+  } = {},
 ) {
   const assignments = new InMemoryPortfolioHandoffAssignmentRepository();
   const refs = new InMemoryHandoffReferenceRepository();
@@ -19,31 +25,101 @@ async function context(
   });
   const access = new InMemoryHandoffInvitationAccessRepository();
   const attempts = new InMemoryHandoffDeliveryAttemptRepository();
+  const rawService = new PortfolioHandoffDeliveryService(
+    assignments,
+    access,
+    attempts,
+    { send },
+    {
+      authorize: options.authorize ?? (() => ({ mode: 'sandbox', from: 'sandbox@starteria.test', publicBaseUrl: 'http://localhost:5173', receiptSemantics: 'SMTP_ACCEPTED_ONLY', invitationTtlHours: 24 })),
+      consumeSendQuota: options.consumeSendQuota,
+    },
+    undefined,
+    options.now,
+    options.reservationTtlMs,
+  );
   return {
     assignment,
     assignments,
     access,
     attempts,
-    service: new PortfolioHandoffDeliveryService(assignments, access, attempts, { send }, undefined, options.now, options.reservationTtlMs),
+    service: {
+      sendHandoffInvitation: (input: any) => rawService.sendHandoffInvitation({ actorId: 'lead-1', ...input }),
+      markHandoffInvitationViewed: rawService.markHandoffInvitationViewed.bind(rawService),
+      revokeHandoffInvitation: rawService.revokeHandoffInvitation.bind(rawService),
+    },
   };
 }
 
 describe('PortfolioHandoffDeliveryService / H-TECH-04', () => {
+  it('fails before reserving an attempt or releasing a token when the server-side transport gate denies', async () => {
+    let sends = 0;
+    const ctx = await context(async () => { sends += 1; return { acceptedByTransport: true }; }, {
+      authorize: () => { throw AppError.forbidden('Destinatario no autorizado', 'HANDOFF_EMAIL_RECIPIENT_NOT_ALLOWED'); },
+    });
+
+    await expect(ctx.service.sendHandoffInvitation({ assignmentId: ctx.assignment.id, idempotencyKey: 'blocked', title: 'No debe salir' }))
+      .rejects.toMatchObject({ code: 'HANDOFF_EMAIL_RECIPIENT_NOT_ALLOWED' });
+    expect(sends).toBe(0);
+    expect(ctx.attempts.attempts).toHaveLength(0);
+    expect(ctx.access.accesses).toHaveLength(0);
+  });
+
+  it('records a quota-blocked reservation without creating a token or contacting SMTP', async () => {
+    let sends = 0;
+    const ctx = await context(async () => { sends += 1; return { acceptedByTransport: true }; }, {
+      authorize: () => ({ mode: 'pilot', from: 'pilot@starteria.example', publicBaseUrl: 'https://pilot.starteria.example', receiptSemantics: 'SMTP_ACCEPTED_ONLY', invitationTtlHours: 24 }),
+      consumeSendQuota: () => { throw new AppError(429, 'Cadencia agotada', 'HANDOFF_EMAIL_RATE_LIMITED'); },
+    });
+
+    await expect(ctx.service.sendHandoffInvitation({
+      assignmentId: ctx.assignment.id,
+      idempotencyKey: 'rate-blocked',
+      invitingOrganizationName: 'Org A',
+      targetName: 'Reto A',
+    })).rejects.toMatchObject({ code: 'HANDOFF_EMAIL_RATE_LIMITED' });
+    expect(sends).toBe(0);
+    expect(ctx.access.accesses).toHaveLength(0);
+    expect(ctx.attempts.attempts).toEqual([
+      expect.objectContaining({ status: 'FAILED', errorCategory: 'HANDOFF_EMAIL_RATE_LIMITED' }),
+    ]);
+  });
+
   it('sends created assignment and records sent only after successful delivery', async () => {
     const sent: any[] = [];
-    const ctx = await context(async (message) => { sent.push(message); return { delivered: true, providerMessageRef: 'provider-1' }; });
+    const ctx = await context(async (message) => { sent.push(message); return { acceptedByTransport: true, providerMessageRef: 'provider-1' }; });
     const result = await ctx.service.sendHandoffInvitation({ assignmentId: ctx.assignment.id, idempotencyKey: 'send-1', title: 'Reducir tiempos de respuesta' });
     expect(result).toMatchObject({ state: 'SENT', attemptStatus: 'SUCCEEDED' });
     expect((await ctx.assignments.findById(ctx.assignment.id))?.state).toBe('SENT');
     expect(sent[0].to).toBe('owner@example.com');
-    expect(sent[0].text).toContain('Revisar asignación');
+    expect(sent[0].text).toMatch(/Revisar invitaci.n/);
     expect(sent[0].text).not.toMatch(/aceptar|rechazar|empezar/i);
     expect(sent[0].text).toContain('/handoff/invitations/');
+    expect(ctx.access.accesses[0].expiresAt).toBeInstanceOf(Date);
+  });
+
+  it('renders distinct human copy, immutable BriefVersion and escaped HTML for both target kinds', async () => {
+    const ctx = await context();
+    const challengeMessage = renderInvitationEmail({
+      ...ctx.assignment,
+      briefVersionId: 'brief-v7',
+      briefVersion: { id: 'brief-v7', versionNumber: 7, status: 'CONFIRMED', intent: 'Mejorar soporte', scope: 'Canal digital', strategicContextRefs: [], inheritedContext: {}, constraintsSnapshot: {}, knownGaps: [], sourceRefs: [], provenance: {}, confirmedAt: new Date() },
+    }, 'opaque-token', { publicBaseUrl: 'https://pilot.starteria.example', invitingOrganizationName: 'Org <A>', targetName: 'Reto & crecimiento', whyItMatters: '<script>alert(1)</script>' });
+    expect(challengeMessage.text).toContain('revisar un reto');
+    expect(challengeMessage.text).toMatch(/versi.n 7/);
+    expect(challengeMessage.text).toContain('https://pilot.starteria.example/handoff/invitations/opaque-token');
+    expect(challengeMessage.html).toContain('Org &lt;A&gt;');
+    expect(challengeMessage.html).not.toContain('<script>');
+
+    const initiativeMessage = renderInvitationEmail({ ...ctx.assignment, targetKind: 'EXISTING_INITIATIVE', initiativeId: 'project-1' }, 'opaque-token', { targetName: 'Iniciativa real' });
+    expect(initiativeMessage.text).toContain('una iniciativa existente');
+    expect(initiativeMessage.subject).toContain('una iniciativa existente');
+    expect(initiativeMessage.text).toContain('Este encargo no incluye una BriefVersion confirmada.');
   });
 
   it('does not mark sent on a confirmed rejection and permits an explicit retry', async () => {
     let fail = true;
-    const ctx = await context(async () => fail ? { delivered: false } : { delivered: true });
+    const ctx = await context(async () => fail ? { acceptedByTransport: false } : { acceptedByTransport: true });
     expect(await ctx.service.sendHandoffInvitation({ assignmentId: ctx.assignment.id, idempotencyKey: 'send-1' })).toMatchObject({ state: 'CREATED', attemptStatus: 'FAILED' });
     expect(await ctx.service.sendHandoffInvitation({ assignmentId: ctx.assignment.id, idempotencyKey: 'send-1' })).toMatchObject({ state: 'CREATED', attemptStatus: 'FAILED' });
     expect((await ctx.assignments.findById(ctx.assignment.id))?.state).toBe('CREATED');
@@ -54,7 +130,7 @@ describe('PortfolioHandoffDeliveryService / H-TECH-04', () => {
   it('is idempotent and does not infer viewed from delivery', async () => {
     let calls = 0;
     let message: any;
-    const ctx = await context(async (input) => { calls += 1; message = input; return { delivered: true }; });
+    const ctx = await context(async (input) => { calls += 1; message = input; return { acceptedByTransport: true }; });
     await ctx.service.sendHandoffInvitation({ assignmentId: ctx.assignment.id, idempotencyKey: 'same-key' });
     expect(await ctx.service.sendHandoffInvitation({ assignmentId: ctx.assignment.id, idempotencyKey: 'same-key' })).toMatchObject({ attemptStatus: 'IDEMPOTENT', state: 'SENT' });
     expect(calls).toBe(1);
@@ -73,7 +149,7 @@ describe('PortfolioHandoffDeliveryService / H-TECH-04', () => {
     const ctx = await context(async () => {
       calls += 1;
       await deliveryGate;
-      return { delivered: true, providerMessageRef: 'provider-concurrent' };
+      return { acceptedByTransport: true, providerMessageRef: 'provider-concurrent' };
     });
 
     const first = ctx.service.sendHandoffInvitation({ assignmentId: ctx.assignment.id, idempotencyKey: 'concurrent-key' });
@@ -95,9 +171,9 @@ describe('PortfolioHandoffDeliveryService / H-TECH-04', () => {
     const ctx = await context(async () => {
       calls += 1;
       await deliveryGate;
-      return { delivered: true, providerMessageRef: 'provider-intent' };
+      return { acceptedByTransport: true, providerMessageRef: 'provider-intent' };
     });
-    const request = { assignmentId: ctx.assignment.id, title: 'Misma intención', whyItMatters: 'Mismo contexto' };
+    const request = { assignmentId: ctx.assignment.id, title: 'Misma intenciÃ³n', whyItMatters: 'Mismo contexto' };
 
     const first = ctx.service.sendHandoffInvitation({ ...request, idempotencyKey: 'batch-a:assignment' });
     await vi.waitFor(() => expect(calls).toBe(1));
@@ -116,7 +192,7 @@ describe('PortfolioHandoffDeliveryService / H-TECH-04', () => {
     let calls = 0;
     const ctx = await context(async () => {
       calls += 1;
-      return { delivered: true, providerMessageRef: 'provider-reclaimed' };
+      return { acceptedByTransport: true, providerMessageRef: 'provider-reclaimed' };
     });
     await ctx.attempts.reserve({
       assignmentId: ctx.assignment.id,
@@ -146,7 +222,7 @@ describe('PortfolioHandoffDeliveryService / H-TECH-04', () => {
     let calls = 0;
     const ctx = await context(async () => {
       calls += 1;
-      return { delivered: true };
+      return { acceptedByTransport: true };
     });
     await ctx.attempts.reserve({
       assignmentId: ctx.assignment.id,
@@ -181,9 +257,9 @@ describe('PortfolioHandoffDeliveryService / H-TECH-04', () => {
     const ctx = await context(async () => {
       calls += 1;
       await gate;
-      return { delivered: true, providerMessageRef: 'accepted-but-late' };
+      return { acceptedByTransport: true, providerMessageRef: 'accepted-but-late' };
     }, { now: () => current, reservationTtlMs: 30_000 });
-    const request = { assignmentId: ctx.assignment.id, title: 'Misma intención', whyItMatters: 'Mismo contexto' };
+    const request = { assignmentId: ctx.assignment.id, title: 'Misma intenciÃ³n', whyItMatters: 'Mismo contexto' };
 
     const first = ctx.service.sendHandoffInvitation({ ...request, idempotencyKey: 'slow-a' });
     await vi.waitFor(() => expect(calls).toBe(1));
@@ -224,9 +300,9 @@ describe('PortfolioHandoffDeliveryService / H-TECH-04', () => {
     let calls = 0;
     const ctx = await context(async () => {
       calls += 1;
-      if (calls === 1) return { delivered: false };
+      if (calls === 1) return { acceptedByTransport: false };
       await gate;
-      return { delivered: true };
+      return { acceptedByTransport: true };
     });
     await ctx.service.sendHandoffInvitation({ assignmentId: ctx.assignment.id, idempotencyKey: 'failed-key', title: 'Original' });
 
@@ -276,7 +352,7 @@ describe('PortfolioHandoffDeliveryService / H-TECH-04', () => {
 
   it('rejects the same idempotency key when the invitation content fingerprint changes', async () => {
     let calls = 0;
-    const ctx = await context(async () => { calls += 1; return { delivered: true }; });
+    const ctx = await context(async () => { calls += 1; return { acceptedByTransport: true }; });
     await ctx.service.sendHandoffInvitation({ assignmentId: ctx.assignment.id, idempotencyKey: 'same-key', title: 'Mandato original' });
 
     await expect(ctx.service.sendHandoffInvitation({ assignmentId: ctx.assignment.id, idempotencyKey: 'same-key', title: 'Mandato cambiado' }))
@@ -287,8 +363,8 @@ describe('PortfolioHandoffDeliveryService / H-TECH-04', () => {
   it('revokes the unusable token when SMTP fails so a safe retry has one active invitation', async () => {
     let fail = true;
     const ctx = await context(async () => {
-      if (fail) return { delivered: false };
-      return { delivered: true };
+      if (fail) return { acceptedByTransport: false };
+      return { acceptedByTransport: true };
     });
 
     await ctx.service.sendHandoffInvitation({ assignmentId: ctx.assignment.id, idempotencyKey: 'failed-key' });
@@ -302,7 +378,7 @@ describe('PortfolioHandoffDeliveryService / H-TECH-04', () => {
 
   it('marks viewed only from a valid token, revokes access, and expires lazily', async () => {
     let message: any;
-    const ctx = await context(async (input) => { message = input; return { delivered: true }; });
+    const ctx = await context(async (input) => { message = input; return { acceptedByTransport: true }; });
     await ctx.service.sendHandoffInvitation({ assignmentId: ctx.assignment.id, idempotencyKey: 'send-1' });
     const access = ctx.access.accesses[0];
     expect(access.tokenHash).toBeTruthy();
@@ -319,7 +395,7 @@ describe('PortfolioHandoffDeliveryService / H-TECH-04', () => {
     expect((await created.service.revokeHandoffInvitation(created.assignment.id)).state).toBe('REVOKED');
 
     let expiredMessage: any;
-    const expiring = await context(async (input) => { expiredMessage = input; return { delivered: true }; });
+    const expiring = await context(async (input) => { expiredMessage = input; return { acceptedByTransport: true }; });
     await expiring.service.sendHandoffInvitation({ assignmentId: expiring.assignment.id, idempotencyKey: 'send-expired', expiresAt: new Date(Date.now() - 1) });
     const expiredToken = expiredMessage.text.match(/\/handoff\/invitations\/([^\s]+)/)?.[1];
     await expect(expiring.service.markHandoffInvitationViewed(expiredToken)).rejects.toMatchObject({ code: 'HANDOFF_INVITATION_EXPIRED' });
@@ -327,3 +403,4 @@ describe('PortfolioHandoffDeliveryService / H-TECH-04', () => {
     await expect(expiring.service.sendHandoffInvitation({ assignmentId: expiring.assignment.id, idempotencyKey: 'retry-expired' })).rejects.toMatchObject({ code: 'HANDOFF_INVITATION_NOT_SENDABLE' });
   });
 });
+

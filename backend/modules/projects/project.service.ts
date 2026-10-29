@@ -1,4 +1,4 @@
-import { PrismaClient } from '@prisma/client';
+import { Prisma, PrismaClient } from '@prisma/client';
 import { AppError } from '../../shared/errors/AppError';
 import {
   challengeAdmitsInitiatives,
@@ -294,7 +294,7 @@ export class ProjectService {
       decisionRequested: 'Validar si esta iniciativa debe avanzar dentro del reto.',
     } : undefined;
 
-    const project = await this.prisma.$transaction(async (tx) => {
+    const createWithClient = async (tx: Prisma.TransactionClient) => {
       const created = await tx.project.create({
         data: {
           name: data.name,
@@ -416,7 +416,13 @@ export class ProjectService {
       }
 
       return created;
-    });
+    };
+    // Reuse an enclosing security transaction (pilot claim) instead of opening
+    // an independent nested transaction that could commit a partial project.
+    const transaction = (this.prisma as PrismaClient).$transaction;
+    const project = typeof transaction === 'function'
+      ? await transaction.call(this.prisma, createWithClient)
+      : await createWithClient(this.prisma as unknown as Prisma.TransactionClient);
 
     return project as unknown as Project;
   }

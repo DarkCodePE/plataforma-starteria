@@ -173,6 +173,9 @@ export class PortfolioOrganizationService {
             whyNow: `Cobertura revisada: ${frontCandidate.coverage}`,
             organizationId,
             status: 'draft',
+          }, {
+            organizationId,
+            actorUserId: input.authenticatedUserId,
           });
           frontMappings.push({ candidateId: frontCandidate.candidateId, canonicalId: front.id });
           for (const challengeCandidate of frontCandidate.challenges) {

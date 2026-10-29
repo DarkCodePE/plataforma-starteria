@@ -1,5 +1,5 @@
 import { Prisma, type PrismaClient } from '@prisma/client';
-import { z } from 'zod';
+import { z } from 'zod/v3';
 import { AppError } from '../../shared/errors/AppError';
 import { ScopedPortfolioAccessService } from '../../shared/authz/scoped-portfolio-access.service';
 import { parseCriticalHandoffLifecycle, parseCriticalHandoffPayload,

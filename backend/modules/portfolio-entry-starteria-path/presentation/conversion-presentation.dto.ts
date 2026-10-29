@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import { z } from 'zod/v3';
 
 // Transport validation only; commercial availability is normalized by the server.
 const safeExternalHref = z.string().max(2048).refine((href) => {

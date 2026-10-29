@@ -1,5 +1,5 @@
 import type { NextFunction, Request, Response } from 'express';
-import { z } from 'zod';
+import { z } from 'zod/v3';
 import { AppError } from '../../shared/errors/AppError';
 import { portfolioSetupContinueRequestSchema, type PortfolioSetupContinuityWriteService } from './portfolio-setup-continuity-write.service';
 

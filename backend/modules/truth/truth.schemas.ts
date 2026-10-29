@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import { z } from 'zod/v3';
 
 export const sourceRefSchema = z.object({
   projectId: z.string().min(1).optional(),

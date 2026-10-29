@@ -21,7 +21,7 @@ import type {
   createIntentAssessmentSchema,
   createProposedActionSchema,
 } from '../schemas/copilot.schemas';
-import type { z } from 'zod';
+import type { z } from 'zod/v3';
 
 export type CreateCopilotConversationInput = z.infer<typeof createCopilotConversationSchema>;
 export type CreateCopilotMessageInput = z.infer<typeof createCopilotMessageSchema>;

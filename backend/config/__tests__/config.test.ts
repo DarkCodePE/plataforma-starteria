@@ -16,6 +16,14 @@ vi.mock('dotenv', () => ({
   config: () => ({ parsed: {} }),
 }));
 
+const STRONG = {
+  jwt: 'jwt-A7f9!qL2#sM4@vN6$xP8&zR0*bcD-2026',
+  bridge: 'bridge-B8g0@rM3#tN5$vP7%xQ9&za1*-2026',
+  ai: 'ai-C9h1#sN4$vP6%xQ8&yR0*zb2@Lm7!Qx-2026',
+  billing: 'billing-D0j2$tP5%xQ7&yR9*zA1@bc3#-2026',
+  pilot: 'pilot-E1k3%uQ6&yR8*zA0@bc2#de4$-2026',
+};
+
 describe('backend/config', () => {
   const ORIGINAL = { ...process.env };
 
@@ -33,6 +41,13 @@ describe('backend/config', () => {
     delete process.env.CORS_ORIGIN;
     delete process.env.BODY_LIMIT;
     delete process.env.AI_SERVICE_URL;
+    delete process.env.BRIDGE_SHARED_SECRET;
+    delete process.env.AI_SERVICE_TOKEN;
+    delete process.env.BILLING_WEBHOOK_SECRET;
+    delete process.env.PILOT_CODE_SECRET;
+    delete process.env.AI_WEBHOOKS_ENABLED;
+    delete process.env.BILLING_WEBHOOKS_ENABLED;
+    delete process.env.TRUST_PROXY_HOPS;
   });
 
   afterEach(() => {
@@ -47,7 +62,8 @@ describe('backend/config', () => {
     expect(config.nodeEnv).toBe('development');
     expect(config.logLevel).toBe('info');
     expect(config.jwtExpiresIn).toBe('15m');
-    expect(config.jwtRefreshExpiresIn).toBe('7d');
+    expect(config.jwtRefreshExpiresIn).toBe('8h');
+    expect(config.jwtRefreshTtlMs).toBe(8 * 60 * 60 * 1000);
     expect(config.corsOrigin).toBe('http://localhost:5173');
     expect(config.bodyLimit).toBe('1mb');
     expect(config.aiServiceUrl).toBe('http://localhost:8001');
@@ -98,17 +114,54 @@ describe('backend/config', () => {
 
   it('throws when DATABASE_URL is missing in production', async () => {
     process.env.NODE_ENV = 'production';
-    process.env.JWT_SECRET = 'whatever';
+    process.env.JWT_SECRET = STRONG.jwt;
     await expect(import('../index')).rejects.toThrow(/DATABASE_URL/);
   });
 
-  it('does NOT throw in production when both required vars are set', async () => {
+  it('fails closed in production when an internal secret is missing or a placeholder', async () => {
     process.env.NODE_ENV = 'production';
-    process.env.JWT_SECRET = 'whatever';
+    process.env.JWT_SECRET = STRONG.jwt;
+    process.env.DATABASE_URL = 'postgres://x';
+    await expect(import('../index')).rejects.toThrow(/BRIDGE_SHARED_SECRET/);
+
+    vi.resetModules();
+    process.env.BRIDGE_SHARED_SECRET = 'REPLACE_WITH_SECRET'.padEnd(32, 'x');
+    process.env.AI_SERVICE_TOKEN = STRONG.ai;
+    process.env.BILLING_WEBHOOK_SECRET = STRONG.billing;
+    process.env.PILOT_CODE_SECRET = STRONG.pilot;
+    await expect(import('../index')).rejects.toThrow(/BRIDGE_SHARED_SECRET/);
+  });
+
+  it('does NOT throw in production when independent strong secrets and database are set', async () => {
+    process.env.NODE_ENV = 'production';
+    process.env.JWT_SECRET = STRONG.jwt;
+    process.env.BRIDGE_SHARED_SECRET = STRONG.bridge;
+    process.env.AI_SERVICE_TOKEN = STRONG.ai;
+    process.env.BILLING_WEBHOOK_SECRET = STRONG.billing;
+    process.env.PILOT_CODE_SECRET = STRONG.pilot;
     process.env.DATABASE_URL = 'postgres://x';
     const { config } = await import('../index');
     expect(config.nodeEnv).toBe('production');
-    expect(config.jwtSecret).toBe('whatever');
+    expect(config.jwtSecret).toBe(STRONG.jwt);
     expect(config.databaseUrl).toBe('postgres://x');
+    expect(config.pilotCodeSecret).toBe(STRONG.pilot);
+    expect(config.aiWebhooksEnabled).toBe(false);
+    expect(config.billingWebhooksEnabled).toBe(false);
+  });
+
+  it('rejects whitespace-only and repetitive production secrets', async () => {
+    process.env.NODE_ENV = 'production';
+    process.env.DATABASE_URL = 'postgres://x';
+    process.env.JWT_SECRET = ' '.repeat(40);
+    await expect(import('../index')).rejects.toThrow(/JWT_SECRET/);
+
+    vi.resetModules();
+    process.env.JWT_SECRET = 'x'.repeat(40);
+    await expect(import('../index')).rejects.toThrow(/JWT_SECRET/);
+  });
+
+  it('rejects an unbounded or malformed refresh lifetime', async () => {
+    process.env.JWT_REFRESH_EXPIRES_IN = 'forever';
+    await expect(import('../index')).rejects.toThrow(/JWT_REFRESH_EXPIRES_IN/);
   });
 });

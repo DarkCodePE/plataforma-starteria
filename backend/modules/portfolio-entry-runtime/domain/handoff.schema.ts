@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import { z } from 'zod/v3';
 import { gapResolutionMapV2Schema } from './gap-resolution.schema';
 import { provenanceOriginV2Schema } from './analysis.schema';
 

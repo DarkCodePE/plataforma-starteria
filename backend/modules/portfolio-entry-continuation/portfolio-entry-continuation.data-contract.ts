@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { z } from 'zod';
+import { z } from 'zod/v3';
 
 export const CONTINUATION_114F_FORMAT = 'PORTFOLIO_SETUP_114F_V1' as const;
 

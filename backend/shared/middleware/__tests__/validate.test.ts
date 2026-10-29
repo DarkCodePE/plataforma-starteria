@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import express from 'express';
 import request from 'supertest';
-import { z, ZodError } from 'zod';
+import { z, ZodError } from 'zod/v3';
 import { validate } from '../validate';
 
 /**

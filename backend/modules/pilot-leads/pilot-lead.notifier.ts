@@ -34,7 +34,6 @@ function buildEmail(lead: PilotLeadNotice): { subject: string; text: string; htm
     `Organización:  ${org}`,
     '',
     `ID interno:    ${lead.id}`,
-    `Draft:         ${lead.draftId}`,
   ].join('\n');
 
   const esc = (s: string): string =>
@@ -49,7 +48,7 @@ function buildEmail(lead: PilotLeadNotice): { subject: string; text: string; htm
       <tr><td><strong>Teléfono</strong></td><td>${esc(phone)}</td></tr>
       <tr><td><strong>Organización</strong></td><td>${esc(org)}</td></tr>
     </table>
-    <p style="color:#888;font-size:12px">ID interno: ${esc(lead.id)} · Draft: ${esc(lead.draftId)}</p>
+    <p style="color:#888;font-size:12px">ID interno: ${esc(lead.id)}</p>
   `.trim();
 
   return { subject, text, html };
@@ -60,6 +59,8 @@ export interface EmailNotifierOptions {
   to?: string[];
   /** Mailer to use (defaults to the shared SMTP mailer). DI for tests. */
   mailer?: Mailer;
+  /** Explicit kill switch. Defaults fail closed from application config. */
+  enabled?: boolean;
 }
 
 /**
@@ -69,18 +70,19 @@ export interface EmailNotifierOptions {
 export function createEmailPilotLeadNotifier(options: EmailNotifierOptions = {}): PilotLeadNotifier {
   const to = options.to ?? config.pilotLeadNotifyTo;
   const transport = options.mailer ?? mailer;
+  const enabled = options.enabled ?? config.pilotLeadEmailEnabled;
 
   return async (lead: PilotLeadNotice): Promise<void> => {
-    // Non-PII log line for every capture — safe to keep in aggregated logs.
+    // The bearer is deliberately excluded: logs must never authenticate a user.
     logger.info(
-      { pilotLeadId: lead.id, pilotCode: lead.pilotCode, draftId: lead.draftId },
+      { pilotLeadId: lead.id },
       'New pilot lead captured',
     );
 
-    if (!transport.enabled || to.length === 0) {
+    if (!enabled || !transport.enabled || to.length === 0) {
       logger.warn(
-        { pilotLeadId: lead.id, recipients: to.length, mailerEnabled: transport.enabled },
-        'Pilot lead notification not emailed (mailer disabled or no recipients configured)',
+        { pilotLeadId: lead.id, recipients: to.length, mailerEnabled: transport.enabled, notifierEnabled: enabled },
+        'Pilot lead notification not emailed (notifier disabled, mailer disabled or no recipients configured)',
       );
       return;
     }
@@ -212,6 +214,8 @@ ${benefit('✅', 'Próximos pasos claros', 'Una versión lista para compartir co
 export interface ConfirmationNotifierOptions {
   /** Mailer to use (defaults to the shared SMTP mailer). DI for tests. */
   mailer?: Mailer;
+  /** Explicit kill switch. Defaults fail closed from application config. */
+  enabled?: boolean;
 }
 
 /**
@@ -223,12 +227,13 @@ export function createApplicantConfirmationNotifier(
   options: ConfirmationNotifierOptions = {},
 ): PilotLeadNotifier {
   const transport = options.mailer ?? mailer;
+  const enabled = options.enabled ?? config.pilotLeadEmailEnabled;
 
   return async (lead: PilotLeadNotice): Promise<void> => {
-    if (!transport.enabled || !lead.email) {
+    if (!enabled || !transport.enabled || !lead.email) {
       logger.warn(
-        { pilotLeadId: lead.id, mailerEnabled: transport.enabled },
-        'Pilot lead confirmation not emailed (mailer disabled or no applicant email)',
+        { pilotLeadId: lead.id, mailerEnabled: transport.enabled, notifierEnabled: enabled },
+        'Pilot lead confirmation not emailed (notifier disabled, mailer disabled or no applicant email)',
       );
       return;
     }

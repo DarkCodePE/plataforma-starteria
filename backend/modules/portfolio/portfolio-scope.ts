@@ -15,9 +15,8 @@
  *   cualquier cuenta (auditoría E2E F-01). La bandeja sigue funcionando con los retos de su
  *   organización y los frentes sin organización.
  *
- * Transición: un frente **sin organización** (datos anteriores a este cambio) sigue visible para
- * cualquiera con acceso al portafolio, igual que antes. Así nadie pierde datos al desplegar; lo que
- * se crea desde ahora queda en la organización de quien lo crea y deja de verse fuera de ella.
+ * Un frente sin organización falla cerrado. Los datos legacy requieren reconciliación explícita;
+ * no se publican implícitamente a todos los tenants.
  */
 import { logger } from '../../shared/utils/logger';
 
@@ -57,10 +56,32 @@ export async function resolvePortfolioScope(prisma: any, user: ScopeUser): Promi
   return { all: false, organizationIds: [...ids] };
 }
 
-/** `where` de Prisma para StrategicFront dentro del alcance (incluye los frentes sin organización). */
+/**
+ * Write scope is intentionally narrower than read scope. A secondary membership
+ * may grant visibility, but mutation requires a target-scoped `portfolio:write`
+ * grant. The primary organization remains the default tenant for a platform
+ * Portfolio Lead; admin keeps the explicit platform bypass.
+ */
+export async function resolvePortfolioWriteScope(prisma: any, user: ScopeUser): Promise<PortfolioScope> {
+  if (user.role === 'admin') return { all: true, organizationIds: [] };
+  if (!prisma) return { all: false, organizationIds: [] };
+  const record = user.organizationId !== undefined
+    ? { organizationId: user.organizationId }
+    : await prisma.user?.findUnique?.({ where: { id: user.id }, select: { organizationId: true } });
+  const grants = await prisma.organizationPortfolioAccessGrant?.findMany?.({
+    where: { userId: user.id, capability: 'portfolio:write' },
+    select: { organizationId: true },
+  }) ?? [];
+  const ids = new Set<string>();
+  if (record?.organizationId) ids.add(record.organizationId);
+  for (const grant of grants) if (grant?.organizationId) ids.add(grant.organizationId);
+  return { all: false, organizationIds: [...ids] };
+}
+
+/** `where` de Prisma para StrategicFront dentro del alcance. */
 export function frontScopeWhere(scope: PortfolioScope): Record<string, unknown> {
   if (scope.all) return {};
-  return { OR: [{ organizationId: { in: scope.organizationIds } }, { organizationId: null }] };
+  return { organizationId: { in: scope.organizationIds } };
 }
 
 /** Organización por defecto de un frente nuevo: la primaria de quien lo crea. */

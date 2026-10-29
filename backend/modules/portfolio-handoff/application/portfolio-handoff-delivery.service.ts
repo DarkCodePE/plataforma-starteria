@@ -6,18 +6,27 @@ import type { HandoffAssignment, HandoffAssignmentRepository, HandoffAssignmentS
 import { HANDOFF_DELIVERY_OUTCOME_UNKNOWN, HANDOFF_DELIVERY_RESERVATION } from '../domain/portfolio-handoff-invitation.types';
 import type { HandoffDeliveryAttempt, HandoffDeliveryAttemptRepository, HandoffInvitationAccessRepository } from '../domain/portfolio-handoff-invitation.types';
 import type { DurableHandoffEventPort } from './portfolio-handoff-semantic-event.projector';
+import type { HandoffEmailAuthorization, HandoffEmailAuthorizationRequest } from './handoff-email-transport-gate';
 
 export type HandoffInvitationDeliveryPort = {
-  send(input: { to: string; subject: string; text: string; html: string }): Promise<{ delivered: boolean; providerMessageRef?: string }>;
+  send(input: { to: string; from: string; replyTo?: string; subject: string; text: string; html: string }): Promise<{ acceptedByTransport: boolean; providerMessageRef?: string }>;
+};
+
+export type HandoffEmailAuthorizationPort = {
+  authorize(input: HandoffEmailAuthorizationRequest): HandoffEmailAuthorization;
+  consumeSendQuota?(input: HandoffEmailAuthorizationRequest): void;
 };
 
 export type SendHandoffInvitationInput = {
   assignmentId: string;
+  actorId: string;
   idempotencyKey: string;
   expiresAt?: Date | null;
   title?: string;
   whyItMatters?: string;
   requestFingerprint?: string;
+  invitingOrganizationName?: string;
+  targetName?: string;
 };
 
 type HandoffDeliveryResult = {
@@ -25,6 +34,7 @@ type HandoffDeliveryResult = {
   attemptStatus: 'SUCCEEDED' | 'FAILED' | 'UNKNOWN' | 'IDEMPOTENT';
   providerMessageRef: string | null;
   errorCategory: string | null;
+  transportReceiptStatus: 'SMTP_ACCEPTED' | null;
 };
 
 export class PortfolioHandoffDeliveryService {
@@ -33,6 +43,7 @@ export class PortfolioHandoffDeliveryService {
     private readonly access: HandoffInvitationAccessRepository,
     private readonly attempts: HandoffDeliveryAttemptRepository,
     private readonly delivery: HandoffInvitationDeliveryPort,
+    private readonly emailAuthorization: HandoffEmailAuthorizationPort,
     private readonly events?: DurableHandoffEventPort,
     private readonly now: () => Date = () => new Date(),
     private readonly reservationTtlMs = 30_000,
@@ -73,6 +84,7 @@ export class PortfolioHandoffDeliveryService {
         return this.replayExistingAttempt(input.assignmentId, requestFingerprint, existingIntent);
       }
       const assignment = await this.requireCreatedAssignment(input.assignmentId);
+      const authorization = this.authorize(input, assignment);
       const claimedAt = this.now();
       const claimed = await this.attempts.claimConfirmedFailure({
         attemptId: existingIntent.id,
@@ -89,11 +101,13 @@ export class PortfolioHandoffDeliveryService {
         }
         return this.replayExistingAttempt(input.assignmentId, requestFingerprint, keyedAttempt ?? claimed.attempt);
       }
+      await this.consumeQuotaOrRecordBlocked(input, assignment, claimed.attempt);
       await this.access.revokeForAssignment(assignment.id);
-      return this.deliverReserved(input, assignment, claimed.attempt);
+      return this.deliverReserved(input, assignment, claimed.attempt, authorization);
     }
 
     const assignment = await this.requireCreatedAssignment(input.assignmentId);
+    const authorization = this.authorize(input, assignment);
 
     const reservedAt = this.now();
     const reservation = await this.attempts.reserve({
@@ -113,16 +127,44 @@ export class PortfolioHandoffDeliveryService {
       return this.replayExistingAttempt(input.assignmentId, requestFingerprint, reservation.attempt);
     }
 
-    return this.deliverReserved(input, assignment, reservation.attempt);
+    await this.consumeQuotaOrRecordBlocked(input, assignment, reservation.attempt);
+    return this.deliverReserved(input, assignment, reservation.attempt, authorization);
   }
 
-  private async deliverReserved(input: SendHandoffInvitationInput, assignment: HandoffAssignment, reservedAttempt: HandoffDeliveryAttempt): Promise<HandoffDeliveryResult> {
-    const token = randomBytes(32).toString('hex');
-    await this.access.create({ assignmentId: assignment.id, tokenHash: hashRefreshToken(token), expiresAt: input.expiresAt ?? null });
-    const message = renderInvitationEmail(assignment, token, input.title, input.whyItMatters);
-    let result: { delivered: boolean; providerMessageRef?: string };
+  private async consumeQuotaOrRecordBlocked(
+    input: SendHandoffInvitationInput,
+    assignment: HandoffAssignment,
+    reservedAttempt: HandoffDeliveryAttempt,
+  ): Promise<void> {
     try {
-      result = await this.delivery.send({ to: assignment.invitedEmailNormalized, ...message });
+      this.emailAuthorization.consumeSendQuota?.(this.authorizationRequest(input, assignment));
+    } catch (error) {
+      await this.attempts.completeOwned({
+        attemptId: reservedAttempt.id,
+        executionGeneration: reservedAttempt.executionGeneration,
+        executionOwnerId: reservedAttempt.executionOwnerId!,
+        status: 'FAILED',
+        attemptedAt: this.now(),
+        providerMessageRef: null,
+        errorCategory: 'HANDOFF_EMAIL_RATE_LIMITED',
+      });
+      throw error;
+    }
+  }
+
+  private async deliverReserved(input: SendHandoffInvitationInput, assignment: HandoffAssignment, reservedAttempt: HandoffDeliveryAttempt, authorization: HandoffEmailAuthorization): Promise<HandoffDeliveryResult> {
+    const token = randomBytes(32).toString('hex');
+    const expiresAt = input.expiresAt ?? new Date(this.now().getTime() + authorization.invitationTtlHours * 60 * 60 * 1000);
+    await this.access.create({ assignmentId: assignment.id, tokenHash: hashRefreshToken(token), expiresAt });
+    const message = renderInvitationEmail(assignment, token, {
+      publicBaseUrl: authorization.publicBaseUrl,
+      invitingOrganizationName: input.invitingOrganizationName,
+      targetName: input.targetName ?? input.title,
+      whyItMatters: input.whyItMatters,
+    });
+    let result: { acceptedByTransport: boolean; providerMessageRef?: string };
+    try {
+      result = await this.delivery.send({ to: assignment.invitedEmailNormalized, from: authorization.from, replyTo: authorization.replyTo, ...message });
     } catch {
       const completedAt = this.now();
       const completion = await this.attempts.completeOwned({
@@ -142,11 +184,12 @@ export class PortfolioHandoffDeliveryService {
         attemptStatus: 'UNKNOWN',
         providerMessageRef: durableAttempt.providerMessageRef,
         errorCategory: HANDOFF_DELIVERY_OUTCOME_UNKNOWN,
+        transportReceiptStatus: null,
       };
     }
 
     const providerMessageRef = result.providerMessageRef ?? null;
-    if (!result.delivered) {
+    if (!result.acceptedByTransport) {
       const completion = await this.attempts.completeOwned({
         attemptId: reservedAttempt.id,
         executionGeneration: reservedAttempt.executionGeneration,
@@ -158,10 +201,10 @@ export class PortfolioHandoffDeliveryService {
       });
       if (!completion.completed) {
         const durableAttempt = await this.attempts.markExpiredUnknown({ attemptId: reservedAttempt.id, observedAt: this.now() });
-        return { state: assignment.state, attemptStatus: 'UNKNOWN', providerMessageRef: durableAttempt.providerMessageRef, errorCategory: HANDOFF_DELIVERY_OUTCOME_UNKNOWN };
+        return { state: assignment.state, attemptStatus: 'UNKNOWN', providerMessageRef: durableAttempt.providerMessageRef, errorCategory: HANDOFF_DELIVERY_OUTCOME_UNKNOWN, transportReceiptStatus: null };
       }
       await this.access.revokeForAssignment(assignment.id);
-      return { state: assignment.state, attemptStatus: 'FAILED', providerMessageRef, errorCategory: 'MAILER_DISABLED' };
+      return { state: assignment.state, attemptStatus: 'FAILED', providerMessageRef, errorCategory: 'MAILER_DISABLED', transportReceiptStatus: null };
     }
 
     const completedAt = this.now();
@@ -176,14 +219,31 @@ export class PortfolioHandoffDeliveryService {
     });
     if (!completion.completed) {
       const durableAttempt = await this.attempts.markExpiredUnknown({ attemptId: reservedAttempt.id, observedAt: this.now() });
-      return { state: assignment.state, attemptStatus: 'UNKNOWN', providerMessageRef: durableAttempt.providerMessageRef, errorCategory: HANDOFF_DELIVERY_OUTCOME_UNKNOWN };
+      return { state: assignment.state, attemptStatus: 'UNKNOWN', providerMessageRef: durableAttempt.providerMessageRef, errorCategory: HANDOFF_DELIVERY_OUTCOME_UNKNOWN, transportReceiptStatus: null };
     }
     const transitioned = assignment.state === 'CREATED'
       ? await this.assignments.transitionState({ assignmentId: assignment.id, from: ['CREATED'], to: 'SENT' })
       : assignment;
     const finalAssignment = transitioned ?? assignment;
     if (this.events) await this.events.publish({ type: 'invitation_sent', assignmentId: finalAssignment.id, version: finalAssignment.version, actorId: finalAssignment.createdByActorId, occurredAt: this.now(), interactionChannel: 'api', payload: { targetKind: finalAssignment.targetKind, initiativeId: finalAssignment.initiativeId } });
-    return { state: finalAssignment.state, attemptStatus: 'SUCCEEDED', providerMessageRef, errorCategory: null };
+    return { state: finalAssignment.state, attemptStatus: 'SUCCEEDED', providerMessageRef, errorCategory: null, transportReceiptStatus: 'SMTP_ACCEPTED' };
+  }
+
+  private authorize(input: SendHandoffInvitationInput, assignment: HandoffAssignment): HandoffEmailAuthorization {
+    const authorization = this.emailAuthorization.authorize(this.authorizationRequest(input, assignment));
+    if (authorization.mode === 'pilot' && (!input.invitingOrganizationName?.trim() || !input.targetName?.trim())) {
+      throw new AppError(503, 'Falta el contexto institucional de la invitacion.', 'HANDOFF_EMAIL_PILOT_CONTENT_INVALID');
+    }
+    return authorization;
+  }
+
+  private authorizationRequest(input: SendHandoffInvitationInput, assignment: HandoffAssignment): HandoffEmailAuthorizationRequest {
+    return {
+      assignmentId: assignment.id,
+      organizationId: assignment.organizationId ?? '',
+      actorId: input.actorId,
+      recipient: assignment.invitedEmailNormalized,
+    };
   }
 
   private async replayExistingAttempt(
@@ -211,12 +271,12 @@ export class PortfolioHandoffDeliveryService {
       if (assignment.state === 'CREATED') {
         await this.assignments.transitionState({ assignmentId, from: ['CREATED'], to: 'SENT' });
       }
-      return { state: (await this.requireAssignment(assignmentId)).state, attemptStatus: 'IDEMPOTENT', providerMessageRef: attempt.providerMessageRef, errorCategory: null };
+      return { state: (await this.requireAssignment(assignmentId)).state, attemptStatus: 'IDEMPOTENT', providerMessageRef: attempt.providerMessageRef, errorCategory: null, transportReceiptStatus: 'SMTP_ACCEPTED' };
     }
     if (attempt.status === 'UNKNOWN') {
-      return { state: (await this.requireAssignment(assignmentId)).state, attemptStatus: 'UNKNOWN', providerMessageRef: attempt.providerMessageRef, errorCategory: HANDOFF_DELIVERY_OUTCOME_UNKNOWN };
+      return { state: (await this.requireAssignment(assignmentId)).state, attemptStatus: 'UNKNOWN', providerMessageRef: attempt.providerMessageRef, errorCategory: HANDOFF_DELIVERY_OUTCOME_UNKNOWN, transportReceiptStatus: null };
     }
-    return { state: (await this.requireAssignment(assignmentId)).state, attemptStatus: 'FAILED', providerMessageRef: attempt.providerMessageRef, errorCategory: attempt.errorCategory };
+    return { state: (await this.requireAssignment(assignmentId)).state, attemptStatus: 'FAILED', providerMessageRef: attempt.providerMessageRef, errorCategory: attempt.errorCategory, transportReceiptStatus: null };
   }
 
   async markHandoffInvitationViewed(token: string): Promise<{ state: HandoffAssignmentState }> {
@@ -265,20 +325,32 @@ function fingerprintDeliveryRequest(input: SendHandoffInvitationInput): string {
     expiresAt: input.expiresAt?.toISOString() ?? null,
     title: input.title?.trim() ?? null,
     whyItMatters: input.whyItMatters?.trim() ?? null,
+    actorId: input.actorId,
+    invitingOrganizationName: input.invitingOrganizationName?.trim() ?? null,
+    targetName: input.targetName?.trim() ?? null,
   })).digest('hex');
 }
 
-export function renderInvitationEmail(assignment: HandoffAssignment, token: string, title = 'Una asignacion de Starteria', whyItMatters?: string): { subject: string; text: string; html: string } {
-  const url = `${config.handoffInvitationBaseUrl.replace(/\/$/, '')}/handoff/invitations/${encodeURIComponent(token)}`;
-  const context = whyItMatters?.trim() ? `\n\n${whyItMatters.trim()}` : '';
-  const text = `Starteria\n\nTe han invitado a revisar una asignación\n\nPara: ${assignment.invitedEmailNormalized}\n\n${title}${context}\n\nRevisar asignación: ${url}\n\nAl abrir Starteria podrás revisar el contexto antes de decidir.`;
-  const escapedTitle = escapeHtml(title);
+export function renderInvitationEmail(assignment: HandoffAssignment, token: string, content: { publicBaseUrl?: string; invitingOrganizationName?: string; targetName?: string; whyItMatters?: string } = {}): { subject: string; text: string; html: string } {
+  const url = `${(content.publicBaseUrl || config.handoffInvitationBaseUrl).replace(/\/$/, '')}/handoff/invitations/${encodeURIComponent(token)}`;
+  const organizationName = content.invitingOrganizationName?.trim() || 'Tu organización en Starteria';
+  const targetLabel = assignment.targetKind === 'EXISTING_INITIATIVE' ? 'iniciativa existente' : 'reto';
+  const targetArticle = assignment.targetKind === 'EXISTING_INITIATIVE' ? 'una' : 'un';
+  const targetName = content.targetName?.trim() || 'Encargo de Portfolio';
+  const briefLine = assignment.briefVersion
+    ? `Brief confirmado, versión ${assignment.briefVersion.versionNumber} (referencia ${assignment.briefVersion.id}).`
+    : 'Este encargo no incluye una BriefVersion confirmada.';
+  const context = content.whyItMatters?.trim() ? `\n\nPor qué importa:\n${content.whyItMatters.trim()}` : '';
+  const text = `Starteria\n\n${organizationName} te invita a revisar ${targetArticle} ${targetLabel}.\n\nEncargo: ${targetName}${context}\n\nQué se espera de ti:\nRevisar el Brief y el encargo, e indicar si aceptas o rechazas la responsabilidad. Nada se inicia al abrir este enlace.\n\n${briefLine}\n\nRevisar invitación: ${url}\n\nLa aceptación SMTP solo confirma que el servidor de correo recibió el mensaje; no acredita entrega, apertura ni aceptación del encargo.`;
+  const escapedOrganization = escapeHtml(organizationName);
+  const escapedTitle = escapeHtml(targetName);
   const escapedUrl = escapeHtml(url);
-  const escapedRecipient = escapeHtml(assignment.invitedEmailNormalized);
-  const escapedContext = whyItMatters?.trim() ? `<p>${escapeHtml(whyItMatters.trim()).replace(/\n/g, '<br>')}</p>` : '';
-  return { subject: 'Te han invitado a revisar una asignación', text, html: `<p><strong>Starteria</strong></p><p>Te han invitado a revisar una asignación</p><p><strong>Para:</strong> ${escapedRecipient}</p><p>${escapedTitle}</p>${escapedContext}<p><a href="${escapedUrl}">Revisar asignación</a></p><p>Al abrir Starteria podrás revisar el contexto antes de decidir.</p>` };
+  const escapedContext = content.whyItMatters?.trim() ? `<p><strong>Por qué importa:</strong><br>${escapeHtml(content.whyItMatters.trim()).replace(/\n/g, '<br>')}</p>` : '';
+  const escapedBrief = escapeHtml(briefLine);
+  return { subject: `${organizationName} te invita a revisar ${targetArticle} ${targetLabel}`, text, html: `<p><strong>Starteria</strong></p><p><strong>${escapedOrganization}</strong> te invita a revisar ${targetArticle} ${targetLabel}.</p><p><strong>Encargo:</strong> ${escapedTitle}</p>${escapedContext}<p><strong>Qué se espera de ti:</strong><br>Revisar el Brief y el encargo, e indicar si aceptas o rechazas la responsabilidad. Nada se inicia al abrir este enlace.</p><p>${escapedBrief}</p><p><a href="${escapedUrl}">Revisar invitación</a></p><p>La aceptación SMTP no acredita entrega, apertura ni aceptación del encargo.</p>` };
 }
 
 function escapeHtml(value: string): string {
   return value.replace(/[&<>"']/g, (character) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[character] ?? character));
 }
+

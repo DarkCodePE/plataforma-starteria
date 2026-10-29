@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import { z } from 'zod/v3';
 
 export const checkpointResponseSchema = z.object({
   idempotencyKey: z.string().min(6),

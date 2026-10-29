@@ -658,6 +658,7 @@ model User {
   mentorSessions           MentorSession[]
   evidence                 Evidence[]
   refreshTokens            RefreshToken[]
+  refreshTokenFamilies     RefreshTokenFamily[] @relation("RefreshTokenFamilies")
   auditLogs                AuditLog[]
   helpRequests             HelpRequest[]         @relation("HelpRequester")
   mentorHelpRequests       HelpRequest[]         @relation("HelpMentor")
@@ -693,10 +694,9 @@ model Project {
   step0Status             Step0Status       @default(NOT_STARTED)
   step0Data               Json?
   // Set when this project was created by redeeming a pilot code (ADR-018).
-  // Plain index (NOT @unique): adding a unique constraint trips `prisma db push`'s
-  // data-loss guard and aborts the deploy. Idempotency is enforced in the claim
-  // service instead (claim.createdProjectId + a findFirst guard before creating).
-  pilotLeadId             String?
+  // KAN-193: database-enforced one-project-per-lead. The migration is applied only
+  // through the authorized migration path; nullable uniqueness permits non-pilot projects.
+  pilotLeadId             String?          @unique
   mentorCredits           Int               @default(3)
   riskLevel               RiskLevel?
   isArchived              Boolean           @default(false)
@@ -762,12 +762,8 @@ model Project {
   @@index([organizationId])
   @@index([cohortId])
   @@index([status])
-  @@index([pilotLeadId])
-  // Plain @@index (NOT @@unique): igual que `pilotLeadId`, agregar un @@unique a una
-  // tabla EXISTENTE dispara el guard de data-loss de `prisma db push` y aborta el deploy
-  // (el CD corre db push SIN --accept-data-loss). La idempotencia real (un snapshot →
-  // ≤1 Project, RB-IR-017/018) ya la garantizan RouteConfirmation.reviewId @@unique + el
-  // claim-antes-de-crear en RouteConfirmationService, así que el unique aquí era redundante.
+  // `initialReviewSnapshotId` remains an ordinary index: its idempotency is governed
+  // by RouteConfirmation.reviewId and is unrelated to the pilot-lead uniqueness above.
   @@index([initialReviewSnapshotId])
   portfolioLearnings PortfolioLearning[]
 }
@@ -1468,13 +1464,30 @@ model RefreshToken {
   user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   tokenHash String    @unique
   family    String
+  tokenFamily RefreshTokenFamily @relation(fields: [family], references: [id], onDelete: Cascade)
+  generation Int     @default(0)
   expiresAt DateTime
   revokedAt DateTime?
   createdAt DateTime  @default(now())
 
+  @@unique([family, generation])
   @@index([tokenHash])
   @@index([family])
   @@index([userId])
+}
+
+model RefreshTokenFamily {
+  id        String    @id
+  userId    String
+  user      User      @relation("RefreshTokenFamilies", fields: [userId], references: [id], onDelete: Cascade)
+  revokedAt DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  tokens RefreshToken[]
+
+  @@index([userId])
+  @@index([revokedAt])
 }
 
 model AuditLog {
@@ -2476,6 +2489,7 @@ model CompanyContribution {
 model PilotLead {
   id              String   @id @default(uuid())
   draftId         String   @unique
+  // SHA-256 of the high-entropy bearer; the raw code is never persisted.
   pilotCode       String   @unique
   name            String
   email           String

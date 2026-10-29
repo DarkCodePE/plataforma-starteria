@@ -31,14 +31,17 @@ describe('CreateStrategicFrontCommandHandler', () => {
       createdBy: 'user1',
     });
 
-    expect(service.createStrategicFront).toHaveBeenCalledWith(expect.objectContaining({
-      name: 'Eficiencia operativa',
-      strategicObjective: 'Reducir tiempos de ciclo',
-      mainKpi: 'Tiempo de ciclo',
-      organizationId: 'org1',
-      ownerId: 'user1',
-      priority: 'Alta',
-    }));
+    expect(service.createStrategicFront).toHaveBeenCalledWith(
+      expect.objectContaining({
+        name: 'Eficiencia operativa',
+        strategicObjective: 'Reducir tiempos de ciclo',
+        mainKpi: 'Tiempo de ciclo',
+        organizationId: 'org1',
+        ownerId: 'user1',
+        priority: 'Alta',
+      }),
+      { organizationId: 'org1', actorUserId: 'user1' },
+    );
     expect(result).toMatchObject({
       success: true,
       commandType: 'CreateStrategicFrontCommand',

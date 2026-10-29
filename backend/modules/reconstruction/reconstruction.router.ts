@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { z } from 'zod';
+import { z } from 'zod/v3';
 import { authenticate } from '../auth/auth.middleware';
 import { validate } from '../../shared/middleware/validate';
 import { reconstruct } from './reconstruction.service';

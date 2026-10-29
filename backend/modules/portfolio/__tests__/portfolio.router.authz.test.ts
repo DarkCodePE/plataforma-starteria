@@ -133,15 +133,13 @@ describe('portfolio.router — autorización de escrituras (ADR-028)', () => {
     expect(res.status).toBe(403);
   });
 
-  it('las lecturas siguen abiertas a cualquier autenticado (deuda declarada)', async () => {
-    // AppLayout llama a las lecturas de portafolio para TODO usuario autenticado,
-    // así que cerrarlas rompería a los participantes. Se fija el comportamiento
-    // actual para que cerrarlas sea una decisión explícita, no un descuido.
+  it('el listado autenticado recibe siempre un scope tenant, también para participantes', async () => {
     currentUser = { id: 'u-par', email: 'par@starteria.io', role: 'participante' };
 
     const res = await request(makeApp()).get('/api/v1/portfolio/strategic-fronts');
 
     expect(res.status, JSON.stringify(res.body)).toBe(200);
+    expect(listStrategicFronts).toHaveBeenCalledWith(expect.objectContaining({ all: false, organizationIds: expect.any(Array) }));
   });
 
   it('expone Portfolio Home como lectura autenticada sin permiso de escritura', async () => {

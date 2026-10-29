@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import { z } from 'zod/v3';
 
 /**
  * Zod schemas + guardrail constants for the PUBLIC (no-auth) PDF extraction

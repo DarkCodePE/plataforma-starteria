@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import { z } from 'zod/v3';
 
 const scope = z.object({ organizationId: z.string().min(1), name: z.string().min(1) }).strict();
 const pathVersion = z.object({

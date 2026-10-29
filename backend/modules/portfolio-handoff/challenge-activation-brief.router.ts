@@ -8,7 +8,7 @@ import { Router } from 'express';
 import { prisma } from '../../shared/db/prisma';
 import { AppError } from '../../shared/errors/AppError';
 import { authenticate, requirePermission } from '../auth/auth.middleware';
-import { resolvePortfolioScope } from '../portfolio/portfolio-scope';
+import { resolvePortfolioScope, resolvePortfolioWriteScope } from '../portfolio/portfolio-scope';
 import { challengeOrganization, scopeAllows } from '../portfolio/portfolio-resource-guard';
 import { PortfolioHandoffAssignmentService } from './application/portfolio-handoff-assignment.service';
 import { PortfolioHandoffAssignmentError } from './application/portfolio-handoff-assignment.errors';
@@ -46,10 +46,12 @@ function normalize(value: any): any {
   if (value && typeof value === 'object') return Object.keys(value).sort().reduce((out: any, key) => { out[key] = normalize(value[key]); return out; }, {});
   return value;
 }
-async function ownChallenge(req: any, challengeId: string): Promise<string> {
+async function ownChallenge(req: any, challengeId: string, access: 'read' | 'write' = 'write'): Promise<string> {
   const user = req.user!;
   const resolved = await challengeOrganization(prisma, challengeId);
-  const scope = await resolvePortfolioScope(prisma, user);
+  const scope = access === 'write'
+    ? await resolvePortfolioWriteScope(prisma, user)
+    : await resolvePortfolioScope(prisma, user);
   if (!resolved.found || !resolved.organizationId || !scopeAllows(scope, resolved)) throw AppError.notFound('Reto', 'PORTFOLIO_RESOURCE_NOT_FOUND');
   return resolved.organizationId;
 }
@@ -107,7 +109,7 @@ challengeActivationBriefRouter.post('/challenges/:challengeId/activation-briefs'
 challengeActivationBriefRouter.get('/challenges/:challengeId/activation-briefs', authenticate, write, async (req: any, res, next) => {
   try {
     const { challengeId } = activationBriefChallengeParamsSchema.parse(req.params);
-    const organizationId = await ownChallenge(req, challengeId);
+    const organizationId = await ownChallenge(req, challengeId, 'read');
     const briefs = await (prisma as any).challengeActivationBrief.findMany({
       where: { challengeId, organizationId },
       include: { versions: { orderBy: { versionNumber: 'asc' } } },
@@ -121,7 +123,7 @@ challengeActivationBriefRouter.get('/activation-briefs/:briefId', authenticate, 
   try {
     const { briefId } = activationBriefParamsSchema.parse(req.params);
     const brief = await (prisma as any).challengeActivationBrief.findUnique({ where: { id: briefId }, include: { versions: { orderBy: { versionNumber: 'asc' } } } });
-    if (!brief) throw AppError.notFound('Brief', 'ACTIVATION_BRIEF_NOT_FOUND'); await ownChallenge(req, brief.challengeId); res.json({ success: true, data: brief });
+    if (!brief) throw AppError.notFound('Brief', 'ACTIVATION_BRIEF_NOT_FOUND'); await ownChallenge(req, brief.challengeId, 'read'); res.json({ success: true, data: brief });
   } catch (error) { next(error); }
 });
 
@@ -298,7 +300,7 @@ challengeActivationBriefRouter.post('/challenges/:challengeId/imported-initiativ
 challengeActivationBriefRouter.get('/challenges/:challengeId/assignable-initiatives', authenticate, write, async (req: any, res, next) => {
   try {
     const { challengeId } = activationBriefChallengeParamsSchema.parse(req.params);
-    const organizationId = await ownChallenge(req, challengeId);
+    const organizationId = await ownChallenge(req, challengeId, 'read');
     const canonical = await (prisma as any).initiativePortfolioMeta.findMany({
       where: { challengeId, project: { organizationId } },
       include: { project: { include: { owner: { select: { email: true, name: true } } } } },
@@ -361,7 +363,7 @@ challengeActivationBriefRouter.get('/challenges/:challengeId/assignable-initiati
 
 challengeActivationBriefRouter.get('/challenges/:challengeId/handoff-assignments', authenticate, write, async (req: any, res, next) => {
   try {
-    const organizationId = await ownChallenge(req, req.params.challengeId);
+    const organizationId = await ownChallenge(req, req.params.challengeId, 'read');
     const assignments = await (prisma as any).portfolioHandoffAssignment.findMany({
       where: { challengeId: req.params.challengeId, organizationId },
       include: { members: true, briefVersion: true, initiative: { select: { id: true, name: true } }, deliveryAttempts: { orderBy: { attemptedAt: 'desc' }, take: 1 } },

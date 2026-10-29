@@ -39,7 +39,7 @@ suite('PL-06B HTTP + durable PostgreSQL + SMTP sandbox', () => {
     await prisma.user.upsert({ where: { id: ids.existingOwner }, update: { organizationId: ids.organization }, create: { id: ids.existingOwner, email: 'pl06b-existing-owner@starteria.test', name: 'PL06B Existing Owner', initials: 'EO', skills: [], organizationId: ids.organization, role: 'colaborador', roles: ['colaborador'] } });
     await prisma.strategicFront.upsert({ where: { id: ids.front }, update: { name: 'PL06B Front', organizationId: ids.organization }, create: { id: ids.front, name: 'PL06B Front', organizationId: ids.organization } });
     await prisma.challenge.upsert({ where: { id: ids.challenge }, update: { strategicFrontId: ids.front, title: 'Reducir friccion de activacion' }, create: { id: ids.challenge, strategicFrontId: ids.front, title: 'Reducir friccion de activacion' } });
-    await prisma.project.upsert({ where: { id: ids.project }, update: { organizationId: ids.organization, ownerId: ids.existingOwner }, create: { id: ids.project, name: 'Onboarding guiado canónico', description: 'Iniciativa existente vinculada al reto.', organizationId: ids.organization, ownerId: ids.existingOwner, activationStatus: 'OWNER_CONFIRMED', retrospectiveAssessmentStatus: 'ASSESSED' } });
+    await prisma.project.upsert({ where: { id: ids.project }, update: { organizationId: ids.organization, ownerId: ids.existingOwner }, create: { id: ids.project, name: 'Onboarding guiado canÃ³nico', description: 'Iniciativa existente vinculada al reto.', organizationId: ids.organization, ownerId: ids.existingOwner, activationStatus: 'OWNER_CONFIRMED', retrospectiveAssessmentStatus: 'ASSESSED' } });
     await prisma.initiativePortfolioMeta.upsert({ where: { projectId_challengeId: { projectId: ids.project, challengeId: ids.challenge } }, update: { strategicFrontId: ids.front }, create: { id: 'pl06b-e2e-canonical-meta', projectId: ids.project, challengeId: ids.challenge, strategicFrontId: ids.front, teamOwner: 'pl06b-existing-owner@starteria.test' } });
     await prisma.challengeActivationBrief.create({ data: { id: ids.brief, organizationId: ids.organization, challengeId: ids.challenge, createdByActorId: ids.lead } });
     await prisma.challengeActivationBriefVersion.create({ data: {
@@ -49,9 +49,9 @@ suite('PL-06B HTTP + durable PostgreSQL + SMTP sandbox', () => {
     } });
     for (const [id, email, context, targetKind] of [
       [ids.first, 'pl06b-recipient-1@starteria.test', 'Contrastar abandono inicial.', 'CHALLENGE'],
-      [ids.second, 'pl06b-existing-owner@starteria.test', 'Continuar la iniciativa canónica.', 'EXISTING_INITIATIVE'],
+      [ids.second, 'pl06b-existing-owner@starteria.test', 'Continuar la iniciativa canÃ³nica.', 'EXISTING_INITIATIVE'],
       [ids.untouched, 'pl06b-recipient-3@starteria.test', 'Debe permanecer preparada.', 'CHALLENGE'],
-      [ids.crossKey, 'pl06b-recipient-4@starteria.test', 'Una intención bajo dos claves HTTP.', 'CHALLENGE'],
+      [ids.crossKey, 'pl06b-recipient-4@starteria.test', 'Una intenciÃ³n bajo dos claves HTTP.', 'CHALLENGE'],
       [ids.ambiguous, 'pl06b-recipient-5@starteria.test', 'Resultado SMTP ambiguo.', 'CHALLENGE'],
       [ids.fenced, 'pl06b-recipient-6@starteria.test', 'Fencing persistente.', 'CHALLENGE'],
       [ids.raceFailure, 'pl06b-recipient-7@starteria.test', 'Fallo concurrente confirmado.', 'CHALLENGE'],
@@ -96,7 +96,7 @@ suite('PL-06B HTTP + durable PostgreSQL + SMTP sandbox', () => {
 
     const inbox = await (await fetch(`${mailpitApi}/messages`)).json() as any;
     const allMessages = await Promise.all(inbox.messages.map((item: any) => fetch(`${mailpitApi}/message/${item.ID}`).then((response) => response.json())));
-    expect(JSON.stringify(allMessages)).toContain('Onboarding guiado canónico');
+    expect(JSON.stringify(allMessages)).toContain('Onboarding guiado canÃ³nico');
     expect(JSON.stringify(allMessages)).toContain('Reducir friccion de activacion');
     const message = await (await fetch(`${mailpitApi}/message/${inbox.messages[0].ID}`)).json() as any;
     const serialized = JSON.stringify(message);
@@ -200,7 +200,7 @@ suite('PL-06B HTTP + durable PostgreSQL + SMTP sandbox', () => {
     const reclaimed = await batches.reclaimProcessing({ batchId: reservedBatch.batch.id, staleBefore: now, leaseUntil, executionOwnerId: 'current-batch-worker' });
     const staleBatch = await batches.saveProgress({
       batchId: reservedBatch.batch.id, executionGeneration: 1, executionOwnerId: 'stale-batch-worker', observedAt: now,
-      results: [{ assignmentId: ids.fenced, status: 'SUCCEEDED', state: 'SENT', errorCategory: null, providerMessageRef: 'must-not-persist' }],
+      results: [{ assignmentId: ids.fenced, status: 'SUCCEEDED', state: 'SENT', errorCategory: null, providerMessageRef: 'must-not-persist', transportReceiptStatus: 'SMTP_ACCEPTED' }],
       status: 'COMPLETED', completedAt: now, processingLeaseUntil: null,
     });
     expect(reclaimed).toMatchObject({ reclaimed: true, batch: { processingGeneration: 2, processingOwnerId: 'current-batch-worker' } });
@@ -216,9 +216,10 @@ suite('PL-06B HTTP + durable PostgreSQL + SMTP sandbox', () => {
       new PrismaPortfolioHandoffAssignmentRepository(prisma),
       new PrismaPortfolioHandoffInvitationRepository(prisma),
       attempts,
-      { send: async () => { transportCalls += 1; await gate; return { delivered: false }; } },
+      { send: async () => { transportCalls += 1; await gate; return { acceptedByTransport: false }; } },
+      { authorize: () => ({ mode: 'sandbox', from: 'sandbox@starteria.test', publicBaseUrl: 'http://localhost:5173', receiptSemantics: 'SMTP_ACCEPTED_ONLY', invitationTtlHours: 24 }) },
     );
-    const base = { assignmentId: ids.raceFailure, title: 'Misma intención', whyItMatters: 'Fallo confirmado' };
+    const base = { assignmentId: ids.raceFailure, actorId: ids.lead, title: 'Misma intenciÃ³n', whyItMatters: 'Fallo confirmado' };
     const first = service.sendHandoffInvitation({ ...base, idempotencyKey: 'pl06b-failed-race-a' });
     const second = service.sendHandoffInvitation({ ...base, idempotencyKey: 'pl06b-failed-race-b' });
     await vi.waitFor(() => expect(transportCalls).toBe(1));
@@ -266,10 +267,12 @@ suite('PL-06B HTTP + durable PostgreSQL + SMTP sandbox', () => {
       new PrismaPortfolioHandoffAssignmentRepository(prisma),
       new PrismaPortfolioHandoffInvitationRepository(prisma),
       new PrismaPortfolioHandoffDeliveryAttemptRepository(prisma),
-      { send: async () => { unexpectedTransportCalls += 1; return { delivered: true }; } },
+      { send: async () => { unexpectedTransportCalls += 1; return { acceptedByTransport: true }; } },
+      { authorize: () => ({ mode: 'sandbox', from: 'sandbox@starteria.test', publicBaseUrl: 'http://localhost:5173', receiptSemantics: 'SMTP_ACCEPTED_ONLY', invitationTtlHours: 24 }) },
     );
     await expect(directService.sendHandoffInvitation({
       assignmentId: ids.ambiguous,
+      actorId: ids.lead,
       idempotencyKey: `pl06b-e2e-ambiguous-b:${ids.ambiguous}`,
       title: 'Contenido distinto tras UNKNOWN',
     })).rejects.toMatchObject({ code: 'HANDOFF_IDEMPOTENCY_CONFLICT' });
@@ -280,3 +283,4 @@ suite('PL-06B HTTP + durable PostgreSQL + SMTP sandbox', () => {
 
   afterAll(async () => { vi.restoreAllMocks(); await prisma.$disconnect(); });
 });
+

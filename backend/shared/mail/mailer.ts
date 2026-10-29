@@ -53,16 +53,16 @@ export const mailer: Mailer = {
       logger.warn({ subject: message.subject }, 'Mailer disabled (SMTP not configured) — email not sent');
       return false;
     }
-    await sendMailWithReceipt(message);
-    return true;
+    const receipt = await sendMailWithReceipt(message);
+    return receipt.acceptedByTransport;
   },
 };
 
-export async function sendMailWithReceipt(message: MailMessage): Promise<{ delivered: boolean; providerMessageRef?: string }> {
+export async function sendMailWithReceipt(message: MailMessage): Promise<{ acceptedByTransport: boolean; providerMessageRef?: string }> {
   const from = message.from || config.smtp.from;
   if (!config.smtp.host || !from) {
     logger.warn({ subject: message.subject }, 'Mailer disabled (SMTP or sender not configured) — email not sent');
-    return { delivered: false };
+    return { acceptedByTransport: false };
   }
   const receipt = await getTransport().sendMail({
     from,
@@ -72,7 +72,7 @@ export async function sendMailWithReceipt(message: MailMessage): Promise<{ deliv
     text: message.text,
     html: message.html,
   });
-  return { delivered: true, providerMessageRef: receipt.messageId };
+  return { acceptedByTransport: true, providerMessageRef: receipt.messageId };
 }
 
 /** Test seam: reset the cached transport between suites. */

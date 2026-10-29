@@ -6,6 +6,7 @@ import type { PortfolioHandoffDeliveryService } from './portfolio-handoff-delive
 
 export type HandoffDeliveryContext = {
   assignment: HandoffAssignment;
+  organizationName: string;
   challengeName: string;
   initiativeName: string | null;
   initiativeOrganizationId: string | null;
@@ -32,10 +33,11 @@ export class PortfolioHandoffBatchDeliveryService {
     private readonly delivery: PortfolioHandoffDeliveryService,
     private readonly now: () => Date = () => new Date(),
     private readonly processingLeaseMs = 30_000,
+    private readonly maxBatchSize = 25,
   ) {}
 
   async send(input: SendHandoffInvitationBatchInput): Promise<HandoffDeliveryBatch> {
-    const normalized = normalize(input);
+    const normalized = normalize(input, this.maxBatchSize);
     const requestFingerprint = fingerprint(normalized);
     const existing = await this.batches.findByIdempotencyKey({ organizationId: normalized.organizationId, idempotencyKey: normalized.idempotencyKey });
     if (existing) {
@@ -94,8 +96,11 @@ export class PortfolioHandoffBatchDeliveryService {
         : 'Este encargo no incorpora un Brief.';
       const result = await this.delivery.sendHandoffInvitation({
         assignmentId: assignment.id,
+        actorId: input.actorId,
         idempotencyKey: `${input.idempotencyKey}:${assignment.id}`,
         title: `${assignment.targetKind === 'EXISTING_INITIATIVE' ? 'Iniciativa' : 'Reto'}: ${targetName}`,
+        targetName,
+        invitingOrganizationName: context.organizationName,
         whyItMatters: [assignment.contextNote, briefContext].filter(Boolean).join('\n\n'),
       });
       const results = [...batch.results, {
@@ -108,6 +113,7 @@ export class PortfolioHandoffBatchDeliveryService {
         state: result.state,
         errorCategory: result.errorCategory,
         providerMessageRef: result.providerMessageRef,
+        transportReceiptStatus: result.transportReceiptStatus,
       }];
       const observedAt = this.now();
       const progress = await this.batches.saveProgress({
@@ -214,12 +220,13 @@ export class PortfolioHandoffBatchDeliveryService {
   }
 }
 
-function normalize(input: SendHandoffInvitationBatchInput) {
+function normalize(input: SendHandoffInvitationBatchInput, maxBatchSize: number) {
   const items = [...input.items]
     .map((item) => ({ assignmentId: item.assignmentId.trim(), expectedVersion: item.expectedVersion }))
     .sort((left, right) => left.assignmentId.localeCompare(right.assignmentId));
   if (!input.idempotencyKey.trim()) throw AppError.badRequest('Idempotency key requerida', 'HANDOFF_IDEMPOTENCY_REQUIRED');
   if (!items.length || items.some((item) => !item.assignmentId || !Number.isInteger(item.expectedVersion) || item.expectedVersion < 1)) throw AppError.badRequest('Seleccion de asignaciones invalida', 'HANDOFF_BATCH_ITEMS_INVALID');
+  if (items.length > maxBatchSize) throw AppError.badRequest('El lote excede el maximo permitido', 'HANDOFF_BATCH_TOO_LARGE');
   if (new Set(items.map((item) => item.assignmentId)).size !== items.length) throw AppError.badRequest('No se puede repetir una asignacion', 'HANDOFF_BATCH_ITEMS_DUPLICATED');
   return { ...input, idempotencyKey: input.idempotencyKey.trim(), retryOfBatchId: input.retryOfBatchId?.trim() || null, items };
 }

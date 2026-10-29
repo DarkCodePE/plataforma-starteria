@@ -73,6 +73,7 @@ export type HandoffDeliveryBatchItemResult = {
   state: HandoffAssignment['state'];
   errorCategory: string | null;
   providerMessageRef: string | null;
+  transportReceiptStatus: 'SMTP_ACCEPTED' | null;
 };
 
 export type HandoffDeliveryBatch = {

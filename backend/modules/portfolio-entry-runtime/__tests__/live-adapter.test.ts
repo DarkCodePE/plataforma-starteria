@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { z } from 'zod';
+import { z } from 'zod/v3';
 import { LivePortfolioEntryAgentAdapter } from '../agent/live-portfolio-entry-agent-adapter';
 import { FetchStructuredModelAdapter } from '../model/fetch-structured-model-adapter';
 import { portfolioEntryLiveHealth } from '../model/live-health';

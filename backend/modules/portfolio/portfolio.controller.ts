@@ -62,12 +62,19 @@ export class PortfolioController {
     try {
       // Sin owner explícito, quien crea el frente es su owner: así hereda la autoridad de decisión
       // de las iniciativas que nazcan de sus retos (initiative-governance.ts).
+      const primaryOrganizationId = await defaultOrganizationId(this.prismaClient, req.user?.id);
       const data = await this.service.createStrategicFront({
         ...req.body,
         ownerId: req.body.ownerId ?? req.user?.id,
         // Sin organización explícita, el frente queda en la organización de quien lo crea
         // (portfolio-scope.ts): deja de verse desde otras organizaciones.
-        organizationId: req.body.organizationId ?? (await defaultOrganizationId(this.prismaClient, req.user?.id)) ?? undefined,
+        organizationId: req.user?.role === 'admin'
+          ? req.body.organizationId ?? primaryOrganizationId ?? undefined
+          : primaryOrganizationId ?? undefined,
+      }, {
+        organizationId: primaryOrganizationId,
+        actorUserId: req.user?.id,
+        platformAdmin: req.user?.role === 'admin',
       });
       res.status(201).json({ success: true, data });
     } catch (err) {

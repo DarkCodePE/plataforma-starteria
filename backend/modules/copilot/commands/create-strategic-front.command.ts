@@ -1,4 +1,4 @@
-import type { z } from 'zod';
+import type { z } from 'zod/v3';
 import { AppError } from '../../../shared/errors/AppError';
 import { PortfolioService } from '../../portfolio/portfolio.service';
 import { createStrategicFrontSchema } from '../../portfolio/portfolio.schemas';
@@ -54,7 +54,10 @@ export class CreateStrategicFrontCommandHandler {
     }
 
     try {
-      const front = await this.portfolioService.createStrategicFront(portfolioInput.data) as StrategicFrontCommandOutput;
+      const front = await this.portfolioService.createStrategicFront(portfolioInput.data, {
+        organizationId: parsedCommand.data.organizationId,
+        actorUserId: parsedCommand.data.ownerId,
+      }) as StrategicFrontCommandOutput;
       const result: CommandExecutionResult = {
         success: true,
         commandType: CREATE_STRATEGIC_FRONT_COMMAND_TYPE,

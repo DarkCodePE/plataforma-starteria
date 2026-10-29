@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import { z } from 'zod/v3';
 import {
   ACTION_EXECUTION_STATUSES,
   ACTION_PLAN_STATUSES,

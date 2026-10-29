@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import { z } from 'zod/v3';
 import api, { parseApiError } from '../../../app/services/api';
 
 const carriedField = z.object({ text: z.string(), sourceRef: z.string(),

@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import { z } from 'zod/v3';
 import { portfolioEntryAnalysisV2Schema, questionPlanV2Schema } from './analysis.schema';
 
 export const portfolioEntryTurnOutputV2Schema = z.object({

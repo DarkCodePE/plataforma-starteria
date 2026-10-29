@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import { z } from 'zod/v3';
 import { provenanceOriginV2Schema, reviewDispositionV2Schema } from './analysis.schema';
 
 const nonEmptyTextSchema = z.string().trim().min(1);

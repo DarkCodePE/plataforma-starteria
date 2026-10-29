@@ -28,6 +28,16 @@ import {
   checkInitiativeTransition,
   initiativeAcceptsStepWrites,
 } from './initiative-state-machine';
+import {
+  assertSameTenant,
+  assertUserInTenant,
+  challengeTenant,
+  frontTenant,
+  projectTenant,
+  rejectTenantMove,
+  tenantWriteTransaction,
+  type PortfolioWriteAuthority,
+} from './portfolio-tenant-write';
 
 export class PortfolioService {
   constructor(private prisma: PrismaClient) {}
@@ -44,12 +54,22 @@ export class PortfolioService {
     });
   }
 
-  async createStrategicFront(input: CreateStrategicFrontInput) {
-    return this.prisma.strategicFront.create({
-      data: input as any,
-      include: {
-        _count: { select: { challenges: true } },
-      },
+  async createStrategicFront(input: CreateStrategicFrontInput, authority: PortfolioWriteAuthority) {
+    return tenantWriteTransaction(this.prisma, async (tx) => {
+      const organizationId = authority.platformAdmin
+        ? input.organizationId ?? authority.organizationId
+        : authority.organizationId;
+      if (!organizationId || (!authority.platformAdmin && input.organizationId && input.organizationId !== organizationId)) {
+        throw AppError.notFound('Portfolio resource', 'PORTFOLIO_RESOURCE_NOT_FOUND');
+      }
+      if (!authority.platformAdmin) await assertUserInTenant(tx, authority.actorUserId, organizationId);
+      await assertUserInTenant(tx, input.ownerId, organizationId);
+      return tx.strategicFront.create({
+        data: { ...input, organizationId } as any,
+        include: {
+          _count: { select: { challenges: true } },
+        },
+      });
     });
   }
 
@@ -57,12 +77,19 @@ export class PortfolioService {
     const existing = await this.prisma.strategicFront.findUnique({ where: { id } });
     if (!existing) throw AppError.notFound('Frente estratégico', 'FRONT_NOT_FOUND', { hint: 'Confirma el ID del frente.' });
 
-    return this.prisma.strategicFront.update({
-      where: { id },
-      data: input as any,
-      include: {
-        _count: { select: { challenges: true } },
-      },
+    return tenantWriteTransaction(this.prisma, async (tx) => {
+      const current = await tx.strategicFront.findUnique({ where: { id } });
+      if (!current) throw AppError.notFound('Portfolio resource', 'PORTFOLIO_RESOURCE_NOT_FOUND');
+      rejectTenantMove(current.organizationId, input.organizationId);
+      await assertUserInTenant(tx, input.ownerId, current.organizationId);
+      const { organizationId: _ignored, ...safeInput } = input;
+      return tx.strategicFront.update({
+        where: { id },
+        data: safeInput as any,
+        include: {
+          _count: { select: { challenges: true } },
+        },
+      });
     });
   }
 
@@ -80,7 +107,7 @@ export class PortfolioService {
       where: { id: strategicFrontId },
     });
     // Un frente de otra organización responde igual que uno inexistente (no confirma IDs ajenos).
-    const inScope = !scope || scope.all || front?.organizationId == null || scope.organizationIds.includes(front.organizationId);
+    const inScope = !scope || scope.all || Boolean(front?.organizationId && scope.organizationIds.includes(front.organizationId));
     if (!front || !inScope) throw AppError.notFound('Frente estratégico', 'FRONT_NOT_FOUND', { hint: 'Confirma el ID del frente.' });
 
     return this.prisma.challenge.findMany({
@@ -100,16 +127,21 @@ export class PortfolioService {
     });
     if (!front) throw AppError.notFound('Frente estratégico', 'FRONT_NOT_FOUND', { hint: 'Confirma el ID del frente.' });
 
-    return this.prisma.challenge.create({
-      data: {
-        ...(input as any),
-        strategicFrontId,
-      },
-      include: {
-        selectedPeople: true,
-        assignedSquad: true,
-        _count: { select: { initiativeMetas: true } },
-      },
+    return tenantWriteTransaction(this.prisma, async (tx) => {
+      const organizationId = await frontTenant(tx, strategicFrontId);
+      await assertUserInTenant(tx, input.ownerId, organizationId);
+      await assertUserInTenant(tx, input.sponsorId, organizationId);
+      return tx.challenge.create({
+        data: {
+          ...(input as any),
+          strategicFrontId,
+        },
+        include: {
+          selectedPeople: true,
+          assignedSquad: true,
+          _count: { select: { initiativeMetas: true } },
+        },
+      });
     });
   }
 
@@ -152,14 +184,19 @@ export class PortfolioService {
       );
     }
 
-    return this.prisma.challenge.update({
-      where: { id },
-      data: data as any,
-      include: {
-        selectedPeople: true,
-        assignedSquad: true,
-        _count: { select: { initiativeMetas: true } },
-      },
+    return tenantWriteTransaction(this.prisma, async (tx) => {
+      const current = await challengeTenant(tx, id);
+      await assertUserInTenant(tx, input.ownerId, current.organizationId);
+      await assertUserInTenant(tx, input.sponsorId, current.organizationId);
+      return tx.challenge.update({
+        where: { id },
+        data: data as any,
+        include: {
+          selectedPeople: true,
+          assignedSquad: true,
+          _count: { select: { initiativeMetas: true } },
+        },
+      });
     });
   }
 
@@ -261,34 +298,36 @@ export class PortfolioService {
   }
 
   async addChallengeTeamMember(challengeId: string, input: AddChallengeTeamMemberInput) {
-    const challenge = await this.prisma.challenge.findUnique({ where: { id: challengeId } });
-    if (!challenge) throw AppError.notFound('Desafío', 'CHALLENGE_NOT_FOUND', { hint: 'Verifica el ID del desafío.' });
+    return tenantWriteTransaction(this.prisma, async (tx) => {
+      const { organizationId } = await challengeTenant(tx, challengeId);
+      await assertUserInTenant(tx, input.userId, organizationId);
 
-    // Logical uniqueness (challengeId, userId) — enforced here, NOT via @unique
-    // (prisma db push trips its data-loss guard on @unique over a populated table).
-    if (input.userId) {
-      const dup = await this.prisma.challengeTeamMember.findFirst({
-        where: { challengeId, userId: input.userId },
-        select: { id: true },
-      });
-      if (dup) {
-        throw AppError.conflict(
-          'Este usuario ya forma parte del equipo del reto.',
-          'CHALLENGE_TEAM_MEMBER_EXISTS',
-          { hint: 'Actualiza el miembro existente en lugar de duplicarlo.' },
-        );
+      // Logical uniqueness (challengeId, userId) — enforced here, NOT via @unique
+      // (prisma db push trips its data-loss guard on @unique over a populated table).
+      if (input.userId) {
+        const dup = await tx.challengeTeamMember.findFirst({
+          where: { challengeId, userId: input.userId },
+          select: { id: true },
+        });
+        if (dup) {
+          throw AppError.conflict(
+            'Este usuario ya forma parte del equipo del reto.',
+            'CHALLENGE_TEAM_MEMBER_EXISTS',
+            { hint: 'Actualiza el miembro existente en lugar de duplicarlo.' },
+          );
+        }
       }
-    }
 
-    return this.prisma.challengeTeamMember.create({
-      data: {
-        challengeId,
-        userId: input.userId ?? null,
-        label: input.label ?? null,
-        role: (input.role ?? 'VIEWER') as any,
-        status: (input.status ?? 'ACTIVE') as any,
-      },
-      include: { user: { select: { id: true, name: true, email: true, initials: true } } },
+      return tx.challengeTeamMember.create({
+        data: {
+          challengeId,
+          userId: input.userId ?? null,
+          label: input.label ?? null,
+          role: (input.role ?? 'VIEWER') as any,
+          status: (input.status ?? 'ACTIVE') as any,
+        },
+        include: { user: { select: { id: true, name: true, email: true, initials: true } } },
+      });
     });
   }
 
@@ -342,28 +381,26 @@ export class PortfolioService {
 
   /** Add/override a member on the iniciativa team (TeamMember, inheritedFromChallenge=false). */
   async upsertInitiativeTeamMember(projectId: string, userId: string, input: UpsertInitiativeTeamMemberInput) {
-    const project = await this.prisma.project.findUnique({ where: { id: projectId }, select: { id: true } });
-    if (!project) throw AppError.notFound('Proyecto', 'PROJECT_NOT_FOUND', { hint: 'Verifica el ID o vuelve al listado.' });
-
-    const user = await this.prisma.user.findUnique({ where: { id: userId }, select: { id: true } });
-    if (!user) throw AppError.notFound('Usuario', 'USER_NOT_FOUND', { hint: 'Verifica el ID del usuario.' });
-
-    return this.prisma.teamMember.upsert({
-      where: { projectId_userId: { projectId, userId } },
-      create: {
-        projectId,
-        userId,
-        role: (input.role ?? 'VIEWER') as any,
-        status: (input.status ?? 'ACTIVE') as any,
-        inheritedFromChallenge: false,
-        ...(input.modulePermissions ? { modulePermissions: input.modulePermissions } : {}),
-      },
-      update: {
-        ...(input.role !== undefined ? { role: input.role as any } : {}),
-        ...(input.status !== undefined ? { status: input.status as any } : {}),
-        ...(input.modulePermissions !== undefined ? { modulePermissions: input.modulePermissions } : {}),
-      },
-      include: { user: { select: { id: true, name: true, email: true, initials: true } } },
+    return tenantWriteTransaction(this.prisma, async (tx) => {
+      const { organizationId } = await projectTenant(tx, projectId);
+      await assertUserInTenant(tx, userId, organizationId);
+      return tx.teamMember.upsert({
+        where: { projectId_userId: { projectId, userId } },
+        create: {
+          projectId,
+          userId,
+          role: (input.role ?? 'VIEWER') as any,
+          status: (input.status ?? 'ACTIVE') as any,
+          inheritedFromChallenge: false,
+          ...(input.modulePermissions ? { modulePermissions: input.modulePermissions } : {}),
+        },
+        update: {
+          ...(input.role !== undefined ? { role: input.role as any } : {}),
+          ...(input.status !== undefined ? { status: input.status as any } : {}),
+          ...(input.modulePermissions !== undefined ? { modulePermissions: input.modulePermissions } : {}),
+        },
+        include: { user: { select: { id: true, name: true, email: true, initials: true } } },
+      });
     });
   }
 
@@ -523,29 +560,49 @@ export class PortfolioService {
       }
     }
 
-    // Ligar una iniciativa a un Reto le da un Portfolio Lead que pueda decidir (initiative-governance.ts).
-    await ensureChallengeGovernanceTx(this.prisma, projectId, challengeId);
-    return this.prisma.initiativePortfolioMeta.upsert({
-      where: { projectId_challengeId: { projectId, challengeId } },
-      create: {
-        projectId,
-        challengeId,
-        ...(rest as any),
-      },
-      update: rest as any,
-      include: {
-        project: {
-          select: {
-            id: true,
-            name: true,
-            status: true,
+    return tenantWriteTransaction(this.prisma, async (tx) => {
+      const projectScope = await projectTenant(tx, projectId);
+      const challengeScope = await challengeTenant(tx, challengeId);
+      assertSameTenant(projectScope.organizationId, challengeScope.organizationId);
+      if (input.strategicFrontId !== undefined && input.strategicFrontId !== challengeScope.strategicFrontId) {
+        throw AppError.notFound('Portfolio resource', 'PORTFOLIO_RESOURCE_NOT_FOUND');
+      }
+      // Ligar una iniciativa a un Reto le da un Portfolio Lead que pueda decidir.
+      await ensureChallengeGovernanceTx(tx, projectId, challengeId);
+      return tx.initiativePortfolioMeta.upsert({
+        where: { projectId_challengeId: { projectId, challengeId } },
+        create: {
+          projectId,
+          challengeId,
+          ...(rest as any),
+        },
+        update: rest as any,
+        include: {
+          project: {
+            select: {
+              id: true,
+              name: true,
+              status: true,
+            },
           },
         },
-      },
+      });
     });
   }
 
   // ─── Overlaps ─────────────────────────────────────────────────────────────────
+
+  async assignInitiativeGovernance(projectId: string, portfolioLeadUserId: string | null) {
+    return tenantWriteTransaction(this.prisma, async (tx) => {
+      const { organizationId } = await projectTenant(tx, projectId);
+      await assertUserInTenant(tx, portfolioLeadUserId, organizationId);
+      return tx.initiativeGovernance.upsert({
+        where: { projectId },
+        update: { mode: 'portfolio_governed', portfolioLeadUserId },
+        create: { projectId, mode: 'portfolio_governed', portfolioLeadUserId },
+      });
+    });
+  }
 
   async listOverlaps(challengeId: string) {
     const challenge = await this.prisma.challenge.findUnique({ where: { id: challengeId } });
@@ -558,14 +615,18 @@ export class PortfolioService {
   }
 
   async createOverlap(challengeId: string, input: CreateOverlapInput) {
-    const challenge = await this.prisma.challenge.findUnique({ where: { id: challengeId } });
-    if (!challenge) throw AppError.notFound('Desafío', 'CHALLENGE_NOT_FOUND', { hint: 'Verifica el ID del desafío.' });
-
-    return this.prisma.initiativeOverlap.create({
-      data: {
-        challengeId,
-        ...(input as any),
-      },
+    return tenantWriteTransaction(this.prisma, async (tx) => {
+      const challengeScope = await challengeTenant(tx, challengeId);
+      const first = await projectTenant(tx, input.initiativeAId);
+      const second = await projectTenant(tx, input.initiativeBId);
+      assertSameTenant(challengeScope.organizationId, first.organizationId);
+      assertSameTenant(challengeScope.organizationId, second.organizationId);
+      return tx.initiativeOverlap.create({
+        data: {
+          challengeId,
+          ...(input as any),
+        },
+      });
     });
   }
 
@@ -582,41 +643,55 @@ export class PortfolioService {
   }
 
   async createExecutiveOutput(challengeId: string, input: CreateExecutiveOutputInput) {
-    const challenge = await this.prisma.challenge.findUnique({ where: { id: challengeId } });
-    if (!challenge) throw AppError.notFound('Desafío', 'CHALLENGE_NOT_FOUND', { hint: 'Verifica el ID del desafío.' });
+    return tenantWriteTransaction(this.prisma, async (tx) => {
+      const challengeScope = await challengeTenant(tx, challengeId);
+      const projectScope = await projectTenant(tx, input.projectId);
+      assertSameTenant(challengeScope.organizationId, projectScope.organizationId);
+      if (input.initiativeId) {
+        const initiativeScope = await projectTenant(tx, input.initiativeId);
+        assertSameTenant(challengeScope.organizationId, initiativeScope.organizationId);
+      }
+      const { projectId, sharedAt, decisionAt, ...rest } = input;
 
-    const { projectId, sharedAt, decisionAt, ...rest } = input;
-
-    return this.prisma.executiveOutput.upsert({
-      where: { projectId_challengeId: { projectId, challengeId } },
-      create: {
-        projectId,
-        challengeId,
-        ...(rest as any),
-        sharedAt: sharedAt ? new Date(sharedAt) : undefined,
-        decisionAt: decisionAt ? new Date(decisionAt) : undefined,
-      },
-      update: {
-        ...(rest as any),
-        sharedAt: sharedAt ? new Date(sharedAt) : undefined,
-        decisionAt: decisionAt ? new Date(decisionAt) : undefined,
-      },
+      return tx.executiveOutput.upsert({
+        where: { projectId_challengeId: { projectId, challengeId } },
+        create: {
+          projectId,
+          challengeId,
+          ...(rest as any),
+          sharedAt: sharedAt ? new Date(sharedAt) : undefined,
+          decisionAt: decisionAt ? new Date(decisionAt) : undefined,
+        },
+        update: {
+          ...(rest as any),
+          sharedAt: sharedAt ? new Date(sharedAt) : undefined,
+          decisionAt: decisionAt ? new Date(decisionAt) : undefined,
+        },
+      });
     });
   }
 
   async updateExecutiveOutput(id: string, input: UpdateExecutiveOutputInput) {
-    const existing = await this.prisma.executiveOutput.findUnique({ where: { id } });
-    if (!existing) throw AppError.notFound('Output ejecutivo', 'OUTPUT_NOT_FOUND', { hint: 'Verifica el ID o crea uno nuevo.' });
+    return tenantWriteTransaction(this.prisma, async (tx) => {
+      const existing = await tx.executiveOutput.findUnique({ where: { id } });
+      if (!existing) throw AppError.notFound('Output ejecutivo', 'OUTPUT_NOT_FOUND', { hint: 'Verifica el ID o crea uno nuevo.' });
+      const challengeScope = await challengeTenant(tx, existing.challengeId);
+      const projectScope = await projectTenant(tx, existing.projectId);
+      assertSameTenant(challengeScope.organizationId, projectScope.organizationId);
+      if (input.initiativeId) {
+        const initiativeScope = await projectTenant(tx, input.initiativeId);
+        assertSameTenant(challengeScope.organizationId, initiativeScope.organizationId);
+      }
+      const { sharedAt, decisionAt, ...rest } = input;
 
-    const { sharedAt, decisionAt, ...rest } = input;
-
-    return this.prisma.executiveOutput.update({
-      where: { id },
-      data: {
-        ...(rest as any),
-        sharedAt: sharedAt ? new Date(sharedAt) : undefined,
-        decisionAt: decisionAt ? new Date(decisionAt) : undefined,
-      },
+      return tx.executiveOutput.update({
+        where: { id },
+        data: {
+          ...(rest as any),
+          sharedAt: sharedAt ? new Date(sharedAt) : undefined,
+          decisionAt: decisionAt ? new Date(decisionAt) : undefined,
+        },
+      });
     });
   }
 }

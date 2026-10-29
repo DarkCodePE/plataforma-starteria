@@ -17,6 +17,7 @@ import request from 'supertest';
 import { PilotLeadService, type PilotLeadStore } from '../pilot-lead.service';
 import { buildPilotLeadRouter } from '../pilot-lead.router';
 import { errorHandler } from '../../../shared/errors/error-handler';
+import { hashRefreshToken } from '../../auth/token.service';
 
 interface Row {
   id: string;
@@ -51,6 +52,12 @@ function makeStore() {
         const row = { id: `lead-${++seq}`, createdAt: new Date('2026-05-29T12:00:00Z'), ...(data as object) } as Row;
         rows.push(row);
         return row;
+      }),
+      updateMany: vi.fn(async ({ where, data }) => {
+        const row = rows.find((candidate) => candidate.id === where.id && candidate.pilotCode === where.pilotCode);
+        if (!row) return { count: 0 };
+        row.pilotCode = data.pilotCode;
+        return { count: 1 };
       }),
     },
     auditLog: {
@@ -95,12 +102,14 @@ describe('POST /api/v1/public/pilot-leads', () => {
     expect(res.status).toBe(201);
     expect(res.body.success).toBe(true);
     expect(res.body.data.id).toBeTruthy();
-    expect(res.body.data.pilotCode).toMatch(/^ST-PILOT-[0-9A-Z]{4}$/);
+    expect(res.body.data.pilotCode).toMatch(/^ST-PILOT-[0-9A-F]{64}$/);
     expect(res.body.data.status).toBe('submitted');
     expect(typeof res.body.data.createdAt).toBe('string');
 
     expect(ctx.rows).toHaveLength(1);
     expect(ctx.rows[0].consentAccepted).toBe(true);
+    expect(ctx.rows[0].pilotCode).toBe(hashRefreshToken(res.body.data.pilotCode));
+    expect(ctx.rows[0].pilotCode).not.toBe(res.body.data.pilotCode);
     expect(ctx.rows[0].consentAt).toBeInstanceOf(Date);
     expect(ctx.rows[0].retentionUntil.getTime()).toBeGreaterThan(ctx.rows[0].consentAt.getTime());
   });
@@ -140,15 +149,70 @@ describe('POST /api/v1/public/pilot-leads', () => {
     expect(ctx.rows).toHaveLength(1);
   });
 
+  it('invalidates and reissues a legacy weak code only after contact identity matches', async () => {
+    ctx.rows.push({
+      id: 'legacy-lead', draftId: VALID.draftId, pilotCode: 'ST-PILOT-AB12',
+      name: VALID.name, email: VALID.email, phone: VALID.phone,
+      organization: VALID.organization, consentAccepted: true,
+      consentAt: new Date('2026-05-29T12:00:00Z'), status: 'submitted',
+      source: 'public_landing', retentionUntil: new Date('2027-05-29T12:00:00Z'),
+      createdAt: new Date('2026-05-29T12:00:00Z'),
+    });
+    const { app } = makeApp(ctx.store);
+
+    const denied = await request(app).post('/api/v1/public/pilot-leads').send({ ...VALID, email: 'attacker@example.com' });
+    expect(denied.status).toBe(409);
+    expect(denied.body.error?.code).toBe('PILOT_LEAD_IDENTITY_MISMATCH');
+    expect(ctx.rows[0].pilotCode).toBe('ST-PILOT-AB12');
+
+    const reissued = await request(app).post('/api/v1/public/pilot-leads').send(VALID);
+    expect(reissued.status).toBe(201);
+    expect(reissued.body.data.pilotCode).toMatch(/^ST-PILOT-[0-9A-F]{64}$/);
+    expect(ctx.rows[0].pilotCode).toBe(hashRefreshToken(reissued.body.data.pilotCode));
+    expect(ctx.rows[0].pilotCode).not.toContain('AB12');
+    expect(ctx.audits).toContainEqual(expect.objectContaining({
+      action: 'pilot.lead.credential_reissued',
+      resourceId: 'legacy-lead',
+      details: { reason: 'legacy_credential_invalidated' },
+    }));
+    expect(JSON.stringify(ctx.audits)).not.toContain(reissued.body.data.pilotCode);
+  });
+
+  it('rechecks contact identity after a concurrent draftId P2002 winner', async () => {
+    const winner = {
+      id: 'winner', draftId: VALID.draftId, pilotCode: 'stored-hash',
+      name: 'Victim', email: 'victim@example.com', phone: null, organization: null,
+      consentAccepted: true, consentAt: new Date(), status: 'submitted', source: 'public_landing',
+      retentionUntil: new Date('2027-05-29T12:00:00Z'), createdAt: new Date('2026-05-29T12:00:00Z'),
+    } as Row;
+    const findUnique = vi.fn()
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce(winner);
+    const racingStore = {
+      pilotLead: {
+        findUnique,
+        create: vi.fn().mockRejectedValue(Object.assign(new Error('unique'), { code: 'P2002' })),
+        updateMany: vi.fn(),
+      },
+      auditLog: { create: vi.fn() },
+    } as unknown as PilotLeadStore;
+    const service = new PilotLeadService(racingStore, vi.fn(), 'test-pilot-secret-with-enough-entropy');
+
+    await expect(service.submit({ ...VALID, email: 'attacker@example.com' }))
+      .rejects.toMatchObject({ code: 'PILOT_LEAD_IDENTITY_MISMATCH' });
+    expect(racingStore.pilotLead.updateMany).not.toHaveBeenCalled();
+  });
+
   it('writes an AuditLog with ids/metadata only — no PII (email/phone/name)', async () => {
     const { app } = makeApp(ctx.store);
-    await request(app).post('/api/v1/public/pilot-leads').send(VALID);
+    const res = await request(app).post('/api/v1/public/pilot-leads').send(VALID);
 
     expect(ctx.audits).toHaveLength(1);
     const audit = ctx.audits[0];
     expect(audit.action).toBe('pilot.lead.captured');
     expect(audit.resource).toBe('PilotLead');
     const serialized = JSON.stringify(audit);
+    expect(serialized).not.toContain(res.body?.data?.pilotCode ?? 'never');
     expect(serialized).not.toContain(VALID.email);
     expect(serialized).not.toContain(VALID.phone);
     expect(serialized).not.toContain(VALID.name);
@@ -221,10 +285,22 @@ describe('GET /api/v1/public/pilot-leads/:pilotCode (resume)', () => {
 
   it('unknown code → 404 PILOT_CODE_NOT_FOUND', async () => {
     const { app } = makeApp(ctx.store);
-    const res = await request(app).get('/api/v1/public/pilot-leads/ST-PILOT-ZZZZ');
+    const res = await request(app).get(`/api/v1/public/pilot-leads/ST-PILOT-${'F'.repeat(64)}`);
 
     expect(res.status).toBe(404);
     expect(res.body.error?.code).toBe('PILOT_CODE_NOT_FOUND');
+  });
+
+  it('rejects a known bearer after the lead retention deadline', async () => {
+    const { app } = makeApp(ctx.store);
+    const code = await captureCode(app);
+    ctx.rows[0].retentionUntil = new Date(Date.now() - 1);
+
+    const res = await request(app).get(`/api/v1/public/pilot-leads/${code}`);
+
+    expect(res.status).toBe(410);
+    expect(res.body.error?.code).toBe('PILOT_RETENTION_EXPIRED');
+    expect(JSON.stringify(res.body)).not.toContain(ctx.rows[0].name);
   });
 
   it('malformed code → 400 (Zod boundary), never hits the store', async () => {
@@ -232,6 +308,14 @@ describe('GET /api/v1/public/pilot-leads/:pilotCode (resume)', () => {
     const res = await request(app).get('/api/v1/public/pilot-leads/not-a-code');
 
     expect(res.status).toBe(400);
+  });
+
+  it('fails closed for legacy 16-bit codes instead of opening a plaintext fallback', async () => {
+    const { app } = makeApp(ctx.store);
+    const res = await request(app).get('/api/v1/public/pilot-leads/ST-PILOT-AB12');
+
+    expect(res.status).toBe(400);
+    expect(ctx.store.pilotLead.findUnique).not.toHaveBeenCalled();
   });
 
   it('audits the resume with ids/metadata only (no PII)', async () => {
@@ -243,6 +327,7 @@ describe('GET /api/v1/public/pilot-leads/:pilotCode (resume)', () => {
     const resume = ctx.audits.find(a => a.action === 'pilot.lead.resumed');
     expect(resume).toBeTruthy();
     const serialized = JSON.stringify(resume);
+    expect(serialized).not.toContain(code);
     expect(serialized).not.toContain(VALID.email);
     expect(serialized).not.toContain(VALID.phone);
   });

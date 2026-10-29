@@ -22,7 +22,7 @@
 
 import { Request, Response, NextFunction, Router } from 'express';
 import { timingSafeEqual } from 'node:crypto';
-import { z } from 'zod';
+import { z } from 'zod/v3';
 import { config } from '../../config';
 import { AppError } from '../../shared/errors/AppError';
 import { ApiResponse } from '../../shared/types/api.types';

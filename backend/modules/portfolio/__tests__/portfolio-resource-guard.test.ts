@@ -12,6 +12,7 @@ import { errorHandler } from '../../../shared/errors/error-handler';
 const db = {
   users: {
     'lead-a': 'org-a', 'lead-b': 'org-b', 'owner-a': 'org-a', 'owner-b': 'org-b',
+    'lead-multi': 'org-a',
     'owner-p12-orphan': 'p12r1-http-org', 'owner-p6-orphan': null,
   } as Record<string, string | null>,
   fronts: { 'front-a': 'org-a', 'front-b': 'org-b', 'front-legacy': null } as Record<string, string | null>,
@@ -28,11 +29,18 @@ const db = {
   assignments: { 'asg-b': { organizationId: null, challengeId: 'ch-b' } } as Record<string, { organizationId: string | null; challengeId: string }>,
 };
 
+const memberships: Record<string, string[]> = { 'lead-multi': ['org-b'] };
+const writeGrants: Record<string, string[]> = {};
+
 const frontOrg = (frontId: string) => ({ organizationId: db.fronts[frontId] ?? null });
 const fakePrisma: any = {
   user: { findUnique: vi.fn(async ({ where }: any) => (where.id in db.users ? { organizationId: db.users[where.id] } : null)) },
-  organizationMember: { findMany: vi.fn(async () => []) },
-  organizationPortfolioAccessGrant: { findMany: vi.fn(async () => []) },
+  organizationMember: { findMany: vi.fn(async ({ where }: any) => (memberships[where.userId] ?? []).map(organizationId => ({ organizationId }))) },
+  organizationPortfolioAccessGrant: {
+    findMany: vi.fn(async ({ where }: any) => (writeGrants[where.userId] ?? [])
+      .filter(() => !where.capability || where.capability === 'portfolio:write')
+      .map(organizationId => ({ organizationId }))),
+  },
   strategicFront: { findUnique: vi.fn(async ({ where }: any) => (where.id in db.fronts ? { id: where.id, ...frontOrg(where.id) } : null)) },
   challenge: { findUnique: vi.fn(async ({ where }: any) => (where.id in db.challenges ? { strategicFront: frontOrg(db.challenges[where.id]) } : null)) },
   challengeInvitation: { findUnique: vi.fn(async ({ where }: any) => (where.id in db.invitations ? { challengeId: db.invitations[where.id] } : null)) },
@@ -63,11 +71,18 @@ vi.mock('../../../shared/db/prisma', () => ({ default: fakePrisma, prisma: fakeP
 vi.mock('../../billing/entitlement.middleware', () => ({ requireEntitlement: () => (_req: any, _res: any, next: any) => next() }));
 
 const ok = vi.fn(async () => ({ ok: true }));
+const sensitiveRead = vi.fn(async () => ({ email: 'tenant-b-secret@example.test' }));
 vi.mock('../portfolio.service', () => ({
   PortfolioService: class {
     updateStrategicFront = ok; deleteStrategicFront = ok; createChallenge = ok; updateChallenge = ok; publishChallenge = ok;
     updateInvitation = ok; upsertInitiativeTeamMember = ok; upsertInitiativeMeta = ok; updateExecutiveOutput = ok;
+    listChallengeTeam = sensitiveRead; resolveInitiativeTeam = sensitiveRead; listInitiativesForChallenge = sensitiveRead;
+    getInitiativeMeta = sensitiveRead; listOverlaps = sensitiveRead; listExecutiveOutputs = sensitiveRead;
   },
+}));
+
+vi.mock('../challenge-coverage.read-service', () => ({
+  ChallengeCoverageReadService: class { get = sensitiveRead; },
 }));
 
 const { portfolioRouter } = await import('../portfolio.router');
@@ -87,7 +102,9 @@ function app() {
 describe('escrituras de portafolio por ID respetan la organización (F-03)', () => {
   beforeEach(() => {
     ok.mockClear();
+    sensitiveRead.mockClear();
     currentUser = { id: 'lead-a', email: 'a@x.io', role: 'portfolio_lead' };
+    delete writeGrants['lead-multi'];
   });
 
   const crossOrg: Array<[string, string, Record<string, unknown>]> = [
@@ -131,8 +148,34 @@ describe('escrituras de portafolio por ID respetan la organización (F-03)', () 
     },
   );
 
-  it('un frente sin organización (datos anteriores) sigue editable, igual que en la lectura', async () => {
-    expect((await request(app()).delete('/api/v1/portfolio/strategic-fronts/front-legacy')).status).toBe(200);
+  it('un frente legacy sin organización falla cerrado', async () => {
+    const res = await request(app()).delete('/api/v1/portfolio/strategic-fronts/front-legacy');
+    expect(res.status).toBe(404);
+    expect(ok).not.toHaveBeenCalled();
+  });
+
+  const crossOrgReads = [
+    '/api/v1/portfolio/challenges/ch-b/team',
+    '/api/v1/portfolio/initiatives/p-b/team',
+    '/api/v1/portfolio/challenges/ch-b/initiatives',
+    '/api/v1/portfolio/initiatives/p-b/meta',
+    '/api/v1/portfolio/initiatives/p-b/governance',
+    '/api/v1/portfolio/challenges/ch-b/coverage-reading',
+    '/api/v1/portfolio/challenges/ch-b/overlaps',
+    '/api/v1/portfolio/challenges/ch-b/executive-outputs',
+  ];
+
+  it.each(crossOrgReads)('lead de org-A no puede leer %s de org-B y no recibe PII', async (url) => {
+    const res = await request(app()).get(url);
+    expect(res.status).toBe(404);
+    expect(JSON.stringify(res.body)).not.toContain('tenant-b-secret@example.test');
+    expect(sensitiveRead).not.toHaveBeenCalled();
+  });
+
+  it('lead de org-A conserva lectura de un reto propio', async () => {
+    const res = await request(app()).get('/api/v1/portfolio/challenges/ch-a/team');
+    expect(res.status).toBe(200);
+    expect(sensitiveRead).toHaveBeenCalledOnce();
   });
 
   it('un ID inexistente responde igual que uno ajeno', async () => {
@@ -144,5 +187,17 @@ describe('escrituras de portafolio por ID respetan la organización (F-03)', () 
   it('el admin de plataforma puede escribir en cualquier organización', async () => {
     currentUser = { id: 'admin-1', email: 'adm@x.io', role: 'admin' };
     expect((await request(app()).delete('/api/v1/portfolio/strategic-fronts/front-b')).status).toBe(200);
+  });
+
+  it('una membresia secundaria no concede escritura sin grant target-scoped', async () => {
+    currentUser = { id: 'lead-multi', email: 'multi@x.io', role: 'portfolio_lead' };
+    const denied = await request(app()).delete('/api/v1/portfolio/strategic-fronts/front-b');
+    expect(denied.status).toBe(404);
+    expect(ok).not.toHaveBeenCalled();
+
+    writeGrants['lead-multi'] = ['org-b'];
+    const allowed = await request(app()).delete('/api/v1/portfolio/strategic-fronts/front-b');
+    expect(allowed.status).toBe(200);
+    expect(ok).toHaveBeenCalledOnce();
   });
 });

@@ -42,7 +42,7 @@ import { PortfolioSetupContinuityWriteService } from '../portfolio-entry-continu
 import { PortfolioSetupContinuityReadService, createPortfolioSetupReadDependencies } from '../portfolio-entry-continuation/portfolio-setup-continuity-read.service';
 import { PortfolioSetupHomeArrivalService } from '../portfolio-entry-continuation/portfolio-setup-home-arrival.service';
 import { AppError } from '../../shared/errors/AppError';
-import { z } from 'zod';
+import { z } from 'zod/v3';
 import type { CriticalHandoffProjection } from './presentation/critical-handoff-projection';
 import { StarteriaPathService, type StarteriaPathProjector } from '../portfolio-entry-starteria-path/application/starteria-path.service';
 import { StarteriaPathController } from '../portfolio-entry-starteria-path/starteria-path.controller';

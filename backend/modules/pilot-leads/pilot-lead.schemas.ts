@@ -4,13 +4,13 @@
  * boundary; `consentAccepted` is required true (enforced in the service so the
  * rejection carries a stable PILOT_CONSENT_REQUIRED code).
  */
-import { z } from 'zod';
+import { z } from 'zod/v3';
 
 /** Retention horizon for captured PII leads (ADR-015 §Compliance, proposal). */
 export const RETENTION_DAYS = 180;
 
-/** Canonical pilot code shape: `ST-PILOT-XXXX` (4 upper hex/alnum chars). */
-export const PILOT_CODE_REGEX = /^ST-PILOT-[A-Z0-9]{4}$/;
+/** Canonical pilot bearer: 256 bits encoded as 64 uppercase hexadecimal chars. */
+export const PILOT_CODE_REGEX = /^ST-PILOT-[A-F0-9]{64}$/;
 
 /**
  * Snapshot of the public one-pager captured WITH the lead so the pilotCode can

@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import { z } from 'zod/v3';
 
 export const strategicFramingStateParamsSchema = z.object({
   stateId: z.string().trim().min(1),

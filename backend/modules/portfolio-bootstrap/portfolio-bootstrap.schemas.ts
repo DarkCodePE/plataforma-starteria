@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import { z } from 'zod/v3';
 
 export const fromContinuationBodySchema = z.object({
   portfolioEntryContinuationId: z.string().min(1),

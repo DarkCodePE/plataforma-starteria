@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import { z } from 'zod/v3';
 import { PLATFORM_ROLES } from '../../shared/types/user.types';
 
 export const updateProfileSchema = z.object({
