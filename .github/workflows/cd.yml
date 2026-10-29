@@ -1,17 +1,11 @@
-# CD: automatic on merge to main, on a vX.Y.Z tag push, and manual for
-# redeploy/rollback. The only thing between a merge and production is the human
-# approval gate on the `production` environment in the `deploy` job.
-# Do not remove `environment: production`: without required reviewers there, it
-# is a label, not a gate.
+# CD is deliberately manual. Merging to main or pushing a release tag must not
+# publish images, apply migrations, or deploy production. An operator starts a
+# workflow_dispatch run and the `production` environment authorizes the release
+# before any image is published. Keep the environment protection enabled: an
+# environment name without required reviewers is only a label, not a gate.
 name: CD
 
 on:
-  push:
-    branches: [main]
-    tags: ['v[0-9]+.[0-9]+.[0-9]+']
-    paths-ignore:
-      - '.github/workflows/**'
-      - 'docs/**'
   workflow_dispatch:
     inputs:
       source_sha:
@@ -38,9 +32,9 @@ env:
   ROLLOUT_TIMEOUT: 360s
 
 jobs:
-  # Single source of truth for "which commit ships, under which tag".
-  # Runs once, before the CI gate and before three parallel builds, so a
-  # malformed target fails in seconds instead of after the whole suite.
+  # Single source of truth for "which commit ships, under which tag". This
+  # read-only resolution runs before the approval request so reviewers see the
+  # exact target. Nothing is built, published, migrated, or deployed yet.
   resolve:
     name: Resolve release target
     runs-on: ubuntu-latest
@@ -66,18 +60,13 @@ jobs:
           set -euo pipefail
           semver='^v[0-9]+\.[0-9]+\.[0-9]+$'
 
-          # Replaces the old `$GITHUB_REF == refs/heads/main` check, which broke
-          # on tag pushes. Still a closed allowlist, now enumerating every
-          # supported entry point instead of just one.
+          # workflow_dispatch may be launched from any ref in the GitHub UI.
+          # Keep a closed allowlist: main and semver tags only.
           case "$EVENT_NAME:$REF" in
-            push:refs/heads/main)
-              channel=auto ;;
-            push:refs/tags/*)
-              channel=release ;;
             workflow_dispatch:refs/heads/main|workflow_dispatch:refs/tags/*)
               channel=manual ;;
             *)
-              echo "::error::CD accepts only: push to main, push of a vX.Y.Z tag, or a manual dispatch from main or such a tag (got $EVENT_NAME on $REF)"
+              echo "::error::CD accepts only a manual dispatch from main or a vX.Y.Z tag (got $EVENT_NAME on $REF)"
               exit 1 ;;
           esac
 
@@ -86,8 +75,6 @@ jobs:
             [[ "$REF_NAME" =~ $semver ]] || { echo "::error::Tag $REF_NAME is not vMAJOR.MINOR.PATCH"; exit 1; }
           fi
 
-          # One resolution rule for all three events: on push events the `inputs`
-          # context renders empty, so no per-event branching is needed.
           sha="${INPUT_SHA:-$HEAD_SHA}"
           [[ "$sha" =~ ^[0-9a-f]{40}$ ]] || { echo '::error::Resolved commit must be a full 40-character lowercase SHA'; exit 1; }
 
@@ -114,9 +101,8 @@ jobs:
             echo "channel=$channel"
           } >> "$GITHUB_OUTPUT"
 
-          # Written here on purpose: `resolve` finishes before the `production`
-          # approval request is raised, so whoever approves can read exactly
-          # which commit and tag they are approving.
+          # Written before the production approval request so whoever approves
+          # can read exactly which commit and tag they are authorizing.
           {
             printf '## CD target\n\n'
             printf -- '- Trigger: `%s` on `%s` (channel `%s`)\n' "$EVENT_NAME" "$REF" "$channel"
@@ -125,14 +111,28 @@ jobs:
             if [[ -n "${REASON:-}" ]]; then printf -- '- Reason: %s\n' "$REASON"; fi
           } >> "$GITHUB_STEP_SUMMARY"
 
+  authorize:
+    name: Authorize production release
+    needs: resolve
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    environment: production
+    steps:
+      - name: Record authorization boundary
+        env:
+          SOURCE_SHA: ${{ needs.resolve.outputs.sha }}
+          TAG: ${{ needs.resolve.outputs.tag }}
+        run: |
+          printf '## Production authorization\n\n- Authorized commit: `%s`\n- Authorized image tag: `%s`\n- No image publication, migration, or deployment occurred before this gate.\n' "$SOURCE_SHA" "$TAG" >> "$GITHUB_STEP_SUMMARY"
+
   tests:
     name: CI gate
-    needs: resolve
+    needs: [resolve, authorize]
     uses: ./.github/workflows/ci.yml
 
   build-and-push:
     name: Build and push ${{ matrix.service }}
-    needs: [tests, resolve]
+    needs: [tests, resolve, authorize]
     runs-on: ubuntu-latest
     timeout-minutes: 30
     strategy:
@@ -174,11 +174,11 @@ jobs:
     name: Deploy to Rackspace Spot
     # `resolve` is listed explicitly: needs.<job>.outputs is NOT inherited
     # transitively through build-and-push.
-    needs: [build-and-push, resolve]
+    needs: [build-and-push, resolve, authorize]
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    # The human approval gate lives here, via required reviewers on this
-    # environment. It is the only thing between a merge and production.
+    # Keep the environment on the deploy job as a second protection boundary
+    # and as the source of production-scoped secrets.
     environment: production
     steps:
       - uses: actions/checkout@v4
