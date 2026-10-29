@@ -17,6 +17,40 @@ WHERE u."organizationId" IS NOT NULL
   AND o."id" IS NULL
 ORDER BY p."id";
 
+-- Mirrors the forward guard: a Portfolio Project owner is invalid when the
+-- User row is missing or its non-null organization reference is orphaned.
+SELECT DISTINCT
+  'invalid_project_owner' AS gate,
+  p."id" AS project_id,
+  p."ownerId" AS owner_id,
+  CASE
+    WHEN u."id" IS NULL THEN 'USER_NOT_FOUND'
+    ELSE 'OWNER_ORGANIZATION_NOT_FOUND'
+  END AS reason
+FROM "Project" p
+JOIN "InitiativePortfolioMeta" ipm ON ipm."projectId" = p."id"
+LEFT JOIN "User" u ON u."id" = p."ownerId"
+LEFT JOIN "Organization" owner_org ON owner_org."id" = u."organizationId"
+WHERE p."ownerId" IS NOT NULL
+  AND (u."id" IS NULL OR (u."organizationId" IS NOT NULL AND owner_org."id" IS NULL))
+ORDER BY p."id";
+
+-- A non-null StrategicFront.organizationId is not a usable tenant candidate
+-- unless the referenced Organization exists.
+SELECT DISTINCT
+  'invalid_front_organization' AS gate,
+  p."id" AS project_id,
+  sf."id" AS strategic_front_id,
+  sf."organizationId" AS invalid_organization_id
+FROM "Project" p
+JOIN "InitiativePortfolioMeta" ipm ON ipm."projectId" = p."id"
+JOIN "Challenge" c ON c."id" = ipm."challengeId"
+JOIN "StrategicFront" sf ON sf."id" = c."strategicFrontId"
+LEFT JOIN "Organization" front_org ON front_org."id" = sf."organizationId"
+WHERE sf."organizationId" IS NOT NULL
+  AND front_org."id" IS NULL
+ORDER BY p."id", sf."id";
+
 SELECT DISTINCT
   'owner_front_tenant_mismatch' AS gate,
   p."id" AS project_id,
@@ -58,8 +92,8 @@ AND NOT EXISTS (
   FROM "InitiativePortfolioMeta" ipm
   JOIN "Challenge" c ON c."id" = ipm."challengeId"
   JOIN "StrategicFront" sf ON sf."id" = c."strategicFrontId"
+  JOIN "Organization" candidate_org ON candidate_org."id" = sf."organizationId"
   WHERE ipm."projectId" = p."id"
-    AND sf."organizationId" IS NOT NULL
 )
 ORDER BY p."id";
 
@@ -114,9 +148,17 @@ FROM "Project" p
 ORDER BY classification, p."id";
 \endif
 
--- This table exists only after the PL-06B migration. psql skips the relation query otherwise.
+-- Older PL-06A/ADR-009 histories can already have the attempt table without
+-- the later requestFingerprint column. Check the complete query shape before
+-- referencing it so the historical preflight remains executable.
 SELECT to_regclass('"PortfolioHandoffDeliveryAttempt"') IS NOT NULL AS delivery_attempt_table_exists \gset
+SELECT COUNT(*) = 2 AS delivery_attempt_required_columns_ready
+FROM information_schema.columns
+WHERE table_schema = current_schema()
+  AND table_name = 'PortfolioHandoffDeliveryAttempt'
+  AND column_name IN ('assignmentId', 'requestFingerprint') \gset
 \if :delivery_attempt_table_exists
+\if :delivery_attempt_required_columns_ready
 SELECT
   'delivery_intent_collision' AS gate,
   "assignmentId" AS assignment_id,
@@ -127,13 +169,22 @@ GROUP BY "assignmentId", "requestFingerprint"
 HAVING COUNT(*) > 1
 ORDER BY "assignmentId", "requestFingerprint";
 \else
+SELECT 'delivery_intent_collision' AS gate, 'REQUIRED_COLUMNS_NOT_PRESENT_YET' AS status;
+\endif
+\else
 SELECT 'delivery_intent_collision' AS gate, 'TABLE_NOT_PRESENT_YET' AS status;
 \endif
 
 -- MEDIUM-03 inventory: DeliveryBatch currently keeps bounded scalar references instead
 -- of FKs. Any orphan blocks adding constraints until its lifecycle is reconciled.
 SELECT to_regclass('"PortfolioHandoffDeliveryBatch"') IS NOT NULL AS delivery_batch_table_exists \gset
+SELECT COUNT(*) = 5 AS delivery_batch_required_columns_ready
+FROM information_schema.columns
+WHERE table_schema = current_schema()
+  AND table_name = 'PortfolioHandoffDeliveryBatch'
+  AND column_name IN ('id', 'organizationId', 'challengeId', 'actorId', 'retryOfBatchId') \gset
 \if :delivery_batch_table_exists
+\if :delivery_batch_required_columns_ready
 SELECT
   'delivery_batch_orphan_reference' AS gate,
   b."id" AS batch_id,
@@ -153,6 +204,9 @@ WHERE o."id" IS NULL
    OR u."id" IS NULL
    OR (b."retryOfBatchId" IS NOT NULL AND parent."id" IS NULL)
 ORDER BY b."id";
+\else
+SELECT 'delivery_batch_orphan_reference' AS gate, 'REQUIRED_COLUMNS_NOT_PRESENT_YET' AS status;
+\endif
 \else
 SELECT 'delivery_batch_orphan_reference' AS gate, 'TABLE_NOT_PRESENT_YET' AS status;
 \endif
