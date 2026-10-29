@@ -30,6 +30,9 @@ import {
 } from '../portfolio-entry-runtime';
 import type { PortfolioEntryIdempotencyRepository } from './application/portfolio-entry-idempotency.repository';
 import { PrismaPortfolioEntryIdempotencyRepository } from './infrastructure/prisma-portfolio-entry-idempotency.repository';
+import type { CriticalHandoffGenerationRepository } from './application/critical-handoff-generation.repository';
+import { PrismaCriticalHandoffGenerationRepository } from './infrastructure/prisma-critical-handoff-generation.repository';
+import { InMemoryCriticalHandoffGenerationRepository } from './infrastructure/in-memory-critical-handoff-generation.repository';
 import { PortfolioEntryController } from './portfolio-entry.controller';
 import { createPortfolioEntryRateLimiter } from './portfolio-entry-rate-limit';
 import { PortfolioEntryConversionController } from '../portfolio-entry-conversion/portfolio-entry-conversion.controller';
@@ -61,6 +64,7 @@ export interface PortfolioEntryRouterOptions {
   maxCreateRequests?: number;
   maxSubmitRequests?: number;
   maxHandoffRequests?: number;
+  maxGenerationReadRequests?: number;
   maxConversionSubmissionRequests?: number;
   windowMs?: number;
 }
@@ -68,6 +72,7 @@ export interface PortfolioEntryRouterOptions {
 export interface PortfolioEntryRouterDeps {
   sessionRepository?: PortfolioEntrySessionRepository;
   idempotencyRepository?: PortfolioEntryIdempotencyRepository;
+  criticalHandoffGenerationRepository?: CriticalHandoffGenerationRepository;
   agentAdapter?: PortfolioEntryAgentAdapterV2;
   liveUnderstandingSynthesizer?: PortfolioEntryLiveUnderstandingSynthesizer;
   criticalHandoffProjector?: (source: unknown) => CriticalHandoffProjection;
@@ -96,6 +101,10 @@ export function buildPortfolioEntryRouter(
     versioning,
   });
   const idempotencyRepository = deps.idempotencyRepository ?? new PrismaPortfolioEntryIdempotencyRepository(prisma);
+  const criticalHandoffGenerationRepository = deps.criticalHandoffGenerationRepository
+    ?? (deps.sessionRepository
+      ? new InMemoryCriticalHandoffGenerationRepository()
+      : new PrismaCriticalHandoffGenerationRepository(prisma));
   const agentAdapter = deps.agentAdapter ?? configuredAgentAdapter();
   const handoffMaterializer = deps.handoffMaterializer
     ?? (deps.agentAdapter ? new DeterministicPortfolioEntryHandoffMaterializer() : configuredHandoffMaterializer());
@@ -108,10 +117,13 @@ export function buildPortfolioEntryRouter(
     handoffMaterializer,
     {
       idempotencyTtlMs: deps.idempotencyTtlMs ?? config.portfolioEntryIdempotencyTtlSeconds * 1000,
+      criticalHandoffMaxMs: config.portfolioEntryCriticalHandoffMaxMs,
       versioning,
     },
     liveUnderstandingSynthesizer,
     deps.criticalHandoffProjector,
+    undefined,
+    criticalHandoffGenerationRepository,
   );
   const controller = new PortfolioEntryController(appService);
   const starteriaPathService = new StarteriaPathService({
@@ -164,6 +176,11 @@ export function buildPortfolioEntryRouter(
     maxRequests: options.maxHandoffRequests ?? 10,
     scope: 'portfolio-entry:handoff',
   });
+  const generationReadLimiter = createPortfolioEntryRateLimiter({
+    windowMs,
+    maxRequests: options.maxGenerationReadRequests ?? 300,
+    scope: 'portfolio-entry:generation-read',
+  });
   const conversionSubmissionLimiter = createPortfolioEntryRateLimiter({
     windowMs,
     maxRequests: options.maxConversionSubmissionRequests ?? 5,
@@ -186,6 +203,7 @@ export function buildPortfolioEntryRouter(
   router.get('/sessions/:sessionId/handoff', optionalAuth, submitLimiter, controller.readHandoff);
   router.post('/sessions/:sessionId/critical-handoff', optionalAuth, handoffLimiter, controller.materializeCriticalHandoff);
   router.get('/sessions/:sessionId/critical-handoff', optionalAuth, submitLimiter, controller.readCriticalHandoff);
+  router.get('/sessions/:sessionId/critical-handoff/generation', optionalAuth, generationReadLimiter, controller.readCriticalHandoffGeneration);
   router.get('/sessions/:sessionId/starteria-path', auth, submitLimiter, starteriaPathController.read);
   router.post('/sessions/:sessionId/conversion-submissions', auth, conversionSubmissionLimiter, conversionSubmissionController.submit);
   router.post('/sessions/:sessionId/critical-handoff/:artifactId/confirmation', auth, handoffLimiter, controller.confirmCriticalHandoff);

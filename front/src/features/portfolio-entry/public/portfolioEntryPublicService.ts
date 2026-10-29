@@ -1,5 +1,6 @@
 import axios from 'axios';
 import type {
+  CriticalHandoffGenerationDto,
   PortfolioEntryApiEnvelope,
   PortfolioEntryContinuationResult,
   PortfolioEntryContextResolution,
@@ -188,17 +189,46 @@ export async function materializePortfolioEntryCriticalHandoff(
 ): Promise<PortfolioEntryCriticalHandoffMaterializationDto> {
   const response = await publicApi.post<PortfolioEntryApiEnvelope<{
     sessionRevision: number;
-    criticalHandoff: CriticalHandoffWireDto;
+    criticalHandoff?: CriticalHandoffWireDto;
+    generation?: CriticalHandoffGenerationDto;
   }>>(
     `/public/portfolio-entry/sessions/${encodeURIComponent(sessionId)}/critical-handoff`,
     { expectedRevision: input.expectedRevision },
     { headers: authHeaders(credential, input.idempotencyKey) },
   );
   const data = unwrap(response);
+  if (response.status === 202 || ('generation' in data && Boolean(data.generation))) {
+    return {
+      kind: 'generating',
+      sessionRevision: data.sessionRevision,
+      generation: data.generation!,
+    };
+  }
   return {
+    kind: 'ready',
     sessionRevision: data.sessionRevision,
-    criticalHandoff: toSafeCriticalHandoffDto(data.criticalHandoff),
+    criticalHandoff: toSafeCriticalHandoffDto(data.criticalHandoff!),
   };
+}
+
+/** Reads the current asynchronous generation state for Critical Handoff. */
+export async function getPortfolioEntryCriticalHandoffGeneration(
+  sessionId: string,
+  credential?: string,
+): Promise<CriticalHandoffGenerationDto | null> {
+  const endpoint = `/public/portfolio-entry/sessions/${encodeURIComponent(sessionId)}/critical-handoff/generation`;
+  try {
+    const response = credential
+      ? await publicApi.get<PortfolioEntryApiEnvelope<CriticalHandoffGenerationDto | null>>(
+        endpoint,
+        { headers: authHeaders(credential) },
+      )
+      : await (await import('../../../app/services/api')).default.get<PortfolioEntryApiEnvelope<CriticalHandoffGenerationDto | null>>(endpoint);
+    return unwrap(response);
+  } catch (err) {
+    if (normalizePortfolioEntryApiError(err).kind === 'not_found') return null;
+    throw err;
+  }
 }
 
 export async function getPortfolioEntryHandoff(

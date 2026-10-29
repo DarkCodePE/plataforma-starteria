@@ -122,6 +122,10 @@ async function installSessionMocks(page: Page, scenario: Scenario = {}) {
     await route.fulfill({ json: { success: true, data: sessionDto({ handoffExperience: 'legacy' }) } });
   });
 
+  await page.route(`**/api/v1/public/portfolio-entry/sessions/${SESSION_ID}/critical-handoff/generation`, async (route: Route) => {
+    await route.fulfill({ json: { success: true, data: null } });
+  });
+
   let criticalReadCount = 0;
   await page.route(CRITICAL_HANDOFF_PATH, async (route: Route) => {
     if (route.request().method() === 'POST') {
@@ -291,6 +295,10 @@ async function installExplorationJourneyMocks(page: Page, options: { failFirstMa
         ...eligible,
         revision: options.recoveryRevision ?? eligible.revision,
       } } });
+      return;
+    }
+    if (pathname === `/api/v1/public/portfolio-entry/sessions/${SESSION_ID}/critical-handoff/generation` && request.method() === 'GET') {
+      await route.fulfill({ json: { success: true, data: null } });
       return;
     }
     if (pathname === `/api/v1/public/portfolio-entry/sessions/${SESSION_ID}/critical-handoff` && request.method() === 'POST') {
