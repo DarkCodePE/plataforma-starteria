@@ -603,8 +603,12 @@ describe('PortfolioService.upsertInitiativeMeta — US-017 autofill guard', () =
     const prisma = makeFullPrisma();
     const service = new PortfolioService(prisma as any);
 
-    prisma.project.findUnique.mockResolvedValue({ id: projectId });
-    prisma.challenge.findUnique.mockResolvedValue({ id: challengeId });
+    prisma.project.findUnique.mockResolvedValue({ id: projectId, organizationId: 'org-1' });
+    prisma.challenge.findUnique.mockResolvedValue({
+      id: challengeId,
+      strategicFrontId: 'front-1',
+      strategicFront: { id: 'front-1', organizationId: 'org-1', ownerId: null },
+    });
     prisma.initiativePortfolioMeta.findUnique.mockResolvedValue({ status: 'en_step_4' });
     prisma.pdfFieldProposal.findMany.mockResolvedValue([
       { fieldPath: 'step1.asisData.quiebre' },
