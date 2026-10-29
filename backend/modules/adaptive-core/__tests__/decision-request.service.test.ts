@@ -117,11 +117,11 @@ describe('DecisionRequest service', () => {
     expect(request.presentationSnapshotJson).toMatchObject({ completionRouting: { route: 'portfolio_presented' } });
   });
 
-  it('rejects self-initiated completed initiatives', async () => {
+  it('rejects decision requests for self-initiated initiatives after cycle completion', async () => {
     const store = createCycleStore();
-    const project = seedCycleProject(store, { id: 'project-rq-self', currentStep: 4, status: 'COMPLETED' });
+    const project = seedCycleProject(store, { id: 'project-rq-self', currentStep: 4, status: 'IN_PROGRESS' });
     const cycle = seedCompletedCycle(store, project.id);
-    seedStep4Output(store, project.id, cycle.id, { lifecycleProjection: 'completed', completionRoute: 'owner_completed', portfolioReviewRequired: false });
+    seedStep4Output(store, project.id, cycle.id, { lifecycleProjection: 'active', completionRoute: 'owner_completed', portfolioReviewRequired: false });
     const service = new AdaptiveCoreService(makeCyclePrisma(store) as any);
 
     await expect(service.createDecisionRequest(project.id, 'u1', 'participante', {

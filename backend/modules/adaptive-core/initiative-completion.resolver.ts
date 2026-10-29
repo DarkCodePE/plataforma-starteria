@@ -99,12 +99,13 @@ export class InitiativeCompletionResolver {
       governanceMode: input.alignment.governanceMode,
       route: 'owner_completed',
       methodologicalCompletion: true,
-      initiativeCompleted: true,
+      initiativeCompleted: false,
       portfolioReviewRequired: false,
-      lifecycleProjection: 'completed',
+      lifecycleProjection: 'active',
       rationale: [
         'El trabajo metodologico esta completo.',
         'La iniciativa es self_initiated y no requiere revision de portafolio.',
+        'Cerrar el ciclo no cierra la iniciativa: continuidad, iteracion o cierre requieren una decision humana posterior.',
       ],
     };
   }

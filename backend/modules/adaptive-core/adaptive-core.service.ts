@@ -1260,7 +1260,7 @@ const sufficiency = this.evaluateCheckpoint(
       completionRoute: routing.route,
       lifecycleProjection: routing.lifecycleProjection,
       portfolioReviewRequired: routing.portfolioReviewRequired,
-      initiativeCompleted: routing.initiativeCompleted,
+      initiativeCompleted: false,
     };
     const nextMasterContext = this.buildFinalMasterContext(step4Config.sourceContextJson ?? {}, confirmedStep4Output, finalState);
 
@@ -1278,7 +1278,7 @@ const sufficiency = this.evaluateCheckpoint(
             finalState,
             completionRoute: routing.route,
             portfolioReviewRequired: routing.portfolioReviewRequired,
-            initiativeCompleted: routing.initiativeCompleted,
+            initiativeCompleted: false,
             finalOutputKey: confirmedStep4Output.outputKey,
             methodologicalCompletedAt: new Date().toISOString(),
           },
@@ -1288,7 +1288,7 @@ const sufficiency = this.evaluateCheckpoint(
       await this.upsertProgressSignalTx(tx, projectId, {
         step: 4,
         checkpointCode: routing.route,
-        checkpointTitle: routing.route === 'owner_completed' ? 'Iniciativa completada' : 'Presentada para revision de portafolio',
+        checkpointTitle: routing.route === 'owner_completed' ? 'Ciclo metodologico completado' : 'Presentada para revision de portafolio',
         health: routing.portfolioReviewRequired ? 'ready_for_decision' : 'healthy',
         hypothesis: String(step4Output.hypothesis ?? nextMasterContext.step3Output?.hypothesis ?? ''),
         evidence: String(step4Output.recommendation ?? step4Output.narrative?.recommendation ?? ''),
@@ -1297,8 +1297,8 @@ const sufficiency = this.evaluateCheckpoint(
         actorRequired: String(step4Output.transferOrClosure?.owner ?? step4Output.audienceBrief?.decisionMaker ?? 'Owner de iniciativa'),
         nextAction: routing.portfolioReviewRequired
           ? 'Mantener la iniciativa visible para revision posterior de portafolio.'
-          : 'Consultar el resumen y el historial cuando sea necesario.',
-        upcomingDecision: routing.portfolioReviewRequired ? 'Revision posterior de Portfolio Lead.' : 'Sin revision de portafolio requerida.',
+          : 'Decidir continuidad, nueva iteracion o cierre de la iniciativa.',
+        upcomingDecision: routing.portfolioReviewRequired ? 'Revision posterior de Portfolio Lead.' : 'Decision humana sobre la continuidad de la iniciativa.',
         updatedAt: new Date().toISOString(),
         audience: step4Output.audienceBrief,
         recommendation: step4Output.recommendation,
@@ -1309,7 +1309,7 @@ const sufficiency = this.evaluateCheckpoint(
         hypothesisResult: step4Output.hypothesisResult,
         completionRoute: routing.route,
         portfolioReviewRequired: routing.portfolioReviewRequired,
-        initiativeCompleted: routing.initiativeCompleted,
+        initiativeCompleted: false,
         contributionToChallenge: step4Output.finalChallengeContribution,
         challengeCoverage: step4Output.challengeCoverage,
       });
@@ -3847,41 +3847,8 @@ const sufficiency = this.evaluateCheckpoint(
 
   private projectStatusForFinalState(finalState: string) {
     if (finalState === 'new_iteration_required' || finalState === 'pivoted') return 'ITERATION';
-    // Buscar capacidad deja el ciclo abierto: la iniciativa espera sponsor, socio o capacidad.
     if (finalState === 'paused' || finalState === 'seeking_capability') return 'IN_PROGRESS';
     return 'COMPLETED';
-  }
-
-  private portfolioMetaFinalUpdate(step4Output: Record<string, any>, finalState: string) {
-    const closed = ['completed', 'transferred', 'scaled', 'integrated_to_roadmap', 'closed_with_learning', 'benefit_tracking'].includes(finalState);
-    return {
-      // ADR-030 (reconciliacion): dos arreglos aqui.
-      //  1. 'cerrada' -> 'closed': mismo estado, un solo deletreo.
-      //  2. paused -> 'paused', NO 'bloqueada'. Eran conceptos distintos mapeados al
-      //     mismo valor: `bloqueada` es un impedimento reversible y SIGUE aceptando
-      //     escrituras de step, asi que una iniciativa pausada por aqui no quedaba en
-      //     solo lectura — justo lo que la pausa tiene que garantizar.
-      status: closed ? 'closed' : finalState === 'paused' ? 'paused' : 'en_step_4',
-      currentStep: 'Step 4',
-      readyForDecision: false,
-      signalSummary: String(step4Output.recommendation ?? ''),
-      nextActionRecommended: String(step4Output.transferOrClosure?.nextStep ?? ''),
-      mainBlocker: String(step4Output.transferOrClosure?.blockers?.[0] ?? ''),
-      hypothesisCovered: String(step4Output.hypothesis ?? ''),
-      contributionType: this.portfolioContributionType(step4Output.finalChallengeContribution?.contributionType),
-      estimatedContribution: this.estimatedContribution(step4Output.finalChallengeContribution?.evidenceStrength),
-      partialSignal: ['mixed_signal', 'partially_supported'].includes(String(step4Output.finalChallengeContribution?.result ?? '')),
-      resolvedCorePart: false,
-      executiveSummary: String(step4Output.narrative?.recommendation ?? step4Output.recommendation ?? ''),
-      experimentSummary: String(step4Output.narrative?.results?.text ?? ''),
-      decisionRecommendationReason: String(step4Output.transferOrClosure?.finalDecision ?? ''),
-      deliverables: step4Output.decisionPackage?.artifacts ?? [],
-      stepsTimeline: step4Output.nextHorizon?.milestones ?? [],
-      coverageScore: this.coverageScore(step4Output.challengeCoverage?.status),
-      alignmentNotes: String(step4Output.challengeCoverage?.rationale ?? ''),
-      decisionNotes: String(step4Output.organizationalDecision ?? ''),
-      lastActivity: new Date().toISOString(),
-    };
   }
 
   private portfolioMetaCompletionUpdate(step4Output: Record<string, any>, routing: InitiativeCompletionRoutingResult) {
@@ -3890,13 +3857,13 @@ const sufficiency = this.evaluateCheckpoint(
       // updateDecisionLifecycleProjectionTx escribia 'closed' (canonico) para el MISMO
       // concepto. Dos deletreos del mismo estado hacian imposible preguntar "esta cerrada?"
       // sin conocer que camino la escribio. Gana el canonico; el backfill unifica lo viejo.
-      status: routing.route === 'portfolio_presented' ? 'lista_para_decision' : 'closed',
+      status: routing.route === 'portfolio_presented' ? 'lista_para_decision' : 'en_step_4',
       currentStep: 'Step 4',
       readyForDecision: routing.portfolioReviewRequired,
       signalSummary: String(step4Output.recommendation ?? step4Output.narrative?.recommendation ?? ''),
       nextActionRecommended: routing.portfolioReviewRequired
         ? 'Esperar revision posterior de Portfolio Lead.'
-        : 'Iniciativa completada; historial disponible en modo lectura.',
+        : 'Decidir continuidad, nueva iteracion o cierre de la iniciativa.',
       mainBlocker: '',
       hypothesisCovered: String(step4Output.hypothesis ?? ''),
       contributionType: this.portfolioContributionType(step4Output.finalChallengeContribution?.contributionType),

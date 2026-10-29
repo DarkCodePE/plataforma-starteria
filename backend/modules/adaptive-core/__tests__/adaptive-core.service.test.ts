@@ -2215,7 +2215,12 @@ describe('AdaptiveCoreService Step 0 cycle', () => {
 
   it('32. legacy Step 0 to Step 4 complete flow works', async () => {
     const store = createStore();
-    const project = seedProject(store, { step0Data: { quePasaQueQuieres: 'Legacy', pendingQuestions: [] } });
+    const projectId = 'p-step4-self';
+    const project = seedProject(store, {
+      id: projectId,
+      step0Data: { quePasaQueQuieres: 'Legacy', pendingQuestions: [] },
+      portfolioMeta: [{ id: 'meta-step4-self', projectId, status: 'en_step_4' }],
+    });
     const service = new AdaptiveCoreService(makePrisma(store));
     await service.ensureInitialized(project.id, 'u1', 'participante');
     await confirmStep0AndStartStep1(service, project.id);
@@ -2232,8 +2237,13 @@ describe('AdaptiveCoreService Step 0 cycle', () => {
 
     expect(closed.legacyFallback).toBe(true);
     expect(store.project[0].status).toBe('IN_PROGRESS');
-    expect(closed.progressSignal?.finalState).toBe('completed');
+    expect(closed.progressSignal?.finalState).toBe('active');
     expect(closed.progressSignal?.completionRoute).toBe('owner_completed');
+    expect(store.initiativePortfolioMeta[0].status).not.toBe('closed');
+    expect(store.initiativePortfolioMeta[0]).toMatchObject({
+      readyForDecision: false,
+      nextActionRecommended: 'Decidir continuidad, nueva iteracion o cierre de la iniciativa.',
+    });
   });
 
   it('33. Step 0 declara nombre visible y output segun la ruta (PRD-03 §5)', async () => {
