@@ -14,10 +14,11 @@ import { AppError } from '../../../shared/errors/AppError';
 import { syncInitiativeProgress } from '../initiative-progress';
 
 function makePrisma(overrides: Record<string, any> = {}) {
-  return {
-    challenge: { findUnique: vi.fn().mockResolvedValue({ id: 'ch1' }) },
-    project: { findUnique: vi.fn().mockResolvedValue({ id: 'p1' }) },
-    user: { findUnique: vi.fn().mockResolvedValue({ id: 'u1' }) },
+  const prisma: any = {
+    challenge: { findUnique: vi.fn().mockResolvedValue({ id: 'ch1', status: 'activo_interno', strategicFrontId: 'front1', strategicFront: { id: 'front1', organizationId: 'org1' } }) },
+    project: { findUnique: vi.fn().mockResolvedValue({ id: 'p1', organizationId: 'org1' }) },
+    user: { findUnique: vi.fn().mockResolvedValue({ id: 'u1', organizationId: 'org1' }) },
+    organizationMember: { findFirst: vi.fn().mockResolvedValue(null) },
     challengeTeamMember: {
       findMany: vi.fn().mockResolvedValue([]),
       findFirst: vi.fn().mockResolvedValue(null),
@@ -33,7 +34,9 @@ function makePrisma(overrides: Record<string, any> = {}) {
       delete: vi.fn().mockResolvedValue({ id: 'tm1' }),
     },
     ...overrides,
-  } as any;
+  };
+  prisma.$transaction = vi.fn(async (run: (tx: any) => Promise<unknown>) => run(prisma));
+  return prisma;
 }
 
 describe('PortfolioService — ChallengeTeamMember CRUD (#109)', () => {

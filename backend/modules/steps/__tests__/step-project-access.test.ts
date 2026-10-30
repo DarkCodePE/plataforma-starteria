@@ -6,10 +6,13 @@
 import { describe, expect, it, vi } from 'vitest';
 import { requireStepProjectAccess } from '../step.access';
 
-function makePrisma({ member = false, teamRole = 'EDITOR', leadUserId = null as string | null } = {}) {
+function makePrisma({ member = false, teamRole = 'EDITOR', leadUserId = null as string | null, mentor = false, userOrg = 'org-1' } = {}) {
   return {
-    teamMember: { findFirst: vi.fn().mockResolvedValue(member ? { role: teamRole } : null) },
+    project: { findUnique: vi.fn().mockResolvedValue({ organizationId: 'org-1' }) },
+    user: { findUnique: vi.fn().mockResolvedValue({ organizationId: userOrg }) },
+    teamMember: { findFirst: vi.fn().mockResolvedValue(member ? { role: teamRole, status: 'ACTIVE' } : null) },
     initiativeGovernance: { findUnique: vi.fn().mockResolvedValue(leadUserId ? { portfolioLeadUserId: leadUserId } : null) },
+    mentorSession: { findFirst: vi.fn().mockResolvedValue(mentor ? { id: 'mentor-session-1' } : null) },
   } as any;
 }
 
@@ -33,8 +36,8 @@ describe('requireStepProjectAccess', () => {
   });
 
   it('un usuario ajeno no lee ni escribe', async () => {
-    expect(await run(makePrisma(), 'GET', { id: 'u2', role: 'participante' })).toMatchObject({ code: 'PROJECT_ACCESS_DENIED' });
-    expect(await run(makePrisma(), 'PUT', { id: 'u2', role: 'participante' })).toMatchObject({ code: 'PROJECT_ACCESS_DENIED' });
+    expect(await run(makePrisma(), 'GET', { id: 'u2', role: 'participante' })).toMatchObject({ code: 'PROJECT_NOT_FOUND' });
+    expect(await run(makePrisma(), 'PUT', { id: 'u2', role: 'participante' })).toMatchObject({ code: 'PROJECT_NOT_FOUND' });
   });
 
   it('el Portfolio Lead asignado lee pero no escribe', async () => {
@@ -45,13 +48,14 @@ describe('requireStepProjectAccess', () => {
   });
 
   it('otro Portfolio Lead no lee', async () => {
-    expect(await run(makePrisma({ leadUserId: 'lead-1' }), 'GET', { id: 'lead-2', role: 'portfolio_lead' })).toMatchObject({ code: 'PROJECT_ACCESS_DENIED' });
+    expect(await run(makePrisma({ leadUserId: 'lead-1' }), 'GET', { id: 'lead-2', role: 'portfolio_lead' })).toMatchObject({ code: 'PROJECT_NOT_FOUND' });
   });
 
-  it('admin y mentor pasan sin consultar membresía, como en getProject', async () => {
-    const prisma = makePrisma();
+  it('admin del tenant y mentor asignado pasan; mentor no asignado no', async () => {
+    const prisma = makePrisma({ mentor: true });
     expect(await run(prisma, 'PUT', { id: 'a1', role: 'admin' })).toBeUndefined();
     expect(await run(prisma, 'POST', { id: 'm1', role: 'mentor' })).toBeUndefined();
-    expect(prisma.teamMember.findFirst).not.toHaveBeenCalled();
+    expect(await run(makePrisma(), 'POST', { id: 'm2', role: 'mentor' })).toMatchObject({ code: 'PROJECT_NOT_FOUND' });
+    expect(await run(makePrisma({ userOrg: 'org-2' }), 'PUT', { id: 'a2', role: 'admin' })).toMatchObject({ code: 'PROJECT_NOT_FOUND' });
   });
 });

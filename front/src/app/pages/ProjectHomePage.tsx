@@ -32,6 +32,7 @@ import { canNavigateToAdaptiveStep } from '../../features/adaptive-core/domain/a
 import { getAdaptiveCore } from '../../features/adaptive-core/services/adaptiveCoreService';
 import { STEP_PROGRESS_QUESTION } from '../../features/adaptive-core/domain/adaptiveCore';
 import { CopilotIntentModes } from '../../features/adaptive-core/components/CopilotIntentModes';
+import { ContinuityOverview } from '../../features/initiative-continuity/components/ContinuityExperience';
 
 const STEP_DESCRIPTIONS = [
   'Entiende el problema con claridad: documenta el proceso actual, mide el impacto y conoce a los actores involucrados.',
@@ -1297,7 +1298,7 @@ function ProjectHomeContent() {
   // ─── Render ────────────────────────────────────────────────────────────────
 
   return (
-    <div className="p-6 max-w-4xl mx-auto">
+    <div className="mx-auto max-w-6xl p-4 md:p-6">
       {/* Back */}
       <button
         onClick={() => navigate('/dashboard')}
@@ -1317,7 +1318,7 @@ function ProjectHomeContent() {
           <div className="flex items-center gap-2 mb-1 flex-wrap">
             <StatusChip status={project.status} />
             <span className="rounded-full border border-slate-200 bg-white px-2.5 py-0.5 text-xs text-slate-500" style={{ fontWeight: 600 }}>
-              {overallProgress}% de avance
+              {adaptiveCoreStatus === 'loaded' ? `Step actual ${currentJourneyStep}` : 'Recuperando recorrido'}
             </span>
             {project.riskLevel === 'Alto' && (
               <span className="flex items-center gap-1 text-xs px-2 py-0.5 bg-red-50 text-red-600 rounded-full">
@@ -1348,6 +1349,17 @@ function ProjectHomeContent() {
           </button>
         </div>
       </div>
+
+      {!isSponsorViewer && (
+        <ContinuityOverview
+          project={project}
+          core={adaptiveCore}
+          state={adaptiveCoreStatus}
+          error={adaptiveCoreError}
+          onRetry={retryAdaptiveCore}
+          onOpenStep={navigateToJourneyStep}
+        />
+      )}
 
       {initialReviewMeta && !isSponsorViewer && (
         <div className="mb-6 rounded-2xl border border-indigo-100 bg-indigo-50 p-5">
@@ -1434,7 +1446,7 @@ function ProjectHomeContent() {
               : firstName ? `${firstName}, bienvenida a tu iniciativa` : 'Bienvenida a tu iniciativa'}
           </span>
           <span className="rounded-full bg-white px-3 py-1 text-xs text-slate-500 border border-slate-200" style={{ fontWeight: 600 }}>
-            {step0Complete ? 'Siguiente hito: alineación' : overallProgress > 0 ? `${overallProgress}% de avance` : 'Primer ingreso'}
+            {step0Complete ? 'Siguiente hito: alineación' : adaptiveCoreStatus === 'loaded' ? `Step actual ${currentJourneyStep}` : 'Recuperando recorrido'}
           </span>
         </div>
         <h2 className="text-2xl text-slate-900 max-w-3xl" style={{ fontWeight: 700 }}>
@@ -1599,14 +1611,7 @@ function ProjectHomeContent() {
         </div>
       )}
 
-      <div className="mb-4 rounded-2xl border border-indigo-100 bg-white p-4">
-        <p className="text-sm text-slate-950" style={{ fontWeight: 800 }}>Este es tu espacio de trabajo.</p>
-        <p className="mt-1 max-w-3xl text-sm leading-6 text-slate-600">
-          Aqui vas a desarrollar paso a paso la ruta que definiste con Starteria, empezando por ordenar la base inicial de tu iniciativa.
-        </p>
-      </div>
-
-      <div id="project-journey" className="rounded-2xl border border-slate-200 bg-white p-5 mb-6">
+      <div id="project-journey-v1" className="hidden rounded-2xl border border-slate-200 bg-white p-5 mb-6">
         <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
           <div>
             <h2 className="text-base text-slate-900" style={{ fontWeight: 700 }}>Recorrido del proyecto</h2>
@@ -1617,7 +1622,7 @@ function ProjectHomeContent() {
                   : 'Estado adaptativo no disponible. Reintenta para recuperar checkpoints, progreso y desbloqueos.')}
             </p>
           </div>
-          {currentAdaptiveJourneyStep && (
+          {isSponsorViewer && currentAdaptiveJourneyStep && (
             <div className="flex flex-wrap gap-2">
               <span className="rounded-full bg-indigo-50 px-3 py-1 text-xs text-indigo-700" style={{ fontWeight: 700 }}>
                 Ruta {currentAdaptiveJourneyStep.routeType.replaceAll('_', ' ')}
@@ -1628,7 +1633,7 @@ function ProjectHomeContent() {
             </div>
           )}
         </div>
-        {adaptiveCoreStatus !== 'loaded' && (
+        {isSponsorViewer && adaptiveCoreStatus !== 'loaded' && (
           <div
             role={adaptiveCoreStatus === 'error' ? 'alert' : 'status'}
             className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-800"

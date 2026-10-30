@@ -29,9 +29,12 @@ import { buildInitialResearchV2State, buildResearchFrontSuggestions, buildResear
 import { ResearchModuleAContext, Step1ResearchModuleV2State } from '../components/step1-research-v2/step1ResearchV2.types';
 import { Step1CaptureLegacyRestrictions, Step1CaptureLegacySynthesis, Step1CaptureLegacyValidation, Step1ModuleId } from '../components/step1-architecture/step1Architecture.types';
 import { confirmAdaptiveCheckpoint, explainCheckpointError, confirmStep1Output, getAdaptiveCore } from '../../features/adaptive-core/services/adaptiveCoreService';
-import { canNavigateToAdaptiveStep, latestAdaptiveStepOutput } from '../../features/adaptive-core/domain/adaptiveAuthority';
+import { canNavigateToAdaptiveStep, getAuthoritativeActiveStep, latestAdaptiveStepOutput } from '../../features/adaptive-core/domain/adaptiveAuthority';
 import type { AdaptiveInitiativeCore } from '../../features/adaptive-core/domain/types';
 import { AdaptiveCheckpointWorkspace } from '../../features/adaptive-core/components';
+import { ContinuityStepWorkspace, HistoricalStepContinuity } from '../../features/initiative-continuity/components/ContinuityExperience';
+import { StepReasoningPanel } from '../../features/step-reasoning/components';
+import { isStepReasoningCopilotEnabled } from '../services/featureFlags';
 
 type ModuleId = Step1ModuleId | 'D' | 'S';
 
@@ -252,6 +255,7 @@ export function Step1Page() {
   const [adaptiveStep1Error, setAdaptiveStep1Error] = useState<string | null>(null);
   const [adaptiveCore, setAdaptiveCore] = useState<AdaptiveInitiativeCore | null>(null);
   const [adaptiveCoreStatus, setAdaptiveCoreStatus] = useState<'loading' | 'loaded' | 'error'>('loading');
+  const [stepDataHydrated, setStepDataHydrated] = useState(false);
 
   const [iaLoadingB, setIaLoadingB] = useState(false);
   const [expandedTemaId, setExpandedTemaId] = useState<string | null>(null);
@@ -519,6 +523,7 @@ export function Step1Page() {
   }, [captureSignature]);
 
   const step1FormData = { asisData, evidenciasA, aiAnalysisState, bData, captureSynthesisData, moduleAdjustments };
+  const operationalStep = getAuthoritativeActiveStep(adaptiveCore) ?? project?.currentStep ?? 0;
 
   const autosaveFn = useCallback(async (data: typeof step1FormData) => {
     if (!projectId) return;
@@ -534,7 +539,7 @@ export function Step1Page() {
     delay: 2000,
     // Sólo quien puede escribir guarda: el Portfolio Lead asignado lee la iniciativa sin ser del
     // equipo y el backend le rechaza el PUT (step.access.ts).
-    enabled: !!projectId && (!!contextProject || user?.role === 'admin' || user?.role === 'mentor'),
+    enabled: !!projectId && stepDataHydrated && adaptiveCoreStatus === 'loaded' && operationalStep === 1 && canEdit,
   });
 
   // Hydrate from backend on mount; mirror Step 2's persistence pattern.
@@ -542,8 +547,12 @@ export function Step1Page() {
   // session, rehydrate the local state. Falls back silently to the empty
   // defaults when nothing is persisted (preserves the empty state).
   useEffect(() => {
-    if (!projectId) return;
+    if (!projectId) {
+      setStepDataHydrated(true);
+      return;
+    }
     let cancelled = false;
+    setStepDataHydrated(false);
     (async () => {
       try {
         const stored = await stepService.getStepData(projectId, 1);
@@ -564,6 +573,8 @@ export function Step1Page() {
           setModuleAdjustments(formData.moduleAdjustments as typeof moduleAdjustments);
       } catch {
         // 404 or auth error — keep defaults silently; AutosaveIndicator will reflect future writes.
+      } finally {
+        if (!cancelled) setStepDataHydrated(true);
       }
     })();
     return () => { cancelled = true; };
@@ -585,6 +596,7 @@ export function Step1Page() {
     try {
       const nextCore = await confirmAdaptiveCheckpoint(projectId, {
         idempotencyKey: `${projectId}-${adaptiveCore.activeCheckpoint.checkpointKey}-${Date.now()}-ui-confirm`,
+        expectedVersion: adaptiveCore.activeCheckpoint.version,
         checkpointKey: adaptiveCore.activeCheckpoint.checkpointKey,
         responses,
         truthBindings,
@@ -628,10 +640,25 @@ export function Step1Page() {
   if (!project || !step) return <div className="p-6"><p className="text-slate-500">Proyecto o Step no encontrado.</p></div>;
 
   if (adaptiveCoreStatus === 'loading') {
-    return <div className="p-8 text-center"><p className="text-slate-500">Cargando estado adaptativo...</p></div>;
+    return <ContinuityStepWorkspace projectName={project.name} step={1} core={null} state="loading" readOnly={!canEdit} onRetry={() => void loadAdaptiveCore()} onBack={() => navigate(`/projects/${projectId}`)} />;
   }
   if (adaptiveCoreStatus === 'error' || !adaptiveCore) {
-    return <div className="p-8 text-center"><p className="text-rose-700">{adaptiveStep1Error ?? 'No pudimos cargar Adaptive Core.'}</p><button type="button" onClick={() => void loadAdaptiveCore()} className="mt-4 rounded-xl bg-indigo-600 px-4 py-2 text-sm text-white">Reintentar</button></div>;
+    return <ContinuityStepWorkspace projectName={project.name} step={1} core={adaptiveCore} state="error" error={adaptiveStep1Error ?? 'No pudimos cargar Adaptive Core.'} readOnly={!canEdit} onRetry={() => void loadAdaptiveCore()} onBack={() => navigate(`/projects/${projectId}`)} />;
+  }
+
+  if (operationalStep > 1) {
+    return (
+      <HistoricalStepContinuity
+        projectName={project.name}
+        step={1}
+        operationalStep={operationalStep}
+        core={adaptiveCore}
+        state="loaded"
+        onRetry={() => void loadAdaptiveCore()}
+        onBack={() => navigate(`/projects/${projectId}`)}
+        onReturnOperational={() => navigate(`/projects/${projectId}/step/${operationalStep}`)}
+      />
+    );
   }
 
   if (!canNavigateToAdaptiveStep(adaptiveCore, 1)) {
@@ -660,10 +687,25 @@ export function Step1Page() {
   const adaptiveStep1Draft = latestAdaptiveStepOutput(adaptiveCore, 1, 'draft');
   const adaptiveStep1Confirmed = Boolean(latestAdaptiveStepOutput(adaptiveCore, 1, 'confirmed'));
   return (
-    <main className="min-h-full overflow-y-auto bg-slate-50 p-4 md:p-8">
-      <div className="mx-auto max-w-6xl">
-        <button type="button" onClick={() => navigate(`/projects/${projectId}`)} className="mb-5 text-sm text-slate-500 hover:text-slate-800">Volver al proyecto</button>
-        <ReadOnlyNotice reason={readOnlyReason} className="mb-5" />
+    <ContinuityStepWorkspace
+      projectName={project.name}
+      step={1}
+      core={adaptiveCore}
+      state="loaded"
+      readOnly={!canEdit}
+      copilot={isStepReasoningCopilotEnabled(user?.id) ? (
+        <StepReasoningPanel
+          projectId={project.id}
+          step={1}
+          core={adaptiveCore}
+          readOnly={!canEdit}
+          onReviewCheckpoint={() => document.getElementById('official-checkpoint-workspace')?.scrollIntoView({ behavior: 'smooth' })}
+        />
+      ) : undefined}
+      onRetry={() => void loadAdaptiveCore()}
+      onBack={() => navigate(`/projects/${projectId}`)}
+    >
+      <ReadOnlyNotice reason={readOnlyReason} className="mb-5" />
         <AdaptiveCheckpointWorkspace
           readOnly={!canEdit}
           core={adaptiveCore}
@@ -679,8 +721,7 @@ export function Step1Page() {
           onConfirmOutput={adaptiveStep1Draft ? confirmAdaptiveStep1Output : undefined}
           onRefresh={() => void loadAdaptiveCore()}
         />
-      </div>
-    </main>
+    </ContinuityStepWorkspace>
   );
 
   const semaforo = (() => {
@@ -951,6 +992,7 @@ export function Step1Page() {
       const mainHypothesis = bData.researchV2.objective.draft || sintesisData.resumen || lecturaConsolidada;
       await confirmAdaptiveCheckpoint(projectId, {
         idempotencyKey: `${baseKey}-cp11`,
+        expectedVersion: 0,
         checkpointKey: 'CP-1.1',
         responses: {
           mainHypothesis,
@@ -962,6 +1004,7 @@ export function Step1Page() {
       });
       await confirmAdaptiveCheckpoint(projectId, {
         idempotencyKey: `${baseKey}-cp12`,
+        expectedVersion: 0,
         checkpointKey: 'CP-1.2',
         responses: {
           methods: bData.researchV2.fronts.map(front => front.sourceMode).filter(Boolean),
@@ -988,6 +1031,7 @@ export function Step1Page() {
       ].filter(item => item.summary.trim().length > 0);
       await confirmAdaptiveCheckpoint(projectId, {
         idempotencyKey: `${baseKey}-cp13`,
+        expectedVersion: 0,
         checkpointKey: 'CP-1.3',
         responses: {
           evidenceItems: evidenceItems.length > 0 ? evidenceItems : [{ id: 'step1-ui-summary', summary: lecturaConsolidada, classification: 'context', sourceRefs: ['step1-ui'] }],
@@ -997,6 +1041,7 @@ export function Step1Page() {
       });
       const core = await confirmAdaptiveCheckpoint(projectId, {
         idempotencyKey: `${baseKey}-cp14`,
+        expectedVersion: 0,
         checkpointKey: 'CP-1.4',
         responses: {
           synthesis: captureSynthesisData.finalSummary || sintesisData.resumen || lecturaConsolidada,

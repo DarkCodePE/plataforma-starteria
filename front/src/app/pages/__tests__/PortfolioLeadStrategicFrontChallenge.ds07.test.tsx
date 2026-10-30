@@ -82,7 +82,7 @@ describe('DS-07 Strategic Front and Challenge summary pilot', () => {
     expect(screen.getAllByText(/Starteria: seguimiento sugerido/i)).toHaveLength(2);
   });
 
-  it('renders Challenge data, preserves coverage semantics, and keeps action destinations unchanged', async () => {
+  it('renders Challenge data, preserves coverage semantics, and opens the canonical Brief + Assignment flow', async () => {
     const user = userEvent.setup();
 
     render(
@@ -99,7 +99,7 @@ describe('DS-07 Strategic Front and Challenge summary pilot', () => {
     await user.click(screen.getAllByRole('button', { name: /Ver iniciativas/i })[0]);
     expect(navigateMock).toHaveBeenCalledWith('/portfolio/iniciativas?challengeId=challenge-open');
 
-    await user.click(screen.getAllByRole('button', { name: /Crear iniciativa/i })[0]);
-    expect(navigateMock).toHaveBeenCalledWith('/projects/new?challengeId=challenge-open');
+    expect(screen.getAllByRole('button', { name: /Preparar Brief y Assignment/i }).length).toBeGreaterThan(0);
+    expect(navigateMock).not.toHaveBeenCalledWith('/projects/new?challengeId=challenge-open');
   });
 });

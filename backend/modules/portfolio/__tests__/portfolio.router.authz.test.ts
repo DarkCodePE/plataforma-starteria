@@ -37,11 +37,12 @@ vi.mock('../../auth/auth.middleware', async (importOriginal) => {
   };
 });
 
-// La guardia por recurso (F-03) resuelve la organización de la iniciativa: una del mismo
-// usuario de prueba, sin organización, así el test sigue midiendo sólo el permiso.
+// La guardia por recurso (F-03) resuelve una pertenencia canónica explícita del
+// mismo tenant, así el test sigue midiendo sólo el permiso sin depender de la
+// compatibilidad legacy fail-closed de ADR-009.
 const fakePrisma = {
-  user: { findUnique: async () => ({ organizationId: null }) },
-  project: { findUnique: async () => ({ owner: { organizationId: null }, portfolioMeta: [] }) },
+  user: { findUnique: async () => ({ organizationId: 'org-test' }) },
+  project: { findUnique: async () => ({ organizationId: 'org-test', owner: { organizationId: 'org-test' }, portfolioMeta: [] }) },
 };
 vi.mock('../../../shared/db/prisma', () => ({ default: fakePrisma, prisma: fakePrisma }));
 
@@ -132,15 +133,13 @@ describe('portfolio.router — autorización de escrituras (ADR-028)', () => {
     expect(res.status).toBe(403);
   });
 
-  it('las lecturas siguen abiertas a cualquier autenticado (deuda declarada)', async () => {
-    // AppLayout llama a las lecturas de portafolio para TODO usuario autenticado,
-    // así que cerrarlas rompería a los participantes. Se fija el comportamiento
-    // actual para que cerrarlas sea una decisión explícita, no un descuido.
+  it('el listado autenticado recibe siempre un scope tenant, también para participantes', async () => {
     currentUser = { id: 'u-par', email: 'par@starteria.io', role: 'participante' };
 
     const res = await request(makeApp()).get('/api/v1/portfolio/strategic-fronts');
 
     expect(res.status, JSON.stringify(res.body)).toBe(200);
+    expect(listStrategicFronts).toHaveBeenCalledWith(expect.objectContaining({ all: false, organizationIds: expect.any(Array) }));
   });
 
   it('expone Portfolio Home como lectura autenticada sin permiso de escritura', async () => {

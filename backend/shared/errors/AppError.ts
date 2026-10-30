@@ -166,10 +166,10 @@ export class AppError extends Error {
   static refreshReused(): AppError {
     return new AppError(
       401,
-      'Detectamos un uso indebido de la sesion. Por seguridad la cerramos.',
+      'Este token de sesion ya fue utilizado.',
       'AUTH_REFRESH_TOKEN_REUSED',
       true,
-      { hint: 'Inicia sesion otra vez.' },
+      { hint: 'Usa la sesion renovada o inicia sesion otra vez.' },
     );
   }
 

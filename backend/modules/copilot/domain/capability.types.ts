@@ -1,4 +1,4 @@
-import type { ZodSchema } from 'zod';
+import type { ZodSchema } from 'zod/v3';
 
 export type CapabilityDefinition<Input = unknown, Output = unknown> = {
   id: string;

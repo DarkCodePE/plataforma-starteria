@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import { z } from 'zod/v3';
 
 export const sourceRefSchema = z.object({
   projectId: z.string().min(1).optional(),
@@ -49,10 +49,15 @@ export const validationSchema = z.object({
   validatorType: z.enum(['human', 'system_rule', 'ai']),
   validatorRole: z.string().max(100).optional(),
   rationale: z.string().min(1).max(5000),
+  expectedVersion: z.number().int().min(0).optional(),
 }).refine((value) => Boolean(value.claimId) || Boolean(value.evidenceId), {
   path: ['claimId'],
   message: 'Validation requires a claimId or evidenceId.',
 });
+
+export const validationCommandSchema = validationSchema.and(z.object({
+  expectedVersion: z.number().int().min(0),
+}));
 
 export const attentionItemSchema = z.object({
   projectId: z.string().min(1),

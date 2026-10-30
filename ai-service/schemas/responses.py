@@ -276,3 +276,34 @@ class InitialReviewResponse(BaseModel):
     strategicQuestions: list[InitialReviewQuestionBlock] = []
     improvedProposal: InitialReviewProposalBlock
     model: str | None = None
+
+
+class StepReasoningNextInteractionResponse(BaseModel):
+    kind: Literal["ask", "reflect", "summarize"]
+    question: str
+
+
+class StepReasoningSuggestionResponse(BaseModel):
+    field: str
+    proposedValue: str
+    rationale: str
+    status: Literal["UNREVIEWED"]
+    sourceRefs: list[str] = []
+
+
+class StepReasoningResponse(BaseModel):
+    message: str
+    nextInteraction: StepReasoningNextInteractionResponse
+    known: list[str]
+    unknown: list[str]
+    contradictions: list[str]
+    suggestions: list[StepReasoningSuggestionResponse]
+    warnings: list[str]
+    isReadyForHumanReview: bool
+    model: str
+    promptVersion: Literal["steps/reasoning/v0.1"]
+    promptHash: str
+    providerRunId: str | None = None
+    tokensUsed: int | None = None
+    costUsd: float | None = None
+    latencyMs: int | None = None

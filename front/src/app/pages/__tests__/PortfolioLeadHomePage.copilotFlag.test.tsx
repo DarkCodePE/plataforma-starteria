@@ -26,6 +26,33 @@ vi.mock('../../../features/portfolio-entry/home/usePortfolioHomeEntryContext', (
   usePortfolioHomeEntryContext: () => ({ data: null, status: 'idle', error: null }),
 }));
 
+vi.mock('../../../features/portfolio-lead/bootstrap', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../../features/portfolio-lead/bootstrap')>();
+  return {
+    ...actual,
+    usePortfolioBootstrap: () => ({
+      data: { bootstrapSession: { id: 'session-completed', setupCompletedAt: '2026-10-24T08:00:00.000Z' } },
+      status: 'ready',
+      error: null,
+      retry: vi.fn(),
+    }),
+  };
+});
+
+vi.mock('../../services/portfolioService', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../services/portfolioService')>();
+  return {
+    ...actual,
+    getPortfolioHome: vi.fn().mockResolvedValue({
+      portfolioReading: { summary: 'Lectura ejecutiva', source: 'bootstrap' },
+      governance: {}, strategicUnits: [], attention: [], pendingDecisions: [], recommendations: [],
+      handoffAssignments: [], generatedAt: '2026-10-24T08:00:00.000Z', learnings: [], learningsUnavailable: false,
+      availability: { strategicUnits: 'available', handoffAssignments: 'available', learnings: 'available', capacity: 'available' },
+      capacity: { totalActiveInitiatives: 0, signals: [], note: 'Sin iniciativas activas.' },
+    }),
+  };
+});
+
 vi.mock('../../../features/portfolio-lead', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../../../features/portfolio-lead')>();
   return {
@@ -55,21 +82,18 @@ describe('PortfolioLeadHomePage — menciones a Copilot según el flag', () => {
     copilotEnabled.mockReset();
   });
 
-  it('con el flag apagado no menciona Copilot en ninguna parte', () => {
+  it('con el flag apagado no menciona Copilot en ninguna parte', async () => {
     copilotEnabled.mockReturnValue(false);
     const { container } = renderHome();
 
-    // La tarjeta "Starteria" sigue orientando, pero sin prometer Copilot.
-    expect(screen.getByText(/Empieza por los elementos de atención visibles en el workspace\./)).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: /Qué necesita tu atención para mover el negocio/i })).toBeInTheDocument();
     expect(container.textContent).not.toMatch(/Copilot/i);
   });
 
-  it('con el flag encendido muestra la mención y el launcher', () => {
+  it('con el flag encendido muestra la mención y el launcher', async () => {
     copilotEnabled.mockReturnValue(true);
     renderHome();
 
-    expect(screen.getByText(/Los bloqueos y decisiones no dependen de abrir Copilot/)).toBeInTheDocument();
-    expect(screen.getByText('Copilot contextual')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /Crear con Copilot/ })).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: /Abrir Copilot de portafolio/i })).toBeInTheDocument();
   });
 });

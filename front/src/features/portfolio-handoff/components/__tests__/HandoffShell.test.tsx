@@ -7,6 +7,7 @@ import type { HandoffInvitationPreview } from '../../services/handoffInvitationS
 function preview(overrides: Partial<HandoffInvitationPreview> = {}): HandoffInvitationPreview {
   return {
     assignmentId: 'assignment-1', targetKind: 'CHALLENGE', challengeId: 'challenge-1', initiativeId: null,
+    briefVersion: null,
     state: 'SENT', version: 2, rejectionReason: null, portfolioResponse: null, acceptedAt: null, rejectedAt: null,
     authenticationRequired: true, identityClaimStatus: 'MATCHED', ...overrides,
   };

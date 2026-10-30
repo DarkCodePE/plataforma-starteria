@@ -7,7 +7,7 @@ import { corsOptions } from './config/cors';
 import { config } from './config';
 import { requestId } from './shared/middleware/request-id';
 import { errorHandler } from './shared/errors/error-handler';
-import { logger } from './shared/utils/logger';
+import { logger, redactSensitiveRequestUrl } from './shared/utils/logger';
 import { AppError } from './shared/errors/AppError';
 
 import { authRouter } from './modules/auth/auth.router';
@@ -37,6 +37,8 @@ import { copilotReadinessHandler } from './modules/copilot/copilot-readiness';
 import { truthRouter } from './modules/truth/truth.router';
 import { strategicFramingRouter } from './modules/strategic-framing/strategic-framing.router';
 import { portfolioHandoffInvitationRouter, portfolioHandoffDeliveryRouter, portfolioHandoffResponseRouter } from './modules/portfolio-handoff/portfolio-handoff-invitation.router';
+import { portfolioHandoffOwnerContinuityRouter } from './modules/portfolio-handoff/portfolio-handoff-owner-continuity.router';
+import { challengeActivationBriefRouter } from './modules/portfolio-handoff/challenge-activation-brief.router';
 import { firstValueP3Router } from './modules/first-value-p3/first-value-p3.router';
 import { reconstructionRouter } from './modules/reconstruction/reconstruction.router';
 
@@ -46,6 +48,8 @@ export function createApp(options: { portfolioEntryRouter?: ExpressRouter } = {}
   }
   const app = express();
 
+  if (config.trustProxyHops > 0) app.set('trust proxy', config.trustProxyHops);
+
   // Global middleware
   app.use(helmet());
   app.use(cors(corsOptions));
@@ -53,7 +57,14 @@ export function createApp(options: { portfolioEntryRouter?: ExpressRouter } = {}
   app.use(express.urlencoded({ extended: true }));
   app.use(cookieParser());
   app.use(requestId);
-  app.use(pinoHttp({ logger }));
+  app.use(pinoHttp({
+    logger,
+    serializers: {
+      req(req) {
+        return { ...req, url: redactSensitiveRequestUrl(req.url) };
+      },
+    },
+  }));
 
   // Health check
   app.get('/api/health', (_req, res) => {
@@ -104,16 +115,22 @@ export function createApp(options: { portfolioEntryRouter?: ExpressRouter } = {}
   app.use('/api/v1/portfolio-bootstrap', portfolioBootstrapRouter);
   app.use('/api/v1/strategic-framing', strategicFramingRouter);
   app.use('/api/v1/public/handoff-invitations', portfolioHandoffInvitationRouter);
-app.use('/api/v1/portfolio/handoff-assignments', portfolioHandoffDeliveryRouter);
-app.use('/api/v1/handoff/assignments', portfolioHandoffResponseRouter);
+  app.use('/api/v1/portfolio/handoff-assignments', portfolioHandoffDeliveryRouter);
+  app.use('/api/v1/portfolio', challengeActivationBriefRouter);
+  app.use('/api/v1/handoff/assignments', portfolioHandoffResponseRouter);
+  app.use('/api/v1/handoff/assignments', portfolioHandoffOwnerContinuityRouter);
   // Internal ai-service → backend push channel (X-Internal-Token only; no JWT).
   // Lets ai-service notify backend the moment an extraction finishes so the DB is
   // updated even when no frontend client is actively polling.
-  app.use('/api/v1/internal/ai/webhooks', createAiWebhookRouter(initiativePdfService));
+  if (config.aiWebhooksEnabled) {
+    app.use('/api/v1/internal/ai/webhooks', createAiWebhookRouter(initiativePdfService));
+  }
   // PRD-005 / ADR-021: provider-agnostic billing webhooks (Culqi/MercadoPago/Yape/
   // Manual). Internal class (X-Internal-Token + per-provider signature), no JWT —
   // same auth class as the ai-service webhook above. Idempotent (ADR-020).
-  app.use('/api/v1/internal/billing', billingRouter);
+  if (config.billingWebhooksEnabled) {
+    app.use('/api/v1/internal/billing', billingRouter);
+  }
 
   // 404 handler
   app.use((_req, _res, next) => {

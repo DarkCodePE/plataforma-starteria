@@ -6,6 +6,7 @@ import type {
   HandoffReference,
   HandoffReferenceRepository,
   HandoffAssignmentState,
+  UpdateCreatedHandoffAssignmentInput,
 } from '../domain/portfolio-handoff-assignment.types';
 
 export class InMemoryPortfolioHandoffAssignmentRepository implements HandoffAssignmentRepository {
@@ -36,6 +37,18 @@ export class InMemoryPortfolioHandoffAssignmentRepository implements HandoffAssi
   async findById(id: string): Promise<HandoffAssignment | null> {
     const assignment = this.assignments.get(id);
     return assignment ? clone(assignment) : null;
+  }
+
+  async updateCreated(input: UpdateCreatedHandoffAssignmentInput): Promise<HandoffAssignment | null> {
+    const assignment = this.assignments.get(input.assignmentId);
+    if (!assignment || assignment.state !== 'CREATED' || assignment.version !== input.expectedVersion) return null;
+    assignment.invitedEmailNormalized = input.invitedEmailNormalized;
+    assignment.invitedIdentityRef = input.invitedIdentityRef ?? null;
+    assignment.contextNote = input.contextNote ?? null;
+    assignment.members = input.members.map((member) => ({ ...member, identityKey: member.identityKey.trim().toLowerCase() }));
+    assignment.version += 1;
+    assignment.updatedAt = new Date();
+    return clone(assignment);
   }
 
   async associateInvitedIdentity(input: { assignmentId: string; userId: string; emailNormalized: string; identityRef?: string | null }): Promise<HandoffAssignment | null> {

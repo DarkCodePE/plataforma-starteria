@@ -1,0 +1,209 @@
+name: starteria-kan188-private-preview
+
+services:
+  postgres:
+    image: postgres:16-alpine@sha256:f4610795587492cd4fb887c2dc3de301b813278bb6f616992061141b5f15ac36
+    restart: unless-stopped
+    init: true
+    mem_limit: 768m
+    cpus: 1.0
+    pids_limit: 200
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      POSTGRES_DB: starteria_preview
+      POSTGRES_USER: starteria_preview
+      POSTGRES_PASSWORD: ${PREVIEW_DB_PASSWORD:?set PREVIEW_DB_PASSWORD in preview.env}
+    volumes:
+      - preview_postgres:/var/lib/postgresql/data
+    networks:
+      - private
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U starteria_preview -d starteria_preview"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  mailpit:
+    image: axllent/mailpit:v1.27.10@sha256:b1f1be18af530d939a11ee8820b379e0c88eeec204d904bfad68862adced3a5a
+    restart: unless-stopped
+    init: true
+    mem_limit: 256m
+    cpus: 0.5
+    pids_limit: 100
+    read_only: true
+    tmpfs:
+      - /tmp:size=32m,noexec,nosuid,nodev
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      MP_MAX_MESSAGES: "500"
+      MP_DATABASE: /data/mailpit.db
+    volumes:
+      - preview_mailpit:/data
+    networks:
+      - private
+    healthcheck:
+      test: ["CMD", "/mailpit", "readyz"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  migrate:
+    profiles: ["operations"]
+    build:
+      context: ../..
+      dockerfile: Dockerfile.backend
+      target: builder
+    command: ["npx", "prisma", "migrate", "deploy"]
+    restart: "no"
+    mem_limit: 512m
+    cpus: 1.0
+    pids_limit: 200
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      DATABASE_URL: postgresql://starteria_preview:${PREVIEW_DB_PASSWORD:?set PREVIEW_DB_PASSWORD in preview.env}@postgres:5432/starteria_preview
+    networks:
+      - private
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  backend:
+    build:
+      context: ../..
+      dockerfile: Dockerfile.backend
+      target: production
+    restart: unless-stopped
+    init: true
+    mem_limit: 768m
+    cpus: 1.0
+    pids_limit: 200
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m,noexec,nosuid,nodev
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      NODE_ENV: production
+      PORT: "3001"
+      DATABASE_URL: postgresql://starteria_preview:${PREVIEW_DB_PASSWORD:?set PREVIEW_DB_PASSWORD in preview.env}@postgres:5432/starteria_preview
+      JWT_SECRET: ${PREVIEW_JWT_SECRET:?set PREVIEW_JWT_SECRET in preview.env}
+      JWT_EXPIRES_IN: 15m
+      JWT_REFRESH_EXPIRES_IN: 8h
+      TRUST_PROXY_HOPS: "2"
+      BRIDGE_SHARED_SECRET: ${PREVIEW_BRIDGE_SHARED_SECRET:?set PREVIEW_BRIDGE_SHARED_SECRET in preview.env}
+      AI_SERVICE_TOKEN: ${PREVIEW_AI_SERVICE_TOKEN:?set PREVIEW_AI_SERVICE_TOKEN in preview.env}
+      BILLING_WEBHOOK_SECRET: ${PREVIEW_BILLING_WEBHOOK_SECRET:?set PREVIEW_BILLING_WEBHOOK_SECRET in preview.env}
+      PILOT_CODE_SECRET: ${PREVIEW_PILOT_CODE_SECRET:?set PREVIEW_PILOT_CODE_SECRET in preview.env}
+      AI_WEBHOOKS_ENABLED: "false"
+      BILLING_WEBHOOKS_ENABLED: "false"
+      CORS_ORIGIN: https://${PREVIEW_HOST:?set PREVIEW_HOST in preview.env}
+      HANDOFF_INVITATION_PUBLIC_BASE_URL: https://${PREVIEW_HOST:?set PREVIEW_HOST in preview.env}
+      HANDOFF_EMAIL_TRANSPORT_MODE: ${HANDOFF_EMAIL_TRANSPORT_MODE:-disabled}
+      HANDOFF_EMAIL_PILOT_ENABLED: ${HANDOFF_EMAIL_PILOT_ENABLED:-false}
+      HANDOFF_EMAIL_PILOT_VERIFIED_FROM: ${HANDOFF_EMAIL_PILOT_VERIFIED_FROM:-}
+      HANDOFF_EMAIL_REPLY_TO: ${HANDOFF_EMAIL_REPLY_TO:-}
+      HANDOFF_EMAIL_PILOT_RECIPIENT_ALLOWLIST: ${HANDOFF_EMAIL_PILOT_RECIPIENT_ALLOWLIST:-}
+      HANDOFF_EMAIL_PILOT_ORGANIZATION_ALLOWLIST: ${HANDOFF_EMAIL_PILOT_ORGANIZATION_ALLOWLIST:-}
+      HANDOFF_EMAIL_PILOT_ACTOR_ALLOWLIST: ${HANDOFF_EMAIL_PILOT_ACTOR_ALLOWLIST:-}
+      HANDOFF_EMAIL_PILOT_MAX_SENDS_PER_WINDOW: ${HANDOFF_EMAIL_PILOT_MAX_SENDS_PER_WINDOW:-2}
+      HANDOFF_EMAIL_PILOT_WINDOW_SECONDS: ${HANDOFF_EMAIL_PILOT_WINDOW_SECONDS:-3600}
+      HANDOFF_EMAIL_PILOT_MIN_INTERVAL_SECONDS: ${HANDOFF_EMAIL_PILOT_MIN_INTERVAL_SECONDS:-30}
+      HANDOFF_INVITATION_TTL_HOURS: ${HANDOFF_INVITATION_TTL_HOURS:-24}
+      HANDOFF_INVITATION_MIN_TTL_HOURS: ${HANDOFF_INVITATION_MIN_TTL_HOURS:-1}
+      HANDOFF_INVITATION_MAX_TTL_HOURS: ${HANDOFF_INVITATION_MAX_TTL_HOURS:-168}
+      HANDOFF_EMAIL_MAX_BATCH_SIZE: ${HANDOFF_EMAIL_MAX_BATCH_SIZE:-25}
+      PILOT_LEAD_EMAIL_ENABLED: "false"
+      PILOT_LEAD_NOTIFY_TO: ""
+      SMTP_HOST: ${SMTP_HOST:-mailpit}
+      SMTP_PORT: ${SMTP_PORT:-1025}
+      SMTP_SECURE: ${SMTP_SECURE:-false}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASS: ${SMTP_PASS:-}
+      PILOT_LEAD_NOTIFY_FROM: ${PILOT_LEAD_NOTIFY_FROM:-Starteria Sandbox <sandbox@starteria.test>}
+      LOG_LEVEL: info
+      BODY_LIMIT: 1mb
+      LOCAL_STORAGE_DIR: /app/storage
+      AI_SERVICE_URL: http://127.0.0.1:9
+      PORTFOLIO_ENTRY_RUNTIME_MODE: deterministic
+    volumes:
+      - preview_storage:/app/storage
+    networks:
+      private:
+        aliases:
+          - starteria-backend
+    depends_on:
+      postgres:
+        condition: service_healthy
+      mailpit:
+        condition: service_healthy
+
+  frontend:
+    build:
+      context: ../..
+      dockerfile: Dockerfile.frontend
+      args:
+        VITE_API_URL: /api/v1
+        VITE_FEATURE_PDF_AUTOFILL: "false"
+        VITE_GOOGLE_CLIENT_ID: ""
+    restart: unless-stopped
+    init: true
+    mem_limit: 256m
+    cpus: 0.5
+    pids_limit: 100
+    read_only: true
+    tmpfs:
+      - /var/cache/nginx:size=32m,noexec,nosuid,nodev
+      - /var/run:size=8m,noexec,nosuid,nodev
+      - /tmp:size=16m,noexec,nosuid,nodev
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - private
+    depends_on:
+      backend:
+        condition: service_healthy
+
+  caddy:
+    image: caddy:2.10-alpine@sha256:4c6e91c6ed0e2fa03efd5b44747b625fec79bc9cd06ac5235a779726618e530d
+    restart: unless-stopped
+    init: true
+    mem_limit: 256m
+    cpus: 0.5
+    pids_limit: 100
+    read_only: true
+    tmpfs:
+      - /tmp:size=16m,noexec,nosuid,nodev
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      PREVIEW_HOST: ${PREVIEW_HOST:?set PREVIEW_HOST in preview.env}
+      PREVIEW_ALLOWED_CIDR: ${PREVIEW_ALLOWED_CIDR:?set PREVIEW_ALLOWED_CIDR in preview.env}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - preview_caddy_data:/data
+      - preview_caddy_config:/config
+    networks:
+      - private
+      - outbound
+    depends_on:
+      - frontend
+
+networks:
+  private:
+    internal: true
+  outbound:
+
+volumes:
+  preview_postgres:
+  preview_mailpit:
+  preview_storage:
+  preview_caddy_data:
+  preview_caddy_config:

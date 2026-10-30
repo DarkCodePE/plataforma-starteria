@@ -190,6 +190,19 @@ enum PortfolioHandoffMemberRole {
   OBSERVER
 }
 
+enum ChallengeActivationBriefVersionStatus {
+  DRAFT
+  CONFIRMED
+}
+
+enum PortfolioActivationCommandType {
+  CREATE_BRIEF
+  CREATE_VERSION
+  CONFIRM_VERSION
+  CREATE_ASSIGNMENT
+  UPDATE_ASSIGNMENT
+}
+
 enum SessionStatus {
   PENDING_SCHEDULE
   SCHEDULED
@@ -297,6 +310,7 @@ enum ChallengeOpenCallStatus {
 }
 
 enum InitiativePortfolioStatus {
+  pending_retroactive_assessment
   en_step_0
   en_step_1
   en_step_2
@@ -310,6 +324,27 @@ enum InitiativePortfolioStatus {
   paused
   closed
   cerrada
+}
+
+enum ImportedInitiativeMode {
+  LINK_EXISTING
+  REGISTER_EXISTING
+}
+
+enum ImportedInitiativeLinkStatus {
+  ACTIVE
+  REVOKED
+}
+
+enum ImportedInitiativeActivationStatus {
+  OWNER_PENDING
+  OWNER_CONFIRMED
+}
+
+enum RetrospectiveAssessmentStatus {
+  PENDING_RETROACTIVE_ASSESSMENT
+  IN_REVIEW
+  ASSESSED
 }
 
 enum InitiativeContributionType {
@@ -611,12 +646,19 @@ model User {
 
   projects                 Project[]
   handoffAssignments       PortfolioHandoffAssignment[] @relation("HandoffCreatedBy")
+  activationBriefsCreated  ChallengeActivationBrief[] @relation("ChallengeActivationBriefCreatedBy")
+  activationBriefVersionsCreated ChallengeActivationBriefVersion[] @relation("ChallengeActivationBriefVersionCreatedBy")
+  activationBriefVersionsConfirmed ChallengeActivationBriefVersion[] @relation("ChallengeActivationBriefVersionConfirmedBy")
+  activationCommandReceipts PortfolioActivationCommandReceipt[] @relation("PortfolioActivationCommandActor")
+  importedInitiativeLinksConfirmed PortfolioImportedInitiativeLink[] @relation("ImportedInitiativeConfirmedBy")
+  importedInitiativeLinksRevoked PortfolioImportedInitiativeLink[] @relation("ImportedInitiativeRevokedBy")
   handoffMemberIdentities  PortfolioHandoffMember[] @relation("HandoffMemberUser")
   teamMemberships          TeamMember[]
   challengeTeamMemberships ChallengeTeamMember[] // ADR-023: reto-scoped team membership
   mentorSessions           MentorSession[]
   evidence                 Evidence[]
   refreshTokens            RefreshToken[]
+  refreshTokenFamilies     RefreshTokenFamily[] @relation("RefreshTokenFamilies")
   auditLogs                AuditLog[]
   helpRequests             HelpRequest[]         @relation("HelpRequester")
   mentorHelpRequests       HelpRequest[]         @relation("HelpMentor")
@@ -641,6 +683,8 @@ model User {
   @@index([googleId])
   @@index([organizationId])
   copilotConversations     CopilotConversation[]
+  stepReasoningSessionsCreated StepReasoningSession[] @relation("StepReasoningSessionCreator")
+  stepReasoningTurns            StepReasoningTurn[]    @relation("StepReasoningTurnActor")
 }
 
 model Project {
@@ -652,10 +696,9 @@ model Project {
   step0Status             Step0Status       @default(NOT_STARTED)
   step0Data               Json?
   // Set when this project was created by redeeming a pilot code (ADR-018).
-  // Plain index (NOT @unique): adding a unique constraint trips `prisma db push`'s
-  // data-loss guard and aborts the deploy. Idempotency is enforced in the claim
-  // service instead (claim.createdProjectId + a findFirst guard before creating).
-  pilotLeadId             String?
+  // KAN-193: database-enforced one-project-per-lead. The migration is applied only
+  // through the authorized migration path; nullable uniqueness permits non-pilot projects.
+  pilotLeadId             String?          @unique
   mentorCredits           Int               @default(3)
   riskLevel               RiskLevel?
   isArchived              Boolean           @default(false)
@@ -666,11 +709,16 @@ model Project {
   // originó (nullable → additivo, seguro para `prisma db push`).
   origin                  InitiativeOrigin? @default(from_scratch)
   initialReviewSnapshotId String?
+  // ADR-009: tenant ownership is explicit and independent from an operational owner.
+  organizationId          String?
+  activationStatus        ImportedInitiativeActivationStatus?
+  retrospectiveAssessmentStatus RetrospectiveAssessmentStatus?
   createdAt               DateTime          @default(now())
   lastModified            DateTime          @updatedAt
 
-  ownerId  String
-  owner    User    @relation(fields: [ownerId], references: [id])
+  ownerId  String?
+  owner    User?   @relation(fields: [ownerId], references: [id], onDelete: Restrict)
+  organization Organization? @relation(fields: [organizationId], references: [id], onDelete: Restrict)
   cohortId String?
   cohort   Cohort? @relation(fields: [cohortId], references: [id])
 
@@ -701,6 +749,7 @@ model Project {
   adaptiveProgressSignal AdaptiveProgressSignal?
   adaptiveEvents AdaptiveAdaptationEvent[]
   initiativeCycles InitiativeCycle[]
+  stepReasoningSessions StepReasoningSession[]
   criticalChanges CriticalChange[]
   initiativeGovernance InitiativeGovernance?
   decisionRequests DecisionRequest[]
@@ -710,16 +759,14 @@ model Project {
   scalingHandoffs ScalingHandoff[]
   closureSummaries ClosureSummary[]
   handoffAssignments PortfolioHandoffAssignment[]
+  importedInitiativeLinks PortfolioImportedInitiativeLink[]
 
   @@index([ownerId])
+  @@index([organizationId])
   @@index([cohortId])
   @@index([status])
-  @@index([pilotLeadId])
-  // Plain @@index (NOT @@unique): igual que `pilotLeadId`, agregar un @@unique a una
-  // tabla EXISTENTE dispara el guard de data-loss de `prisma db push` y aborta el deploy
-  // (el CD corre db push SIN --accept-data-loss). La idempotencia real (un snapshot →
-  // ≤1 Project, RB-IR-017/018) ya la garantizan RouteConfirmation.reviewId @@unique + el
-  // claim-antes-de-crear en RouteConfirmationService, así que el unique aquí era redundante.
+  // `initialReviewSnapshotId` remains an ordinary index: its idempotency is governed
+  // by RouteConfirmation.reviewId and is unrelated to the pilot-lead uniqueness above.
   @@index([initialReviewSnapshotId])
   portfolioLearnings PortfolioLearning[]
 }
@@ -908,6 +955,7 @@ model InitiativeCycle {
   decisionRequests        DecisionRequest[]
   decisions               Decision[]
   resultingContinuationRoutes ContinuationRoute[]
+  stepReasoningSessions   StepReasoningSession[]
 
   @@unique([projectId, cycleNumber])
   @@index([projectId])
@@ -1420,13 +1468,30 @@ model RefreshToken {
   user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   tokenHash String    @unique
   family    String
+  tokenFamily RefreshTokenFamily @relation(fields: [family], references: [id], onDelete: Cascade)
+  generation Int     @default(0)
   expiresAt DateTime
   revokedAt DateTime?
   createdAt DateTime  @default(now())
 
+  @@unique([family, generation])
   @@index([tokenHash])
   @@index([family])
   @@index([userId])
+}
+
+model RefreshTokenFamily {
+  id        String    @id
+  userId    String
+  user      User      @relation("RefreshTokenFamilies", fields: [userId], references: [id], onDelete: Cascade)
+  revokedAt DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  tokens RefreshToken[]
+
+  @@index([userId])
+  @@index([revokedAt])
 }
 
 model AuditLog {
@@ -1572,6 +1637,9 @@ model Challenge {
   overlaps         InitiativeOverlap[]
   executiveOutputs ExecutiveOutput[]
   handoffAssignments PortfolioHandoffAssignment[]
+  activationBriefs ChallengeActivationBrief[]
+  activationBriefVersions ChallengeActivationBriefVersion[]
+  importedInitiativeLinks PortfolioImportedInitiativeLink[]
 
   @@index([strategicFrontId])
   @@index([status])
@@ -1622,6 +1690,9 @@ model PortfolioHandoffAssignment {
   targetKind             PortfolioHandoffTargetKind
   initiativeId           String?
   initiative             Project?                  @relation(fields: [initiativeId], references: [id], onDelete: Restrict)
+  briefVersionId         String?
+  briefVersion           ChallengeActivationBriefVersion? @relation(fields: [briefVersionId], references: [id], onDelete: Restrict)
+  contextNote            String?
   invitedEmailNormalized String
   invitedIdentityRef     String?
   state                  PortfolioHandoffState     @default(CREATED)
@@ -1656,6 +1727,82 @@ model PortfolioHandoffAssignment {
   @@index([initiativeId])
   @@index([organizationId])
   @@index([createdByActorId])
+  @@index([briefVersionId])
+}
+
+// ADR-008: canonical Portfolio mandate for Challenge-targeted handoff. The
+// tenant is explicit because Challenge derives its tenant through StrategicFront.
+model ChallengeActivationBrief {
+  id               String    @id @default(cuid())
+  organizationId   String
+  challengeId      String
+  challenge        Challenge @relation(fields: [challengeId], references: [id], onDelete: Restrict)
+  createdByActorId String
+  createdByActor   User      @relation("ChallengeActivationBriefCreatedBy", fields: [createdByActorId], references: [id], onDelete: Restrict)
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  versions ChallengeActivationBriefVersion[]
+
+  @@unique([id, organizationId])
+  @@index([organizationId])
+  @@index([challengeId])
+  @@index([createdByActorId])
+}
+
+// A payload is immutable from creation. Editing creates a later row; only the
+// DRAFT -> CONFIRMED checkpoint transition is allowed by migration trigger.
+model ChallengeActivationBriefVersion {
+  id                    String                                @id @default(cuid())
+  organizationId        String
+  briefId               String
+  brief                 ChallengeActivationBrief             @relation(fields: [briefId, organizationId], references: [id, organizationId], onDelete: Restrict)
+  challengeId           String
+  challenge             Challenge                            @relation(fields: [challengeId], references: [id], onDelete: Restrict)
+  versionNumber         Int
+  status                ChallengeActivationBriefVersionStatus @default(DRAFT)
+  intent                String?
+  scope                 String?
+  strategicContextRefs  Json
+  inheritedContext      Json
+  constraintsSnapshot   Json
+  knownGaps             Json
+  sourceRefs            Json
+  provenance            Json
+  createdByActorId      String
+  createdByActor        User                                  @relation("ChallengeActivationBriefVersionCreatedBy", fields: [createdByActorId], references: [id], onDelete: Restrict)
+  confirmedByActorId    String?
+  confirmedByActor      User?                                 @relation("ChallengeActivationBriefVersionConfirmedBy", fields: [confirmedByActorId], references: [id], onDelete: Restrict)
+  createdAt             DateTime                              @default(now())
+  confirmedAt           DateTime?
+
+  assignments PortfolioHandoffAssignment[]
+
+  @@unique([briefId, versionNumber])
+  @@unique([id, organizationId, challengeId], map: "ChallengeActivationBriefVersion_id_organizationId_challengeId_k")
+  @@index([organizationId])
+  @@index([challengeId])
+  @@index([briefId, versionNumber])
+  @@index([status])
+}
+
+// ADR-008 bounded durable receipt for commands which occur before an Assignment
+// exists. Send still uses PortfolioHandoffDeliveryAttempt.
+model PortfolioActivationCommandReceipt {
+  id                 String                         @id @default(cuid())
+  organizationId     String
+  commandType        PortfolioActivationCommandType
+  idempotencyKey     String
+  fingerprint        String
+  actorId            String
+  actor              User                           @relation("PortfolioActivationCommandActor", fields: [actorId], references: [id], onDelete: Restrict)
+  resultBriefId      String?
+  resultVersionId    String?
+  resultAssignmentId String?
+  createdAt          DateTime                       @default(now())
+
+  @@unique([organizationId, commandType, idempotencyKey], map: "PortfolioActivationCommandReceipt_organizationId_commandType_id")
+  @@index([organizationId, createdAt])
 }
 
 model PortfolioHandoffSemanticEvent {
@@ -1759,6 +1906,15 @@ model PortfolioHandoffInvitation {
 enum PortfolioHandoffDeliveryAttemptStatus {
   SUCCEEDED
   FAILED
+  UNKNOWN
+}
+
+enum PortfolioHandoffDeliveryBatchStatus {
+  PROCESSING
+  COMPLETED
+  PARTIAL
+  FAILED
+  RECONCILIATION_REQUIRED
 }
 
 model PortfolioHandoffDeliveryAttempt {
@@ -1771,9 +1927,53 @@ model PortfolioHandoffDeliveryAttempt {
   providerMessageRef String?
   errorCategory      String?
   idempotencyKey     String
+  requestFingerprint String
+  executionGeneration Int                                 @default(0)
+  executionOwnerId  String?
+  leaseUntil         DateTime?
+  idempotencyKeys    PortfolioHandoffDeliveryAttemptKey[]
 
   @@unique([assignmentId, idempotencyKey])
+  @@unique([assignmentId, requestFingerprint], map: "HandoffDeliveryAttempt_assignment_intent_key")
   @@index([assignmentId, attemptedAt])
+  @@index([status, leaseUntil])
+}
+
+model PortfolioHandoffDeliveryAttemptKey {
+  id                 String                          @id @default(cuid())
+  assignmentId       String
+  idempotencyKey     String
+  attemptId          String
+  attempt            PortfolioHandoffDeliveryAttempt @relation(fields: [attemptId], references: [id], onDelete: Cascade)
+  createdAt          DateTime                        @default(now())
+
+  @@unique([assignmentId, idempotencyKey])
+  @@index([attemptId])
+}
+
+model PortfolioHandoffDeliveryBatch {
+  id                 String                              @id @default(cuid())
+  organizationId     String
+  challengeId        String
+  actorId             String
+  idempotencyKey     String
+  requestFingerprint String
+  retryOfBatchId     String?
+  assignmentIds      String[]
+  status             PortfolioHandoffDeliveryBatchStatus @default(PROCESSING)
+  results            Json
+  succeededCount     Int                                 @default(0)
+  failedCount        Int                                 @default(0)
+  processingLeaseUntil DateTime?
+  processingGeneration Int                              @default(0)
+  processingOwnerId  String?
+  createdAt          DateTime                            @default(now())
+  completedAt        DateTime?
+
+  @@unique([organizationId, idempotencyKey])
+  @@index([status, processingLeaseUntil])
+  @@index([challengeId, createdAt])
+  @@index([retryOfBatchId])
 }
 
 model PortfolioHandoffMember {
@@ -2293,6 +2493,7 @@ model CompanyContribution {
 model PilotLead {
   id              String   @id @default(uuid())
   draftId         String   @unique
+  // SHA-256 of the high-entropy bearer; the raw code is never persisted.
   pilotCode       String   @unique
   name            String
   email           String
@@ -2454,6 +2655,9 @@ model Organization {
   subscriptions Subscription[]
   members       OrganizationMember[]
   portfolioAccessGrants OrganizationPortfolioAccessGrant[]
+  projects        Project[]
+  importedInitiativeLinks PortfolioImportedInitiativeLink[]
+  stepReasoningSessions StepReasoningSession[]
 
   @@index([cohortId])
 }
@@ -2622,6 +2826,12 @@ enum PortfolioBootstrapExistingWorkStatus {
   unknown
   has_work
   no_existing_work
+}
+
+enum PortfolioOrganizationProposalStatus {
+  reviewed
+  superseded
+  materialized
 }
 
   enum PortfolioBootstrapWorkItemSourceType {
@@ -2929,6 +3139,9 @@ model PortfolioBootstrapSession {
   status               PortfolioBootstrapSessionStatus @default(active)
   bootstrapPhase       PortfolioBootstrapPhase         @default(B0_CONTINUE)
   existingWorkStatus   PortfolioBootstrapExistingWorkStatus @default(unknown)
+  setupCompletedAt      DateTime?
+  setupCompletedByActorId String?
+  setupCompletionIdempotencyKey String?
   createdAt            DateTime                        @default(now())
   updatedAt            DateTime                        @updatedAt
 
@@ -2938,11 +3151,14 @@ model PortfolioBootstrapSession {
     workIntakeSources    PortfolioBootstrapWorkIntakeSource[]
     importBatches        PortfolioBootstrapImportBatch[]
     workItems            PortfolioBootstrapWorkItem[]
+    importedInitiativeLinks PortfolioImportedInitiativeLink[]
   analysisRuns         PortfolioBootstrapAnalysisRun[]
   proposedMutations    PortfolioBootstrapProposedMutation[]
   strategicConnections PortfolioStrategicConnection[]
   advancementConditions PortfolioAdvancementCondition[]
   readings             PortfolioReading[]
+  organizationProposals PortfolioOrganizationProposal[]
+  organizationMaterializations PortfolioOrganizationMaterialization[]
 
   @@unique([userId, sourceContinuationId])
   @@index([userId])
@@ -2950,6 +3166,55 @@ model PortfolioBootstrapSession {
   @@index([status])
   @@index([bootstrapPhase])
   @@index([existingWorkStatus])
+  @@index([organizationId, setupCompletedAt])
+}
+
+// PL-04/KAN-154: immutable reviewed proposal versions. These rows are
+// provisional; no StrategicFront or Challenge is created until the explicit
+// materialization checkpoint succeeds.
+model PortfolioOrganizationProposal {
+  id                 String                               @id @default(cuid())
+  bootstrapSessionId String
+  organizationId     String
+  version            Int
+  status             PortfolioOrganizationProposalStatus @default(reviewed)
+  sourceVersion      String
+  payloadHash        String
+  payload            Json
+  sourceRefs         Json
+  provenance         Json
+  reviewedBy         String
+  reviewedAt         DateTime                             @default(now())
+
+  bootstrapSession PortfolioBootstrapSession             @relation(fields: [bootstrapSessionId], references: [id], onDelete: Cascade)
+  materialization  PortfolioOrganizationMaterialization?
+
+  @@unique([bootstrapSessionId, version])
+  @@index([organizationId])
+  @@index([bootstrapSessionId, status])
+}
+
+// Durable idempotency/audit boundary for the exact human-approved PL-04
+// structure. canonicalMappings retains candidate -> canonical identities and
+// work-item relationships without creating Project/Initiative entities.
+model PortfolioOrganizationMaterialization {
+  id                  String   @id @default(cuid())
+  proposalId          String   @unique
+  bootstrapSessionId  String   @unique
+  organizationId      String
+  proposalVersion     Int
+  approvalFingerprint String
+  idempotencyKey      String
+  canonicalMappings   Json
+  confirmedBy         String
+  confirmedAt         DateTime @default(now())
+
+  proposal         PortfolioOrganizationProposal @relation(fields: [proposalId], references: [id], onDelete: Restrict)
+  bootstrapSession PortfolioBootstrapSession      @relation(fields: [bootstrapSessionId], references: [id], onDelete: Restrict)
+
+  @@unique([organizationId, idempotencyKey], map: "PortfolioOrganizationMaterialization_organizationId_idempotency")
+  @@index([organizationId])
+  @@index([bootstrapSessionId, proposalVersion], map: "PortfolioOrganizationMaterialization_bootstrapSessionId_proposa")
 }
 
 enum StrategicFramingProvisionalSourceMode {
@@ -3141,6 +3406,7 @@ model PortfolioAnchorHistory {
     importBatch        PortfolioBootstrapImportBatch?          @relation(fields: [importBatchId], references: [id], onDelete: Restrict)
     strategicConnections PortfolioStrategicConnection[]
   advancementConditions PortfolioAdvancementCondition[]
+  importedInitiativeLinks PortfolioImportedInitiativeLink[]
 
     @@index([bootstrapSessionId])
     @@index([sourceId])
@@ -3149,6 +3415,48 @@ model PortfolioAnchorHistory {
   @@index([status])
   @@index([createdBy])
   @@index([createdAt])
+}
+
+// ADR-009: durable human-confirmed documentary lineage. The nullable unique
+// activeWorkItemKey allows history after revocation while enforcing one active
+// Project correspondence for each organization/work-item pair.
+model PortfolioImportedInitiativeLink {
+  id                    String                         @id @default(cuid())
+  organizationId        String
+  organization          Organization                   @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  bootstrapSessionId    String
+  bootstrapSession      PortfolioBootstrapSession      @relation(fields: [bootstrapSessionId], references: [id], onDelete: Restrict)
+  workItemId            String
+  workItem              PortfolioBootstrapWorkItem     @relation(fields: [workItemId], references: [id], onDelete: Restrict)
+  projectId             String
+  project               Project                        @relation(fields: [projectId], references: [id], onDelete: Restrict)
+  challengeId           String
+  challenge             Challenge                      @relation(fields: [challengeId], references: [id], onDelete: Restrict)
+  mode                   ImportedInitiativeMode
+  status                 ImportedInitiativeLinkStatus   @default(ACTIVE)
+  activeWorkItemKey      String?                        @unique
+  sourceVersion          DateTime
+  fingerprint            String
+  idempotencyKey         String
+  decisionVersion        Int                            @default(1)
+  identitySnapshot       Json
+  sourceSnapshot         Json
+  alignmentDecision      Json
+  confirmedByActorId     String
+  confirmedByActor       User                           @relation("ImportedInitiativeConfirmedBy", fields: [confirmedByActorId], references: [id], onDelete: Restrict)
+  confirmedAt            DateTime                       @default(now())
+  revokedByActorId       String?
+  revokedByActor         User?                          @relation("ImportedInitiativeRevokedBy", fields: [revokedByActorId], references: [id], onDelete: Restrict)
+  revokedAt              DateTime?
+  revocationReason       String?
+  createdAt              DateTime                       @default(now())
+  updatedAt              DateTime                       @updatedAt
+
+  @@unique([organizationId, idempotencyKey], map: "PortfolioImportedInitiativeLink_organizationId_idempotencyKey_k")
+  @@index([organizationId, workItemId, status], map: "PortfolioImportedInitiativeLink_organizationId_workItemId_statu")
+  @@index([organizationId, projectId, status], map: "PortfolioImportedInitiativeLink_organizationId_projectId_status")
+  @@index([challengeId, status])
+  @@index([bootstrapSessionId])
 }
 
 model PortfolioBootstrapAnalysisRun {
@@ -3704,6 +4012,63 @@ model CopilotMessage {
   @@index([conversationId, createdAt])
   @@index([role])
   @@index([messageType])
+}
+
+// AI-01/AI-02 QA: hilo individual y no canónico por actor/Project/ciclo/Step.
+// Estas tablas almacenan conversación y observabilidad; nunca reemplazan Adaptive Core.
+model StepReasoningSession {
+  id              String   @id @default(cuid())
+  organizationId  String
+  organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  projectId       String
+  project         Project @relation(fields: [projectId], references: [id], onDelete: Restrict)
+  cycleId         String
+  cycle           InitiativeCycle @relation(fields: [cycleId], references: [id], onDelete: Restrict)
+  stepNumber      Int
+  createdById     String
+  createdBy       User @relation("StepReasoningSessionCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  status          String   @default("ACTIVE")
+  lastContextHash String
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  turns StepReasoningTurn[]
+
+  @@unique([organizationId, projectId, cycleId, stepNumber, createdById], map: "StepReasoningSession_organizationId_projectId_cycleId_stepNumbe")
+  @@index([projectId, cycleId, stepNumber])
+  @@index([createdById, status])
+}
+
+model StepReasoningTurn {
+  id                    String   @id @default(cuid())
+  sessionId             String
+  session               StepReasoningSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  clientTurnId          String
+  actorId               String
+  actor                 User @relation("StepReasoningTurnActor", fields: [actorId], references: [id], onDelete: Restrict)
+  inputText             String
+  sourceContextHash     String
+  contextSnapshotJson   Json
+  status                String   @default("PENDING")
+  assistantText         String?
+  structuredOutputJson  Json?
+  executionMode         String?
+  requestId             String
+  providerModel         String?
+  providerRunId         String?
+  promptVersion         String?
+  promptHash            String?
+  tokensUsed            Int?
+  costUsd               Float?
+  latencyMs             Int?
+  errorCode             String?
+  createdAt             DateTime @default(now())
+  completedAt           DateTime?
+
+  @@unique([sessionId, clientTurnId])
+  @@index([sessionId, createdAt])
+  @@index([actorId, status])
+  @@index([requestId])
 }
 
 model IntentAssessment {

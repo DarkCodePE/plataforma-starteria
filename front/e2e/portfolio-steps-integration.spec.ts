@@ -11,7 +11,7 @@
  *   2. A creator creates the iniciativa FROM that reto (POST /projects + challengeId).
  *   3. The iniciativa MATERIALIZES a navigable project in the participant Steps flow:
  *      it exposes Step 0 + Steps 1..4 via GET /projects/:id, /:id/steps and
- *      /:id/steps/:n — Step 1 NOT_STARTED, Steps 2..4 BLOCKED, currentStep=1.
+ *      /:id/steps/:n — Step 0 active, Step 1 NOT_STARTED and Steps 2..4 BLOCKED.
  *   4. The inherited reto team member can NAVIGATE the iniciativa's steps without
  *      re-capture (materialized TeamMember → access granted, project listed).
  *   5. Team + meta are INHERITED (shared) without re-capture: the initiative team
@@ -26,6 +26,7 @@
  * spec moría en el primer paso.
  */
 import { test, expect, request as pwRequest, APIRequestContext } from '@playwright/test';
+import { PrismaClient } from '@prisma/client';
 
 const BASE = process.env.E2E_BASE_URL || 'http://localhost';
 const ADMIN_EMAIL = process.env.E2E_ADMIN_EMAIL || 'portfolio-admin.e2e@starteria.test';
@@ -88,6 +89,24 @@ test.describe('portfolio-lead → participant steps integration (milestone #7, r
     const member = await registerAndLogin(api, 'member');
     const stamp = Date.now();
 
+    // Registration deliberately gives each synthetic user its own canonical tenant.
+    // This scenario exercises same-organization inheritance, so align only this
+    // disposable fixture before crossing the fail-closed Portfolio boundary.
+    const prisma = new PrismaClient({ datasourceUrl: process.env.E2E_DATABASE_URL });
+    try {
+      const adminUser = await prisma.user.findUniqueOrThrow({
+        where: { id: admin.userId },
+        select: { organizationId: true },
+      });
+      expect(adminUser.organizationId, 'seeded Portfolio Lead must have a canonical tenant').toBeTruthy();
+      await prisma.user.updateMany({
+        where: { id: { in: [creator.userId, member.userId] } },
+        data: { organizationId: adminUser.organizationId },
+      });
+    } finally {
+      await prisma.$disconnect();
+    }
+
     // ── 1. Portfolio-lead builds frente → reto and staffs the reto team ───────────
     const fRes = await api.post('/api/v1/portfolio/strategic-fronts', {
       headers: auth(admin.token),
@@ -115,7 +134,10 @@ test.describe('portfolio-lead → participant steps integration (milestone #7, r
     // ── 2. Creator creates the iniciativa FROM the reto ──────────────────────────
     const pRes = await api.post('/api/v1/projects', {
       headers: auth(creator.token),
-      data: { name: `E2E Iniciativa PSI ${stamp}`, challengeId },
+      data: {
+        name: `E2E Iniciativa PSI ${stamp}`,
+        challengeLink: { challengeId, createdFrom: 'challenge' },
+      },
       failOnStatusCode: false,
     });
     expect(pRes.ok(), `create iniciativa: ${await pRes.text()}`).toBeTruthy();
@@ -125,8 +147,8 @@ test.describe('portfolio-lead → participant steps integration (milestone #7, r
     const projRes = await api.get(`/api/v1/projects/${projectId}`, { headers: auth(creator.token) });
     expect(projRes.ok(), `creator get project: ${await projRes.text()}`).toBeTruthy();
     const project = (await projRes.json()).data;
-    expect(project.currentStep).toBe(1);
-    expect(project.step0Status).toBe('NOT_STARTED');
+    expect(project.currentStep).toBe(0);
+    expect(project.step0Status).toBe('IN_PROGRESS');
 
     // Steps 1..4 materialized: Step 1 open (NOT_STARTED), 2..4 BLOCKED.
     const stepsRes = await api.get(`/api/v1/projects/${projectId}/steps`, { headers: auth(creator.token) });
@@ -192,6 +214,6 @@ test.describe('portfolio-lead → participant steps integration (milestone #7, r
     const inits = (await initRes.json()).data as Array<{ project: { id: string; currentStep: number } }>;
     const tracked = inits.find((i) => i.project.id === projectId)!;
     expect(tracked, 'iniciativa must be tracked under its reto').toBeTruthy();
-    expect(tracked.project.currentStep).toBe(1);
+    expect(tracked.project.currentStep).toBe(0);
   });
 });

@@ -29,6 +29,8 @@ export type PortfolioBootstrapDto = {
     status: string;
     bootstrapPhase: string;
     existingWorkStatus: string;
+    setupCompletedAt: string | null;
+    setupCompletedByActorId: string | null;
     createdAt: string;
     updatedAt: string;
   };
@@ -265,6 +267,124 @@ export class PortfolioBootstrapService {
     private readonly analyzer: PortfolioBootstrapAnalyzer = new DeterministicPortfolioBootstrapAnalyzer(),
   ) {}
 
+  /**
+   * Opens the existing Bootstrap workflow for an authenticated Portfolio Lead
+   * who arrived through the normal product route.  This is deliberately a
+   * provisional workspace: it creates neither a StrategicFront nor a
+   * Challenge nor an Initiative.  Those remain human-reviewed operations in
+   * their respective bounded contexts.
+   */
+  async createOrReuseDirect(input: {
+    authenticatedUserId: string;
+    permissions: ReadonlySet<Permission>;
+  }): Promise<PortfolioBootstrapDto> {
+    if (!can(input.permissions, 'portfolio:write')) {
+      throw AppError.forbidden('No tienes permiso para preparar este Portfolio.', 'PORTFOLIO_BOOTSTRAP_DIRECT_FORBIDDEN');
+    }
+
+    const result = await this.prisma.$transaction(async (tx) => {
+      const db = tx as any;
+      const actor = await db.user.findUnique({
+        where: { id: input.authenticatedUserId },
+        select: { organizationId: true },
+      });
+      if (!actor) throw AppError.unauthorized('No autorizado.', 'PORTFOLIO_BOOTSTRAP_AUTH_REQUIRED');
+
+      const existing = await db.portfolioBootstrapSession.findFirst({
+        where: {
+          userId: input.authenticatedUserId,
+          sourceContinuationId: null,
+          status: { not: 'abandoned' },
+        },
+        orderBy: { updatedAt: 'desc' },
+        include: this.sessionInclude(),
+      });
+      if (existing) {
+        await this.writeAudit(db, input.authenticatedUserId, 'portfolio_bootstrap_session_reused', existing.id, {
+          source: 'enterprise_direct',
+        });
+        return existing;
+      }
+
+      const session = await db.portfolioBootstrapSession.create({
+        data: {
+          userId: input.authenticatedUserId,
+          organizationId: actor.organizationId,
+          sourceContinuationId: null,
+          status: 'awaiting_anchor_review',
+          bootstrapPhase: 'B1_ANCHOR',
+        },
+        include: this.sessionInclude(),
+      });
+      const anchor = await db.portfolioAnchor.create({
+        data: {
+          bootstrapSessionId: session.id,
+          // A system label is not a business claim. It keeps the required
+          // column explicit while the human supplies the actual outcome.
+          outcomeStatement: 'Resultado de negocio por definir',
+          contextSummary: null,
+          decisionToEnable: null,
+          businessSignalStatus: 'unknown',
+          businessSignalValue: null,
+          status: 'anchor_insufficient',
+          sourceRefs: [],
+          provenanceStatus: 'raw_entry',
+        },
+      });
+      await this.writeAudit(db, input.authenticatedUserId, 'portfolio_bootstrap_session_created', session.id, {
+        source: 'enterprise_direct',
+      });
+      return { ...session, anchor };
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable, timeout: 10_000 });
+
+    return this.toDto(result);
+  }
+
+  /**
+   * Recovers the latest non-abandoned Copilot workspace without creating one.
+   * This read path is used after PL-04 has materialized canonical structure:
+   * the existence of that structure must not hide an unfinished PL-05.
+   */
+  async getCurrent(input: {
+    authenticatedUserId: string;
+    permissions: ReadonlySet<Permission>;
+  }): Promise<PortfolioBootstrapDto | null> {
+    if (!can(input.permissions, 'portfolio:read')) {
+      throw AppError.forbidden('No tienes permiso para consultar este Portfolio.', 'PORTFOLIO_BOOTSTRAP_READ_FORBIDDEN');
+    }
+
+    const db = this.prisma as any;
+    const actor = await db.user.findUnique({
+      where: { id: input.authenticatedUserId },
+      select: { organizationId: true },
+    });
+    if (!actor) throw AppError.unauthorized('No autorizado.', 'PORTFOLIO_BOOTSTRAP_AUTH_REQUIRED');
+
+    const scope = {
+      userId: input.authenticatedUserId,
+      organizationId: actor.organizationId,
+      status: { not: 'abandoned' },
+      organizationMaterializations: { some: {} },
+    };
+    const completed = await db.portfolioBootstrapSession.findFirst({
+      where: {
+        ...scope,
+        setupCompletedAt: { not: null },
+      },
+      orderBy: { updatedAt: 'desc' },
+      include: this.sessionInclude(),
+    });
+    if (completed) return this.toDto(completed);
+
+    const row = await db.portfolioBootstrapSession.findFirst({
+      where: scope,
+      orderBy: { updatedAt: 'desc' },
+      include: this.sessionInclude(),
+    });
+
+    return row ? this.toDto(row) : null;
+  }
+
   /** 114F has its own snapshot, source and exact-scoped-read gate. */
   async createOrReuseFromPortfolioSetup(input: { snapshotId: string; authenticatedUserId: string }): Promise<PortfolioBootstrapDto> {
     const run = async () => this.prisma.$transaction(async (tx) => {
@@ -453,7 +573,11 @@ export class PortfolioBootstrapService {
         data: {
           ...nextData,
           status: deriveAnchorStatus(nextData),
-          provenanceStatus: 'extracted',
+          // A Portfolio Lead declaration and a Copilot suggestion are not the
+          // same provenance.  The Anchor remains provisional until the
+          // explicit confirmation command below; this label only describes
+          // the origin of the latest proposed content.
+          provenanceStatus: deriveAnchorUpdateProvenance(input.body.sourceRefs, anchor.provenanceStatus),
           confirmedBy: null,
           confirmedAt: null,
           version: { increment: 1 },
@@ -1278,6 +1402,47 @@ export class PortfolioBootstrapService {
     return this.reviewWithoutApplying(input, 'rejected', 'portfolio_mutation_rejected');
   }
 
+  async reopenProposedMutationReview(input: {
+    sessionId: string;
+    mutationId: string;
+    authenticatedUserId: string;
+    permissions: ReadonlySet<Permission>;
+    reviewNote?: string;
+  }): Promise<PortfolioBootstrapMutationReviewDto> {
+    return this.prisma.$transaction(async (tx) => {
+      const db = tx as any;
+      const { session, mutation } = await this.requireOwnedMutation(db, input.sessionId, input.mutationId, input.authenticatedUserId);
+      await this.authorizeSessionCapability({ db, session, authenticatedUserId: input.authenticatedUserId, permissions: input.permissions, capability: 'portfolio:write' });
+      if (mutation.status !== 'confirmed') {
+        throw AppError.conflict('Solo un vínculo confirmado puede abrir una nueva revisión.', 'PORTFOLIO_BOOTSTRAP_MUTATION_NOT_CONFIRMED');
+      }
+      const reopened = await db.portfolioBootstrapProposedMutation.create({
+        data: {
+          bootstrapSessionId: session.id,
+          analysisRunId: mutation.analysisRunId,
+          targetType: mutation.targetType,
+          targetId: mutation.targetId,
+          mutationType: 'update',
+          currentValue: mutation.proposedValue,
+          originalProposedValue: mutation.proposedValue,
+          proposedValue: mutation.proposedValue,
+          rationale: mutation.rationale,
+          reviewNote: input.reviewNote ?? `Nueva revisión de la decisión confirmada ${mutation.id}.`,
+          sourceRefs: { originalMutationId: mutation.id, originalStatus: mutation.status, originalSourceRefs: mutation.sourceRefs },
+          provenanceStatus: 'ai_suggested',
+          uncertainty: mutation.uncertainty,
+          materiality: mutation.materiality,
+          confirmationRequired: mutation.confirmationRequired,
+          status: 'proposed',
+        },
+      });
+      await db.portfolioBootstrapSession.update({ where: { id: session.id }, data: { status: 'awaiting_material_review', bootstrapPhase: 'B4_MATERIAL_REVIEW' } });
+      await this.writeAudit(db, input.authenticatedUserId, 'portfolio_mutation_reopened_for_review', mutation.id, { sessionId: session.id, replacementMutationId: reopened.id });
+      await this.writeAudit(db, input.authenticatedUserId, 'portfolio_mutation_proposed', reopened.id, { sessionId: session.id, targetType: reopened.targetType, targetId: reopened.targetId, originalMutationId: mutation.id });
+      return this.reviewResult(db, session.id, reopened);
+    });
+  }
+
   async leaveProposedMutationPending(input: {
     sessionId: string;
     mutationId: string;
@@ -1833,6 +1998,8 @@ export class PortfolioBootstrapService {
         status: row.status,
         bootstrapPhase: row.bootstrapPhase,
         existingWorkStatus: row.existingWorkStatus ?? 'unknown',
+        setupCompletedAt: row.setupCompletedAt?.toISOString() ?? null,
+        setupCompletedByActorId: row.setupCompletedByActorId ?? null,
         createdAt: row.createdAt.toISOString(),
         updatedAt: row.updatedAt.toISOString(),
       },
@@ -1880,6 +2047,21 @@ type ParsedImportFile = {
   warnings: PortfolioBootstrapImportWarning[];
 };
 
+function deriveAnchorUpdateProvenance(
+  sourceRefs: unknown,
+  previous: 'raw_entry' | 'extracted' | 'ai_inferred' | 'ai_suggested' | 'user_confirmed',
+): 'raw_entry' | 'extracted' | 'ai_inferred' | 'ai_suggested' | 'user_confirmed' {
+  if (!sourceRefs || typeof sourceRefs !== 'object' || Array.isArray(sourceRefs)) return previous;
+  const conversation = (sourceRefs as Record<string, unknown>).objectiveConversation;
+  if (!conversation || typeof conversation !== 'object' || Array.isArray(conversation)) return previous;
+  const disposition = (conversation as Record<string, unknown>).disposition;
+  // A direct declaration and an explicit unknown are both honest user input;
+  // they must not be relabelled as extraction or confirmation.
+  if (disposition === 'user_declared' || disposition === 'unknown') return 'raw_entry';
+  if (disposition === 'ai_suggested') return 'ai_suggested';
+  return previous;
+}
+
 function decodeImportFile(body: UploadImportBody): DecodedImportFile {
   const buffer = Buffer.from(body.contentBase64, 'base64');
   if (buffer.length === 0 || buffer.length !== body.fileSize) {
@@ -1897,7 +2079,24 @@ function parseImportFile(file: DecodedImportFile): ParsedImportFile {
   const extension = file.fileName.toLowerCase().split('.').pop();
   if (extension === 'csv' || file.fileType.includes('csv')) return parseCsvImport(file);
   if (extension === 'xlsx' || file.fileType.includes('spreadsheet')) return parseXlsxImport(file);
-  throw AppError.badRequest('Solo se aceptan archivos CSV o XLSX.', 'PORTFOLIO_BOOTSTRAP_IMPORT_UNSUPPORTED_FILE');
+  if (extension === 'pdf' || file.fileType === 'application/pdf') return parsePdfSource(file);
+  throw AppError.badRequest('Solo se aceptan archivos PDF, CSV o XLSX.', 'PORTFOLIO_BOOTSTRAP_IMPORT_UNSUPPORTED_FILE');
+}
+
+function parsePdfSource(file: DecodedImportFile): ParsedImportFile {
+  // A Portfolio PDF is a source, not a table. Keep its immutable identity and
+  // make the lack of structured rows explicit instead of fabricating extracted
+  // initiatives. The Lead can review it and add the material work items by a
+  // supported source-aware path.
+  return {
+    headers: [],
+    rows: [],
+    sheetName: null,
+    warnings: [{
+      code: 'pdf_source_requires_review',
+      message: `El PDF ${file.fileName} se conserva como fuente. Revisa su contenido y agrega o pega las iniciativas que quieras analizar; Starteria no inventará filas a partir del documento.`,
+    }],
+  };
 }
 
 function parseCsvImport(file: DecodedImportFile): ParsedImportFile {

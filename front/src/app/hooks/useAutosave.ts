@@ -30,7 +30,10 @@ export function useAutosave<T>({
   const [error, setError] = useState<Error | null>(null);
   const [isDirty, setIsDirty] = useState(false);
 
-  const lastSavedJson = useRef<string | null>(null);
+  // Mounting a screen is a read. Establish the rendered data as the baseline
+  // and only persist a subsequent user-visible change.
+  const lastSavedJson = useRef<string | null>(enabled ? JSON.stringify(data) : null);
+  const wasEnabledRef = useRef(enabled);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const retryCountRef = useRef(0);
   const saveFnRef = useRef(saveFn);
@@ -90,9 +93,19 @@ export function useAutosave<T>({
 
   // Debounce data changes
   useEffect(() => {
-    if (!enabled) return;
+    if (!enabled) {
+      wasEnabledRef.current = false;
+      setIsDirty(false);
+      return;
+    }
 
     const json = JSON.stringify(data);
+    if (!wasEnabledRef.current) {
+      wasEnabledRef.current = true;
+      lastSavedJson.current = json;
+      setIsDirty(false);
+      return;
+    }
     if (json === lastSavedJson.current) {
       setIsDirty(false);
       return;

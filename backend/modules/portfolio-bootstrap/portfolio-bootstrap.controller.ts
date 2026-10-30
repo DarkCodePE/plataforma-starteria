@@ -1,9 +1,13 @@
 import type { NextFunction, Request, Response } from 'express';
 import { AppError } from '../../shared/errors/AppError';
 import type { PortfolioBootstrapService } from './portfolio-bootstrap.service';
+import type { PortfolioOrganizationService } from './portfolio-organization.service';
+import type { PortfolioSetupCompletionService } from './portfolio-setup-completion.service';
 import {
   analyzeBodySchema,
   bootstrapSessionParamsSchema,
+  completePortfolioSetupBodySchema,
+  confirmPortfolioOrganizationBodySchema,
   correctProposedMutationBodySchema,
   fromContinuationBodySchema,
   fromPortfolioSetupBodySchema,
@@ -13,6 +17,7 @@ import {
   proposedMutationParamsSchema,
   proposedMutationsQuerySchema,
   reviewProposedMutationBodySchema,
+  savePortfolioOrganizationProposalBodySchema,
   updateAnchorBodySchema,
   updateImportMappingBodySchema,
   updateWorkItemBodySchema,
@@ -21,7 +26,113 @@ import {
 } from './portfolio-bootstrap.schemas';
 
 export class PortfolioBootstrapController {
-  constructor(private readonly service: PortfolioBootstrapService) {}
+  constructor(
+    private readonly service: PortfolioBootstrapService,
+    private readonly organizationService: PortfolioOrganizationService,
+    private readonly completionService: PortfolioSetupCompletionService,
+  ) {}
+
+  completeSetup = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      if (!req.user?.id) throw AppError.unauthorized('No autorizado.', 'PORTFOLIO_SETUP_AUTH_REQUIRED');
+      const { sessionId } = bootstrapSessionParamsSchema.parse(req.params);
+      const { confirmed } = completePortfolioSetupBodySchema.parse(req.body);
+      const data = await this.completionService.complete({
+        sessionId,
+        authenticatedUserId: req.user.id,
+        permissions: req.user.permissions,
+        confirmed,
+        idempotencyKey: req.get('Idempotency-Key') ?? '',
+      });
+      res.json({ success: true, data });
+    } catch (error) { next(error); }
+  };
+
+  openAdditionalFront = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      if (!req.user?.id) throw AppError.unauthorized('No autorizado.', 'PORTFOLIO_SETUP_AUTH_REQUIRED');
+      const data = await this.completionService.openAdditionalFront({
+        authenticatedUserId: req.user.id,
+        permissions: req.user.permissions,
+        idempotencyKey: req.get('Idempotency-Key') ?? '',
+      });
+      res.json({ success: true, data });
+    } catch (error) { next(error); }
+  };
+
+  getOrganizationProposal = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      if (!req.user?.id) throw AppError.unauthorized('No autorizado.', 'PORTFOLIO_BOOTSTRAP_AUTH_REQUIRED');
+      const { sessionId } = bootstrapSessionParamsSchema.parse(req.params);
+      const data = await this.organizationService.getProposal({
+        sessionId,
+        authenticatedUserId: req.user.id,
+        roles: req.user.roles,
+        permissions: req.user.permissions,
+      });
+      res.json({ success: true, data });
+    } catch (error) { next(error); }
+  };
+
+  saveOrganizationProposal = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      if (!req.user?.id) throw AppError.unauthorized('No autorizado.', 'PORTFOLIO_BOOTSTRAP_AUTH_REQUIRED');
+      const { sessionId } = bootstrapSessionParamsSchema.parse(req.params);
+      const body = savePortfolioOrganizationProposalBodySchema.parse(req.body);
+      const data = await this.organizationService.saveReviewedProposal({
+        sessionId,
+        authenticatedUserId: req.user.id,
+        roles: req.user.roles,
+        permissions: req.user.permissions,
+        expectedVersion: body.expectedVersion,
+        payload: body.payload,
+      });
+      res.json({ success: true, data });
+    } catch (error) { next(error); }
+  };
+
+  confirmOrganizationProposal = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      if (!req.user?.id) throw AppError.unauthorized('No autorizado.', 'PORTFOLIO_BOOTSTRAP_AUTH_REQUIRED');
+      const { sessionId } = bootstrapSessionParamsSchema.parse(req.params);
+      const body = confirmPortfolioOrganizationBodySchema.parse(req.body);
+      const data = await this.organizationService.confirmAndMaterialize({
+        sessionId,
+        authenticatedUserId: req.user.id,
+        roles: req.user.roles,
+        permissions: req.user.permissions,
+        proposalVersion: body.proposalVersion,
+        idempotencyKey: req.get('Idempotency-Key') ?? '',
+      });
+      res.json({ success: true, data });
+    } catch (error) { next(error); }
+  };
+
+  createOrReuseDirect = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      if (!req.user?.id) throw AppError.unauthorized('No autorizado.', 'PORTFOLIO_BOOTSTRAP_AUTH_REQUIRED');
+      const data = await this.service.createOrReuseDirect({
+        authenticatedUserId: req.user.id,
+        permissions: req.user.permissions,
+      });
+      res.json({ success: true, data });
+    } catch (err) {
+      next(err);
+    }
+  };
+
+  getCurrent = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      if (!req.user?.id) throw AppError.unauthorized('No autorizado.', 'PORTFOLIO_BOOTSTRAP_AUTH_REQUIRED');
+      const data = await this.service.getCurrent({
+        authenticatedUserId: req.user.id,
+        permissions: req.user.permissions,
+      });
+      res.json({ success: true, data });
+    } catch (err) {
+      next(err);
+    }
+  };
 
   createOrReuseFromPortfolioSetup = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
@@ -324,6 +435,20 @@ export class PortfolioBootstrapController {
         mutationId,
         authenticatedUserId: req.user.id,
         permissions: req.user.permissions,
+      });
+      res.json({ success: true, data });
+    } catch (err) {
+      next(err);
+    }
+  };
+
+  reopenProposedMutationReview = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      if (!req.user?.id) throw AppError.unauthorized('No autorizado.', 'PORTFOLIO_BOOTSTRAP_AUTH_REQUIRED');
+      const { sessionId, mutationId } = proposedMutationParamsSchema.parse(req.params);
+      const body = reviewProposedMutationBodySchema.parse(req.body);
+      const data = await this.service.reopenProposedMutationReview({
+        sessionId, mutationId, authenticatedUserId: req.user.id, permissions: req.user.permissions, reviewNote: body.reviewNote,
       });
       res.json({ success: true, data });
     } catch (err) {

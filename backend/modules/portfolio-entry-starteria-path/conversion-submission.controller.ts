@@ -1,5 +1,5 @@
 import type { NextFunction, Request, Response } from 'express';
-import { z } from 'zod';
+import { z } from 'zod/v3';
 import { AppError } from '../../shared/errors/AppError';
 import { ConversionSubmissionService, conversionSubmissionSchema } from './application/conversion-submission.service';
 

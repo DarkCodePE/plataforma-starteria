@@ -6,6 +6,8 @@ import { errorHandler } from '../../../shared/errors/error-handler';
 import { buildPortfolioBootstrapRouter } from '../portfolio-bootstrap.router';
 
 const service = {
+  createOrReuseDirect: vi.fn(),
+  getCurrent: vi.fn(),
   createOrReuseFromContinuation: vi.fn(),
   getSession: vi.fn(),
   updateAnchor: vi.fn(),
@@ -19,11 +21,23 @@ const service = {
   analyze: vi.fn(),
   listProposedMutations: vi.fn(),
   confirmProposedMutation: vi.fn(),
+  reopenProposedMutationReview: vi.fn(),
   rejectProposedMutation: vi.fn(),
   leaveProposedMutationPending: vi.fn(),
   correctProposedMutation: vi.fn(),
   publishFirstReading: vi.fn(),
   getLatestReading: vi.fn(),
+};
+
+const organizationService = {
+  getProposal: vi.fn(),
+  saveReviewedProposal: vi.fn(),
+  confirmAndMaterialize: vi.fn(),
+};
+
+const completionService = {
+  complete: vi.fn(),
+  openAdditionalFront: vi.fn(),
 };
 
 let currentUser: any;
@@ -39,6 +53,8 @@ function makeApp() {
   app.use('/api/v1/portfolio-bootstrap', buildPortfolioBootstrapRouter({
     authenticate: fakeAuthenticate,
     service: service as any,
+    organizationService: organizationService as any,
+    completionService: completionService as any,
   }));
   app.use(errorHandler);
   return app;
@@ -54,6 +70,8 @@ describe('portfolio-bootstrap router', () => {
       roles: ['portfolio_lead'],
       permissions: permissionsForRoles(['portfolio_lead']),
     };
+    service.createOrReuseDirect.mockResolvedValue({ bootstrapSession: { id: 'bs-direct' }, anchor: { id: 'anchor-direct' } });
+    service.getCurrent.mockResolvedValue({ bootstrapSession: { id: 'bs-current' }, anchor: { id: 'anchor-current' } });
     service.createOrReuseFromContinuation.mockResolvedValue({ bootstrapSession: { id: 'bs-1' }, anchor: { id: 'a-1' } });
     service.getSession.mockResolvedValue({ bootstrapSession: { id: 'bs-1' }, anchor: { id: 'a-1' } });
     service.updateAnchor.mockResolvedValue({ bootstrapSession: { id: 'bs-1' }, anchor: { id: 'a-1', status: 'anchor_sufficient' } });
@@ -72,6 +90,7 @@ describe('portfolio-bootstrap router', () => {
       nextAction: 'review_proposed_structure',
     });
     service.confirmProposedMutation.mockResolvedValue({ mutation: { id: 'pm-1', status: 'confirmed' } });
+    service.reopenProposedMutationReview.mockResolvedValue({ mutation: { id: 'pm-5', status: 'proposed' } });
     service.rejectProposedMutation.mockResolvedValue({ mutation: { id: 'pm-1', status: 'rejected' } });
     service.leaveProposedMutationPending.mockResolvedValue({ mutation: { id: 'pm-1', status: 'reviewed' } });
     service.correctProposedMutation.mockResolvedValue({ mutation: { id: 'pm-1', status: 'reviewed' } });
@@ -81,6 +100,118 @@ describe('portfolio-bootstrap router', () => {
       nextBestAction: 'Revisar atencion prioritaria',
     });
     service.getLatestReading.mockResolvedValue({ id: 'reading-1', version: 1 });
+    organizationService.getProposal.mockResolvedValue(null);
+    organizationService.saveReviewedProposal.mockResolvedValue({
+      id: 'proposal-1', version: 1, status: 'reviewed', materialization: null,
+    });
+    organizationService.confirmAndMaterialize.mockResolvedValue({
+      id: 'proposal-1', version: 1, status: 'materialized',
+      materialization: { id: 'materialization-1' },
+    });
+    completionService.complete.mockResolvedValue({ completed: true, summary: { sent: 2, unsent: 2, failed: 0 } });
+    completionService.openAdditionalFront.mockResolvedValue({ bootstrapSession: { id: 'bs-front-2' }, anchor: { id: 'anchor-front-2' } });
+  });
+
+  it('requires an explicit human confirmation to close the contextual setup', async () => {
+    await request(makeApp())
+      .post('/api/v1/portfolio-bootstrap/sessions/bs-1/complete-setup')
+      .set('Idempotency-Key', 'close-bs-1')
+      .send({ confirmed: true })
+      .expect(200);
+
+    expect(completionService.complete).toHaveBeenCalledWith(expect.objectContaining({
+      sessionId: 'bs-1', authenticatedUserId: 'portfolio-lead-1', confirmed: true,
+      idempotencyKey: 'close-bs-1',
+    }));
+  });
+
+  it('opens a separate setup context for another strategic front', async () => {
+    const response = await request(makeApp())
+      .post('/api/v1/portfolio-bootstrap/sessions/additional-front')
+      .set('Idempotency-Key', 'new-front-intent-1')
+      .send({})
+      .expect(200);
+
+    expect(response.body.data.bootstrapSession.id).toBe('bs-front-2');
+    expect(completionService.openAdditionalFront).toHaveBeenCalledWith(expect.objectContaining({
+      authenticatedUserId: 'portfolio-lead-1', idempotencyKey: 'new-front-intent-1',
+    }));
+  });
+
+  it('saves, reads, and explicitly confirms the reviewed organization proposal', async () => {
+    const payload = {
+      summary: 'Startería propone esta organización a partir de 1 iniciativa revisada.',
+      fronts: [{
+        candidateId: 'front-candidate-1',
+        name: 'Activación sostenible',
+        focus: 'Mejorar adopción y recurrencia',
+        rationale: 'Agrupa el trabajo que reduce fricción en la activación.',
+        coverage: '1 de 1 iniciativas',
+        challenges: [{
+          candidateId: 'challenge-candidate-1',
+          title: 'Reducir abandono inicial',
+          problem: 'Las personas no completan la activación.',
+          rationale: 'Estas iniciativas atacan el mismo punto de abandono.',
+          relatedInitiativeIds: ['work-1'],
+          evidence: [],
+          gaps: [],
+          overlaps: [],
+        }],
+      }],
+      outsideObjectiveInitiativeIds: [],
+      ungroupedInitiativeIds: [],
+      crossCuttingInitiativeIds: [],
+    };
+
+    await request(makeApp())
+      .get('/api/v1/portfolio-bootstrap/sessions/bs-1/organization-proposal')
+      .expect(200);
+    await request(makeApp())
+      .put('/api/v1/portfolio-bootstrap/sessions/bs-1/organization-proposal')
+      .send({ expectedVersion: 0, payload })
+      .expect(200);
+    const confirmed = await request(makeApp())
+      .post('/api/v1/portfolio-bootstrap/sessions/bs-1/organization-proposal/confirm')
+      .set('Idempotency-Key', 'confirm-proposal-1')
+      .send({ proposalVersion: 1 })
+      .expect(200);
+
+    expect(organizationService.getProposal).toHaveBeenCalledWith(expect.objectContaining({
+      sessionId: 'bs-1', authenticatedUserId: 'portfolio-lead-1',
+    }));
+    expect(organizationService.saveReviewedProposal).toHaveBeenCalledWith(expect.objectContaining({
+      sessionId: 'bs-1', expectedVersion: 0, payload,
+    }));
+    expect(organizationService.confirmAndMaterialize).toHaveBeenCalledWith(expect.objectContaining({
+      sessionId: 'bs-1', proposalVersion: 1, idempotencyKey: 'confirm-proposal-1',
+    }));
+    expect(confirmed.body.data).toMatchObject({
+      status: 'materialized', materialization: { id: 'materialization-1' },
+    });
+  });
+
+  it('opens the normal Portfolio Lead entry as a provisional direct Bootstrap session', async () => {
+    const res = await request(makeApp())
+      .post('/api/v1/portfolio-bootstrap/sessions/direct')
+      .send({})
+      .expect(200);
+
+    expect(res.body.data).toMatchObject({ bootstrapSession: { id: 'bs-direct' }, anchor: { id: 'anchor-direct' } });
+    expect(service.createOrReuseDirect).toHaveBeenCalledWith(expect.objectContaining({
+      authenticatedUserId: 'portfolio-lead-1',
+    }));
+  });
+
+  it('recovers the current Copilot workspace without provisioning another session', async () => {
+    const res = await request(makeApp())
+      .get('/api/v1/portfolio-bootstrap/sessions/current')
+      .expect(200);
+
+    expect(res.body.data).toMatchObject({ bootstrapSession: { id: 'bs-current' } });
+    expect(service.getCurrent).toHaveBeenCalledWith(expect.objectContaining({
+      authenticatedUserId: 'portfolio-lead-1',
+    }));
+    expect(service.createOrReuseDirect).not.toHaveBeenCalled();
   });
 
   it('creates or reuses a bootstrap session from a continuation through the pre-canonical endpoint', async () => {
@@ -213,10 +344,14 @@ describe('portfolio-bootstrap router', () => {
     }));
   });
 
-  it('routes confirm, reject, leave pending, and correct actions per mutation', async () => {
+  it('routes confirm, reopen, reject, leave pending, and correct actions per mutation', async () => {
     await request(makeApp())
       .post('/api/v1/portfolio-bootstrap/sessions/bs-1/proposed-mutations/pm-1/confirm')
       .send({})
+      .expect(200);
+    const reopened = await request(makeApp())
+      .post('/api/v1/portfolio-bootstrap/sessions/bs-1/proposed-mutations/pm-1/reopen-review')
+      .send({ reviewNote: 'Revisar tras un miss-click' })
       .expect(200);
     await request(makeApp())
       .post('/api/v1/portfolio-bootstrap/sessions/bs-1/proposed-mutations/pm-2/reject')
@@ -232,6 +367,8 @@ describe('portfolio-bootstrap router', () => {
       .expect(200);
 
     expect(service.confirmProposedMutation).toHaveBeenCalledWith(expect.objectContaining({ sessionId: 'bs-1', mutationId: 'pm-1' }));
+    expect(reopened.body.data.mutation).toMatchObject({ id: 'pm-5', status: 'proposed' });
+    expect(service.reopenProposedMutationReview).toHaveBeenCalledWith(expect.objectContaining({ sessionId: 'bs-1', mutationId: 'pm-1', reviewNote: 'Revisar tras un miss-click' }));
     expect(service.rejectProposedMutation).toHaveBeenCalledWith(expect.objectContaining({ sessionId: 'bs-1', mutationId: 'pm-2', reviewNote: 'No aplica' }));
     expect(service.leaveProposedMutationPending).toHaveBeenCalledWith(expect.objectContaining({ sessionId: 'bs-1', mutationId: 'pm-3' }));
     expect(service.correctProposedMutation).toHaveBeenCalledWith(expect.objectContaining({

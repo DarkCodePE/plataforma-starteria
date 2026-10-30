@@ -15,6 +15,12 @@ export const LOG_REDACT_PATHS = [
   '*.token',
 ];
 
+const PILOT_CODE_IN_URL = /(?<=\/api\/v1\/public\/pilot-leads\/)ST-PILOT-[A-F0-9]{64}(?=\/|\?|$)/gi;
+
+export function redactSensitiveRequestUrl(url: string | undefined): string | undefined {
+  return url?.replace(PILOT_CODE_IN_URL, '[REDACTED]');
+}
+
 export const logger = pino({
   level: config.logLevel,
   redact: {

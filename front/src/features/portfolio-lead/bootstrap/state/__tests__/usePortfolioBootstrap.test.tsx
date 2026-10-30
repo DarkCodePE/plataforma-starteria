@@ -4,6 +4,8 @@ import { usePortfolioBootstrap } from '../usePortfolioBootstrap';
 import { makeBootstrap } from '../../testing/bootstrapFixtures';
 
 const createOrReuse = vi.fn();
+const createDirect = vi.fn();
+const getCurrent = vi.fn();
 const createFromPortfolioSetup = vi.fn();
 const getSession = vi.fn();
 const updateAnchor = vi.fn();
@@ -19,8 +21,13 @@ const correctMutation = vi.fn();
 const rejectMutation = vi.fn();
 const leavePendingMutation = vi.fn();
 const publishReading = vi.fn();
+const getOrganizationProposal = vi.fn();
+const saveOrganizationProposal = vi.fn();
+const confirmOrganizationProposal = vi.fn();
 
 vi.mock('../../services/portfolioBootstrapClient', () => ({
+  createOrReuseDirectPortfolioBootstrapSession: (...args: unknown[]) => createDirect(...args),
+  getCurrentPortfolioBootstrapSession: (...args: unknown[]) => getCurrent(...args),
   createOrReusePortfolioBootstrapSession: (...args: unknown[]) => createOrReuse(...args),
   createOrReusePortfolioSetupBootstrapSession: (...args: unknown[]) => createFromPortfolioSetup(...args),
   getPortfolioBootstrapSession: (...args: unknown[]) => getSession(...args),
@@ -37,6 +44,9 @@ vi.mock('../../services/portfolioBootstrapClient', () => ({
   rejectPortfolioBootstrapProposedMutation: (...args: unknown[]) => rejectMutation(...args),
   leavePortfolioBootstrapProposedMutationPending: (...args: unknown[]) => leavePendingMutation(...args),
   publishPortfolioBootstrapFirstReading: (...args: unknown[]) => publishReading(...args),
+  getPortfolioOrganizationProposal: (...args: unknown[]) => getOrganizationProposal(...args),
+  savePortfolioOrganizationProposal: (...args: unknown[]) => saveOrganizationProposal(...args),
+  confirmPortfolioOrganizationProposal: (...args: unknown[]) => confirmOrganizationProposal(...args),
   PortfolioBootstrapClientError: class PortfolioBootstrapClientError extends Error {
     apiError = { message: this.message };
   },
@@ -45,6 +55,8 @@ vi.mock('../../services/portfolioBootstrapClient', () => ({
 describe('usePortfolioBootstrap', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    createDirect.mockResolvedValue(makeBootstrap('anchor_insufficient'));
+    getCurrent.mockResolvedValue(makeBootstrap('anchor_confirmed'));
     createOrReuse.mockResolvedValue(makeBootstrap('anchor_sufficient'));
     createFromPortfolioSetup.mockResolvedValue(makeBootstrap('anchor_provisional'));
     getSession.mockResolvedValue(makeBootstrap('anchor_sufficient'));
@@ -83,6 +95,7 @@ describe('usePortfolioBootstrap', () => {
     rejectMutation.mockResolvedValue({});
     leavePendingMutation.mockResolvedValue({});
     publishReading.mockResolvedValue({ reading: { id: 'reading-1' }, homeState: 'HOME_E' });
+    getOrganizationProposal.mockResolvedValue(null);
   });
 
   it('creates or reuses BootstrapSession from continuation and survives remount reload', async () => {
@@ -99,6 +112,41 @@ describe('usePortfolioBootstrap', () => {
     expect(createOrReuse).toHaveBeenNthCalledWith(1, 'cont-1');
     expect(createOrReuse).toHaveBeenNthCalledWith(2, 'cont-1');
     expect(second.result.current.data?.bootstrapSession.id).toBe(sessionId);
+  });
+
+  it('opens a direct Bootstrap session for normal Portfolio Lead entry without a continuation query', async () => {
+    const hook = renderHook(() => usePortfolioBootstrap(null, 'legacy', 'direct'));
+
+    await waitFor(() => expect(hook.result.current.status).toBe('ready'));
+    expect(createDirect).toHaveBeenCalledOnce();
+    expect(createOrReuse).not.toHaveBeenCalled();
+  });
+
+  it('resumes an existing workspace without creating a direct Bootstrap session', async () => {
+    const hook = renderHook(() => usePortfolioBootstrap(null, 'legacy', 'resume'));
+
+    await waitFor(() => expect(hook.result.current.status).toBe('ready'));
+    expect(getCurrent).toHaveBeenCalledOnce();
+    expect(createDirect).not.toHaveBeenCalled();
+  });
+
+  it('creates the first direct workspace only when resume finds no materialized context', async () => {
+    getCurrent.mockResolvedValueOnce(null);
+    const hook = renderHook(() => usePortfolioBootstrap(null, 'legacy', 'resume'));
+
+    await waitFor(() => expect(hook.result.current.status).toBe('ready'));
+    expect(getCurrent).toHaveBeenCalledOnce();
+    expect(createDirect).toHaveBeenCalledOnce();
+    expect(hook.result.current.data?.anchor?.status).toBe('anchor_insufficient');
+  });
+
+  it('loads the exact contextual session selected for an additional front', async () => {
+    const hook = renderHook(() => usePortfolioBootstrap('second-front-session', 'legacy', 'session'));
+
+    await waitFor(() => expect(hook.result.current.status).toBe('ready'));
+    expect(getSession).toHaveBeenCalledWith('second-front-session');
+    expect(createDirect).not.toHaveBeenCalled();
+    expect(getCurrent).not.toHaveBeenCalled();
   });
 
   it('114F uses only the dedicated create/reuse path and revalidates on retry', async () => {

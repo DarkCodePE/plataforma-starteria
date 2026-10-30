@@ -8,6 +8,10 @@ import { createCycleStore, makeCyclePrisma, seedCycleProject } from './cycle-tes
 function seed(governance?: { mode: string; portfolioLeadUserId: string | null }) {
   const store = createCycleStore();
   const project = seedCycleProject(store, { currentStep: 4 });
+  store.user.push(
+    { id: 'lead-1', organizationId: project.organizationId },
+    { id: 'lead-2', organizationId: project.organizationId },
+  );
   store.initiativeCycle.push({ id: 'cycle-1', projectId: project.id, cycleNumber: 1, startStep: 0, currentStep: 4, status: 'active' });
   if (governance) store.initiativeGovernance.push({ id: 'gov-1', projectId: project.id, ...governance });
   return { service: new AdaptiveCoreService(makeCyclePrisma(store) as any), projectId: project.id };
@@ -23,13 +27,34 @@ describe('Acceso del Portfolio Lead asignado a la iniciativa', () => {
   it('otro Portfolio Lead que no está asignado sigue sin acceso', async () => {
     const { service, projectId } = seed({ mode: 'portfolio_governed', portfolioLeadUserId: 'lead-1' });
     await expect(service.getDecisionReadiness(projectId, 'lead-2', 'portfolio_lead', 'continue_experimenting'))
-      .rejects.toMatchObject({ code: 'PROJECT_ACCESS_DENIED' });
+      .rejects.toMatchObject({ code: 'PROJECT_NOT_FOUND' });
   });
 
   it('sin governance, un no miembro sigue sin acceso', async () => {
     const { service, projectId } = seed();
     await expect(service.getDecisionReadiness(projectId, 'lead-1', 'portfolio_lead', 'continue_experimenting'))
-      .rejects.toMatchObject({ code: 'PROJECT_ACCESS_DENIED' });
+      .rejects.toMatchObject({ code: 'PROJECT_NOT_FOUND' });
+  });
+});
+
+describe('Acceso de mentor limitado por asignacion real', () => {
+  it('rechaza al mentor global no asignado', async () => {
+    const { service, projectId } = seed();
+    await expect(service.getState(projectId, 'mentor-global', 'mentor'))
+      .rejects.toMatchObject({ code: 'PROJECT_NOT_FOUND' });
+  });
+
+  it('permite leer al mentor expresamente miembro del proyecto', async () => {
+    const store = createCycleStore();
+    const project = seedCycleProject(store, { currentStep: 0 });
+    const mentor = { userId: 'mentor-assigned', projectId: project.id, role: 'VIEWER', status: 'ACTIVE' };
+    project.teamMembers.push(mentor);
+    store.teamMember.push(mentor);
+    store.user.push({ id: mentor.userId, organizationId: project.organizationId });
+    store.initiativeCycle.push({ id: 'cycle-mentor', projectId: project.id, cycleNumber: 1, startStep: 0, currentStep: 0, status: 'active' });
+
+    await expect(new AdaptiveCoreService(makeCyclePrisma(store) as any).getState(project.id, mentor.userId, 'mentor'))
+      .resolves.toMatchObject({ cycle: { id: 'cycle-mentor' } });
   });
 });
 

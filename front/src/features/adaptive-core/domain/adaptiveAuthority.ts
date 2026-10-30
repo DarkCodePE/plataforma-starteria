@@ -23,6 +23,8 @@ export function latestAdaptiveStepOutput(
 
 export function getAuthoritativeActiveStep(core: AdaptiveInitiativeCore | null | undefined): StepNumber | null {
   if (!core) return null;
+  const cycleStep = asStep(core.cycle?.currentStep);
+  if (cycleStep !== null) return cycleStep;
   const candidates: StepNumber[] = [];
 
   const activeCheckpointStep = asStep(core.activeCheckpoint?.step);

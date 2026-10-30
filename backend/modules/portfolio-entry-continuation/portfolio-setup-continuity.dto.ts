@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import { z } from 'zod/v3';
 import { carriedProjectionSchema, openItemsSchema, CONTINUATION_114F_FORMAT } from './portfolio-entry-continuation.data-contract';
 
 export const PORTFOLIO_SETUP_CONTINUITY_DTO_VERSION = 'portfolio-setup-continuity-read-v0.1' as const;

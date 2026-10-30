@@ -1,0 +1,31 @@
+name: starteria-kan188-dev
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: starteria_kan188
+      POSTGRES_USER: starteria_kan188
+      POSTGRES_PASSWORD: starteria_kan188_disposable
+    ports:
+      - "127.0.0.1:55488:5432"
+    tmpfs:
+      - /var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U starteria_kan188 -d starteria_kan188"]
+      interval: 2s
+      timeout: 3s
+      retries: 20
+    restart: "no"
+
+  mailpit:
+    image: axllent/mailpit:v1.27.10
+    environment:
+      MP_MAX_MESSAGES: "200"
+      MP_DATABASE: /tmp/mailpit.db
+    ports:
+      - "127.0.0.1:10288:1025"
+      - "127.0.0.1:8038:8025"
+    tmpfs:
+      - /tmp
+    restart: "no"

@@ -1,4 +1,4 @@
-import { PrismaClient } from '@prisma/client';
+import { Prisma, PrismaClient } from '@prisma/client';
 import { AppError } from '../../shared/errors/AppError';
 import {
   challengeAdmitsInitiatives,
@@ -13,6 +13,8 @@ import { CreateProjectInput, UpdateProjectInput, UpdateSponsorDataInput } from '
 import { calculateContextScore } from '../companies/context-score';
 import { TEAM_MEMBER_USER_SELECT } from '../users/user.service';
 import { ensureChallengeGovernanceTx } from '../adaptive-core/initiative-governance';
+import { resolvePortfolioScope } from '../portfolio/portfolio-scope';
+import { scopeAllows } from '../portfolio/portfolio-resource-guard';
 
 export const DEFAULT_STEPS = [
   {
@@ -97,26 +99,30 @@ export class ProjectService {
   } as const;
 
   async listProjects(userId: string, role: Role): Promise<Project[]> {
+    const user = await this.prisma.user.findUnique({ where: { id: userId }, select: { organizationId: true } });
+    if (!user?.organizationId) return [];
     switch (role) {
       case 'admin':
         return this.prisma.project.findMany({
+          where: { organizationId: user.organizationId },
           include: this.projectInclude,
         }) as unknown as Project[];
 
       case 'mentor':
         return this.prisma.project.findMany({
           where: {
-            OR: [
-              { mentorSessions: { some: { mentorId: userId } } },
-              { status: 'EXPERT_SESSION_PENDING' },
-            ],
+            organizationId: user.organizationId,
+            mentorSessions: { some: { mentorId: userId } },
           },
           include: this.projectInclude,
         }) as unknown as Project[];
 
       default:
         return this.prisma.project.findMany({
-          where: { teamMembers: { some: { userId } } },
+          where: {
+            organizationId: user.organizationId,
+            teamMembers: { some: { userId, status: 'ACTIVE' } },
+          },
           include: this.projectInclude,
         }) as unknown as Project[];
     }
@@ -129,18 +135,22 @@ export class ProjectService {
     companyId: string;
     areaId?: string;
   }) {
-    const company = await tx.company.findFirst({
-      where: {
-        id: input.companyId,
-        deletedAt: null,
-        OR: [
-          { ownerUserId: input.userId },
-          { memberships: { some: { userId: input.userId, status: 'APPROVED' } } },
-          ...(input.role === 'admin' ? [{}] : []),
-        ],
-      },
-    });
-    if (!company) {
+    const [company, actor, project] = await Promise.all([
+      tx.company.findUnique({ where: { id: input.companyId }, include: { memberships: true } }),
+      tx.user.findUnique({ where: { id: input.userId }, select: { organizationId: true } }),
+      tx.project.findUnique({ where: { id: input.projectId }, select: { organizationId: true } }),
+    ]);
+    const sameTenant = Boolean(
+      company
+      && !company.deletedAt
+      && actor?.organizationId
+      && project?.organizationId === actor.organizationId
+      && (company.organizationId == null || company.organizationId === actor.organizationId),
+    );
+    const hasCompanyAccess = company?.ownerUserId === input.userId
+      || company?.memberships?.some((membership: any) => membership.userId === input.userId && membership.status === 'APPROVED')
+      || (input.role === 'admin' && company?.organizationId === actor?.organizationId);
+    if (!sameTenant || !hasCompanyAccess) {
       throw AppError.forbidden('No tienes acceso a esta empresa.', 'COMPANY_ACCESS_DENIED');
     }
     if (input.areaId) {
@@ -250,6 +260,14 @@ export class ProjectService {
       });
     }
 
+    const linkedOrganizationId = linkedChallenge?.strategicFront?.organizationId ?? null;
+    if (linkedOrganizationId) {
+      const scope = await resolvePortfolioScope(this.prisma, { id: userId, role });
+      if (!scopeAllows(scope, { found: true, organizationId: linkedOrganizationId })) {
+        throw AppError.notFound('Recurso de portafolio', 'PORTFOLIO_RESOURCE_NOT_FOUND');
+      }
+    }
+
     // ADR-030 decision 4: un reto en pausa o cerrado NO acepta iniciativas nuevas.
     // Se comprueba en el servidor y no solo en la UI: pintar el boton deshabilitado
     // seria decoracion — es el mismo error que ADR-029 erradico en autorizacion.
@@ -284,12 +302,13 @@ export class ProjectService {
       decisionRequested: 'Validar si esta iniciativa debe avanzar dentro del reto.',
     } : undefined;
 
-    const project = await this.prisma.$transaction(async (tx) => {
+    const createWithClient = async (tx: Prisma.TransactionClient) => {
       const created = await tx.project.create({
         data: {
           name: data.name,
           description: data.description,
           ownerId: userId,
+          organizationId: linkedOrganizationId,
           cohortId: data.cohort,
           status: 'DRAFT',
           currentStep: linkedChallenge ? 0 : 1,
@@ -347,6 +366,24 @@ export class ProjectService {
             ],
           } as any,
         });
+
+        const challengeTeam = await tx.challengeTeamMember.findMany({
+          where: { challengeId: linkedChallenge.id, userId: { not: null } },
+          select: { userId: true, role: true, status: true },
+        });
+        const inherited = challengeTeam.filter((member) => member.userId && member.userId !== userId);
+        if (inherited.length > 0) {
+          await tx.teamMember.createMany({
+            data: inherited.map((member) => ({
+              projectId: created.id,
+              userId: member.userId as string,
+              role: member.role,
+              status: member.status,
+              inheritedFromChallenge: true,
+            })),
+            skipDuplicates: true,
+          });
+        }
       } else if (legacyChallengeId) {
         const legacyChallenge = await tx.challenge.findUnique({
           where: { id: legacyChallengeId },
@@ -405,30 +442,40 @@ export class ProjectService {
       }
 
       return created;
-    });
+    };
+    // Reuse an enclosing security transaction (pilot claim) instead of opening
+    // an independent nested transaction that could commit a partial project.
+    const transaction = (this.prisma as PrismaClient).$transaction;
+    const project = typeof transaction === 'function'
+      ? await transaction.call(this.prisma, createWithClient)
+      : await createWithClient(this.prisma as unknown as Prisma.TransactionClient);
 
     return project as unknown as Project;
   }
 
   async getProject(projectId: string, userId: string, role: Role): Promise<Project> {
-    const project = await this.prisma.project.findUnique({
-      where: { id: projectId },
-      include: this.projectInclude,
-    });
+    const [project, user] = await Promise.all([
+      this.prisma.project.findUnique({ where: { id: projectId }, include: this.projectInclude }),
+      this.prisma.user.findUnique({ where: { id: userId }, select: { organizationId: true } }),
+    ]);
 
-    if (!project) {
+    if (!project?.organizationId || !user?.organizationId || project.organizationId !== user.organizationId) {
       throw AppError.notFound('Proyecto', 'PROJECT_NOT_FOUND', {
         hint: 'Verifica el ID o vuelve al listado.',
       });
     }
 
-    if (role !== 'admin' && role !== 'mentor') {
-      const isMember = (project as any).teamMembers.some((m: any) => m.userId === userId);
-      if (!isMember) {
-        throw AppError.forbidden('No tienes acceso a este proyecto.', 'PROJECT_ACCESS_DENIED', {
-          hint: 'Solicita acceso al owner del proyecto.',
-        });
-      }
+    if (role === 'admin') return project as unknown as Project;
+
+    const isMember = (project as any).teamMembers.some((member: any) => member.userId === userId && member.status === 'ACTIVE');
+    const isAssignedMentor = role === 'mentor' && Boolean(await this.prisma.mentorSession.findFirst({
+      where: { projectId, mentorId: userId },
+      select: { id: true },
+    }));
+    if (!isMember && !isAssignedMentor) {
+      throw AppError.forbidden('No tienes acceso a este proyecto.', 'PROJECT_ACCESS_DENIED', {
+        hint: 'Solicita acceso al owner del proyecto.',
+      });
     }
 
     return project as unknown as Project;

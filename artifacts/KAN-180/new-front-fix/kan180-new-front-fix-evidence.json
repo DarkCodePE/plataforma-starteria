@@ -1,0 +1,75 @@
+{
+  "url": "http://127.0.0.1:5198/portfolio/inicio",
+  "checks": [
+    "cta-unico-en-header-desktop-sin-scroll",
+    "nuevo-scope-real-1-de-7-sin-checks-heredados",
+    "doble-clic-misma-intencion-maximo-un-id",
+    "reload-conserva-scope-y-progreso-real",
+    "nuevo-clic-deliberado-crea-scope-distinto",
+    "reentrada-mismo-draft-conserva-3-de-7",
+    "logout-login-reanuda-mismo-draft-en-3-de-7",
+    "responsive-768-390-360-sin-overflow",
+    "creacion-por-teclado-abre-scope-distinto-en-1-de-7",
+    "cero-correos-por-abrir-o-reanudar",
+    "segundo-scope-recorre-analisis-revision-lectura-y-cierra-7-de-7",
+    "overview-multi-frente-conserva-historico-y-muestra-segundo-cierre",
+    "sin-errores-api-ni-consola-relevantes"
+  ],
+  "screenshots": [
+    "01-overview-header-cta-desktop-1440.png",
+    "02-new-scope-1-of-7-desktop-1440.png",
+    "03-existing-draft-3-of-7.png",
+    "04-overview-header-cta-tablet-768.png",
+    "05-overview-header-cta-mobile-390.png",
+    "06-overview-header-cta-mobile-360.png",
+    "07-overview-multi-front-after-second-close.png"
+  ],
+  "sessionIds": {
+    "newScopeAtOneOfSeven": "portfolio-additional-02eebab535cb28ad15868f8eab409cbf",
+    "progressedDraftAtThreeOfSeven": "portfolio-additional-02eebab535cb28ad15868f8eab409cbf",
+    "secondDeliberateScope": "portfolio-additional-81df9104142b2210606d01c10ad479e4",
+    "keyboardScope": "portfolio-additional-aae99782c46084a73f98afb5ccf87f2a",
+    "completedSecondScope": "portfolio-additional-aae99782c46084a73f98afb5ccf87f2a"
+  },
+  "mailpit": {
+    "before": 5,
+    "afterOpening": 5,
+    "afterExplicitSecondFrontSend": 6
+  },
+  "consoleErrors": [
+    "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+    "Failed to load resource: the server responded with a status of 401 (Unauthorized)"
+  ],
+  "failedResponses": [
+    {
+      "status": 401,
+      "path": "/api/v1/auth/refresh"
+    },
+    {
+      "status": 401,
+      "path": "/api/v1/auth/refresh"
+    }
+  ],
+  "completedSecondScope": {
+    "sessionId": "portfolio-additional-aae99782c46084a73f98afb5ccf87f2a",
+    "analysisRunId": "cmvmyetuj0071vxkc2r9byk1f",
+    "readingId": "cmvmyeu1k0085vxkcsvivju1b",
+    "readingVersion": 1,
+    "bootstrapPhase": "B5_FIRST_READING",
+    "status": "reading_published",
+    "frontId": "cmvmyeu33008cvxkcnxt3rw70",
+    "challengeId": "cmvmyeu39008evxkcto1ge5mn",
+    "briefId": "cmvmyeu42008ivxkc9en81x8y",
+    "briefVersionId": "cmvmyeu4e008kvxkcfgc1uu1o",
+    "assignmentId": "cmvmyeu6r008qvxkc6mu0rr9e",
+    "completion": {
+      "completed": true,
+      "completedAt": "2026-10-24T22:11:57.992Z",
+      "summary": {
+        "sent": 1,
+        "unsent": 0,
+        "failed": 0
+      }
+    }
+  }
+}

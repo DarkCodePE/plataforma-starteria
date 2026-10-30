@@ -6,6 +6,7 @@ import {
   loginLimiter,
   loginEmailLimiter,
   registerEmailLimiter,
+  refreshLimiter,
 } from '../rate-limiter';
 import { errorHandler } from '../../../shared/errors/error-handler';
 
@@ -23,8 +24,8 @@ vi.mock('../../../shared/utils/logger', () => ({
 function buildApp(limiter: express.RequestHandler, route = '/limited') {
   const app = express();
   app.use(express.json());
-  // Trust the X-Forwarded-For header so we can spoof a unique req.ip per test.
-  app.set('trust proxy', true);
+  // Private preview path is Caddy -> nginx -> Express: trust exactly two hops.
+  app.set('trust proxy', 2);
   app.post(route, limiter, (_req, res) => res.json({ ok: true }));
   app.use(errorHandler);
   return app;
@@ -59,6 +60,23 @@ describe('modules/auth/rate-limiter', () => {
       expect(Number(blocked.headers['retry-after'])).toBeGreaterThan(0);
     });
 
+    it('ignores a client-prepended spoof beyond the two trusted proxy hops', async () => {
+      const app = buildApp(loginLimiter);
+      const actualClient = '203.0.113.77';
+      for (let i = 0; i < 5; i++) {
+        const response = await request(app)
+          .post('/limited')
+          .set('X-Forwarded-For', `198.51.100.${i}, ${actualClient}, 10.0.0.20`)
+          .send({});
+        expect(response.status).toBe(200);
+      }
+      const blocked = await request(app)
+        .post('/limited')
+        .set('X-Forwarded-For', `198.51.100.250, ${actualClient}, 10.0.0.20`)
+        .send({});
+      expect(blocked.status).toBe(429);
+    });
+
     it('keys requests independently per IP (different IPs get fresh budgets)', async () => {
       const app = buildApp(loginLimiter);
       // Burn through one IP first, then verify another IP is unaffected.
@@ -69,6 +87,17 @@ describe('modules/auth/rate-limiter', () => {
       }
       const res = await request(app).post('/limited').set('X-Forwarded-For', ipB).send({});
       expect(res.status).toBe(200);
+    });
+  });
+
+  describe('refreshLimiter (10/15min/IP)', () => {
+    it('blocks refresh rotation abuse after ten attempts', async () => {
+      const app = buildApp(refreshLimiter);
+      const ip = '203.0.113.88';
+      for (let i = 0; i < 10; i++) {
+        await request(app).post('/limited').set('X-Forwarded-For', ip).send({}).expect(200);
+      }
+      await request(app).post('/limited').set('X-Forwarded-For', ip).send({}).expect(429);
     });
   });
 
@@ -119,7 +148,7 @@ describe('modules/auth/rate-limiter', () => {
     it('keys per req.user.sub when authenticated, IP otherwise', async () => {
       // Prepend a fake "auth" middleware that sets req.user.sub.
       const app = express();
-      app.set('trust proxy', true);
+      app.set('trust proxy', 2);
       app.post('/limited', (req, _res, next) => {
         (req as any).user = { sub: 'user-XYZ' };
         next();

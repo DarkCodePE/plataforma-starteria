@@ -20,6 +20,7 @@ from agents.orchestrator import OrchestratorAgent
 from agents.field_refiner import refine_field
 from agents.company_context_extractor import extract_context, extract_file
 from agents.initial_reviewer import generate_initial_review
+from agents.step_reasoning import minimum_cost_usd, reason_step_turn
 from agents.deck_feedback import generate_deck_feedback
 from agents.pdf_extractor import PdfExtractorAgent, get_run_registry
 from agents.research_assistant import ResearchAssistantAgent
@@ -46,6 +47,7 @@ from schemas.requests import (
     ContextExtractFileRequest,
     DeckFeedbackRequest,
     InitialReviewRequest,
+    StepReasoningRequest,
     DiagnoseRequest,
 )
 from harness.trace import HarnessDecision
@@ -65,6 +67,7 @@ from schemas.responses import (
     ResearchAssistResponse,
     ContextExtractResponse,
     InitialReviewResponse,
+    StepReasoningResponse,
 )
 from services.context_assembler import ContextAssembler
 from services.cost_tracker import CostLimitExceededError
@@ -643,6 +646,38 @@ async def initial_review_endpoint(
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail=ErrorResponse(error=str(exc), code="SERVICE_UNAVAILABLE").model_dump(),
+        ) from exc
+
+
+@router.post("/steps/reason-turn", response_model=StepReasoningResponse)
+async def step_reason_turn_endpoint(
+    body: StepReasoningRequest,
+    x_internal_token: str | None = Header(default=None, alias="X-Internal-Token"),
+    x_cost_cap_usd: str | None = Header(default=None, alias="X-Cost-Cap-USD"),
+) -> StepReasoningResponse:
+    """One structured, non-authoritative reasoning turn for the operational Step."""
+    _verify_internal_token(x_internal_token)
+    estimated = minimum_cost_usd()
+    try:
+        cap = float(x_cost_cap_usd) if x_cost_cap_usd is not None else None
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail={"code": "INVALID_COST_CAP"}) from exc
+    if estimated is None or cap is None or estimated > min(cap, 0.05):
+        raise HTTPException(status_code=402, detail={"code": "COST_EXCEEDED"})
+    try:
+        output, metadata = await run_in_threadpool(
+            reason_step_turn,
+            context=body.context,
+            history=[item.model_dump() for item in body.history],
+            message=body.message,
+            mode=body.mode,
+        )
+        return StepReasoningResponse(**output.model_dump(), **metadata)
+    except Exception as exc:  # noqa: BLE001 — Express persists an explicit limited fallback
+        logger.warning("step-reasoning provider failure type=%s", type(exc).__name__)
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=ErrorResponse(error="Step reasoning provider unavailable", code="SERVICE_UNAVAILABLE").model_dump(),
         ) from exc
 
 

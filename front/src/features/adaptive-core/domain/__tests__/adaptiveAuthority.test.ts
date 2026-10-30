@@ -40,6 +40,7 @@ const coreAt = (step: 0 | 1 | 2 | 3 | 4): AdaptiveInitiativeCore => ({
     checkpointKey: `CP-${step}.1`,
     status: 'ready',
     sequence: 1,
+    version: 0,
     questions: [],
     configurationId: `cfg-${step}`,
   },

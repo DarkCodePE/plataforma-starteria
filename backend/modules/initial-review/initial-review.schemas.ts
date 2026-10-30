@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import { z } from 'zod/v3';
 
 export const createInitialReviewSchema = z.object({
   originalInput: z.string().trim().min(40, 'Agrega un poco mas de contexto para revisar tu propuesta.').max(8000),

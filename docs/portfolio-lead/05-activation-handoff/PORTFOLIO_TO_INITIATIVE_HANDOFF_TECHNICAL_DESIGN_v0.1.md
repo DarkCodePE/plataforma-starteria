@@ -2,11 +2,165 @@
 
 **Modo:** technical design refresh + go/no-go only
 **Fecha:** 2026-09-28
+**Enmienda acotada:** 2026-10-22 — PL-06A / KAN-161 comentarios 10429 y 10431
 **Vertical:** Portfolio Lead → Initiative Owner Handoff
 **Hard boundary:** `Start / Empezar`
 **Estado:** listo para planificación de implementación; no autoriza por sí mismo cambios de runtime.
 
 Este documento no implementa runtime, no modifica Prisma/schema, no crea migraciones, no modifica frontend/backend, tests productivos ni Step 0–4.
+
+## 0.1. Enmienda técnica PL-06A — bandeja de preparación
+
+Esta enmienda conserva la versión `v0.1` y el audit histórico de 2026-09-28. Las secciones
+anteriores continúan explicando la evolución del bounded context; para KAN-161, esta sección
+registra el delta autorizado sobre la implementación actual ya existente. No autoriza PL-06B.
+
+### Estado verificado que se reutiliza
+
+- `PortfolioHandoffAssignment` es el único aggregate de Assignment.
+- Prisma permite N Assignments por Challenge y contiene ambos `targetKind`.
+- `ChallengeActivationBriefVersion.assignments[]` permite que una versión confirmada respalde N
+  Assignments.
+- el lifecycle existente contiene `CREATED`; no se añade `DRAFT`;
+- create, delivery, recipient claim y response permanecen comandos separados;
+- owner/team, tenant, BriefVersion e idempotency existentes se adaptan, no se duplican.
+
+### Persistencia mínima
+
+Añadir al aggregate existente únicamente el payload contextual editable requerido por PL-06A:
+
+```text
+context_note?       // texto del encargo; no es Brief ni contexto canónico de Initiative
+```
+
+La provenance de cada cambio se registra mediante evento durable
+`assignment_preparation_updated` con actor, canal, timestamp, entity version y campos cambiados
+redactados/fingerprinted. `createdByActorId`, `updatedAt` y `version` existentes completan la
+trazabilidad. No se crea tabla/aggregate paralelo de Assignment.
+
+La relación opcional `briefVersionId` existente se conserva:
+
+- `CHALLENGE`: requerida, confirmada, mismo Challenge y tenant;
+- `EXISTING_INITIATIVE`: opcional; cuando PL-05 la aporta debe ser confirmada, del mismo Challenge
+  y tenant, y queda inmutable en la Assignment;
+- editar `context_note`, Owner o team nunca sustituye `briefVersionId`.
+
+### Create y duplicate guard
+
+Generalizar el comando de creación actual para aceptar ambos targets. Dentro de una transacción
+serializable se bloquea el Challenge, se valida el fingerprint/idempotency receipt, target lineage
+y duplicate key antes de insertar:
+
+```text
+EXISTING_INITIATIVE duplicate key
+  organizationId + challengeId + initiativeId + non-terminal state
+
+CHALLENGE duplicate key
+  organizationId + challengeId + briefVersionId + invitedEmailNormalized + non-terminal state
+```
+
+El duplicate guard es de aplicación/transacción porque Prisma no representa de forma portable el
+índice parcial por lifecycle. Mismo command key + fingerprint recupera el resultado original;
+misma key + payload distinto produce conflict. Otra key que viola el duplicate guard también
+produce conflict, no una segunda fila.
+
+Para `EXISTING_INITIATIVE`, `findInitiative` debe resolver además
+`InitiativePortfolioMeta(projectId, challengeId)`. Comprobar solo Project + tenant es insuficiente.
+
+### Update en `CREATED`
+
+Agregar un command transaccional:
+
+```text
+updateCreatedHandoffAssignment(
+  assignmentId,
+  ownerAndMembers,
+  contextNote,
+  expectedVersion,
+  idempotencyKey,
+  fingerprint,
+  actor
+)
+```
+
+Precondiciones: actor Portfolio autorizado, mismo tenant, estado `CREATED`, versión exacta,
+exactamente un Owner, máximo tres ejecutores e identidades únicas. El target, `challengeId`,
+`initiativeId` y `briefVersionId` son inmutables. Assignment y members se actualizan atómicamente,
+`version` aumenta una vez y el evento durable se persiste en la misma transacción. Stale/non-CREATED
+no produce cambios parciales.
+
+Retirar una preparación usa una transición explícita `CREATED → REVOKED` con expected version y
+evento; nunca hard-delete. KAN-161 puede exponerla solo como acción secundaria de la bandeja y no
+debe invocar delivery/invitation.
+
+### Read model de preparación
+
+El read de Challenge devuelve separadamente:
+
+```text
+canonicalInitiatives[]  // Project + InitiativePortfolioMeta exactos y tenant-safe
+importedWorkRecords[]   // contexto documental, nunca target seleccionable
+assignments[]           // N filas, incluida identidad y version exactas
+```
+
+La API no presenta el número de work records como “Initiatives disponibles”. Si una fuente
+importada carece de `ProjectId`, informa `IMPORTED_RECORD_NOT_CANONICAL` sin crear Project ni
+InitiativePortfolioMeta.
+
+La ruta legacy `GET /portfolio/challenges/:challengeId/initiatives` no se reutiliza sin añadir el
+resource guard del Challenge. El nuevo/adaptado read debe aplicar permiso `portfolio:write`, tenant
+y protección contra enumeración cross-tenant.
+
+### API PL-06A
+
+Las formas concretas pueden conservar las rutas existentes, pero deben exponer estas capacidades:
+
+```text
+GET   /portfolio/challenges/:challengeId/handoff-assignments
+GET   /portfolio/challenges/:challengeId/assignable-initiatives
+POST  /portfolio/challenges/:challengeId/handoff-assignments
+PATCH /portfolio/handoff-assignments/:assignmentId/preparation
+POST  /portfolio/handoff-assignments/:assignmentId/revoke-preparation
+```
+
+POST generaliza el body con `targetKind`, `initiativeId?`, `briefId?`, `briefVersionId?`,
+recipient/Owner, members y `contextNote?`. PATCH exige `expectedVersion`. Ninguna de estas rutas
+crea acceso de Invitation, DeliveryAttempt, Project, InitiativePortfolioMeta o Step.
+
+### Frontend PL-06A
+
+Adaptar `ChallengeAssignmentPreparationPanel` como controlador de bandeja:
+
+1. recuperar BriefVersion exacta, canonical Initiatives y N Assignments;
+2. presentar contexto confirmado inmutable;
+3. `Agregar asignación` abre editor focal de target, Owner, equipo y `contextNote`;
+4. Guardar crea una Assignment; Editar usa expected version;
+5. la lista usa `map`, nunca `find` por BriefVersion;
+6. la revisión resume múltiples Assignments sin activar Send;
+7. re-entry recompone la bandeja desde servidor y permite cobertura parcial.
+
+El editor no crea un formulario de Initiative ni ofrece como Initiative los registros importados.
+La conversación Copilot-first y la jerarquía visual aprobada en PL-05 permanecen intactas.
+
+### Gate de identidad del tenant visual
+
+Antes de habilitar `EXISTING_INITIATIVE`, enumerar read-only los ocho registros visibles y registrar
+por elemento `recordType`, `sourceId`, `projectId?`, relación `InitiativePortfolioMeta` y provenance.
+
+- Con Project + meta válidos: el target puede probarse e implementarse.
+- Sin ProjectId: marcar `IMPORTED_RECORD_NOT_CANONICAL`; no fabricar identidad, no degradar a
+  CHALLENGE y no declarar PASS de Existing Initiative.
+- El camino CHALLENGE puede continuar de forma independiente con la BriefVersion confirmada.
+
+La conversión/vinculación de un work record a Project requiere otro boundary con confirmación
+humana, validación de identidad/provenance y autoridad funcional/backend explícita. No es un
+side-effect de Agregar, Guardar, Editar, Re-entry o Send.
+
+### Exclusiones
+
+KAN-161 termina en preparación/revisión `CREATED`. No implementa Send por lote, SMTP, Overview de
+delivery, Accept, Reject, Start, Initiative, Project, InitiativePortfolioMeta o Steps. KAN-162/163
+gobiernan PL-06B.
 
 ## 1. Decisión ejecutiva
 
@@ -367,6 +521,19 @@ GO
 **Remaining ADR blockers:** none.
 
 **Remaining implementation conflicts:** legacy route consumers, missing recipient continuation services/routes, and missing projection/event persistence. Each has a bounded owner slice above and does not require another ADR unless implementation proposes changing Core identity, authority, team semantics or Step lifecycle.
+
+### GO acotado PL-06A / KAN-161
+
+```text
+GO: CHALLENGE preparation tray
+CONDITIONAL GO: EXISTING_INITIATIVE preparation
+NO-GO: PL-06B Send/delivery
+```
+
+`EXISTING_INITIATIVE` pasa a GO únicamente para Projects canónicos que tengan
+`InitiativePortfolioMeta(projectId, challengeId)` real en el tenant visual. Un work record
+importado sin esa identidad queda bloqueado como `IMPORTED_RECORD_NOT_CANONICAL`; esta condición no
+bloquea el target `CHALLENGE` ni autoriza materialización automática.
 
 ## 19. Handoff for implementation
 

@@ -15,11 +15,11 @@ import {
 } from '../pilot-lead.notifier';
 import type { Mailer, MailMessage } from '../../../shared/mail/mailer';
 import type { PilotLeadNotice } from '../pilot-lead.service';
+import { logger } from '../../../shared/utils/logger';
 
 const LEAD: PilotLeadNotice = {
   id: 'lead-1',
-  pilotCode: 'ST-PILOT-AB12',
-  draftId: 'draft-1',
+  pilotCode: `ST-PILOT-${'AB'.repeat(32)}`,
   name: 'Ana Rodríguez',
   email: 'ana@example.com',
   phone: '+51 999 888 777',
@@ -36,23 +36,35 @@ function fakeMailer(enabled: boolean, send: SendMock = vi.fn<SendFn>(async () =>
 describe('createEmailPilotLeadNotifier', () => {
   it('emails the configured recipients with the lead contact in the body', async () => {
     const send = vi.fn<SendFn>(async () => true);
-    const notify = createEmailPilotLeadNotifier({ to: ['team@efectiva.com.pe'], mailer: fakeMailer(true, send) });
+    const notify = createEmailPilotLeadNotifier({ enabled: true, to: ['team@efectiva.com.pe'], mailer: fakeMailer(true, send) });
 
     await notify(LEAD);
 
     expect(send).toHaveBeenCalledTimes(1);
     const msg = send.mock.calls[0][0];
     expect(msg.to).toEqual(['team@efectiva.com.pe']);
-    expect(msg.subject).toContain('ST-PILOT-AB12');
+    expect(msg.subject).toContain(LEAD.pilotCode);
     expect(msg.text).toContain('ana@example.com');
     expect(msg.text).toContain('Ana Rodríguez');
     expect(msg.text).toContain('+51 999 888 777');
     expect(msg.html).toContain('mailto:ana@example.com');
   });
 
+  it('never writes the bearer pilot code to application logs', async () => {
+    const info = vi.spyOn(logger, 'info').mockImplementation(() => undefined as never);
+    const warn = vi.spyOn(logger, 'warn').mockImplementation(() => undefined as never);
+    const notify = createEmailPilotLeadNotifier({ enabled: false, to: [] });
+
+    await notify(LEAD);
+
+    expect(JSON.stringify([...info.mock.calls, ...warn.mock.calls])).not.toContain(LEAD.pilotCode);
+    info.mockRestore();
+    warn.mockRestore();
+  });
+
   it('does not send when the mailer is disabled', async () => {
     const send = vi.fn<SendFn>(async () => true);
-    const notify = createEmailPilotLeadNotifier({ to: ['team@efectiva.com.pe'], mailer: fakeMailer(false, send) });
+    const notify = createEmailPilotLeadNotifier({ enabled: true, to: ['team@efectiva.com.pe'], mailer: fakeMailer(false, send) });
 
     await notify(LEAD);
 
@@ -61,7 +73,7 @@ describe('createEmailPilotLeadNotifier', () => {
 
   it('does not send when no recipients are configured', async () => {
     const send = vi.fn<SendFn>(async () => true);
-    const notify = createEmailPilotLeadNotifier({ to: [], mailer: fakeMailer(true, send) });
+    const notify = createEmailPilotLeadNotifier({ enabled: true, to: [], mailer: fakeMailer(true, send) });
 
     await notify(LEAD);
 
@@ -70,30 +82,42 @@ describe('createEmailPilotLeadNotifier', () => {
 
   it('rethrows a transport error (the service guard swallows it)', async () => {
     const send = vi.fn<SendFn>(async () => { throw new Error('SMTP down'); });
-    const notify = createEmailPilotLeadNotifier({ to: ['team@efectiva.com.pe'], mailer: fakeMailer(true, send) });
+    const notify = createEmailPilotLeadNotifier({ enabled: true, to: ['team@efectiva.com.pe'], mailer: fakeMailer(true, send) });
 
     await expect(notify(LEAD)).rejects.toThrow('SMTP down');
   });
 });
 
 describe('createApplicantConfirmationNotifier', () => {
+  it('fails closed by default even when shared SMTP is enabled', async () => {
+    const send = vi.fn<SendFn>(async () => true);
+    const notify = combinePilotLeadNotifiers(
+      createEmailPilotLeadNotifier({ to: ['team@example.test'], mailer: fakeMailer(true, send) }),
+      createApplicantConfirmationNotifier({ mailer: fakeMailer(true, send) }),
+    );
+
+    await notify({ ...LEAD, email: 'outside-allowlist@example.test' });
+
+    expect(send).not.toHaveBeenCalled();
+  });
+
   it('emails the applicant a confirmation with their pilot code', async () => {
     const send = vi.fn<SendFn>(async () => true);
-    const notify = createApplicantConfirmationNotifier({ mailer: fakeMailer(true, send) });
+    const notify = createApplicantConfirmationNotifier({ enabled: true, mailer: fakeMailer(true, send) });
 
     await notify(LEAD);
 
     expect(send).toHaveBeenCalledTimes(1);
     const msg = send.mock.calls[0][0];
     expect(msg.to).toBe('ana@example.com');
-    expect(msg.subject).toContain('ST-PILOT-AB12');
+    expect(msg.subject).toContain(LEAD.pilotCode);
     expect(msg.text).toContain('Ana Rodríguez');
-    expect(msg.text).toContain('ST-PILOT-AB12');
+    expect(msg.text).toContain(LEAD.pilotCode);
     // The applicant confirmation must NOT leak internal ids/draft.
     expect(msg.text).not.toContain('lead-1');
     expect(msg.text).not.toContain('draft-1');
     // Marketing email: prominent code + a working "continue" CTA to the resume surface.
-    expect(msg.html).toContain('ST-PILOT-AB12');
+    expect(msg.html).toContain(LEAD.pilotCode);
     expect(msg.html).toContain('/public/continuar');
     expect(msg.html).toContain('Continuar mi iniciativa');
     expect(msg.html).not.toContain('lead-1');
@@ -101,7 +125,7 @@ describe('createApplicantConfirmationNotifier', () => {
 
   it('does not send when the mailer is disabled', async () => {
     const send = vi.fn<SendFn>(async () => true);
-    const notify = createApplicantConfirmationNotifier({ mailer: fakeMailer(false, send) });
+    const notify = createApplicantConfirmationNotifier({ enabled: true, mailer: fakeMailer(false, send) });
 
     await notify(LEAD);
 
@@ -124,8 +148,8 @@ describe('combinePilotLeadNotifiers', () => {
     const send = vi.fn<SendFn>(async () => true);
     const mailer = fakeMailer(true, send);
     const notify = combinePilotLeadNotifiers(
-      createEmailPilotLeadNotifier({ to: ['team@efectiva.com.pe'], mailer }),
-      createApplicantConfirmationNotifier({ mailer }),
+      createEmailPilotLeadNotifier({ enabled: true, to: ['team@efectiva.com.pe'], mailer }),
+      createApplicantConfirmationNotifier({ enabled: true, mailer }),
     );
 
     await notify(LEAD);

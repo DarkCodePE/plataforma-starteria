@@ -1,0 +1,75 @@
+{
+  "url": "http://127.0.0.1:5198/portfolio/inicio",
+  "checks": [
+    "login",
+    "guardar-no-envia",
+    "envio-solo-con-confirmacion-explicita",
+    "escenario-exacto-dos-sent-dos-created",
+    "cierre-humano-persistido-no-envia",
+    "confirmacion-y-cancelacion-por-teclado-sin-cta-duplicado",
+    "overview-ejecutivo-sin-kpi-inventado-y-contadores-canonicos",
+    "reload-conserva-overview",
+    "logout-login-y-url-directa-conservan-overview",
+    "segundo-frente-por-teclado-sin-reiniciar-el-primero",
+    "primer-frente-preservado-con-segundo-en-preparacion",
+    "navegacion-frentes-estrategicos",
+    "navegacion-retos",
+    "navegacion-iniciativas",
+    "navegacion-sponsors",
+    "navegacion-decisiones",
+    "navegacion-portfolio-lead-completa-con-datos-reales",
+    "responsive-768-390-360",
+    "sin-errores-consola-ni-http-api"
+  ],
+  "screenshots": [
+    "01-configuracion-inicial-con-encargo-guardado.png",
+    "02-despues-de-envio-sandbox.png",
+    "03-confirmacion-humana-de-cierre.png",
+    "03b-confirmacion-tablet-768.png",
+    "03c-confirmacion-mobile-390.png",
+    "04-portfolio-overview-desktop-1440.png",
+    "05-segundo-frente-contextual-desktop.png",
+    "nav-frentes-estrategicos.png",
+    "nav-retos.png",
+    "nav-iniciativas.png",
+    "nav-sponsors.png",
+    "nav-decisiones.png",
+    "06-portfolio-overview-tablet-768.png",
+    "07-portfolio-overview-mobile-390.png",
+    "08-portfolio-overview-mobile-360.png"
+  ],
+  "mailpit": {
+    "beforeSave": 3,
+    "afterSave": 3,
+    "beforeSend": 3,
+    "afterSend": 4,
+    "afterTwoCreated": 4,
+    "beforeCompletion": 4,
+    "afterCompletion": 4,
+    "beforeCancel": 4,
+    "afterCancel": 4
+  },
+  "consoleErrors": [
+    "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+    "Failed to load resource: the server responded with a status of 401 (Unauthorized)"
+  ],
+  "failedResponses": [
+    {
+      "status": 401,
+      "path": "/api/v1/auth/refresh"
+    },
+    {
+      "status": 401,
+      "path": "/api/v1/auth/refresh"
+    }
+  ],
+  "overview": {
+    "canonicalProjects": 2,
+    "projectedAssignments": 4,
+    "assignmentStates": {
+      "CREATED": 2,
+      "SENT": 2
+    },
+    "latestObservation": "Sin datos"
+  }
+}

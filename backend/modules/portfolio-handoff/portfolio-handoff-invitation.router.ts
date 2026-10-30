@@ -3,6 +3,7 @@ import { prisma } from '../../shared/db/prisma';
 import { authenticate } from '../auth/auth.middleware';
 import { requirePermission } from '../auth/auth.middleware';
 import { mailer } from '../../shared/mail/mailer';
+import { config } from '../../config';
 import { PortfolioHandoffDeliveryService, type HandoffInvitationDeliveryPort } from './application/portfolio-handoff-delivery.service';
 import { AppError } from '../../shared/errors/AppError';
 import { requirePortfolioResource } from '../portfolio/portfolio-resource-guard';
@@ -16,6 +17,12 @@ import { PortfolioHandoffAssignmentError } from './application/portfolio-handoff
 import { PrismaHandoffSemanticEventRepository, PrismaPortfolioHandoffProjectionRepository } from './infrastructure/prisma-portfolio-handoff-semantic-event.repository';
 import { PortfolioHandoffProjector, DurableHandoffEventPort } from './application/portfolio-handoff-semantic-event.projector';
 import { PrismaPortfolioHandoffAtomicCommandRepository } from './infrastructure/prisma-portfolio-handoff-atomic-command.repository';
+import { PortfolioHandoffBatchDeliveryService, type HandoffDeliveryContextRepository } from './application/portfolio-handoff-batch-delivery.service';
+import { PrismaPortfolioHandoffDeliveryBatchRepository } from './infrastructure/prisma-portfolio-handoff-delivery-batch.repository';
+import { challengeOrganization, scopeAllows } from '../portfolio/portfolio-resource-guard';
+import { resolvePortfolioWriteScope } from '../portfolio/portfolio-scope';
+import { HandoffEmailTransportGate } from './application/handoff-email-transport-gate';
+import { logger } from '../../shared/utils/logger';
 
 export function buildPortfolioHandoffInvitationRouter(service: PortfolioHandoffInvitationService, auth = authenticate, onViewed?: (token: string) => Promise<void>): Router {
   const router = Router();
@@ -48,12 +55,26 @@ const semanticEventPort = new DurableHandoffEventPort(semanticEventRepository, h
 const invitationRepository = new PrismaPortfolioHandoffInvitationRepository(prisma);
 const deliveryAttemptRepository = new PrismaPortfolioHandoffDeliveryAttemptRepository(prisma);
 const invitationService = new PortfolioHandoffInvitationService({ assignments: assignmentRepository, access: invitationRepository });
+const handoffEmailGate = new HandoffEmailTransportGate({
+  ...config.handoffEmail,
+  smtpHost: config.smtp.host,
+  sender: config.smtp.from,
+  publicBaseUrl: config.handoffInvitationBaseUrl,
+}, () => new Date(), logger);
 const deliveryService = new PortfolioHandoffDeliveryService(assignmentRepository, invitationRepository, deliveryAttemptRepository, {
   async send(message) {
-    const delivered = await mailer.send(message);
-    return { delivered };
+    return { acceptedByTransport: await mailer.send(message) };
   },
-} satisfies HandoffInvitationDeliveryPort, semanticEventPort);
+} satisfies HandoffInvitationDeliveryPort, handoffEmailGate, semanticEventPort);
+const deliveryBatchRepository = new PrismaPortfolioHandoffDeliveryBatchRepository(prisma);
+const batchDeliveryService = new PortfolioHandoffBatchDeliveryService(
+  deliveryBatchRepository,
+  deliveryBatchRepository,
+  deliveryService,
+  () => new Date(),
+  30_000,
+  config.handoffEmail.maxBatchSize,
+);
 
 export const portfolioHandoffInvitationRouter = buildPortfolioHandoffInvitationRouter(invitationService, authenticate, async (token) => {
   await deliveryService.markHandoffInvitationViewed(token);
@@ -68,16 +89,45 @@ export function buildPortfolioHandoffDeliveryRouter(
   auth = authenticate,
   write = requirePermission('portfolio:write'),
   owns: RequestHandler = ownAssignment,
+  batchService?: PortfolioHandoffBatchDeliveryService,
+  contextRepository?: HandoffDeliveryContextRepository,
 ): Router {
   const router = Router();
+  if (batchService) router.post('/batch/invitations', auth, write, async (req, res, next) => {
+    try {
+      if (!req.user) throw AppError.unauthorized('Autenticacion requerida', 'HANDOFF_AUTH_REQUIRED');
+      const challengeId = typeof req.body?.challengeId === 'string' ? req.body.challengeId.trim() : '';
+      const resolved = await challengeOrganization(prisma, challengeId);
+      const scope = await resolvePortfolioWriteScope(prisma, req.user);
+      if (!resolved.found || !resolved.organizationId || !scopeAllows(scope, resolved)) throw AppError.notFound('Reto', 'PORTFOLIO_RESOURCE_NOT_FOUND');
+      const items = Array.isArray(req.body?.items) ? req.body.items.map((item: any) => ({ assignmentId: String(item?.assignmentId ?? ''), expectedVersion: Number(item?.expectedVersion) })) : [];
+      const data = await batchService.send({
+        organizationId: resolved.organizationId,
+        challengeId,
+        actorId: req.user.id,
+        idempotencyKey: req.get('Idempotency-Key') ?? '',
+        items,
+        retryOfBatchId: typeof req.body?.retryOfBatchId === 'string' ? req.body.retryOfBatchId : null,
+      });
+      res.status(data.status === 'COMPLETED' ? 200 : 207).json({ success: true, data });
+    } catch (error) { next(error); }
+  });
   router.post('/:assignmentId/invitation', auth, write, owns, async (req, res, next) => {
     try {
+      if (!req.user) throw AppError.unauthorized('Autenticacion requerida', 'HANDOFF_AUTH_REQUIRED');
+      const context = contextRepository ? (await contextRepository.findManyByIds([req.params.assignmentId]))[0] : undefined;
+      const targetName = context
+        ? context.assignment.targetKind === 'EXISTING_INITIATIVE' ? context.initiativeName ?? undefined : context.challengeName
+        : undefined;
       const data = await service.sendHandoffInvitation({
         assignmentId: req.params.assignmentId,
+        actorId: req.user.id,
         idempotencyKey: typeof req.get('Idempotency-Key') === 'string' ? req.get('Idempotency-Key')! : '',
         expiresAt: req.body?.expiresAt ? parseExpiry(req.body.expiresAt) : null,
         title: typeof req.body?.title === 'string' ? req.body.title : undefined,
         whyItMatters: typeof req.body?.whyItMatters === 'string' ? req.body.whyItMatters : undefined,
+        targetName,
+        invitingOrganizationName: context?.organizationName,
       });
       res.json({ success: true, data });
     } catch (error) { next(error); }
@@ -89,10 +139,15 @@ export function buildPortfolioHandoffDeliveryRouter(
   return router;
 }
 
-export const portfolioHandoffDeliveryRouter = buildPortfolioHandoffDeliveryRouter(deliveryService);
+export const portfolioHandoffDeliveryRouter = buildPortfolioHandoffDeliveryRouter(deliveryService, authenticate, requirePermission('portfolio:write'), ownAssignment, batchDeliveryService, deliveryBatchRepository);
 
 const responseService = new PortfolioHandoffResponseService(assignmentRepository, invitationRepository, new PrismaPortfolioHandoffResponseCommandRepository(prisma), semanticEventPort, () => new Date(), new PrismaPortfolioHandoffAtomicCommandRepository(prisma));
-export function buildPortfolioHandoffResponseRouter(service: PortfolioHandoffResponseService, auth = authenticate, portfolioWrite = requirePermission('portfolio:write')): Router {
+export function buildPortfolioHandoffResponseRouter(
+  service: PortfolioHandoffResponseService,
+  auth = authenticate,
+  portfolioWrite = requirePermission('portfolio:write'),
+  owns: RequestHandler = ownAssignment,
+): Router {
   const router = Router();
   router.post('/:assignmentId/accept', auth, async (req, res, next) => {
     try {
@@ -118,7 +173,7 @@ export function buildPortfolioHandoffResponseRouter(service: PortfolioHandoffRes
       res.json({ success: true, data });
     } catch (error) { next(toHandoffApiError(error)); }
   });
-  router.post('/:assignmentId/rejection-response', auth, portfolioWrite, async (req, res, next) => {
+  router.post('/:assignmentId/rejection-response', auth, portfolioWrite, owns, async (req, res, next) => {
     try {
       if (!req.user) throw AppError.unauthorized('Autenticacion requerida', 'UNAUTHENTICATED');
       const data = await service.recordPortfolioRejectionResponse({ assignmentId: req.params.assignmentId, actorId: req.user.id, response: typeof req.body?.response === 'string' ? req.body.response : '', idempotencyKey: req.get('Idempotency-Key') ?? '' });
@@ -135,8 +190,14 @@ function toHandoffApiError(error: unknown): Error {
   return new AppError(status, error.message, error.code);
 }
 
-function parseExpiry(value: unknown): Date {
+export function parseExpiry(value: unknown, now = () => new Date()): Date {
   const date = new Date(String(value));
   if (!Number.isFinite(date.getTime())) throw AppError.badRequest('Fecha de expiracion invalida', 'HANDOFF_EXPIRY_INVALID');
+  const ttlMs = date.getTime() - now().getTime();
+  const minimumMs = config.handoffEmail.invitationMinTtlHours * 60 * 60 * 1000;
+  const maximumMs = config.handoffEmail.invitationMaxTtlHours * 60 * 60 * 1000;
+  if (ttlMs < minimumMs || ttlMs > maximumMs) {
+    throw AppError.badRequest('La caducidad solicitada esta fuera del rango permitido', 'HANDOFF_EXPIRY_OUT_OF_RANGE');
+  }
   return date;
 }

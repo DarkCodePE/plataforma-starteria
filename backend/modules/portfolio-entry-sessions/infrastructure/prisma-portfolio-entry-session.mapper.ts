@@ -1,5 +1,5 @@
 import { Prisma } from '@prisma/client';
-import { z } from 'zod';
+import { z } from 'zod/v3';
 import {
   portfolioEntryAnalysisV2Schema,
   portfolioEntryFrameV2Schema,

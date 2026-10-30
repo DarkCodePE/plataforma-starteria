@@ -9,7 +9,10 @@ import { hashRefreshToken } from '../../auth/token.service';
 const actor = { id: 'user-1', email: 'owner@example.com' };
 async function setup(targetKind: 'CHALLENGE' | 'EXISTING_INITIATIVE' = 'CHALLENGE') {
   const assignments = new InMemoryPortfolioHandoffAssignmentRepository();
-  const refs = { findChallenge: async () => ({ id: 'challenge-1', organizationId: 'org-1' }), findInitiative: async () => ({ id: 'initiative-1', organizationId: 'org-1' }) };
+  const refs = {
+    findChallenge: async () => ({ id: 'challenge-1', organizationId: 'org-1' }),
+    findInitiative: async () => ({ id: 'initiative-1', organizationId: 'org-1', challengeIds: ['challenge-1'] }),
+  };
   const assignment = await new PortfolioHandoffAssignmentService(assignments, refs).createHandoffAssignment({ organizationId: 'org-1', challengeId: 'challenge-1', targetKind, initiativeId: targetKind === 'EXISTING_INITIATIVE' ? 'initiative-1' : null, invitedEmailNormalized: actor.email, createdByActorId: 'portfolio-1', members: [{ identityKey: actor.email, emailNormalized: actor.email, userId: actor.id, role: 'OWNER' }] });
   await assignments.transitionState({ assignmentId: assignment.id, from: ['CREATED'], to: 'SENT' });
   const access = new InMemoryHandoffInvitationAccessRepository();

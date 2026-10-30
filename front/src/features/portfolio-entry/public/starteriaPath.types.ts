@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import { z } from 'zod/v3';
 import { conversionPresentationSchema } from './conversionPresentation.types';
 
 const versionsSchema = z.object({

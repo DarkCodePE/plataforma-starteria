@@ -4,8 +4,10 @@ export type Row = Record<string, any>;
 
 export function createCycleStore() {
   return {
+    user: [] as Row[],
     project: [] as Row[],
     teamMember: [] as Row[],
+    mentorSession: [] as Row[],
     initiativePortfolioMeta: [] as Row[],
     adaptiveStepConfiguration: [] as Row[],
     adaptiveCheckpointInstance: [] as Row[],
@@ -115,8 +117,10 @@ function collection(store: ReturnType<typeof createCycleStore>, name: keyof Retu
 
 export function makeCyclePrisma(store = createCycleStore()) {
   const prisma: any = {
+    user: collection(store, 'user'),
     project: collection(store, 'project'),
     teamMember: collection(store, 'teamMember'),
+    mentorSession: collection(store, 'mentorSession'),
     initiativePortfolioMeta: collection(store, 'initiativePortfolioMeta'),
     adaptiveStepConfiguration: collection(store, 'adaptiveStepConfiguration'),
     adaptiveCheckpointInstance: collection(store, 'adaptiveCheckpointInstance'),
@@ -148,6 +152,7 @@ export function makeCyclePrisma(store = createCycleStore()) {
 export function seedCycleProject(store: ReturnType<typeof createCycleStore>, overrides: Row = {}) {
   const project = {
     id: overrides.id ?? testId('project'),
+    organizationId: overrides.organizationId ?? 'org-test',
     name: overrides.name ?? 'Iniciativa R3-A',
     ownerId: 'u1',
     status: overrides.status ?? 'IN_PROGRESS',
@@ -163,12 +168,18 @@ export function seedCycleProject(store: ReturnType<typeof createCycleStore>, ove
       nextRecommendedStep: 'Completar Step 0',
     },
     teamMembers: [{ userId: 'u1', projectId: overrides.id, status: 'ACTIVE' }],
+    mentorSessions: overrides.mentorSessions ?? [],
     portfolioMeta: overrides.portfolioMeta ?? [],
     contextSnapshots: [],
     steps: [],
     ...overrides,
   };
   store.project.push(project);
+  for (const member of project.teamMembers) {
+    if (!store.user.some((user) => user.id === member.userId)) {
+      store.user.push({ id: member.userId, organizationId: project.organizationId });
+    }
+  }
   store.teamMember.push({ userId: 'u1', projectId: project.id, status: 'ACTIVE' });
   store.initiativePortfolioMeta.push(...(project.portfolioMeta ?? []));
   return project;

@@ -3,6 +3,7 @@
 **Estado:** ACTIVE / FROZEN FOR IMPLEMENTATION PLANNING  
 **Versión:** v0.2  
 **Fecha:** 2026-09-28  
+**Enmienda acotada:** 2026-10-22 — PL-06A / KAN-160 comentarios 10428 y 10430  
 **Vertical:** Portfolio Lead → Initiative Owner Handoff  
 **Scope:** Portfolio Lead Assignment → Email → Invitation Landing → Accept / Reject → Activation Overview → Start  
 **Hard boundary:** `Start / Empezar`  
@@ -88,6 +89,98 @@ Reject requiere justificación. Portfolio Lead puede ver y responder al rechazo,
 ### CHANGE-06 — hard boundary real
 
 Este contrato termina al registrarse exitosamente `Start`. No define la pantalla, Step, ruta ni comportamiento posterior.
+
+## 0.2. Enmienda PL-06A — preparación múltiple e incremental
+
+Esta enmienda conserva la versión `v0.2` y el historial anterior. No sustituye las
+modalidades, lifecycle o hard boundary ya definidos; cierra la semántica de preparación
+anterior a `Send` autorizada por KAN-160 comentarios 10428 y 10430.
+
+### Cardinalidad y cobertura
+
+```text
+Challenge 1 → 0..N Handoff Assignments
+Handoff Assignment 1 → exactamente 1 target
+```
+
+Cada Assignment representa un encargo independiente. Portfolio Lead puede preparar una,
+varias o ninguna Assignment en una sesión, dejar Initiatives sin asignar y reanudar más
+tarde. La cobertura parcial no es error y no crea estados sintéticos sobre las Initiatives.
+
+### Bandeja de preparación
+
+PL-06A presenta una bandeja por Challenge con:
+
+- `Agregar asignación` como acción explícita;
+- modalidad `EXISTING_INITIATIVE` o `CHALLENGE`;
+- exactamente un Initiative Owner y hasta dos ejecutores adicionales por Assignment;
+- contexto editable propio del encargo, separado del Brief y de la Initiative;
+- Guardar, editar, retirar preparación y revisar varias Assignments;
+- re-entry que recupera todas las Assignments por su identidad, no una sola por
+  `briefVersionId` ni la versión más reciente del Challenge.
+
+Abrir la bandeja, agregar una tarjeta provisional o revisar no persiste por sí solo. Guardar
+crea una `PortfolioHandoffAssignment` en el estado canónico existente `CREATED`. No se añade
+un estado `DRAFT` de Assignment. Guardar nunca ejecuta `Send` ni crea Invitation, Initiative,
+Project o Step.
+
+### Edición y retirada en `CREATED`
+
+Owner, execution team y contexto propio del encargo solo pueden modificarse mientras la
+Assignment permanece `CREATED`. Toda actualización requiere `expectedVersion`, incrementa
+la versión y conserva actor, timestamp y provenance/audit. El contexto editable no muta ni
+reescribe el Brief confirmado o el contexto canónico de una Initiative existente.
+
+Retirar una preparación persistida no hace hard-delete: usa la transición trazable a
+`REVOKED`. Una Assignment `SENT`, `VIEWED`, `ACCEPTED`, `REJECTED`, `EXPIRED`, `REVOKED` o
+`STARTED` no se edita desde PL-06A.
+
+### Modalidad `EXISTING_INITIATIVE`
+
+Solo es seleccionable una identidad canónica que cumpla simultáneamente:
+
+```text
+Project existente
++ InitiativePortfolioMeta(projectId, challengeId)
++ mismo tenant autorizado
+```
+
+Un registro importado, mención documental o work record sin `ProjectId` no es una Initiative
+canónica, no aparece como target seleccionable y no se materializa como Project como efecto
+de Agregar, Guardar o re-entry. Su conversión o vinculación requiere una acción humana
+gobernada en otro boundary.
+
+Cuando PL-06A se abre desde PL-05, una Existing Initiative puede asociar opcionalmente la
+`briefVersionId` confirmada exacta del mismo Challenge y tenant. Si existe la referencia, es
+inmutable para esa Assignment. Fuera de esa ruta, `briefVersionId` puede ser `null`, conforme
+a la excepción de ADR-008. El Brief aporta contexto de encargo y nunca reemplaza la identidad,
+historia, fuentes o estado canónico de la Initiative.
+
+### Modalidad `CHALLENGE`
+
+Requiere la `briefVersionId` confirmada exacta. `initiativeId` permanece `null`. Distintos
+destinatarios pueden recibir Assignments independientes para proponer una Initiative más
+tarde; Create, Save, Send, Accept o Start no fabrican Initiative ni Step.
+
+### Duplicados y resolución humana
+
+- `EXISTING_INITIATIVE`: no puede coexistir más de una Assignment no terminal para el mismo
+  `organizationId + challengeId + initiativeId`. Una nueva asignación requiere resolver de
+  forma humana y trazable la anterior según el lifecycle vigente.
+- `CHALLENGE`: no puede coexistir más de una Assignment no terminal para
+  `organizationId + challengeId + briefVersionId + recipientIdentityNormalized`. Distintos
+  destinatarios continúan permitidos.
+- Un retry con la misma idempotency key y fingerprint devuelve el resultado original; la
+  misma key con payload distinto produce conflicto.
+
+Estas reglas son guards de aplicación/transacción sobre el aggregate existente; no autorizan
+un segundo modelo de Assignment ni una cardinalidad nueva de Core.
+
+### Boundary con PL-06B
+
+`Revisar invitaciones` puede presentar una selección, pero `Send`, delivery por lote, SMTP y
+Overview de estados pertenecen exclusivamente a PL-06B (KAN-162/KAN-163). PL-06A termina con
+Assignments guardadas/revisables en `CREATED`.
 
 ---
 
@@ -934,7 +1027,11 @@ La implementación de este vertical MUST NOT:
 14. crear lifecycle diferente por canal;
 15. hacer que Portfolio dependa del DOM/rutas internas de Steps;
 16. crear un nuevo aggregate/table `Initiative` solo para acomodar naming sin ADR;
-17. modificar Core, Step 0–4 o AI/human authority desde este vertical.
+17. modificar Core, Step 0–4 o AI/human authority desde este vertical;
+18. convertir un registro importado en Project como side-effect de preparar o guardar una Assignment;
+19. colapsar N Assignments a una mediante `find` por BriefVersion;
+20. enviar invitaciones desde Guardar o desde la navegación de PL-06A;
+21. sobrescribir BriefVersion o contexto canónico de Initiative con el texto editable del encargo.
 
 ---
 
@@ -944,6 +1041,15 @@ La implementación de este vertical MUST NOT:
 
 - [ ] Portfolio Lead puede asignar una existing Initiative vinculada a Challenge.
 - [ ] Portfolio Lead puede asignar un Challenge sin crear Initiative.
+- [ ] Un Challenge puede tener N Assignments independientes y cobertura parcial.
+- [ ] Re-entry recupera todas las Assignments con target, BriefVersion y versión exactos.
+- [ ] Un work record importado sin Project + InitiativePortfolioMeta no puede seleccionarse como Existing Initiative.
+- [ ] Guardar materializa únicamente bajo acción explícita y deja la Assignment en `CREATED` sin enviar.
+- [ ] Owner, equipo y contexto por encargo solo se editan en `CREATED`, con optimistic concurrency y audit/provenance.
+- [ ] El contexto editable por Assignment no muta BriefVersion ni Initiative.
+- [ ] Retirar una preparación preserva historial mediante `REVOKED`; no hace hard-delete.
+- [ ] Duplicados no terminales se rechazan según target kind y requieren resolución humana explícita.
+- [ ] Existing Initiative puede asociar opcionalmente la BriefVersion confirmada exacta desde PL-05, sin volverla universal.
 - [ ] Todo assignment tiene exactamente un Initiative Owner propuesto.
 - [ ] Execution team tiene máximo 3 personas incluyendo owner.
 - [ ] Observers no cuentan en ese límite.

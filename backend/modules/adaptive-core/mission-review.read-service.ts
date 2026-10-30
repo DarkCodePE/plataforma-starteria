@@ -93,31 +93,36 @@ export class MissionReviewReadService {
   constructor(private prisma: PrismaClient) {}
 
   async get(projectId: string, userId: string, role: string): Promise<MissionReviewView> {
-    const project = await this.prisma.project.findUnique({
-      where: { id: projectId },
-      include: {
-        teamMembers: { include: { user: { select: { name: true } } } },
-        contextSnapshots: { orderBy: { createdAt: 'desc' }, take: 1 },
-        portfolioMeta: {
-          include: {
-            challenge: {
-              include: {
-                strategicFront: true,
-                challengeTeam: { include: { user: { select: { name: true } } } },
+    const [project, user, governance] = await Promise.all([
+      this.prisma.project.findUnique({
+        where: { id: projectId },
+        include: {
+          teamMembers: { include: { user: { select: { name: true } } } },
+          mentorSessions: { where: { mentorId: userId }, select: { id: true } },
+          contextSnapshots: { orderBy: { createdAt: 'desc' }, take: 1 },
+          portfolioMeta: {
+            include: {
+              challenge: {
+                include: {
+                  strategicFront: true,
+                  challengeTeam: { include: { user: { select: { name: true } } } },
+                },
               },
             },
           },
         },
-      },
-    });
-    if (!project) throw AppError.notFound('Proyecto', 'PROJECT_NOT_FOUND');
-    // Mismo criterio que AdaptiveCoreService.getAccessibleProject: equipo, o el Portfolio Lead
-    // asignado en InitiativeGovernance (lectura, §23).
-    if (role !== 'admin' && role !== 'mentor' && !project.teamMembers.some((member) => member.userId === userId)) {
-      const governance = await (this.prisma as any).initiativeGovernance.findUnique({ where: { projectId } });
-      if (governance?.portfolioLeadUserId !== userId) {
-        throw AppError.forbidden('No tienes acceso a este proyecto.', 'PROJECT_ACCESS_DENIED');
-      }
+      }),
+      this.prisma.user.findUnique({ where: { id: userId }, select: { organizationId: true } }),
+      (this.prisma as any).initiativeGovernance.findUnique({ where: { projectId } }),
+    ]);
+    if (!project?.organizationId || !user?.organizationId || project.organizationId !== user.organizationId) {
+      throw AppError.notFound('Proyecto', 'PROJECT_NOT_FOUND');
+    }
+    const activeMember = project.teamMembers.some((member) => member.userId === userId && member.status === 'ACTIVE');
+    const assignedMentor = role === 'mentor' && project.mentorSessions.length > 0;
+    const assignedPortfolioLead = governance?.portfolioLeadUserId === userId;
+    if (role !== 'admin' && !activeMember && !assignedMentor && !assignedPortfolioLead) {
+      throw AppError.notFound('Proyecto', 'PROJECT_NOT_FOUND');
     }
 
     const prefill = (project.step0Data ?? {}) as Record<string, unknown>;

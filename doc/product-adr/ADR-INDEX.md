@@ -17,6 +17,10 @@ Este indice no reemplaza `docs/adr/`, que queda reservado para ADRs del harness.
 | ADR-006 | Separation between Starteria Landing and Portfolio Entry | `ADR-006-landing-and-portfolio-entry-separation.md` | ACCEPTED | Separa framing de Landing, Portfolio Entry opcional, early access y demo; supersede parcialmente ADR-019. No autoriza runtime. |
 | ADR-007 | Portfolio Entry `reason_to_ask` public explanation boundary | `ADR-007-portfolio-entry-reason-to-ask-public-explanation.md` | Aceptado, 2026-10-04 | `reason_to_ask` es explicación pública acotada; separada del razonamiento privado. No autoriza runtime por sí solo. |
 
+| ADR-008 | Challenge Activation Brief: versioned Portfolio-to-Handoff context | ADR-008-challenge-activation-brief-versioned-handoff.md | Aceptado, 2026-10-20 | Autoriza el boundary de dominio para P12-R1; implementación queda gobernada por Tech Spec y verificación. |
+
+| ADR-009 | Canonicalización gobernada de iniciativas documentales | `ADR-009-canonicalizacion-gobernada-iniciativas-documentales.md` | APPROVED, 2026-10-23 | KAN-165/10453 · KAN-168/10454; ejecución solo en DB disposable. |
+
 ## Reglas
 
 - Registrar aqui solo ADRs de producto.

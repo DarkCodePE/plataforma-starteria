@@ -8,11 +8,11 @@ import {
   trackPilotInterestEvent,
 } from '../../../features/public-start/services/publicPilotLeadService';
 
-const PILOT_CODE_REGEX = /^ST-PILOT-[A-Z0-9]{4}$/;
+const PILOT_CODE_REGEX = /^ST-PILOT-[A-F0-9]{64}$/;
 
 /**
  * Public "continue with your code" entry (ADR-018): the applicant types the
- * `ST-PILOT-XXXX` code from their confirmation email. On success we mint a
+ * high-entropy `ST-PILOT-…` bearer from their confirmation email. On success we mint a
  * single-use claim token, stash it, and route to /auth — after they sign in /
  * sign up, the claim is consumed to create their project and land them in the
  * workspace. The email is never exposed to the client.
@@ -40,9 +40,9 @@ export function PublicResumeWithCodePage() {
       navigate('/auth');
     } catch (err) {
       if (axios.isAxiosError(err) && err.response?.status === 404) {
-        setError('No encontramos ese código. Revisa que esté completo (ST-PILOT-XXXX) y vuelve a intentar.');
+        setError('No encontramos ese código. Copia el código completo del correo y vuelve a intentar.');
       } else if (axios.isAxiosError(err) && (err.response?.status === 400 || err.response?.status === 422)) {
-        setError('El código no tiene el formato esperado (ST-PILOT-XXXX).');
+        setError('El código no tiene el formato esperado. Copia el código completo del correo.');
       } else if (axios.isAxiosError(err) && err.response?.status === 410) {
         setError('Tu código expiró. Escríbenos para reactivar tu postulación.');
       } else {
@@ -75,7 +75,7 @@ export function PublicResumeWithCodePage() {
           inputMode="text"
           autoComplete="off"
           autoFocus
-          placeholder="ST-PILOT-XXXX"
+          placeholder="ST-PILOT-…"
           value={code}
           onChange={(e) => {
             setCode(e.target.value);

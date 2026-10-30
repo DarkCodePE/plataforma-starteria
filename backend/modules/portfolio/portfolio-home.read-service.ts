@@ -7,7 +7,9 @@
  * composition for the Home read path.
  */
 import { logger } from '../../shared/utils/logger';
+import { HANDOFF_DELIVERY_RESERVATION } from '../portfolio-handoff/domain/portfolio-handoff-invitation.types';
 import { frontScopeWhere, type PortfolioScope } from './portfolio-scope';
+import { PortfolioCapacityReadService, type PortfolioCapacityReading } from './portfolio-capacity.read-service';
 
 export type PortfolioHomePersonView = {
   id?: string | null;
@@ -55,6 +57,17 @@ export type InitiativePortfolioView = {
     step0Status: string | null;
     currentStep: number | null;
   };
+  lastConfirmedOutput: {
+    id: string;
+    cycleId: string;
+    stepNumber: number;
+    version: number;
+    status: string;
+    outputKey: string;
+    sourceConfigurationId: string | null;
+    confirmedAt: string | null;
+    updatedAt: string | null;
+  } | null;
   activationVisibility: 'initiative_exists' | 'initiative_active' | 'unknown';
   blockers: Array<{ summary: string; severity: string | null; source: string }>;
   evidenceSummary: { count: number | null } | null;
@@ -81,7 +94,16 @@ export type StrategicUnitView = {
   };
   desiredOutcome: string | null;
   signal: string | null;
+  baseline: string | null;
+  target: string | null;
   horizon: string | null;
+  metricObservations: Array<{
+    value: string;
+    unit: string;
+    observedAt: string;
+    source: string;
+  }>;
+  metricSource: 'StrategicFront' | null;
   challenges: Array<{
     id: string;
     title: string;
@@ -142,6 +164,14 @@ export type PortfolioLearningView = {
 };
 
 export type PortfolioHomeReadModel = {
+  availability: {
+    strategicUnits: 'available' | 'unavailable';
+    independentInitiatives: 'available' | 'unavailable';
+    portfolioReading: 'available' | 'unavailable';
+    handoffAssignments: 'available' | 'unavailable';
+    learnings: 'available' | 'unavailable';
+    capacity: 'available' | 'unavailable';
+  };
   portfolioReading: PortfolioReadingView;
   governance: {
     portfolioLead: PortfolioHomePersonView | null;
@@ -151,6 +181,7 @@ export type PortfolioHomeReadModel = {
     decisionAuthorities: PortfolioHomePersonView[];
   };
   strategicUnits: StrategicUnitView[];
+  independentInitiatives: InitiativePortfolioView[];
   attention: AttentionView[];
   pendingDecisions: PendingDecisionView[];
   recommendations: Array<{
@@ -170,6 +201,10 @@ export type PortfolioHomeReadModel = {
     executionTeam: unknown[];
     observers: unknown[];
     handoffState: string;
+    deliveryStatus: 'not_sent' | 'smtp_accepted' | 'failed';
+    latestDeliveryAttemptAt: string | null;
+    briefVersionId: string | null;
+    invitedEmail: string | null;
     acceptedAt: string | null;
     rejectedAt: string | null;
     rejectionReason: string | null;
@@ -181,6 +216,7 @@ export type PortfolioHomeReadModel = {
     projectionVersion: number;
     generatedAt: string;
   }>;
+  capacity: PortfolioCapacityReading | null;
   generatedAt: string;
   /** E2E Job-Driven §23: lo que el portfolio aprendió de las últimas decisiones. */
   learnings: PortfolioLearningView[];
@@ -190,9 +226,24 @@ export type PortfolioHomeReadModel = {
 
 type PrismaLike = {
   strategicFront: { findMany: (args: unknown) => Promise<any[]> };
+  project?: { findMany: (args: unknown) => Promise<any[]> };
   portfolioBootstrapSession?: { findFirst: (args: unknown) => Promise<any | null> };
   portfolioHandoffProjection?: { findMany: (args: unknown) => Promise<any[]> };
   portfolioLearning?: { findMany: (args: unknown) => Promise<any[]> };
+};
+
+const PROJECT_READ_INCLUDE = {
+  owner: { select: { id: true, name: true, email: true } },
+  attentionItems: true,
+  decisionRequests: { include: { decision: true, authorityUser: { select: { id: true, name: true, email: true } } } },
+  decisions: true,
+  adaptiveStepOutputs: {
+    where: { status: 'confirmed' },
+    orderBy: [{ confirmedAt: 'desc' }, { version: 'desc' }],
+    take: 1,
+    select: { id: true, cycleId: true, stepNumber: true, version: true, status: true, outputKey: true, sourceConfigurationId: true, confirmedAt: true, updatedAt: true },
+  },
+  _count: { select: { evidence: true } },
 };
 
 const READ_INCLUDE = {
@@ -201,15 +252,7 @@ const READ_INCLUDE = {
       selectedPeople: true,
       initiativeMetas: {
         include: {
-          project: {
-            include: {
-              owner: { select: { id: true, name: true, email: true } },
-              attentionItems: true,
-              decisionRequests: { include: { decision: true, authorityUser: { select: { id: true, name: true, email: true } } } },
-              decisions: true,
-              _count: { select: { evidence: true } },
-            },
-          },
+          project: { include: PROJECT_READ_INCLUDE },
         },
       },
     },
@@ -217,41 +260,74 @@ const READ_INCLUDE = {
 };
 
 export class PortfolioHomeReadService {
-  constructor(private readonly prisma: PrismaLike) {}
+  private readonly capacityReadService: PortfolioCapacityReadService;
 
-  async getHome(userId: string, scope: PortfolioScope = { all: true, organizationIds: [] }): Promise<PortfolioHomeReadModel> {
-    const [fronts, reading, handoffAssignments, learnings] = await Promise.all([
-      this.prisma.strategicFront.findMany({ where: frontScopeWhere(scope), include: READ_INCLUDE, orderBy: { updatedAt: 'desc' } }),
-      this.loadLatestReading(userId),
-      this.loadHandoffAssignments(scope),
+  constructor(private readonly prisma: PrismaLike) {
+    this.capacityReadService = new PortfolioCapacityReadService(prisma as any);
+  }
+
+  async getHome(userId: string, scope: PortfolioScope = { all: false, organizationIds: [] }): Promise<PortfolioHomeReadModel> {
+    const [frontResult, independentResult, readingResult, handoffResult, learnings, capacityResult] = await Promise.all([
+      this.safeRead('strategic_units', () => this.prisma.strategicFront.findMany({ where: frontScopeWhere(scope), include: READ_INCLUDE, orderBy: { updatedAt: 'desc' } }), []),
+      this.safeRead('independent_initiatives', () => this.loadIndependentInitiatives(scope), []),
+      this.safeRead('portfolio_reading', () => this.loadLatestReading(userId), null),
+      this.safeRead('handoff_assignments', () => this.loadHandoffAssignments(scope), []),
       this.loadLearnings(scope),
+      this.safeRead('capacity', () => this.capacityReadService.get(scope), null),
     ]);
+    const fronts = frontResult.value;
+    const reading = readingResult.value;
+    const handoffAssignments = handoffResult.value;
 
     const strategicUnits = (fronts ?? []).map((front) => this.mapStrategicUnit(front));
-    const initiatives = strategicUnits.flatMap((unit) => unit.challenges.flatMap((challenge) => challenge.initiatives));
+    const independentInitiatives = independentResult.value;
+    const initiatives = [
+      ...strategicUnits.flatMap((unit) => unit.challenges.flatMap((challenge) => challenge.initiatives)),
+      ...independentInitiatives,
+    ];
     const attention = [
       ...this.mapReadingAttention(reading?.primaryAttentionItems),
       ...strategicUnits.flatMap((unit) => unit.challenges.flatMap((challenge) =>
         challenge.initiatives.flatMap((initiative) => this.mapInitiativeAttention(initiative, fronts)),
       )),
+      ...independentInitiatives.flatMap((initiative) => this.mapInitiativeAttention(initiative, fronts)),
     ];
     const pendingDecisions = strategicUnits.flatMap((unit) => unit.challenges.flatMap((challenge) =>
       challenge.initiatives.flatMap((initiative) => this.mapPendingDecisions(initiative, fronts)),
-    ));
+    )).concat(independentInitiatives.flatMap((initiative) => this.mapPendingDecisions(initiative, fronts)));
 
     const generatedAt = new Date().toISOString();
     return {
+      availability: {
+        strategicUnits: frontResult.unavailable ? 'unavailable' : 'available',
+        independentInitiatives: independentResult.unavailable ? 'unavailable' : 'available',
+        portfolioReading: readingResult.unavailable ? 'unavailable' : 'available',
+        handoffAssignments: handoffResult.unavailable ? 'unavailable' : 'available',
+        learnings: learnings.unavailable ? 'unavailable' : 'available',
+        capacity: capacityResult.unavailable ? 'unavailable' : 'available',
+      },
       portfolioReading: this.mapReading(reading, strategicUnits, initiatives, attention, pendingDecisions),
       governance: this.mapGovernance(fronts, initiatives, pendingDecisions),
       strategicUnits,
+      independentInitiatives,
       attention,
       pendingDecisions,
       recommendations: this.mapRecommendations(reading, strategicUnits),
       handoffAssignments,
+      capacity: capacityResult.value,
       learnings: learnings.items,
       learningsUnavailable: learnings.unavailable,
       generatedAt,
     };
+  }
+
+  private async safeRead<T>(segment: string, read: () => Promise<T>, fallback: T): Promise<{ value: T; unavailable: boolean }> {
+    try {
+      return { value: await read(), unavailable: false };
+    } catch (err) {
+      logger.warn({ err, segment }, '[portfolio-home] segmento no disponible');
+      return { value: fallback, unavailable: true };
+    }
   }
 
   private async loadLearnings(scope: PortfolioScope): Promise<{ items: PortfolioLearningView[]; unavailable: boolean }> {
@@ -261,7 +337,7 @@ export class PortfolioHomeReadService {
       // Portfolio Home tiene que seguir cargando.
       const rows = await this.prisma.portfolioLearning.findMany({
         // Fuera de admin, sólo aprendizajes de frentes en el alcance (los sin frente no tienen dueño visible).
-        where: scope.all ? undefined : { strategicFront: frontScopeWhere(scope) },
+        where: { strategicFront: frontScopeWhere(scope) },
         orderBy: { decidedAt: 'desc' },
         take: 20,
         include: { project: { select: { name: true } }, challenge: { select: { title: true } } },
@@ -291,13 +367,16 @@ export class PortfolioHomeReadService {
 
   // F-02: sólo las asignaciones de las organizaciones del alcance. Una proyección sin organización
   // no se publica fuera del admin: no hay cómo saber de quién es.
-  private async loadHandoffAssignments(scope: PortfolioScope) {
+  private async loadHandoffAssignments(scope: PortfolioScope): Promise<PortfolioHomeReadModel['handoffAssignments']> {
     if (!this.prisma.portfolioHandoffProjection?.findMany) return [];
     const rows = await this.prisma.portfolioHandoffProjection.findMany({
-      where: scope.all ? undefined : { organizationId: { in: scope.organizationIds } },
+      where: { organizationId: { in: scope.organizationIds } },
       orderBy: { generatedAt: 'desc' },
+      include: { assignment: { include: { deliveryAttempts: { orderBy: { attemptedAt: 'desc' }, take: 1 } } } },
     });
-    return (rows ?? []).map((row: any) => ({
+    return (rows ?? []).map((row: any) => {
+      const latestAttempt = row.assignment?.deliveryAttempts?.[0] ?? null;
+      return ({
       assignmentId: row.assignmentId,
       targetKind: row.targetKind,
       challengeRef: row.challengeRef,
@@ -306,6 +385,12 @@ export class PortfolioHomeReadService {
       executionTeam: Array.isArray(row.executionTeam) ? row.executionTeam : [],
       observers: Array.isArray(row.observers) ? row.observers : [],
       handoffState: row.handoffState,
+      deliveryStatus: latestAttempt?.status === 'FAILED' && latestAttempt.errorCategory !== HANDOFF_DELIVERY_RESERVATION
+        ? 'failed'
+        : latestAttempt?.status === 'SUCCEEDED' ? 'smtp_accepted' : 'not_sent',
+      latestDeliveryAttemptAt: toIso(latestAttempt?.attemptedAt),
+      briefVersionId: row.assignment?.briefVersionId ?? null,
+      invitedEmail: row.assignment?.invitedEmailNormalized ?? null,
       acceptedAt: toIso(row.acceptedAt),
       rejectedAt: toIso(row.rejectedAt),
       rejectionReason: row.rejectionReason ?? null,
@@ -316,6 +401,26 @@ export class PortfolioHomeReadService {
       sourceEventRefs: Array.isArray(row.sourceEventRefs) ? row.sourceEventRefs : [],
       projectionVersion: row.projectionVersion,
       generatedAt: toIso(row.generatedAt) ?? new Date().toISOString(),
+      });
+    });
+  }
+
+  private async loadIndependentInitiatives(scope: PortfolioScope): Promise<InitiativePortfolioView[]> {
+    if (!this.prisma.project?.findMany) return [];
+    const projects = await this.prisma.project.findMany({
+      where: {
+        organizationId: { in: scope.organizationIds },
+        isArchived: false,
+        portfolioMeta: { none: {} },
+      },
+      include: PROJECT_READ_INCLUDE,
+      orderBy: { lastModified: 'desc' },
+    });
+    return (projects ?? []).map((project: any) => this.mapInitiative({
+      projectId: project.id,
+      strategicFrontId: null,
+      challengeId: null,
+      project,
     }));
   }
 
@@ -361,7 +466,11 @@ export class PortfolioHomeReadService {
       },
       desiredOutcome: front.strategicObjective ?? null,
       signal: front.mainKpi ?? null,
+      baseline: front.baseline ?? null,
+      target: front.target ?? null,
       horizon: front.horizon ?? null,
+      metricObservations: [],
+      metricSource: front.mainKpi || front.baseline || front.target || front.horizon ? 'StrategicFront' : null,
       challenges: challenges.map(({ _activeExecution, _pendingActivation, ...challenge }: any) => challenge),
       initiativeSummary: {
         total: allInitiatives.length,
@@ -378,6 +487,7 @@ export class PortfolioHomeReadService {
 
   private mapInitiative(meta: any): InitiativePortfolioView & { nextActionRecommended?: string | null; __project?: any } {
     const project = meta.project ?? null;
+    const lastConfirmedOutput = project?.adaptiveStepOutputs?.[0] ?? null;
     const executionActive = Boolean(project && (Number(project.currentStep) > 0 || ['ACTIVE', 'IN_PROGRESS', 'active'].includes(project.status)));
     const blockers = (project?.attentionItems ?? [])
       .filter((item: any) => item.status === undefined || item.status === 'open')
@@ -396,6 +506,17 @@ export class PortfolioHomeReadService {
         step0Status: project?.step0Status ?? null,
         currentStep: typeof project?.currentStep === 'number' ? project.currentStep : null,
       },
+      lastConfirmedOutput: lastConfirmedOutput ? {
+        id: lastConfirmedOutput.id,
+        cycleId: lastConfirmedOutput.cycleId,
+        stepNumber: lastConfirmedOutput.stepNumber,
+        version: lastConfirmedOutput.version,
+        status: lastConfirmedOutput.status,
+        outputKey: lastConfirmedOutput.outputKey,
+        sourceConfigurationId: lastConfirmedOutput.sourceConfigurationId,
+        confirmedAt: toIso(lastConfirmedOutput.confirmedAt),
+        updatedAt: toIso(lastConfirmedOutput.updatedAt),
+      } : null,
       activationVisibility: project ? (executionActive ? 'initiative_active' : 'initiative_exists') : 'unknown',
       blockers,
       evidenceSummary: project?._count ? { count: project._count.evidence ?? null } : null,

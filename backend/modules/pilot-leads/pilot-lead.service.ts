@@ -9,9 +9,10 @@
  * Dependency-injected over a minimal Prisma surface so the router tests stay
  * hermetic (no real DB), mirroring `PublicPdfService`.
  */
-import { randomUUID } from 'node:crypto';
 import { AppError } from '../../shared/errors/AppError';
+import { config } from '../../config';
 import { RETENTION_DAYS, type PilotLeadBody } from './pilot-lead.schemas';
+import { derivePilotCode, hashPilotCode } from './pilot-code';
 
 export interface PilotLeadDTO {
   id: string;
@@ -24,7 +25,7 @@ export interface PilotLeadDTO {
  * What redeeming a pilotCode returns. Deliberately carries the PUBLIC proposal
  * (the one-pager, so the initiative can be resumed) + low-risk personalization
  * (name, organization), but NOT the contactable PII (email/phone): the pilotCode
- * is a short bearer token, so a public lookup must not become a PII-harvesting
+ * is a bearer token, so a public lookup must not become a PII-harvesting
  * oracle. The applicant re-confirms contact details on resume.
  */
 export interface PilotResumeDTO {
@@ -46,6 +47,7 @@ interface PilotLeadRecord {
   phone?: string | null;
   organization?: string | null;
   proposal?: unknown;
+  retentionUntil?: Date | string | null;
   createdAt: Date | string;
 }
 
@@ -56,6 +58,10 @@ export interface PilotLeadStore {
       args: { where: { draftId: string } | { pilotCode: string } },
     ): Promise<PilotLeadRecord | null>;
     create(args: { data: Record<string, unknown> }): Promise<PilotLeadRecord>;
+    updateMany(args: {
+      where: { id: string; pilotCode: string };
+      data: { pilotCode: string };
+    }): Promise<{ count: number }>;
   };
   auditLog: {
     create(args: { data: Record<string, unknown> }): Promise<unknown>;
@@ -72,7 +78,6 @@ export interface PilotLeadStore {
 export interface PilotLeadNotice {
   id: string;
   pilotCode: string;
-  draftId: string;
   name: string;
   email: string;
   phone?: string | null;
@@ -80,21 +85,49 @@ export interface PilotLeadNotice {
 }
 export type PilotLeadNotifier = (lead: PilotLeadNotice) => void | Promise<void>;
 
-function createPilotCode(): string {
-  const suffix = randomUUID().replace(/-/g, '').slice(0, 4).toUpperCase();
-  return `ST-PILOT-${suffix}`;
-}
-
-function toDto(lead: PilotLeadRecord): PilotLeadDTO {
+function toDto(lead: PilotLeadRecord, rawPilotCode: string): PilotLeadDTO {
   const created = lead.createdAt instanceof Date ? lead.createdAt : new Date(lead.createdAt);
-  return { id: lead.id, pilotCode: lead.pilotCode, status: lead.status, createdAt: created.toISOString() };
+  return { id: lead.id, pilotCode: rawPilotCode, status: lead.status, createdAt: created.toISOString() };
 }
 
 export class PilotLeadService {
   constructor(
     private readonly store: PilotLeadStore,
     private readonly notify: PilotLeadNotifier = () => undefined,
+    private readonly pilotCodeSecret: string = config.pilotCodeSecret,
   ) {}
+
+  private async resolveExistingSubmission(
+    existing: PilotLeadRecord,
+    input: PilotLeadBody,
+    rawPilotCode: string,
+    storedPilotCodeHash: string,
+    ctx: { ipAddress?: string; userAgent?: string },
+  ): Promise<PilotLeadDTO> {
+    if (existing.email.trim().toLowerCase() !== input.email.trim().toLowerCase()) {
+      throw AppError.conflict('La postulación no coincide con los datos originales.', 'PILOT_LEAD_IDENTITY_MISMATCH');
+    }
+    if (existing.pilotCode !== storedPilotCodeHash) {
+      // Legacy 16-bit/plaintext credentials are never accepted for lookup.
+      // A contact-bound idempotent resubmission atomically replaces the stored
+      // value with the hash of the new high-entropy bearer.
+      await this.store.pilotLead.updateMany({
+        where: { id: existing.id, pilotCode: existing.pilotCode },
+        data: { pilotCode: storedPilotCodeHash },
+      });
+      await this.store.auditLog.create({
+        data: {
+          action: 'pilot.lead.credential_reissued',
+          resource: 'PilotLead',
+          resourceId: existing.id,
+          details: { reason: 'legacy_credential_invalidated' },
+          ipAddress: ctx.ipAddress,
+          userAgent: ctx.userAgent,
+        },
+      });
+    }
+    return toDto(existing, rawPilotCode);
+  }
 
   async submit(
     input: PilotLeadBody,
@@ -107,9 +140,14 @@ export class PilotLeadService {
       );
     }
 
-    // Idempotencia por draftId: un reenvío devuelve el lead existente.
+    const rawPilotCode = derivePilotCode(input.draftId, this.pilotCodeSecret);
+    const storedPilotCodeHash = hashPilotCode(rawPilotCode);
+
+    // Idempotencia por draftId: el mismo draft deriva el mismo bearer sin almacenarlo.
+    // Reconfirm the contact identity before returning any bearer: draftId is an
+    // idempotency key, not an authentication credential.
     const existing = await this.store.pilotLead.findUnique({ where: { draftId: input.draftId } });
-    if (existing) return toDto(existing);
+    if (existing) return this.resolveExistingSubmission(existing, input, rawPilotCode, storedPilotCodeHash, ctx);
 
     const now = new Date();
     const retentionUntil = new Date(now.getTime() + RETENTION_DAYS * 24 * 60 * 60 * 1000);
@@ -119,7 +157,7 @@ export class PilotLeadService {
       lead = await this.store.pilotLead.create({
         data: {
           draftId: input.draftId,
-          pilotCode: createPilotCode(),
+          pilotCode: storedPilotCodeHash,
           name: input.name,
           email: input.email,
           phone: input.phone ?? null,
@@ -140,7 +178,7 @@ export class PilotLeadService {
       // Re-read and return the winner so the contract stays idempotent.
       if ((err as { code?: string })?.code === 'P2002') {
         const raced = await this.store.pilotLead.findUnique({ where: { draftId: input.draftId } });
-        if (raced) return toDto(raced);
+        if (raced) return this.resolveExistingSubmission(raced, input, rawPilotCode, storedPilotCodeHash, ctx);
       }
       throw err;
     }
@@ -151,7 +189,7 @@ export class PilotLeadService {
         action: 'pilot.lead.captured',
         resource: 'PilotLead',
         resourceId: lead.id,
-        details: { draftId: lead.draftId, pilotCode: lead.pilotCode, source: 'public_landing' },
+        details: { source: 'public_landing' },
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
       },
@@ -162,8 +200,7 @@ export class PilotLeadService {
     try {
       await this.notify({
         id: lead.id,
-        pilotCode: lead.pilotCode,
-        draftId: lead.draftId,
+        pilotCode: rawPilotCode,
         name: input.name,
         email: input.email,
         phone: input.phone ?? null,
@@ -173,7 +210,7 @@ export class PilotLeadService {
       /* swallow: a notification failure must not fail lead capture */
     }
 
-    return toDto(lead);
+    return toDto(lead, rawPilotCode);
   }
 
   /**
@@ -185,9 +222,12 @@ export class PilotLeadService {
     pilotCode: string,
     ctx: { ipAddress?: string; userAgent?: string } = {},
   ): Promise<PilotResumeDTO> {
-    const lead = await this.store.pilotLead.findUnique({ where: { pilotCode } });
+    const lead = await this.store.pilotLead.findUnique({ where: { pilotCode: hashPilotCode(pilotCode) } });
     if (!lead) {
       throw AppError.notFound('Código de postulación', 'PILOT_CODE_NOT_FOUND');
+    }
+    if (lead.retentionUntil && new Date(lead.retentionUntil).getTime() <= Date.now()) {
+      throw new AppError(410, 'Tu código de postulación expiró.', 'PILOT_RETENTION_EXPIRED');
     }
 
     await this.store.auditLog.create({
@@ -195,7 +235,7 @@ export class PilotLeadService {
         action: 'pilot.lead.resumed',
         resource: 'PilotLead',
         resourceId: lead.id,
-        details: { pilotCode: lead.pilotCode, hasProposal: lead.proposal != null },
+        details: { hasProposal: lead.proposal != null },
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
       },
@@ -203,7 +243,7 @@ export class PilotLeadService {
 
     const created = lead.createdAt instanceof Date ? lead.createdAt : new Date(lead.createdAt);
     return {
-      pilotCode: lead.pilotCode,
+      pilotCode,
       status: lead.status,
       name: lead.name,
       organization: lead.organization ?? null,

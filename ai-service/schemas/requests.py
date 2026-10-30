@@ -206,3 +206,23 @@ class InitialReviewRequest(BaseModel):
     focusSection: str | None = Field(
         None, description="ADR-026 v2: refinar SOLO esta sección (understanding/challengeType/critique/improvedProposal). El backend hace el splice determinista."
     )
+
+
+# ---------------------------------------------------------------------------
+# POST /ai/steps/reason-turn  (AI-01/AI-02 + CHAT-01 QA — Steps 0-4)
+# ---------------------------------------------------------------------------
+
+class StepReasoningHistoryTurn(BaseModel):
+    user: str = Field(..., min_length=1, max_length=8000)
+    assistant: str = Field(..., min_length=1, max_length=8000)
+
+
+class StepReasoningRequest(BaseModel):
+    projectId: str = Field(..., min_length=1, max_length=120)
+    cycleId: str = Field(..., min_length=1, max_length=120)
+    stepNumber: int = Field(..., ge=0, le=4)
+    sourceContextHash: str = Field(..., pattern=r"^sha256:[a-f0-9]{64}$")
+    message: str = Field(..., min_length=1, max_length=8000)
+    mode: Literal["orient", "work_with_me", "unblock"] = "work_with_me"
+    history: list[StepReasoningHistoryTurn] = Field(default_factory=list, max_length=12)
+    context: dict[str, Any]

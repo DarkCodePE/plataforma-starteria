@@ -19,12 +19,15 @@ import type { PilotLeadService } from '../pilot-lead.service';
 import { hashRefreshToken } from '../../auth/token.service';
 import { errorHandler } from '../../../shared/errors/error-handler';
 
+const PILOT_CODE = `ST-PILOT-${'A1'.repeat(32)}`;
+
 function makeStore() {
   const leads: any[] = [];
   const tokens: any[] = [];
   const projects: any[] = [];
   const audits: any[] = [];
-  const store: PilotClaimStore = {
+  const store = {
+    $transaction: vi.fn(async (run: (tx: PilotClaimStore) => Promise<unknown>) => run(store as PilotClaimStore)),
     pilotLead: {
       findUnique: vi.fn(async ({ where }: any) =>
         leads.find(
@@ -33,19 +36,42 @@ function makeStore() {
       ),
     },
     pilotClaimToken: {
-      create: vi.fn(async ({ data }: any) => { tokens.push({ ...data }); return data; }),
+      create: vi.fn(async ({ data }: any) => {
+        const token = { consumedAt: null, ...data };
+        tokens.push(token);
+        return token;
+      }),
       findUnique: vi.fn(async ({ where }: any) => tokens.find((t) => t.tokenHash === where.tokenHash) ?? null),
       update: vi.fn(async ({ where, data }: any) => {
         const t = tokens.find((x) => x.tokenHash === where.tokenHash);
         if (t) Object.assign(t, data);
         return t;
       }),
+      updateMany: vi.fn(async ({ where, data }: any) => {
+        let count = 0;
+        for (const token of tokens) {
+          const matchesHash = where.tokenHash === undefined || token.tokenHash === where.tokenHash;
+          const matchesLead = where.pilotLeadId === undefined || token.pilotLeadId === where.pilotLeadId;
+          const matchesConsumed = where.consumedAt === undefined || token.consumedAt === where.consumedAt;
+          const matchesExpiry = !where.expiresAt?.gt || new Date(token.expiresAt) > where.expiresAt.gt;
+          if (matchesHash && matchesLead && matchesConsumed && matchesExpiry) {
+            Object.assign(token, data);
+            count++;
+          }
+        }
+        return { count };
+      }),
     },
     project: {
       findFirst: vi.fn(async ({ where }: any) => projects.find((p) => p.pilotLeadId === where.pilotLeadId) ?? null),
+      update: vi.fn(async ({ where, data }: any) => {
+        const project = projects.find((p) => p.id === where.id);
+        if (project) Object.assign(project, data);
+        return project;
+      }),
     },
     auditLog: { create: vi.fn(async ({ data }: any) => { audits.push(data); return data; }) },
-  };
+  } as PilotClaimStore;
   return { store, leads, tokens, projects, audits };
 }
 
@@ -58,7 +84,7 @@ function makeApp(ctx: ReturnType<typeof makeStore>) {
   const service = new PilotClaimService(ctx.store, createProject);
   const claimController = new PilotClaimController(service);
   const fakeAuth: RequestHandler = (req, _res, next) => {
-    (req as any).user = { id: 'user-1', role: 'participante' };
+    (req as any).user = { id: 'user-1', role: 'participante', email: 'ana@example.com' };
     next();
   };
   const app = express();
@@ -73,7 +99,7 @@ function makeApp(ctx: ReturnType<typeof makeStore>) {
 
 const LEAD = {
   id: 'lead-1',
-  pilotCode: 'ST-PILOT-AB12',
+  pilotCode: hashRefreshToken(PILOT_CODE),
   name: 'Ana Rodríguez',
   email: 'ana@example.com',
   phone: '+51 999 888 777',
@@ -88,7 +114,7 @@ describe('POST /api/v1/public/pilot-leads/:pilotCode/claim (issue)', () => {
 
   it('issues a claim token with non-PII personalization and NO email/phone', async () => {
     const { app } = makeApp(ctx);
-    const res = await request(app).post('/api/v1/public/pilot-leads/ST-PILOT-AB12/claim');
+    const res = await request(app).post(`/api/v1/public/pilot-leads/${PILOT_CODE}/claim`);
 
     expect(res.status).toBe(201);
     expect(res.body.data.claimToken).toMatch(/^[0-9a-f]{64}$/);
@@ -105,9 +131,20 @@ describe('POST /api/v1/public/pilot-leads/:pilotCode/claim (issue)', () => {
 
   it('unknown code → 404 PILOT_CODE_NOT_FOUND', async () => {
     const { app } = makeApp(ctx);
-    const res = await request(app).post('/api/v1/public/pilot-leads/ST-PILOT-ZZZZ/claim');
+    const res = await request(app).post(`/api/v1/public/pilot-leads/ST-PILOT-${'F'.repeat(64)}/claim`);
     expect(res.status).toBe(404);
     expect(res.body.error?.code).toBe('PILOT_CODE_NOT_FOUND');
+  });
+
+  it('maps a concurrent Serializable issuance conflict to a controlled retry response', async () => {
+    ctx.store.$transaction = vi.fn().mockRejectedValue(Object.assign(new Error('serialization'), { code: 'P2034' }));
+    const { app } = makeApp(ctx);
+
+    const res = await request(app).post(`/api/v1/public/pilot-leads/${PILOT_CODE}/claim`);
+
+    expect(res.status).toBe(409);
+    expect(res.body.error?.code).toBe('PILOT_CLAIM_RETRY_REQUIRED');
+    expect(JSON.stringify(res.body)).not.toContain(PILOT_CODE);
   });
 });
 
@@ -116,7 +153,7 @@ describe('POST /api/v1/public/pilot-leads/consume-claim (consume)', () => {
   beforeEach(() => { ctx = makeStore(); ctx.leads.push({ ...LEAD }); });
 
   async function issueToken(app: express.Express): Promise<string> {
-    const res = await request(app).post('/api/v1/public/pilot-leads/ST-PILOT-AB12/claim');
+    const res = await request(app).post(`/api/v1/public/pilot-leads/${PILOT_CODE}/claim`);
     return res.body.data.claimToken as string;
   }
 
@@ -134,18 +171,30 @@ describe('POST /api/v1/public/pilot-leads/consume-claim (consume)', () => {
     expect(ctx.projects).toHaveLength(1);
   });
 
-  it('is idempotent — consuming the same token twice creates the project once', async () => {
+  it('rejects replay of a consumed token without disclosing the project id', async () => {
     const { app, createProject } = makeApp(ctx);
     const token = await issueToken(app);
 
     const first = await request(app).post('/api/v1/public/pilot-leads/consume-claim').send({ claimToken: token });
     const second = await request(app).post('/api/v1/public/pilot-leads/consume-claim').send({ claimToken: token });
 
-    expect(first.body.data.projectId).toBe(second.body.data.projectId);
-    expect(second.status).toBe(200);
-    expect(second.body.data.alreadyExisted).toBe(true);
+    expect(first.status).toBe(201);
+    expect(second.status).toBe(409);
+    expect(second.body.error?.code).toBe('PILOT_CLAIM_ALREADY_CONSUMED');
+    expect(JSON.stringify(second.body)).not.toContain(first.body.data.projectId);
     expect(createProject).toHaveBeenCalledTimes(1);
     expect(ctx.projects).toHaveLength(1);
+  });
+
+  it('rejects consumption by an authenticated account with a different email', async () => {
+    const createProject = vi.fn(async () => 'never');
+    const service = new PilotClaimService(ctx.store, createProject);
+    const token = await service.issue(PILOT_CODE).then((issued) => issued.claimToken);
+
+    await expect(
+      service.consume(token, { id: 'user-b', role: 'participante', email: 'other@example.com' }),
+    ).rejects.toMatchObject({ code: 'PILOT_CLAIM_IDENTITY_MISMATCH' });
+    expect(createProject).not.toHaveBeenCalled();
   });
 
   it('expired claim → 410 PILOT_CLAIM_EXPIRED, no project created', async () => {

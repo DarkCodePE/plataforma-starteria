@@ -5,7 +5,7 @@ import { AuthService } from './auth.service';
 import { authenticate } from './auth.middleware';
 import { validate } from '../../shared/middleware/validate';
 import { registerSchema, loginSchema, googleSignInSchema } from './auth.schemas';
-import { loginLimiter, loginEmailLimiter, registerEmailLimiter, googleLimiter } from './rate-limiter';
+import { loginLimiter, loginEmailLimiter, registerEmailLimiter, googleLimiter, refreshLimiter } from './rate-limiter';
 
 // Dependencies: cookie-parser must be applied at app level for req.cookies
 const service = new AuthService(prisma);
@@ -26,7 +26,7 @@ authRouter.post('/login', loginLimiter, validate(loginSchema), loginEmailLimiter
 authRouter.post('/google', googleLimiter, validate(googleSignInSchema), controller.google);
 
 // POST /api/v1/auth/refresh — Refresh access token via HTTP-only cookie
-authRouter.post('/refresh', controller.refresh);
+authRouter.post('/refresh', refreshLimiter, controller.refresh);
 
 // POST /api/v1/auth/logout — Logout and invalidate refresh token family
 authRouter.post('/logout', authenticate, controller.logout);

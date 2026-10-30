@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { z } from 'zod';
+import { z } from 'zod/v3';
 import {
   CREATE_STRATEGIC_FRONT_CAPABILITY_ID,
   CREATE_STRATEGIC_FRONT_COMMAND_TYPE,

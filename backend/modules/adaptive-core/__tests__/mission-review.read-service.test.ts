@@ -1,9 +1,10 @@
 import { describe, expect, it, vi } from 'vitest';
 import { MissionReviewReadService } from '../mission-review.read-service';
 
-function makePrisma(project: any, governance: { portfolioLeadUserId: string | null } | null = null) {
+function makePrisma(project: any, governance: { portfolioLeadUserId: string | null } | null = null, organizationId = 'org-1') {
   return {
     project: { findUnique: vi.fn().mockResolvedValue(project) },
+    user: { findUnique: vi.fn().mockResolvedValue({ organizationId }) },
     initiativeGovernance: { findUnique: vi.fn().mockResolvedValue(governance) },
   } as any;
 }
@@ -13,6 +14,7 @@ function project(overrides: any = {}) {
     id: 'p1',
     name: 'Autoservicio sucursales',
     ownerId: 'owner',
+    organizationId: 'org-1',
     step0Data: {
       contextInitial: 'El 40% de las solicitudes son repetidas',
       expectedImpact: 'Bajar el costo por solicitud',
@@ -21,9 +23,10 @@ function project(overrides: any = {}) {
       pendingQuestions: [{ question: '¿Qué sucursales participan?' }, 'Presupuesto disponible'],
     },
     teamMembers: [
-      { userId: 'owner', user: { name: 'Owner' } },
-      { userId: 'u2', user: { name: 'Analista' } },
+      { userId: 'owner', status: 'ACTIVE', user: { name: 'Owner' } },
+      { userId: 'u2', status: 'ACTIVE', user: { name: 'Analista' } },
     ],
+    mentorSessions: [],
     portfolioMeta: [],
     ...overrides,
   };
@@ -122,13 +125,25 @@ describe('MissionReviewReadService', () => {
 
   it('niega el acceso a quien no es del equipo', async () => {
     const service = new MissionReviewReadService(makePrisma(project()));
-    await expect(service.get('p1', 'stranger', 'participante')).rejects.toMatchObject({ code: 'PROJECT_ACCESS_DENIED' });
+    await expect(service.get('p1', 'stranger', 'participante')).rejects.toMatchObject({ code: 'PROJECT_NOT_FOUND' });
   });
 
   it('el Portfolio Lead asignado la lee sin ser del equipo; otro lead no', async () => {
     const service = new MissionReviewReadService(makePrisma(project(), { portfolioLeadUserId: 'lead-1' }));
     await expect(service.get('p1', 'lead-1', 'portfolio_lead')).resolves.toBeTruthy();
-    await expect(service.get('p1', 'lead-2', 'portfolio_lead')).rejects.toMatchObject({ code: 'PROJECT_ACCESS_DENIED' });
+    await expect(service.get('p1', 'lead-2', 'portfolio_lead')).rejects.toMatchObject({ code: 'PROJECT_NOT_FOUND' });
+  });
+
+  it('el Mentor necesita una asignacion explicita', async () => {
+    await expect(new MissionReviewReadService(makePrisma(project())).get('p1', 'mentor-1', 'mentor'))
+      .rejects.toMatchObject({ code: 'PROJECT_NOT_FOUND' });
+    await expect(new MissionReviewReadService(makePrisma(project({ mentorSessions: [{ id: 'ms-1' }] }))).get('p1', 'mentor-1', 'mentor'))
+      .resolves.toBeTruthy();
+  });
+
+  it('el admin de otra organizacion recibe 404', async () => {
+    await expect(new MissionReviewReadService(makePrisma(project(), null, 'org-2')).get('p1', 'admin-2', 'admin'))
+      .rejects.toMatchObject({ code: 'PROJECT_NOT_FOUND' });
   });
 
   it('responde 404 si el proyecto no existe', async () => {

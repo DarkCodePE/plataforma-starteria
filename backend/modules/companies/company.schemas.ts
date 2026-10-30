@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import { z } from 'zod/v3';
 
 const optionalUrl = z.string().url().max(500).optional().or(z.literal(''));
 

@@ -27,6 +27,17 @@ describe('useAutosave', () => {
     expect(result.current.error).toBeNull();
   });
 
+  it('does not persist the initial render because mounting is read-only', async () => {
+    const saveFn = vi.fn().mockResolvedValue(undefined);
+    renderHook(() => useAutosave({ data: { x: 1 }, saveFn, delay: 100 }));
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(500);
+    });
+
+    expect(saveFn).not.toHaveBeenCalled();
+  });
+
   it('debounces saves and transitions to saved after success', async () => {
     const saveFn = vi.fn().mockResolvedValue(undefined);
     const { result, rerender } = renderHook(
@@ -72,14 +83,15 @@ describe('useAutosave', () => {
       { initialProps: { data: { x: 1 } } },
     );
 
-    // Trigger first save
+    // Trigger first save with a real data change.
+    rerender({ data: { x: 2 } });
     await act(async () => {
       await vi.advanceTimersByTimeAsync(200);
     });
     expect(saveFn).toHaveBeenCalledTimes(1);
 
     // Re-render with same data — should not save again.
-    rerender({ data: { x: 1 } });
+    rerender({ data: { x: 2 } });
     await act(async () => {
       await vi.advanceTimersByTimeAsync(500);
     });
@@ -91,9 +103,11 @@ describe('useAutosave', () => {
       .fn<(d: unknown) => Promise<void>>()
       .mockRejectedValue(new Error('save failed'));
 
-    const { result } = renderHook(() =>
-      useAutosave({ data: { x: 1 }, saveFn, delay: 50, maxRetries: 2 }),
+    const { result, rerender } = renderHook(
+      ({ data }: { data: { x: number } }) => useAutosave({ data, saveFn, delay: 50, maxRetries: 2 }),
+      { initialProps: { data: { x: 1 } } },
     );
+    rerender({ data: { x: 2 } });
 
     // Initial debounce fires at t=50; with maxRetries=2 we expect exactly
     // 1 initial + 2 retries = 3 saveFn calls. Backoff is 2^retry * 1000ms,
@@ -113,9 +127,11 @@ describe('useAutosave', () => {
       .mockRejectedValueOnce(new Error('first fail'))
       .mockResolvedValueOnce(undefined);
 
-    const { result } = renderHook(() =>
-      useAutosave({ data: { x: 1 }, saveFn, delay: 50, maxRetries: 0 }),
+    const { result, rerender } = renderHook(
+      ({ data }: { data: { x: number } }) => useAutosave({ data, saveFn, delay: 50, maxRetries: 0 }),
+      { initialProps: { data: { x: 1 } } },
     );
+    rerender({ data: { x: 2 } });
 
     // Initial save -> fails -> goes to error (maxRetries=0)
     await act(async () => {
@@ -138,9 +154,11 @@ describe('useAutosave', () => {
       .fn<(d: unknown) => Promise<void>>()
       .mockRejectedValue('string error');
 
-    const { result } = renderHook(() =>
-      useAutosave({ data: { x: 1 }, saveFn, delay: 10, maxRetries: 0 }),
+    const { result, rerender } = renderHook(
+      ({ data }: { data: { x: number } }) => useAutosave({ data, saveFn, delay: 10, maxRetries: 0 }),
+      { initialProps: { data: { x: 1 } } },
     );
+    rerender({ data: { x: 2 } });
 
     await act(async () => {
       await vi.advanceTimersByTimeAsync(20);
@@ -148,5 +166,27 @@ describe('useAutosave', () => {
     expect(result.current.state).toBe('error');
     expect(result.current.error).toBeInstanceOf(Error);
     expect(result.current.error?.message).toBe('string error');
+  });
+
+  it('establishes a fresh baseline when autosave becomes enabled after hydration', async () => {
+    const saveFn = vi.fn().mockResolvedValue(undefined);
+    const { rerender } = renderHook(
+      ({ data, enabled }: { data: { x: number }; enabled: boolean }) =>
+        useAutosave({ data, enabled, saveFn, delay: 100 }),
+      { initialProps: { data: { x: 1 }, enabled: false } },
+    );
+
+    rerender({ data: { x: 2 }, enabled: false });
+    rerender({ data: { x: 2 }, enabled: true });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(500);
+    });
+    expect(saveFn).not.toHaveBeenCalled();
+
+    rerender({ data: { x: 3 }, enabled: true });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(200);
+    });
+    expect(saveFn).toHaveBeenCalledWith({ x: 3 });
   });
 });

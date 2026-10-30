@@ -32,9 +32,9 @@ describe('InitiativeCompletionResolver', () => {
     });
     expect(routing).toMatchObject({
       route: 'owner_completed',
-      initiativeCompleted: true,
+      initiativeCompleted: false,
       portfolioReviewRequired: false,
-      lifecycleProjection: 'completed',
+      lifecycleProjection: 'active',
     });
   });
 

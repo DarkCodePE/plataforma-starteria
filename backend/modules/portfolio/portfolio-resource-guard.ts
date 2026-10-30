@@ -8,8 +8,8 @@
  *
  * - admin de plataforma: cualquier recurso.
  * - recurso de una organización del alcance: permitido.
- * - recurso sin organización (datos anteriores al alcance organizacional): permitido, igual que en
- *   la lectura (`frontScopeWhere`), para no dejar huérfanos los datos viejos.
+ * - recurso sin organización: denegado. La compatibilidad legacy no puede convertirse en un
+ *   bypass global implícito; cualquier recuperación debe tener un grant explícito y auditable.
  * - recurso de otra organización o inexistente: 404. No se distingue "no existe" de "no es tuyo"
  *   para no confirmar IDs ajenos.
  *
@@ -19,7 +19,7 @@
 import type { NextFunction, Request, Response } from 'express';
 import { AppError } from '../../shared/errors/AppError';
 import type { AuthenticatedRequest } from '../../shared/types/auth.types';
-import { resolvePortfolioScope, type PortfolioScope } from './portfolio-scope';
+import { resolvePortfolioScope, resolvePortfolioWriteScope, type PortfolioScope } from './portfolio-scope';
 
 type Resolved = { found: false } | { found: true; organizationId: string | null };
 
@@ -40,22 +40,17 @@ export async function challengeOrganization(prisma: any, challengeId: string): P
 }
 
 /**
- * Una iniciativa es de la organización de su reto. Si no tiene reto (independiente), de la
- * organización de su owner: tratarla como "sin organización" la dejaría escribible desde
- * cualquier organización.
+ * ADR-009 makes Project.organizationId the only canonical tenant boundary.
+ * Historical owner/front scalar references may point to organizations that do not exist;
+ * a Project without an explicit canonical organization therefore fails closed.
  */
 export async function projectOrganization(prisma: any, projectId: string): Promise<Resolved> {
   const project = await prisma.project.findUnique({
     where: { id: projectId },
-    select: {
-      owner: { select: { organizationId: true } },
-      portfolioMeta: { select: { challenge: { select: { strategicFront: { select: { organizationId: true } } } } }, take: 1 },
-    },
+    select: { organizationId: true },
   });
-  if (!project) return NOT_FOUND;
-  const meta = project.portfolioMeta?.[0];
-  if (meta?.challenge) return at(meta.challenge.strategicFront?.organizationId);
-  return at(project.owner?.organizationId);
+  if (!project?.organizationId) return NOT_FOUND;
+  return at(project.organizationId);
 }
 
 export async function executiveOutputOrganization(prisma: any, outputId: string): Promise<Resolved> {
@@ -82,8 +77,7 @@ async function childOfChallenge(delegate: any, childId: string, challengeId: str
 
 export function scopeAllows(scope: PortfolioScope, resolved: Resolved): boolean {
   if (!resolved.found) return false;
-  if (scope.all) return true;
-  return resolved.organizationId === null || scope.organizationIds.includes(resolved.organizationId);
+  return resolved.organizationId !== null && scope.organizationIds.includes(resolved.organizationId);
 }
 
 type Target =
@@ -107,7 +101,10 @@ export function requirePortfolioResource(prisma: any, target: Target) {
             : target.kind === 'executiveOutput'
               ? await executiveOutputOrganization(prisma, id)
               : await handoffAssignmentOrganization(prisma, id);
-      const scope = await resolvePortfolioScope(prisma, user);
+      const mutating = !['GET', 'HEAD', 'OPTIONS'].includes(req.method.toUpperCase());
+      const scope = mutating
+        ? await resolvePortfolioWriteScope(prisma, user)
+        : await resolvePortfolioScope(prisma, user);
       if (!scopeAllows(scope, resolved)) throw AppError.notFound('Recurso de portafolio', 'PORTFOLIO_RESOURCE_NOT_FOUND');
       if (target.kind === 'challenge' && target.child) {
         const ok = await childOfChallenge(prisma[target.child.model], req.params[target.child.param], id);

@@ -6,6 +6,7 @@ import type {
   HandoffReference,
   HandoffReferenceRepository,
   HandoffAssignmentState,
+  UpdateCreatedHandoffAssignmentInput,
 } from '../domain/portfolio-handoff-assignment.types';
 
 export class PrismaPortfolioHandoffAssignmentRepository implements HandoffAssignmentRepository, HandoffReferenceRepository {
@@ -19,24 +20,45 @@ export class PrismaPortfolioHandoffAssignmentRepository implements HandoffAssign
         challengeId: input.challengeId,
         targetKind: input.targetKind,
         initiativeId: input.initiativeId ?? null,
+        briefVersionId: input.briefVersionId ?? null,
+        contextNote: input.contextNote ?? null,
         invitedEmailNormalized: input.invitedEmailNormalized,
         invitedIdentityRef: input.invitedIdentityRef ?? null,
         createdByActorId: input.createdByActorId,
         members: { create: input.members.map((member) => ({ ...member, identityKey: member.identityKey.trim().toLowerCase() })) },
       },
-      include: { members: true },
+      include: { members: true, briefVersion: true },
     });
     return mapAssignment(record);
   }
 
   async findById(id: string): Promise<HandoffAssignment | null> {
-    const record = await this.prisma.portfolioHandoffAssignment.findUnique({ where: { id }, include: { members: true } });
+    const record = await this.prisma.portfolioHandoffAssignment.findUnique({ where: { id }, include: { members: true, briefVersion: true } });
     return record ? mapAssignment(record) : null;
+  }
+
+  async updateCreated(input: UpdateCreatedHandoffAssignmentInput): Promise<HandoffAssignment | null> {
+    const result = await (this.prisma as any).portfolioHandoffAssignment.updateMany({
+      where: { id: input.assignmentId, state: 'CREATED', version: input.expectedVersion },
+      data: {
+        invitedEmailNormalized: input.invitedEmailNormalized,
+        invitedIdentityRef: input.invitedIdentityRef ?? null,
+        contextNote: input.contextNote ?? null,
+        version: { increment: 1 },
+        updatedAt: new Date(),
+      },
+    });
+    if (!result.count) return null;
+    await (this.prisma as any).portfolioHandoffMember.deleteMany({ where: { assignmentId: input.assignmentId } });
+    await (this.prisma as any).portfolioHandoffMember.createMany({
+      data: input.members.map((member) => ({ assignmentId: input.assignmentId, ...member, identityKey: member.identityKey.trim().toLowerCase() })),
+    });
+    return this.findById(input.assignmentId);
   }
 
   async associateInvitedIdentity(input: { assignmentId: string; userId: string; emailNormalized: string; identityRef?: string | null }): Promise<HandoffAssignment | null> {
     const prisma = this.prisma as any;
-    const assignment = await prisma.portfolioHandoffAssignment.findUnique({ where: { id: input.assignmentId }, include: { members: true } });
+    const assignment = await prisma.portfolioHandoffAssignment.findUnique({ where: { id: input.assignmentId }, include: { members: true, briefVersion: true } });
     if (!assignment) return null;
     const member = assignment.members.find((candidate: any) => candidate.role === 'OWNER' && !candidate.userId && (candidate.emailNormalized === input.emailNormalized || candidate.identityKey === input.emailNormalized || candidate.identityKey === input.identityRef));
     if (!member) return null;
@@ -79,8 +101,8 @@ export class PrismaPortfolioHandoffAssignmentRepository implements HandoffAssign
   }
 
   async findInitiative(id: string): Promise<HandoffReference | null> {
-    const record = await this.prisma.project.findUnique({ where: { id }, select: { id: true, owner: { select: { organizationId: true } } } });
-    return record ? { id: record.id, organizationId: record.owner.organizationId } : null;
+    const record = await this.prisma.project.findUnique({ where: { id }, select: { id: true, organizationId: true, portfolioMeta: { select: { challengeId: true } } } });
+    return record ? { id: record.id, organizationId: record.organizationId, challengeIds: record.portfolioMeta.map((meta) => meta.challengeId) } : null;
   }
 }
 
@@ -92,6 +114,8 @@ function mapAssignment(record: any): HandoffAssignment {
     challengeId: record.challengeId,
     targetKind: record.targetKind,
     initiativeId: record.initiativeId,
+    briefVersionId: record.briefVersionId ?? null,
+    contextNote: record.contextNote ?? null,
     invitedEmailNormalized: record.invitedEmailNormalized,
     invitedIdentityRef: record.invitedIdentityRef,
     createdByActorId: record.createdByActorId,
@@ -107,5 +131,12 @@ function mapAssignment(record: any): HandoffAssignment {
     acceptedAt: record.acceptedAt, acceptedBy: record.acceptedBy, rejectionReason: record.rejectionReason, rejectedAt: record.rejectedAt, rejectedBy: record.rejectedBy,
     startedAt: record.startedAt, startedBy: record.startedBy,
     portfolioResponse: record.portfolioResponse, portfolioResponseRecordedAt: record.portfolioResponseRecordedAt, portfolioResponseRecordedBy: record.portfolioResponseRecordedBy,
+    briefVersion: record.briefVersion ? {
+      id: record.briefVersion.id, versionNumber: record.briefVersion.versionNumber, status: record.briefVersion.status,
+      intent: record.briefVersion.intent, scope: record.briefVersion.scope,
+      strategicContextRefs: record.briefVersion.strategicContextRefs, inheritedContext: record.briefVersion.inheritedContext,
+      constraintsSnapshot: record.briefVersion.constraintsSnapshot, knownGaps: record.briefVersion.knownGaps,
+      sourceRefs: record.briefVersion.sourceRefs, provenance: record.briefVersion.provenance, confirmedAt: record.briefVersion.confirmedAt,
+    } : null,
   };
 }

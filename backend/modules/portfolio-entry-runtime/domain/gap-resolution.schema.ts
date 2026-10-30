@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import { z } from 'zod/v3';
 import { provenanceOriginV2Schema } from './analysis.schema';
 
 export const gapResolutionTypeV2Schema = z.enum([

@@ -20,8 +20,11 @@ function world() {
     governance: { mode: 'portfolio_governed', portfolioLeadUserId: 'lead-1' } as { mode: string; portfolioLeadUserId: string | null },
   };
   const prisma: any = {
+    project: { findUnique: async () => ({ organizationId: 'org-a' }) },
+    user: { findUnique: async () => ({ organizationId: 'org-a' }) },
     teamMember: { findFirst: async ({ where }: any) => state.team.find((m) => m.userId === where.userId) ?? null },
     initiativeGovernance: { findUnique: async () => state.governance },
+    mentorSession: { findFirst: async () => null },
   };
   return { state, prisma };
 }
@@ -54,8 +57,8 @@ describe('revocación y reasignación como recorrido (F-17)', () => {
 
     state.team = state.team.filter((m) => m.userId !== 'editor');
 
-    expect(await access(prisma, 'editor', 'read')).toBe('PROJECT_ACCESS_DENIED');
-    expect(await access(prisma, 'editor', 'write')).toBe('PROJECT_ACCESS_DENIED');
+    expect(await access(prisma, 'editor', 'read')).toBe('PROJECT_NOT_FOUND');
+    expect(await access(prisma, 'editor', 'write')).toBe('PROJECT_NOT_FOUND');
   });
 
   it('degradar a VIEWER deja leer pero ya no escribir ni gestionar', async () => {
@@ -68,7 +71,8 @@ describe('revocación y reasignación como recorrido (F-17)', () => {
 
   it('una invitación pendiente lee pero no escribe hasta aceptarse; aceptada, escribe', async () => {
     const { state, prisma } = world();
-    expect(await access(prisma, 'invitee', 'write')).toBe('TEAM_INVITATION_PENDING');
+    expect(await access(prisma, 'invitee', 'read')).toBe('TEAM_MEMBERSHIP_INACTIVE');
+    expect(await access(prisma, 'invitee', 'write')).toBe('TEAM_MEMBERSHIP_INACTIVE');
     state.team.find((m) => m.userId === 'invitee')!.status = 'ACTIVE';
     expect(await access(prisma, 'invitee', 'write')).toBe('allowed');
   });
@@ -80,7 +84,7 @@ describe('revocación y reasignación como recorrido (F-17)', () => {
 
     state.governance.portfolioLeadUserId = 'lead-2';
 
-    expect(await access(prisma, 'lead-1', 'read')).toBe('PROJECT_ACCESS_DENIED');
+    expect(await access(prisma, 'lead-1', 'read')).toBe('PROJECT_NOT_FOUND');
     expect(canDecide(state, 'lead-1')).toBe(false);
     expect(await access(prisma, 'lead-2', 'read')).toBe('allowed');
     expect(canDecide(state, 'lead-2')).toBe(true);

@@ -268,6 +268,26 @@ async function main() {
   console.log('[E2E] Provision database');
   runChecked(npmCmd, ['run', 'db:e2e:provision'], frontRoot, env);
 
+  if (process.env.E2E_STEP_REASONING_QA_AUTO_ALLOWLIST === 'true') {
+    const { PrismaClient } = await import('@prisma/client');
+    const prisma = new PrismaClient({ datasourceUrl: databaseURL });
+    try {
+      const user = await prisma.user.findUnique({
+        where: { email: env.E2E_USER_EMAIL },
+        select: { id: true },
+      });
+      if (!user) throw new Error(`Seeded E2E user not found: ${env.E2E_USER_EMAIL}`);
+      env.STEP_REASONING_COPILOT_ENABLED = 'true';
+      env.STEP_REASONING_QA_USER_IDS = user.id;
+      env.STEP_REASONING_QA_USER_ID = user.id;
+      env.VITE_STEP_REASONING_COPILOT_ENABLED = 'true';
+      env.VITE_STEP_REASONING_QA_USER_IDS = user.id;
+      console.log(`[E2E] Step reasoning QA allowlist resolved for seeded user ${user.id}`);
+    } finally {
+      await prisma.$disconnect();
+    }
+  }
+
   if (postgresConfirmationIntegration) {
     console.log('[E2E] Run Portfolio Entry Prisma confirmation integration against the migrated starteria_e2e database');
     runChecked(npmCmd, [

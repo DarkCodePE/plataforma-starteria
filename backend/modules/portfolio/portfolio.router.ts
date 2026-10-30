@@ -161,6 +161,7 @@ portfolioRouter.patch(
 // ─── Challenge Team Members (ADR-023) ───────────────────────────────────────────
 portfolioRouter.get(
   '/challenges/:challengeId/team',
+  challenge('challengeId'),
   controller.listChallengeTeam,
 );
 
@@ -190,6 +191,7 @@ portfolioRouter.delete(
 // ─── Initiative Team (resolution + per-iniciativa override, #110/#114) ───────────
 portfolioRouter.get(
   '/initiatives/:projectId/team',
+  initiative(),
   controller.getInitiativeTeam,
 );
 
@@ -211,11 +213,13 @@ portfolioRouter.delete(
 // ─── Initiatives ──────────────────────────────────────────────────────────────
 portfolioRouter.get(
   '/challenges/:challengeId/initiatives',
+  challenge('challengeId'),
   controller.listInitiatives,
 );
 
 portfolioRouter.get(
   '/initiatives/:projectId/meta',
+  initiative(),
   controller.getInitiativeMeta,
 );
 
@@ -260,7 +264,7 @@ portfolioRouter.post(
 
 // Quién decide sobre una iniciativa de Reto. Las iniciativas nuevas lo heredan del owner del Reto
 // o del Frente (initiative-governance.ts); esto permite asignarlo o cambiarlo explícitamente.
-portfolioRouter.get('/initiatives/:projectId/governance', async (req, res, next) => {
+portfolioRouter.get('/initiatives/:projectId/governance', initiative(), async (req, res, next) => {
   try {
     const governance = await prisma.initiativeGovernance.findUnique({
       where: { projectId: req.params.projectId },
@@ -281,17 +285,7 @@ portfolioRouter.put(
     try {
       const { projectId } = req.params;
       const { portfolioLeadUserId } = req.body as { portfolioLeadUserId: string | null };
-      const project = await prisma.project.findUnique({ where: { id: projectId }, select: { id: true } });
-      if (!project) throw AppError.notFound('Proyecto', 'PROJECT_NOT_FOUND');
-      if (portfolioLeadUserId) {
-        const lead = await prisma.user.findUnique({ where: { id: portfolioLeadUserId }, select: { id: true } });
-        if (!lead) throw AppError.notFound('Usuario', 'USER_NOT_FOUND', { hint: 'El Portfolio Lead debe ser un usuario existente.' });
-      }
-      const data = await prisma.initiativeGovernance.upsert({
-        where: { projectId },
-        update: { mode: 'portfolio_governed', portfolioLeadUserId },
-        create: { projectId, mode: 'portfolio_governed', portfolioLeadUserId },
-      });
+      const data = await service.assignInitiativeGovernance(projectId, portfolioLeadUserId);
       res.json({ success: true, data });
     } catch (err) {
       next(err);
@@ -310,7 +304,7 @@ portfolioRouter.get('/capacity', async (req, res, next) => {
 });
 
 // §13: lectura de cobertura del Reto como conjunto (sólo lectura).
-portfolioRouter.get('/challenges/:challengeId/coverage-reading', async (req, res, next) => {
+portfolioRouter.get('/challenges/:challengeId/coverage-reading', challenge('challengeId'), async (req, res, next) => {
   try {
     res.json({ success: true, data: await challengeCoverage.get(req.params.challengeId) });
   } catch (err) {
@@ -321,6 +315,7 @@ portfolioRouter.get('/challenges/:challengeId/coverage-reading', async (req, res
 // ─── Overlaps ─────────────────────────────────────────────────────────────────
 portfolioRouter.get(
   '/challenges/:challengeId/overlaps',
+  challenge('challengeId'),
   controller.listOverlaps,
 );
 
@@ -335,6 +330,7 @@ portfolioRouter.post(
 // ─── Executive Outputs ────────────────────────────────────────────────────────
 portfolioRouter.get(
   '/challenges/:challengeId/executive-outputs',
+  challenge('challengeId'),
   controller.listExecutiveOutputs,
 );
 

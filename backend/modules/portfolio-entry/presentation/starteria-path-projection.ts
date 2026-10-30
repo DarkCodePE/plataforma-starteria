@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import { z } from 'zod/v3';
 import {
   BUSINESS_CAPABILITY_BOUNDARY_VERSION,
   STARTERIA_PATH_PROJECTION_VERSION,

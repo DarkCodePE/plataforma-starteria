@@ -16,9 +16,15 @@ type ChallengeRow = { id: string; status: string; pausedFromStatus?: string | nu
 
 function makeService(challenge: ChallengeRow) {
   const update = vi.fn().mockImplementation(({ data }: any) => ({ ...challenge, ...data }));
+  const persisted = {
+    ...challenge,
+    strategicFrontId: 'front-a',
+    strategicFront: { id: 'front-a', organizationId: 'org-a' },
+  };
   const prisma: any = {
+    $transaction: vi.fn(async (run: (tx: any) => Promise<unknown>) => run(prisma)),
     challenge: {
-      findUnique: vi.fn().mockResolvedValue(challenge),
+      findUnique: vi.fn().mockResolvedValue(persisted),
       update,
     },
   };

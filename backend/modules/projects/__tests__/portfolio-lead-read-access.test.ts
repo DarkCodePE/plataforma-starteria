@@ -5,9 +5,11 @@ import { describe, expect, it, vi } from 'vitest';
 import { ProjectService } from '../project.service';
 
 function makePrisma(governance: { portfolioLeadUserId: string | null } | null) {
-  const project = { id: 'p1', status: 'IN_PROGRESS', teamMembers: [{ userId: 'owner-1' }], steps: [], evidence: [] };
+  const project = { id: 'p1', organizationId: 'org-a', status: 'IN_PROGRESS', teamMembers: [{ userId: 'owner-1', status: 'ACTIVE' }], steps: [], evidence: [] };
   return {
     project: { findUnique: vi.fn().mockResolvedValue(project), update: vi.fn().mockResolvedValue(project) },
+    user: { findUnique: vi.fn().mockResolvedValue({ organizationId: 'org-a' }) },
+    mentorSession: { findFirst: vi.fn().mockResolvedValue(null) },
     initiativeGovernance: { findUnique: vi.fn().mockResolvedValue(governance) },
     initiativePortfolioMeta: { findMany: vi.fn().mockResolvedValue([]) },
   } as any;

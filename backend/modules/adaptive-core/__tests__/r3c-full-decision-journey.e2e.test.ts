@@ -57,6 +57,7 @@ async function seedUsersAndPortfolioContext() {
     ],
   });
   await prisma.organization.create({ data: { id: organizationId, name: 'R3C Final Org', slug: 'r3c-final-org' } });
+  await prisma.user.updateMany({ where: { id: { in: [ownerId, leadId, otherId] } }, data: { organizationId } });
   await prisma.strategicFront.create({ data: { id: strategicFrontId, name: 'R3C Final Front', ownerId: leadId, organizationId } });
   await prisma.challenge.create({ data: { id: challengeId, strategicFrontId, title: 'R3C Final Challenge', ownerId: leadId } });
 }
@@ -68,7 +69,8 @@ async function seedCompletedProject(projectId: string, options: { portfolioAlign
       name: `R3C Final ${projectId}`,
       description: 'Disposable R3-C final journey project.',
       ownerId,
-      status: options.portfolioAligned ? 'IN_PROGRESS' : 'COMPLETED',
+      organizationId,
+      status: 'IN_PROGRESS',
       currentStep: 4,
       step0Status: 'COMPLETED',
       step0Data: {
@@ -210,7 +212,7 @@ function stepOutput(stepNumber: number, portfolioAligned: boolean) {
         evidenceReferences: ['evidence-ref'],
         risks: ['Dependencia operacional conocida'],
       },
-      lifecycleProjection: portfolioAligned ? 'presented' : 'completed',
+      lifecycleProjection: portfolioAligned ? 'presented' : 'active',
       completionRoute: portfolioAligned ? 'portfolio_presented' : 'owner_completed',
       portfolioReviewRequired: portfolioAligned,
     };
@@ -370,7 +372,7 @@ describeR3CFinalE2E('R3-C final portfolio decision journey PostgreSQL E2E', () =
     expect(routing).toMatchObject({
       route: 'owner_completed',
       methodologicalCompletion: true,
-      initiativeCompleted: true,
+      initiativeCompleted: false,
       portfolioReviewRequired: false,
     });
 
@@ -381,10 +383,11 @@ describeR3CFinalE2E('R3-C final portfolio decision journey PostgreSQL E2E', () =
     expect(await (prisma as any).decisionRequest.count({ where: { projectId: selfProjectId } })).toBe(0);
     expect(await (prisma as any).decision.count({ where: { projectId: selfProjectId } })).toBe(0);
     expect(await (prisma as any).continuationRoute.count({ where: { projectId: selfProjectId } })).toBe(0);
-    expect(await prisma.project.findUniqueOrThrow({ where: { id: selfProjectId } })).toMatchObject({ status: 'COMPLETED' });
+    expect(await prisma.project.findUniqueOrThrow({ where: { id: selfProjectId } })).toMatchObject({ status: 'IN_PROGRESS' });
 
     const history = await service.getInitiativeHistory(selfProjectId, ownerId, 'participante');
-    expect(history.summary.status).toBe('COMPLETED');
+    expect(history.summary.status).toBe('IN_PROGRESS');
+    expect(history.lifecycleProjection).toBe('active');
     expect(history.cycles).toHaveLength(1);
     expect(history.cycles[0].status).toBe('completed');
     expect(history.cycles[0].confirmedOutputs.some((output) => output.stepNumber === 4)).toBe(true);

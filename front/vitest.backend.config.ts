@@ -46,6 +46,9 @@ const cjsBackendPackages = [
   // vite-node bundles it with a synthesized __filename and those requires
   // fail. Externalize so Node's real CJS loader is used.
   'nodemailer',
+  // google-auth-library is also CJS and resolves internal modules relatively.
+  // Keep it on Node's native loader when backend tests import auth services.
+  'google-auth-library',
 ];
 
 function externalizeCjsBackendPackages(): Plugin {

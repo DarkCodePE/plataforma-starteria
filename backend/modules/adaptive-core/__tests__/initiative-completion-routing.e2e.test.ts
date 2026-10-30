@@ -56,6 +56,7 @@ async function seedProject(projectId: string, options: { challengeLinked?: boole
       name: `R3C2B ${projectId}`,
       description: 'Disposable R3-C2B E2E project.',
       ownerId,
+      organizationId,
       status: 'IN_PROGRESS',
       currentStep: 4,
       step0Status: 'COMPLETED',
@@ -94,6 +95,7 @@ async function seedProject(projectId: string, options: { challengeLinked?: boole
 
 async function seedChallenge() {
   await prisma.organization.create({ data: { id: organizationId, name: 'R3C2B Org', slug: 'r3c2b-org' } });
+  await prisma.user.updateMany({ where: { id: { in: [ownerId, leadId] } }, data: { organizationId } });
   await prisma.strategicFront.create({ data: { id: strategicFrontId, name: 'R3C2B Front', ownerId: leadId, organizationId } });
   await prisma.challenge.create({ data: { id: challengeId, strategicFrontId, title: 'R3C2B Challenge', ownerId: leadId } });
 }
@@ -190,7 +192,7 @@ describeC2BE2E('R3-C2B completion routing E2E', () => {
     await prisma.$disconnect();
   });
 
-  it('persists self-initiated completion as completed without portfolio review', async () => {
+  it('completes the self-initiated cycle without closing the initiative', async () => {
     await seedProject(selfProjectId);
     const seeded = await seedStep4Ready(selfProjectId);
     const service = new AdaptiveCoreService(prisma);
@@ -207,16 +209,16 @@ describeC2BE2E('R3-C2B completion routing E2E', () => {
       prisma.adaptiveStepOutput.findUniqueOrThrow({ where: { id: seeded.output.id } }),
       prisma.adaptiveAdaptationEvent.findMany({ where: { projectId: selfProjectId } }),
     ]);
-    expect(project.status).toBe('COMPLETED');
+    expect(project.status).toBe('IN_PROGRESS');
     expect(cycle.status).toBe('completed');
     expect(cycle.completedAt).toBeTruthy();
     expect(output.status).toBe('confirmed');
-    expect(output.outputJson).toMatchObject({ lifecycleProjection: 'completed', completionRoute: 'owner_completed' });
-    expect(events.some((event) => event.eventType === 'initiative_completed')).toBe(true);
+    expect(output.outputJson).toMatchObject({ lifecycleProjection: 'active', completionRoute: 'owner_completed', initiativeCompleted: false });
+    expect(events.some((event) => event.eventType === 'cycle_completed')).toBe(true);
     expect(events.some((event) => event.eventType === 'initiative_closed')).toBe(false);
     const selfHistory = await service.getInitiativeHistory(selfProjectId, ownerId, 'participante');
-    expect(selfHistory.summary.status).toBe('COMPLETED');
-    expect(selfHistory.lifecycleProjection).toBe('completed');
+    expect(selfHistory.summary.status).toBe('IN_PROGRESS');
+    expect(selfHistory.lifecycleProjection).toBe('active');
     expect(selfHistory.cycles[0]).toMatchObject({ id: seeded.cycle.id, status: 'completed' });
     await expect(service.confirmStep4Output(selfProjectId, ownerId, 'participante', {
       idempotencyKey: 'r3c2b-self-step4-mutate-after-complete',

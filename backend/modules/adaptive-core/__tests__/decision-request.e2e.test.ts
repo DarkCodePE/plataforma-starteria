@@ -52,6 +52,7 @@ async function seedUsersAndChallenge() {
     ],
   });
   await prisma.organization.create({ data: { id: organizationId, name: 'R3C3A Org', slug: 'r3c3a-org' } });
+  await prisma.user.updateMany({ where: { id: { in: [ownerId, leadId, otherId] } }, data: { organizationId } });
   await prisma.strategicFront.create({ data: { id: strategicFrontId, name: 'R3C3A Front', ownerId: leadId, organizationId } });
   await prisma.challenge.create({ data: { id: challengeId, strategicFrontId, title: 'R3C3A Challenge', ownerId: leadId } });
 }
@@ -63,7 +64,8 @@ async function seedProject(projectId: string, options: { portfolioGoverned?: boo
       name: `R3C3A ${projectId}`,
       description: 'Disposable R3-C3A E2E project.',
       ownerId,
-      status: options.selfInitiated ? 'COMPLETED' : 'IN_PROGRESS',
+      organizationId,
+      status: 'IN_PROGRESS',
       currentStep: 4,
       step0Status: 'COMPLETED',
       step0Data: { challengeType: 'growth', initialFocus: 'Foco', expectedImpact: 'Impacto' },
@@ -123,7 +125,7 @@ async function seedProject(projectId: string, options: { portfolioGoverned?: boo
       outputJson: {
         recommendation: 'Solicitar revision de portafolio.',
         decisionPackage: { artifacts: ['memo'] },
-        lifecycleProjection: options.selfInitiated ? 'completed' : 'presented',
+        lifecycleProjection: options.selfInitiated ? 'active' : 'presented',
         completionRoute: options.selfInitiated ? 'owner_completed' : 'portfolio_presented',
         portfolioReviewRequired: !options.selfInitiated,
       },
@@ -250,7 +252,7 @@ describeC3AE2E('R3-C3A DecisionRequest PostgreSQL E2E', () => {
     expect(events.some((event) => event.eventType === 'organizational_decision_created')).toBe(false);
   });
 
-  it('rejects self-initiated completed initiatives', async () => {
+  it('rejects decision requests for self-initiated initiatives after cycle completion', async () => {
     await seedProject(selfProjectId, { selfInitiated: true });
     const service = new AdaptiveCoreService(prisma);
 
@@ -259,7 +261,7 @@ describeC3AE2E('R3-C3A DecisionRequest PostgreSQL E2E', () => {
     })).rejects.toMatchObject({ code: 'DECISION_REQUEST_NOT_REQUIRED' });
     expect(await (prisma as any).decisionRequest.count({ where: { projectId: selfProjectId } })).toBe(0);
     await expect(service.getInitiativeHistory(selfProjectId, ownerId, 'participante')).resolves.toMatchObject({
-      lifecycleProjection: 'completed',
+      lifecycleProjection: 'active',
     });
   });
 

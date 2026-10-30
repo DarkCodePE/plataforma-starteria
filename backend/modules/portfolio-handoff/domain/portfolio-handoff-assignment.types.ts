@@ -10,12 +10,31 @@ export type HandoffMemberInput = {
   role: HandoffMemberRole;
 };
 
+export type HandoffActivationBriefVersionProjection = {
+  id: string;
+  versionNumber: number;
+  status: 'DRAFT' | 'CONFIRMED';
+  intent: string | null;
+  scope: string | null;
+  strategicContextRefs: unknown;
+  inheritedContext: unknown;
+  constraintsSnapshot: unknown;
+  knownGaps: unknown;
+  sourceRefs: unknown;
+  provenance: unknown;
+  confirmedAt: Date | null;
+};
+
 export type CreateHandoffAssignmentInput = {
   organizationId?: string | null;
   portfolioScopeRef?: string | null;
   challengeId: string;
   targetKind: HandoffTargetKind;
   initiativeId?: string | null;
+  // ADR-008: immutable mandate reference for Challenge handoff. Nullable only
+  // for historical rows and the Existing Initiative exception.
+  briefVersionId?: string | null;
+  contextNote?: string | null;
   invitedEmailNormalized: string;
   invitedIdentityRef?: string | null;
   createdByActorId: string;
@@ -43,13 +62,25 @@ export type HandoffAssignment = Omit<CreateHandoffAssignmentInput, 'members'> & 
   portfolioResponse: string | null;
   portfolioResponseRecordedAt: Date | null;
   portfolioResponseRecordedBy: string | null;
+  briefVersion?: HandoffActivationBriefVersionProjection | null;
 };
 
-export type HandoffReference = { id: string; organizationId?: string | null };
+export type UpdateCreatedHandoffAssignmentInput = {
+  assignmentId: string;
+  expectedVersion: number;
+  invitedEmailNormalized: string;
+  invitedIdentityRef?: string | null;
+  contextNote?: string | null;
+  members: HandoffMemberInput[];
+  actorId: string;
+};
+
+export type HandoffReference = { id: string; organizationId?: string | null; challengeIds?: string[] };
 
 export interface HandoffAssignmentRepository {
   create(input: CreateHandoffAssignmentInput): Promise<HandoffAssignment>;
   findById(id: string): Promise<HandoffAssignment | null>;
+  updateCreated(input: UpdateCreatedHandoffAssignmentInput): Promise<HandoffAssignment | null>;
   associateInvitedIdentity(input: {
     assignmentId: string;
     userId: string;

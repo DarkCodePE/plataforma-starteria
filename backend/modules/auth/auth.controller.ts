@@ -2,15 +2,16 @@ import { Request, Response, NextFunction } from 'express';
 import { AuthService } from './auth.service';
 import { ApiResponse } from '../../shared/types/api.types';
 import { AppError } from '../../shared/errors/AppError';
+import { config } from '../../config';
 
 const COOKIE_NAME = 'starteria_rt';
 
-const COOKIE_OPTIONS = {
+export const REFRESH_COOKIE_OPTIONS = {
   httpOnly: true,
   secure: process.env.NODE_ENV === 'production',
   sameSite: 'strict' as const,
-  path: '/api/v1/auth/refresh',
-  maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+  path: '/api/v1/auth',
+  maxAge: config.jwtRefreshTtlMs,
 };
 
 export class AuthController {
@@ -29,7 +30,7 @@ export class AuthController {
       const result = await this.service.registerUser(req.body);
 
       if ('tokens' in result) {
-        res.cookie(COOKIE_NAME, result.tokens.refreshToken, COOKIE_OPTIONS);
+        res.cookie(COOKIE_NAME, result.tokens.refreshToken, REFRESH_COOKIE_OPTIONS);
       }
 
       res.status(201).json({
@@ -57,7 +58,7 @@ export class AuthController {
       const { email, password } = req.body;
       const { user, tokens } = await this.service.loginUser(email, password);
 
-      res.cookie(COOKIE_NAME, tokens.refreshToken, COOKIE_OPTIONS);
+      res.cookie(COOKIE_NAME, tokens.refreshToken, REFRESH_COOKIE_OPTIONS);
 
       res.json({
         success: true,
@@ -86,7 +87,7 @@ export class AuthController {
       const result = await this.service.googleSignInOrCreate(idToken);
 
       if ('tokens' in result) {
-        res.cookie(COOKIE_NAME, result.tokens.refreshToken, COOKIE_OPTIONS);
+        res.cookie(COOKIE_NAME, result.tokens.refreshToken, REFRESH_COOKIE_OPTIONS);
       }
 
       res.json({
@@ -119,7 +120,7 @@ export class AuthController {
 
       const tokens = await this.service.refreshTokens(rawRefreshToken);
 
-      res.cookie(COOKIE_NAME, tokens.refreshToken, COOKIE_OPTIONS);
+      res.cookie(COOKIE_NAME, tokens.refreshToken, REFRESH_COOKIE_OPTIONS);
 
       res.json({
         success: true,
@@ -152,7 +153,7 @@ export class AuthController {
         httpOnly: true,
         secure: process.env.NODE_ENV === 'production',
         sameSite: 'strict' as const,
-        path: '/api/v1/auth/refresh',
+        path: '/api/v1/auth',
       });
 
       res.json({

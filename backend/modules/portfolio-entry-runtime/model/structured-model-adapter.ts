@@ -1,4 +1,4 @@
-﻿import type { ZodType } from 'zod';
+﻿import type { ZodType } from 'zod/v3';
 import type { LiveCandidateMetadata, ModelExecutionPurpose, ModelExecutionResult } from './model-execution-types';
 
 export type StructuredModelGenerateInput<T> = {

@@ -3,8 +3,8 @@
 /*  pilot-interest capture (PRD-003 / SPEC-003 / ADR-015).               */
 /*                                                                       */
 /*  Persists leads through the backend (`POST /public/pilot-leads`).     */
-/*  localStorage is kept ONLY as an idempotency/offline cache keyed by   */
-/*  draftId — never the source of truth. On a network failure the submit */
+/*  A bounded tab-scoped cache is kept only for the immediate success UI. */
+/*  Bearers and contact PII are never persisted in localStorage.          */
 /*  rejects so the caller can surface the error and retry; the form data */
 /*  lives in component state, so nothing is lost.                        */
 /* ------------------------------------------------------------------ */
@@ -104,8 +104,12 @@ function snapshotFromDraft(draftId: string): ProposalSnapshot | undefined {
 
 function getStorage(): Storage | null {
   if (typeof window === 'undefined') return null;
-  return window.localStorage;
+  return window.sessionStorage;
 }
+
+const LEAD_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
+
+type CachedPilotLeads = { expiresAt: string; leads: PublicPilotLead[] };
 
 function readLeads(): PublicPilotLead[] {
   const storage = getStorage();
@@ -113,8 +117,12 @@ function readLeads(): PublicPilotLead[] {
   try {
     const raw = storage.getItem(PILOT_LEADS_KEY);
     if (!raw) return [];
-    const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed : [];
+    const parsed = JSON.parse(raw) as CachedPilotLeads;
+    if (!parsed || !Array.isArray(parsed.leads) || new Date(parsed.expiresAt).getTime() <= Date.now()) {
+      storage.removeItem(PILOT_LEADS_KEY);
+      return [];
+    }
+    return parsed.leads;
   } catch {
     return [];
   }
@@ -123,7 +131,10 @@ function readLeads(): PublicPilotLead[] {
 function writeLeads(leads: PublicPilotLead[]): void {
   const storage = getStorage();
   if (!storage) return;
-  storage.setItem(PILOT_LEADS_KEY, JSON.stringify(leads));
+  storage.setItem(PILOT_LEADS_KEY, JSON.stringify({
+    expiresAt: new Date(Date.now() + LEAD_CACHE_TTL_MS).toISOString(),
+    leads,
+  } satisfies CachedPilotLeads));
 }
 
 function cacheLead(lead: PublicPilotLead): void {
@@ -255,7 +266,13 @@ export function getPendingPilotClaim(): PilotClaimInfo | null {
   if (!storage) return null;
   try {
     const raw = storage.getItem(PILOT_CLAIM_KEY);
-    return raw ? (JSON.parse(raw) as PilotClaimInfo) : null;
+    if (!raw) return null;
+    const claim = JSON.parse(raw) as PilotClaimInfo;
+    if (!claim.expiresAt || new Date(claim.expiresAt).getTime() <= Date.now()) {
+      storage.removeItem(PILOT_CLAIM_KEY);
+      return null;
+    }
+    return claim;
   } catch {
     return null;
   }
@@ -266,7 +283,7 @@ export function clearPendingPilotClaim(): void {
 }
 
 /**
- * Redeem a pilotCode (`ST-PILOT-XXXX`) to resume the initiative. Looks up the
+ * Redeem a high-entropy pilot bearer (`ST-PILOT-…`) to resume the initiative. Looks up the
  * lead server-side and, when the proposal snapshot is available, rehydrates it
  * into a fresh sessionStorage draft so the user can continue at
  * `/auth/continue/:draftId`. Rejects on network/validation/404 so the caller

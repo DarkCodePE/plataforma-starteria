@@ -1,5 +1,5 @@
 import type { NextFunction, Request, Response } from 'express';
-import { z } from 'zod';
+import { z } from 'zod/v3';
 import { PortfolioEntrySessionError } from '../portfolio-entry-sessions/application/portfolio-entry-session-errors';
 import { AppError } from '../../shared/errors/AppError';
 import { mapPortfolioEntryError } from '../portfolio-entry/portfolio-entry.errors';

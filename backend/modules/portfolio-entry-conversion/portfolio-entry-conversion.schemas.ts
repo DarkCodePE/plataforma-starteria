@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import { z } from 'zod/v3';
 
 export const convertPortfolioEntryBodySchema = z.object({
   expectedRevision: z.number().int().min(0),

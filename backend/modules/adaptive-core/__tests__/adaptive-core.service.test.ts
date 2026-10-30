@@ -6,6 +6,9 @@ type Row = Record<string, any>;
 function createStore() {
   return {
     project: [] as Row[],
+    user: [] as Row[],
+    mentorSession: [] as Row[],
+    initiativeGovernance: [] as Row[],
     adaptiveStepConfiguration: [] as Row[],
     adaptiveCheckpointInstance: [] as Row[],
     adaptiveCheckpointResponse: [] as Row[],
@@ -104,6 +107,9 @@ function collection(store: ReturnType<typeof createStore>, name: keyof ReturnTyp
 function makePrisma(store = createStore()) {
   const prisma: any = {
     project: collection(store, 'project'),
+    user: collection(store, 'user'),
+    mentorSession: collection(store, 'mentorSession'),
+    initiativeGovernance: collection(store, 'initiativeGovernance'),
     adaptiveStepConfiguration: collection(store, 'adaptiveStepConfiguration'),
     adaptiveCheckpointInstance: collection(store, 'adaptiveCheckpointInstance'),
     adaptiveCheckpointResponse: collection(store, 'adaptiveCheckpointResponse'),
@@ -128,6 +134,8 @@ function seedProject(store: ReturnType<typeof createStore>, overrides: Row = {})
     id: overrides.id ?? id('project'),
     name: 'Iniciativa',
     ownerId: 'u1',
+    organizationId: 'org-1',
+    status: 'IN_PROGRESS',
     initialReviewSnapshotId: overrides.initialReviewSnapshotId ?? 'snap-1',
     step0Status: 'IN_PROGRESS',
     step0Data: {
@@ -139,19 +147,26 @@ function seedProject(store: ReturnType<typeof createStore>, overrides: Row = {})
       pendingQuestions: overrides.pendingQuestions ?? [{ question: 'Que evidencia falta?' }],
       nextRecommendedStep: overrides.nextRecommendedStep ?? 'Completar Step 0',
     },
-    teamMembers: [{ userId: 'u1' }],
+    teamMembers: [{ userId: 'u1', status: 'ACTIVE' }],
+    mentorSessions: [],
     portfolioMeta: overrides.portfolioMeta ?? [],
     contextSnapshots: overrides.contextSnapshots ?? [],
     steps: [],
     ...overrides,
   };
   store.project.push(project);
+  if (!store.user.some((user) => user.id === project.ownerId)) {
+    store.user.push({ id: project.ownerId, organizationId: project.organizationId });
+  }
   store.teamMember.push(...project.teamMembers.map((member: Row) => ({ ...member, projectId: project.id, status: 'ACTIVE' })));
   if (overrides.portfolioMeta) store.initiativePortfolioMeta.push(...overrides.portfolioMeta);
   return project;
 }
 
 async function completeStep0(service: AdaptiveCoreService, projectId: string) {
+  // Test setup uses the legacy helper deliberately; production commands no longer
+  // create a cycle implicitly.
+  await service.ensureInitialized(projectId, 'u1', 'participante');
   await service.confirmCheckpoint(projectId, 'u1', 'participante', {
     idempotencyKey: `${projectId}-cp01`,
     checkpointKey: 'CP-0.1',
@@ -302,6 +317,7 @@ async function seedHistoricalCp13AndActivateCp14(
   store.adaptiveCheckpointInstance.push({
     id: id('adaptiveCheckpointInstance'),
     projectId,
+    cycleId: config.cycleId,
     stepConfigurationId: config.id,
     stepConfiguration: config,
     stepNumber: 1,
@@ -1282,6 +1298,7 @@ describe('AdaptiveCoreService Step 0 cycle', () => {
     store.adaptiveCheckpointInstance.push({
       id: id('adaptiveCheckpointInstance'),
       projectId: project.id,
+      cycleId: config.cycleId,
       stepConfigurationId: config.id,
       stepConfiguration: config,
       stepNumber: 1,
@@ -1326,6 +1343,7 @@ describe('AdaptiveCoreService Step 0 cycle', () => {
     const step1Config = await (service as any).prisma.adaptiveStepConfiguration.create({
       data: {
         projectId: project.id,
+        cycleId: store.initiativeCycle[0].id,
         stepNumber: 1,
         version: 1,
         status: 'active',
@@ -1339,6 +1357,7 @@ describe('AdaptiveCoreService Step 0 cycle', () => {
     await (service as any).prisma.adaptiveStepOutput.create({
       data: {
         projectId: project.id,
+        cycleId: store.initiativeCycle[0].id,
         stepNumber: 1,
         version: 1,
         sourceConfigurationId: step1Config.id,
@@ -1377,6 +1396,7 @@ describe('AdaptiveCoreService Step 0 cycle', () => {
     const step1Config = await (service as any).prisma.adaptiveStepConfiguration.create({
       data: {
         projectId: project.id,
+        cycleId: store.initiativeCycle[0].id,
         stepNumber: 1,
         version: 1,
         status: 'active',
@@ -1390,6 +1410,7 @@ describe('AdaptiveCoreService Step 0 cycle', () => {
     await (service as any).prisma.adaptiveStepOutput.create({
       data: {
         projectId: project.id,
+        cycleId: store.initiativeCycle[0].id,
         stepNumber: 1,
         version: 1,
         sourceConfigurationId: step1Config.id,
@@ -2156,9 +2177,9 @@ describe('AdaptiveCoreService Step 0 cycle', () => {
       confirmed: true,
     });
 
-    expect(store.project[0].status).toBe('COMPLETED');
+    expect(store.project[0].status).toBe('IN_PROGRESS');
     expect(store.adaptiveStepOutput.filter((item) => item.stepNumber === 4 && item.status === 'confirmed')).toHaveLength(1);
-    expect(store.adaptiveAdaptationEvent.filter((event) => event.eventType === 'initiative_completed')).toHaveLength(1);
+    expect(store.adaptiveAdaptationEvent.filter((event) => event.eventType === 'cycle_completed')).toHaveLength(1);
     expect(store.adaptiveAdaptationEvent.filter((event) => event.eventType === 'initiative_closed')).toHaveLength(0);
   });
 
@@ -2203,7 +2224,12 @@ describe('AdaptiveCoreService Step 0 cycle', () => {
 
   it('32. legacy Step 0 to Step 4 complete flow works', async () => {
     const store = createStore();
-    const project = seedProject(store, { step0Data: { quePasaQueQuieres: 'Legacy', pendingQuestions: [] } });
+    const projectId = 'p-step4-self';
+    const project = seedProject(store, {
+      id: projectId,
+      step0Data: { quePasaQueQuieres: 'Legacy', pendingQuestions: [] },
+      portfolioMeta: [{ id: 'meta-step4-self', projectId, status: 'en_step_4' }],
+    });
     const service = new AdaptiveCoreService(makePrisma(store));
     await service.ensureInitialized(project.id, 'u1', 'participante');
     await confirmStep0AndStartStep1(service, project.id);
@@ -2219,9 +2245,14 @@ describe('AdaptiveCoreService Step 0 cycle', () => {
     });
 
     expect(closed.legacyFallback).toBe(true);
-    expect(store.project[0].status).toBe('COMPLETED');
-    expect(closed.progressSignal?.finalState).toBe('completed');
+    expect(store.project[0].status).toBe('IN_PROGRESS');
+    expect(closed.progressSignal?.finalState).toBe('active');
     expect(closed.progressSignal?.completionRoute).toBe('owner_completed');
+    expect(store.initiativePortfolioMeta[0].status).not.toBe('closed');
+    expect(store.initiativePortfolioMeta[0]).toMatchObject({
+      readyForDecision: false,
+      nextActionRecommended: 'Decidir continuidad, nueva iteracion o cierre de la iniciativa.',
+    });
   });
 
   it('33. Step 0 declara nombre visible y output segun la ruta (PRD-03 §5)', async () => {

@@ -1,7 +1,7 @@
 # ============================================================================
 # Stage 1: Build
 # ============================================================================
-FROM node:20-alpine AS builder
+FROM node:20-alpine@sha256:fb4cd12c85ee03686f6af5362a0b0d56d50c58a04632e6c0fb8363f609372293 AS builder
 
 WORKDIR /app
 
@@ -31,14 +31,15 @@ RUN npx esbuild backend/server.ts --bundle --outfile=dist/backend/server.js --pl
 # ============================================================================
 # Stage 2: Production runtime
 # ============================================================================
-FROM node:20-alpine AS production
+FROM node:20-alpine@sha256:fb4cd12c85ee03686f6af5362a0b0d56d50c58a04632e6c0fb8363f609372293 AS production
 
 WORKDIR /app
 
 ENV NODE_ENV=production
 
-# Install runtime-only native dependencies (bcrypt needs rebuild in clean image)
-RUN apk add --no-cache python3 make g++
+# Install runtime-only native build dependencies (bcrypt needs rebuild in clean image).
+# The virtual package ensures the compiler toolchain is removed as one unit afterwards.
+RUN apk add --no-cache --virtual .build-deps python3 make g++
 
 # Copy package manifests and install production dependencies only
 COPY front/package.json front/package-lock.json ./
@@ -46,16 +47,22 @@ COPY front/package.json front/package-lock.json ./
 # so the vendor dir must land next to the manifests or `npm ci` fails ENOENT.
 COPY front/vendor ./vendor
 
-RUN npm ci --omit=dev && \
-    npm cache clean --force
+RUN npm ci --omit=dev --omit=peer && \
+    node -e "const fs=require('node:fs'); for (const path of ['node_modules/prisma','node_modules/@prisma/config','node_modules/deepmerge-ts','node_modules/c12','node_modules/defu','node_modules/effect','node_modules/typescript','node_modules/@vitejs','node_modules/@vitest']) fs.rmSync(path,{recursive:true,force:true})" && \
+    npm cache clean --force && \
+    rm -f package-lock.json /usr/local/bin/npm /usr/local/bin/npx /usr/local/bin/corepack /usr/local/bin/yarn /usr/local/bin/yarnpkg && \
+    rm -rf /usr/local/lib/node_modules/npm /usr/local/lib/node_modules/corepack "/opt/yarn-v${YARN_VERSION}" /opt/yarn && \
+    node -e "const fs=require('node:fs'); const forbidden=['node_modules/prisma','node_modules/@prisma/config','node_modules/deepmerge-ts','node_modules/c12','node_modules/defu','node_modules/effect','/usr/local/bin/yarn','/usr/local/bin/yarnpkg','/usr/local/lib/node_modules/corepack','/opt/yarn-v1.22.22']; const present=forbidden.filter(path=>fs.existsSync(path)); if(present.length) throw new Error('Forbidden runtime tooling remains: '+present.join(','))"
 
-# Remove build tools after native modules are compiled
-RUN apk del python3 make g++
+# Do not advertise a package manager that has been physically removed.
+ENV YARN_VERSION=""
 
-# Copy Prisma schema and regenerate client for production (ensures correct
-# binary target for the runtime image)
-COPY front/prisma ./prisma/
-RUN npx prisma generate
+# Remove build tools and their transitive dependencies after native modules compile.
+RUN apk del .build-deps
+
+# The Prisma CLI is build/operations-only. Copy the generated Alpine client
+# instead of shipping the vulnerable CLI/config dependency graph at runtime.
+COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
 
 # Copy compiled JavaScript from the build stage
 COPY --from=builder /app/dist/backend ./dist/backend/

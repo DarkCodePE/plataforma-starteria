@@ -66,8 +66,9 @@ describe('Initiative completion service', () => {
     expect(after).toMatchObject({
       methodologicalCompletion: true,
       route: 'owner_completed',
-      initiativeCompleted: true,
+      initiativeCompleted: false,
       portfolioReviewRequired: false,
+      lifecycleProjection: 'active',
     });
   });
 
@@ -89,11 +90,11 @@ describe('Initiative completion service', () => {
     const history = await service.getInitiativeHistory(project.id, 'u1', 'participante');
 
     expect(routing).toMatchObject({
-      lifecycleProjection: 'completed',
+      lifecycleProjection: 'active',
       route: 'owner_completed',
       portfolioReviewRequired: false,
     });
-    expect(history.lifecycleProjection).toBe('completed');
+    expect(history.lifecycleProjection).toBe('active');
     expect(history.cycles[0].confirmedOutputs[0].outputJson).toMatchObject({
       lifecycleProjection: 'presented',
       completionRoute: 'portfolio_presented',
@@ -112,7 +113,7 @@ describe('Initiative completion service', () => {
     const history = await service.getInitiativeHistory(project.id, 'u1', 'participante');
 
     expect(history.summary.status).toBe('COMPLETED');
-    expect(history.lifecycleProjection).toBe('completed');
+    expect(history.lifecycleProjection).toBe('active');
     expect(history.cycles[0]).toMatchObject({ id: cycle.id, status: 'completed' });
     expect(history.cycles[0].confirmedOutputs).toHaveLength(1);
     expect(history.evidence).toHaveLength(1);

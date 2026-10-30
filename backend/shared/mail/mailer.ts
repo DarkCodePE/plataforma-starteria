@@ -15,6 +15,8 @@ export interface MailMessage {
   subject: string;
   text: string;
   html?: string;
+  from?: string;
+  replyTo?: string;
 }
 
 export interface Mailer {
@@ -47,20 +49,31 @@ export const mailer: Mailer = {
   },
 
   async send(message: MailMessage): Promise<boolean> {
-    if (!this.enabled) {
+    if (!config.smtp.host || !(message.from || config.smtp.from)) {
       logger.warn({ subject: message.subject }, 'Mailer disabled (SMTP not configured) — email not sent');
       return false;
     }
-    await getTransport().sendMail({
-      from: config.smtp.from,
-      to: message.to,
-      subject: message.subject,
-      text: message.text,
-      html: message.html,
-    });
-    return true;
+    const receipt = await sendMailWithReceipt(message);
+    return receipt.acceptedByTransport;
   },
 };
+
+export async function sendMailWithReceipt(message: MailMessage): Promise<{ acceptedByTransport: boolean; providerMessageRef?: string }> {
+  const from = message.from || config.smtp.from;
+  if (!config.smtp.host || !from) {
+    logger.warn({ subject: message.subject }, 'Mailer disabled (SMTP or sender not configured) — email not sent');
+    return { acceptedByTransport: false };
+  }
+  const receipt = await getTransport().sendMail({
+    from,
+    replyTo: message.replyTo || undefined,
+    to: message.to,
+    subject: message.subject,
+    text: message.text,
+    html: message.html,
+  });
+  return { acceptedByTransport: true, providerMessageRef: receipt.messageId };
+}
 
 /** Test seam: reset the cached transport between suites. */
 export function __resetMailerTransportForTests(): void {
