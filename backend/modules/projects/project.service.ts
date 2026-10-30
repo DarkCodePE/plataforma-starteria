@@ -366,6 +366,24 @@ export class ProjectService {
             ],
           } as any,
         });
+
+        const challengeTeam = await tx.challengeTeamMember.findMany({
+          where: { challengeId: linkedChallenge.id, userId: { not: null } },
+          select: { userId: true, role: true, status: true },
+        });
+        const inherited = challengeTeam.filter((member) => member.userId && member.userId !== userId);
+        if (inherited.length > 0) {
+          await tx.teamMember.createMany({
+            data: inherited.map((member) => ({
+              projectId: created.id,
+              userId: member.userId as string,
+              role: member.role,
+              status: member.status,
+              inheritedFromChallenge: true,
+            })),
+            skipDuplicates: true,
+          });
+        }
       } else if (legacyChallengeId) {
         const legacyChallenge = await tx.challenge.findUnique({
           where: { id: legacyChallengeId },
