@@ -310,7 +310,7 @@ function createResilientModel(primaryConfig: ReturnType<typeof loadPortfolioEntr
   const fallback = loadFallbackProviderConfig();
   return new ResilientStructuredModelAdapter(
     primary,
-    fallback ? new FetchStructuredModelAdapter(fallback) : undefined,
+    fallback ? new FetchStructuredModelAdapter({ ...fallback, reasoningEffort: primaryConfig.reasoningEffort }) : undefined,
   );
 }
 

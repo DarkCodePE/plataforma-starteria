@@ -79,6 +79,10 @@ export class FetchStructuredModelAdapter implements StructuredModelAdapter {
         },
         body: JSON.stringify({
           model: this.config.model,
+          ...(this.config.reasoningEffort !== undefined ? {
+            reasoning: { effort: this.config.reasoningEffort },
+            provider: { require_parameters: true },
+          } : {}),
           ...(this.config.temperature !== undefined ? { temperature: this.config.temperature } : {}),
           input: [
             { role: 'system', content: input.systemPrompt },
