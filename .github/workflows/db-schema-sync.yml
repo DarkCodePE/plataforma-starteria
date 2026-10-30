@@ -131,13 +131,18 @@ jobs:
       - name: ADR-009 production preflights (read-only)
         run: |
           set -euo pipefail
+          canonical_migrations_b64=$(node scripts/preflight/build-canonical-migration-manifest.mjs | base64 -w0)
           for sql in \
             scripts/preflight/kan182-adr009-migration-history-readonly.sql \
             scripts/preflight/kan182-adr009-production-readonly.sql \
-            scripts/preflight/kan183-adr009-catalog-equivalence-readonly.sql; do
+            scripts/preflight/kan183-adr009-catalog-equivalence-readonly.sql \
+            scripts/preflight/mvp-release-01-expanded-migration-inventory-readonly.sql; do
             echo "--- read-only preflight: $sql"
             kubectl exec -i -n "$NAMESPACE" statefulset/starteria-db -- \
-              psql -U starteria -d starteria_db -P pager=off -v ON_ERROR_STOP=1 \
+              env PGAPPNAME=mvp-release-01-readonly-inventory \
+                PGOPTIONS="-c default_transaction_read_only=on -c statement_timeout=20000 -c lock_timeout=2000 -c idle_in_transaction_session_timeout=30000" \
+              psql -X -U starteria -d starteria_db -P pager=off -v ON_ERROR_STOP=1 \
+                -v "canonical_migrations_b64=$canonical_migrations_b64" \
               -f - < "$sql"
           done
 
