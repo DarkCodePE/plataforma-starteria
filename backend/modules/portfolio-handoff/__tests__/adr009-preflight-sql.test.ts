@@ -1,5 +1,6 @@
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { createHash } from 'node:crypto';
+import { execFileSync } from 'node:child_process';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
@@ -91,6 +92,52 @@ describe('KAN-183 ADR-009 catalog equivalence preflight', () => {
   });
 });
 
+describe('MVP-RELEASE-01 expanded production inventory', () => {
+  it('builds a canonical LF checksum manifest for every repository migration', () => {
+    const manifest = JSON.parse(execFileSync(
+      process.execPath,
+      [resolve(process.cwd(), '../scripts/preflight/build-canonical-migration-manifest.mjs')],
+      { encoding: 'utf8' },
+    )) as Array<{ migrationName: string; checksum: string }>;
+    const migrationNames = readdirSync(resolve(process.cwd(), 'prisma/migrations'), { withFileTypes: true })
+      .filter((entry) => entry.isDirectory())
+      .map((entry) => entry.name)
+      .filter((name) => /^\d{14}_[a-z0-9_]+$/.test(name))
+      .sort();
+
+    expect(manifest.map((entry) => entry.migrationName)).toEqual(migrationNames);
+    expect(new Set(manifest.map((entry) => entry.migrationName)).size).toBe(manifest.length);
+    expect(manifest.every((entry) => /^[a-f0-9]{64}$/.test(entry.checksum))).toBe(true);
+    expect(manifest.find((entry) => entry.migrationName === '20261023090000_add_adr009_imported_initiative_canonicalization')?.checksum)
+      .toBe('ae472002b0862a3b608e82abc6b6d2bdf1c50c12bd4a3411039fa383c6b990d8');
+  });
+
+  it('keeps the expanded inventory fixed, read-only, bounded and free of credential values', () => {
+    const sql = readFileSync(
+      resolve(process.cwd(), '../scripts/preflight/mvp-release-01-expanded-migration-inventory-readonly.sql'),
+      'utf8',
+    );
+
+    expect(sql).toContain('BEGIN TRANSACTION READ ONLY');
+    expect(sql).toContain("SET LOCAL statement_timeout = '20s'");
+    expect(sql).toContain("SET LOCAL lock_timeout = '2s'");
+    expect(sql).toContain('canonical_migrations_b64');
+    expect(sql).toContain("decode(:'canonical_migrations_b64', 'base64')");
+    expect(sql).toContain('APPLIED_CHECKSUM_MISMATCH');
+    expect(sql).toContain('cmuyalf02000adi010zwlqek0');
+    expect(sql).toContain('NOT_YET_EVALUABLE');
+    expect(sql).toContain('refresh_active_duplicate_families');
+    expect(sql).toContain('pilot_project_duplicate_leads');
+    expect(sql).toContain('pilot_legacy_credentials_to_invalidate');
+    expect(sql).toContain('ROLLBACK');
+    expect(sql).not.toMatch(/SELECT\s+[^;]*(?:"email"|"phone"|"tokenHash")/i);
+    expect(sql).not.toMatch(/SELECT\s+(?:DISTINCT\s+)?"pilotCode"(?:\s|,)/i);
+
+    const statements = sql.replace(/^\s*--.*$/gm, '');
+    expect(statements).not.toMatch(/\b(?:INSERT|UPDATE|DELETE|ALTER|DROP|CREATE|TRUNCATE|GRANT|REVOKE)\b/i);
+  });
+});
+
 describe('production DB schema sync workflow', () => {
   it('continues after opening the tunnel and runs every read-only preflight before apply', () => {
     const workflow = readFileSync(
@@ -120,6 +167,14 @@ describe('production DB schema sync workflow', () => {
     expect(preflightStep).toContain('kan182-adr009-migration-history-readonly.sql');
     expect(preflightStep).toContain('kan182-adr009-production-readonly.sql');
     expect(preflightStep).toContain('kan183-adr009-catalog-equivalence-readonly.sql');
+    expect(preflightStep).toContain('mvp-release-01-expanded-migration-inventory-readonly.sql');
+    expect(preflightStep).toContain('build-canonical-migration-manifest.mjs');
+    expect(preflightStep).toContain('canonical_migrations_b64');
+    expect(preflightStep).toContain('default_transaction_read_only=on');
+    expect(preflightStep).toContain('statement_timeout=20000');
+    expect(preflightStep).toContain('lock_timeout=2000');
+    expect(preflightStep).toContain('idle_in_transaction_session_timeout=30000');
+    expect(preflightStep).toContain('psql -X');
     expect(preflightStep).toContain('ON_ERROR_STOP=1');
     expect(preflightStep).not.toContain('if: ${{ inputs.apply }}');
   });
