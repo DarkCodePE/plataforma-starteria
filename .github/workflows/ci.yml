@@ -75,6 +75,12 @@ jobs:
           PORTFOLIO_ENTRY_DB_INTEGRATION: '1'
         run: npm exec -- vitest run --config vitest.backend.config.ts ../backend/modules/portfolio-entry-sessions/__tests__/prisma-portfolio-entry-session.repository.integration.test.ts
 
+      - name: Run Internal Lab administrative PostgreSQL integration suite
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/starteria_e2e
+          INTERNAL_LAB_ADMIN_DB_E2E: '1'
+        run: npm exec -- vitest run --config vitest.backend.config.ts ../backend/scripts/__tests__/starteria-internal-lab-admin.integration.test.ts
+
       - name: Run Portfolio Entry v0.2 isolated validation
         # Candidate-only deterministic validation. It does not promote v0.2,
         # mutate product state, or replace the v0.1 consumer test surface.
