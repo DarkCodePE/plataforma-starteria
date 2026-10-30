@@ -89,8 +89,15 @@ jobs:
           echo "DATABASE_URL=postgresql://starteria:$(jq -nr --arg v "$pw" '$v|@uri')@127.0.0.1:15432/starteria_db" >> "$GITHUB_ENV"
           kubectl -n "$NAMESPACE" port-forward statefulset/starteria-db 15432:5432 > "$RUNNER_TEMP/pf.log" 2>&1 &
           echo $! > "$RUNNER_TEMP/pf.pid"
-          for i in $(seq 30); do (echo > /dev/tcp/127.0.0.1/15432) 2>/dev/null && exit 0; sleep 1; done
-          echo "::error::port-forward did not come up"; cat "$RUNNER_TEMP/pf.log"; exit 1
+          for i in $(seq 30); do
+            (echo > /dev/tcp/127.0.0.1/15432) 2>/dev/null && break
+            sleep 1
+          done
+          if ! (echo > /dev/tcp/127.0.0.1/15432) 2>/dev/null; then
+            echo "::error::port-forward did not come up"
+            cat "$RUNNER_TEMP/pf.log"
+            exit 1
+          fi
 
       - name: Install Prisma CLI (same version as the repo)
         run: |
@@ -120,6 +127,19 @@ jobs:
           if [ $code -ne 0 ] && ! grep -q 'have not yet been applied' <<<"$out"; then
             echo "::error::prisma migrate status falló por algo distinto a migraciones pendientes"; exit 1
           fi
+
+      - name: ADR-009 production preflights (read-only)
+        run: |
+          set -euo pipefail
+          for sql in \
+            scripts/preflight/kan182-adr009-migration-history-readonly.sql \
+            scripts/preflight/kan182-adr009-production-readonly.sql \
+            scripts/preflight/kan183-adr009-catalog-equivalence-readonly.sql; do
+            echo "--- read-only preflight: $sql"
+            kubectl exec -i -n "$NAMESPACE" statefulset/starteria-db -- \
+              psql -U starteria -d starteria_db -P pager=off -v ON_ERROR_STOP=1 \
+              -f - < "$sql"
+          done
 
       - name: Validate mark_applied
         if: ${{ inputs.apply && inputs.mark_applied != '' }}
