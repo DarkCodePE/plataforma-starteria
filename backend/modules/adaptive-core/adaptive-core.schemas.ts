@@ -2,6 +2,7 @@ import { z } from 'zod/v3';
 
 export const checkpointResponseSchema = z.object({
   idempotencyKey: z.string().min(6),
+  expectedVersion: z.number().int().min(0).optional(),
   checkpointKey: z.string().min(1),
   responses: z.record(z.unknown()).default({}),
   truthBindings: z.object({
@@ -15,6 +16,19 @@ export const checkpointResponseSchema = z.object({
   }).optional(),
   confirmedAt: z.string().datetime().optional(),
 });
+
+export const checkpointResponseCommandSchema = checkpointResponseSchema.and(z.object({
+  expectedVersion: z.number().int().min(0),
+}));
+
+export const initiativeCycleActivationSchema = z.object({
+  idempotencyKey: z.string().min(6),
+  expectedVersion: z.number().int().min(0),
+  origin: z.object({
+    kind: z.enum(['DIRECT_PROJECT', 'INITIAL_REVIEW', 'PORTFOLIO_ENTRY_CONVERSION']),
+    refId: z.string().min(1).optional(),
+  }),
+}).strict();
 
 export const criticalChangeSchema = z.object({
   idempotencyKey: z.string().min(6),
@@ -63,6 +77,7 @@ export const confirmBriefSchema = z.object({
 });
 
 export type CheckpointResponseInput = z.infer<typeof checkpointResponseSchema>;
+export type InitiativeCycleActivationInput = z.infer<typeof initiativeCycleActivationSchema>;
 export type CriticalChangeInput = z.infer<typeof criticalChangeSchema>;
 export type ConfirmCriticalChangeTransitionInput = z.infer<typeof confirmCriticalChangeTransitionSchema>;
 export type DecisionReadinessQueryInput = z.infer<typeof decisionReadinessQuerySchema>;

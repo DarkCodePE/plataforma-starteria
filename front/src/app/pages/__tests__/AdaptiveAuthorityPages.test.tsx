@@ -22,6 +22,7 @@ const confirmStep2Output = vi.fn();
 const confirmStep3Output = vi.fn();
 const confirmStep4Output = vi.fn();
 const getById = vi.fn();
+const stepReasoningFeature = vi.hoisted(() => ({ enabled: false }));
 vi.mock('../../../features/adaptive-core/services/adaptiveCoreService', async (importOriginal) => ({
   explainCheckpointError: (await importOriginal<typeof import('../../../features/adaptive-core/services/adaptiveCoreService')>()).explainCheckpointError,
   getAdaptiveCore: (id: string) => getAdaptiveCore(id),
@@ -68,6 +69,18 @@ vi.mock('../../services/stepService', () => ({
 
 vi.mock('../../services/featureFlags', () => ({
   isPdfAutofillEnabled: () => false,
+  isStepReasoningCopilotEnabled: () => stepReasoningFeature.enabled,
+}));
+
+vi.mock('../../../features/step-reasoning/components', () => ({
+  StepReasoningPanel: ({ missionContext }: any) => (
+    <section data-testid="step-reasoning-panel-mock">
+      <span>{missionContext?.contextLabel}</span>
+      <span>{missionContext?.cycleObjective ?? 'Por definir en Step 0'}</span>
+      <span>{missionContext?.step0Method}</span>
+      <span>{missionContext?.missionSource}</span>
+    </section>
+  ),
 }));
 
 const inviteTeamMember = vi.fn();
@@ -299,6 +312,7 @@ async function showStep0AdvanceCta() {
 describe('Adaptive authority in pages', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    stepReasoningFeature.enabled = false;
     navigate.mockReset();
     appState.projects = [project];
     getAdaptiveCore.mockReset();
@@ -310,6 +324,50 @@ describe('Adaptive authority in pages', () => {
     confirmAdaptiveCheckpoint.mockReset();
     getById.mockReset();
     getById.mockResolvedValue(project);
+  });
+
+  it('labels progress only as checkpoints confirmed from persisted Core state', async () => {
+    stepReasoningFeature.enabled = true;
+    getAdaptiveCore.mockResolvedValueOnce({
+      ...serverCore,
+      confirmedResponses: {},
+      checkpointInstances: [
+        { checkpointKey: 'CP-0.1', step: 0, status: 'completed' },
+        { checkpointKey: 'CP-0.2', step: 0, status: 'ready' },
+        { checkpointKey: 'CP-0.3', step: 0, status: 'locked' },
+      ],
+      stepConfigurations: [{
+        ...serverCore.stepConfigurations[0],
+        checkpoints: [
+          { id: 'cp-01', step: 0, code: 'CP-0.1', title: 'Enmarcar la iniciativa', purpose: 'Enmarcar', status: 'completed', outputKey: 'Brief', completionCriteria: [], questions: [], gates: [] },
+          { id: 'cp-02', step: 0, code: 'CP-0.2', title: 'Aterrizar condiciones', purpose: 'Aterrizar', status: 'ready', outputKey: 'Brief', completionCriteria: [], questions: [], gates: [] },
+          { id: 'cp-03', step: 0, code: 'CP-0.3', title: 'Definir decisión', purpose: 'Decidir', status: 'locked', outputKey: 'Brief', completionCriteria: [], questions: [], gates: [] },
+        ],
+      }],
+    });
+
+    render(<Step0Page />);
+
+    expect((await screen.findAllByText(/1\/3 checkpoints confirmados/i)).length).toBeGreaterThan(0);
+    expect(screen.queryByText(/checkpoints revisados/i)).not.toBeInTheDocument();
+  });
+
+  it('uses the review action only to focus the active checkpoint without confirming it', async () => {
+    stepReasoningFeature.enabled = true;
+    getAdaptiveCore.mockResolvedValueOnce(serverCoreAtStep(0, 'CP-0.1'));
+    const scrollIntoView = vi.fn();
+    const originalScrollIntoView = HTMLElement.prototype.scrollIntoView;
+    HTMLElement.prototype.scrollIntoView = scrollIntoView;
+
+    render(<Step0Page />);
+
+    fireEvent.click(await screen.findByRole('button', { name: /^Revisar checkpoint$/i }));
+
+    expect(scrollIntoView).toHaveBeenCalledTimes(1);
+    expect(confirmAdaptiveCheckpoint).not.toHaveBeenCalled();
+    expect(confirmStep0Brief).not.toHaveBeenCalled();
+
+    HTMLElement.prototype.scrollIntoView = originalScrollIntoView;
   });
 
   it('agregar sponsor guarda la invitación en el servidor (antes quedaba sólo en el navegador)', async () => {
@@ -356,7 +414,7 @@ describe('Adaptive authority in pages', () => {
     render(<ProjectHomePage />);
     fireEvent.click(await screen.findByRole('button', { name: /Reintentar/i }));
 
-    await waitFor(() => expect(screen.getByText(/Step activo: 0/i)).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText(/Step actual: 0/i)).toBeInTheDocument());
     expect(screen.getAllByText(/Accion server/i).length).toBeGreaterThan(0);
   });
 
@@ -534,7 +592,7 @@ describe('Adaptive authority in pages', () => {
     render(<Step1Page />);
 
     expect(await screen.findByTestId('adaptive-workspace')).toBeInTheDocument();
-    expect(screen.getByText('CP-1.1')).toBeInTheDocument();
+    expect(screen.getAllByText('CP-1.1').length).toBeGreaterThan(0);
     expect(screen.queryByText(/Módulo A: Análisis inicial del problema/i)).not.toBeInTheDocument();
   });
 
@@ -555,8 +613,31 @@ describe('Adaptive authority in pages', () => {
     render(<Step1Page />);
 
     expect(await screen.findByTestId('adaptive-workspace')).toBeInTheDocument();
-    expect(screen.getByText('CP-1.1')).toBeInTheDocument();
+    expect(screen.getAllByText('CP-1.1').length).toBeGreaterThan(0);
     expect(screen.queryByText(/Step 0 aún debe confirmarse/i)).not.toBeInTheDocument();
+  });
+
+  it('Step0 and Step1 become truthful read-only history when the operational Step is 2 without prior outputs', async () => {
+    appState.projects = [{ ...project, currentStep: 2, step0Status: 'Completado' }];
+    const advancedWithoutHistory = {
+      ...serverCoreAtStep(2, 'CP-2.1'),
+      activeCheckpoint: null,
+      stepConfigurations: [serverCoreAtStep(2, 'CP-2.1').stepConfigurations[2]],
+      stepOutputs: [],
+      cycle: { id: 'cycle-1', cycleNumber: 1, startStep: 0, currentStep: 2, status: 'active' },
+    };
+    getAdaptiveCore.mockResolvedValue(advancedWithoutHistory);
+
+    const step0 = render(<Step0Page />);
+    expect(await screen.findByRole('heading', { name: /Histórico de Step 0/i })).toBeInTheDocument();
+    expect(screen.getByText(/resultado no documentado/i)).toBeInTheDocument();
+    expect(screen.queryByTestId('adaptive-workspace')).not.toBeInTheDocument();
+    step0.unmount();
+
+    render(<Step1Page />);
+    expect(await screen.findByRole('heading', { name: /Histórico de Step 1/i })).toBeInTheDocument();
+    expect(screen.getByText(/resultado no documentado/i)).toBeInTheDocument();
+    expect(screen.queryByTestId('adaptive-workspace')).not.toBeInTheDocument();
   });
 
   it('Step1 confirms only the active checkpoint and renders the next one after Core reload', async () => {
@@ -568,7 +649,7 @@ describe('Adaptive authority in pages', () => {
 
     await waitFor(() => expect(confirmAdaptiveCheckpoint).toHaveBeenCalledTimes(1));
     expect(confirmAdaptiveCheckpoint.mock.calls[0][1]).toMatchObject({ checkpointKey: 'CP-1.1' });
-    expect(screen.getByText('CP-1.2')).toBeInTheDocument();
+    expect(screen.getAllByText('CP-1.2').length).toBeGreaterThan(0);
     expect(confirmAdaptiveCheckpoint).not.toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ checkpointKey: 'CP-1.2' }));
   });
 
@@ -590,7 +671,7 @@ describe('Adaptive authority in pages', () => {
 
     render(<Step1Page />);
     for (const expectedCheckpoint of ['CP-1.1', 'CP-1.2', 'CP-1.3', 'CP-1.4']) {
-      expect(await screen.findByText(expectedCheckpoint)).toBeInTheDocument();
+      expect((await screen.findAllByText(expectedCheckpoint)).length).toBeGreaterThan(0);
       fireEvent.click(screen.getByRole('button', { name: /Confirmar checkpoint/i }));
       await waitFor(() => expect(confirmAdaptiveCheckpoint).toHaveBeenCalledTimes(
         ['CP-1.1', 'CP-1.2', 'CP-1.3', 'CP-1.4'].indexOf(expectedCheckpoint) + 1,
@@ -626,7 +707,7 @@ describe('Adaptive authority in pages', () => {
     fireEvent.click(await screen.findByRole('button', { name: /Confirmar checkpoint/i }));
 
     expect(await screen.findByRole('alert')).toHaveTextContent(message);
-    expect(screen.getByText('CP-1.3')).toBeInTheDocument();
+    expect(screen.getAllByText('CP-1.3').length).toBeGreaterThan(0);
     expect(confirmAdaptiveCheckpoint).toHaveBeenCalledTimes(1);
     expect(navigate).not.toHaveBeenCalledWith('/projects/p1/step/2');
   });
@@ -658,13 +739,13 @@ describe('Adaptive authority in pages', () => {
     getAdaptiveCore.mockResolvedValueOnce(serverCoreAtStep(2, 'CP-2.1'));
     render(<Step2Page />);
     expect(await screen.findByTestId('adaptive-workspace')).toBeInTheDocument();
-    expect(screen.getByText('CP-2.1')).toBeInTheDocument();
+    expect(screen.getAllByText('CP-2.1').length).toBeGreaterThan(0);
     expect(screen.queryByText(/Módulo A · HMW/i)).not.toBeInTheDocument();
 
     getAdaptiveCore.mockResolvedValueOnce(serverCoreAtStep(3, 'CP-3.1'));
     render(<Step3Page />);
     expect(await screen.findAllByTestId('adaptive-workspace')).not.toHaveLength(0);
-    expect(screen.getByText('CP-3.1')).toBeInTheDocument();
+    expect(screen.getAllByText('CP-3.1').length).toBeGreaterThan(0);
     expect(screen.queryByText(/SUBMÓDULOS/i)).not.toBeInTheDocument();
   });
 
@@ -712,9 +793,9 @@ describe('Adaptive authority in pages', () => {
 
     render(<Step4Page />);
 
-    const heading = await screen.findByRole('heading', { name: 'Step 4' });
-    await waitFor(() => expect(heading.parentElement).toHaveTextContent('Completado'));
-    expect(heading.parentElement).not.toHaveTextContent('En progreso');
+    await screen.findByRole('heading', { name: 'Step 4' });
+    await waitFor(() => expect(screen.getByText('v1')).toBeInTheDocument());
+    expect(screen.queryByText(/Todavía no hay un resultado confirmado disponible/i)).not.toBeInTheDocument();
   });
 
   it('Step4 sigue En progreso mientras su resultado no está confirmado', async () => {
@@ -722,9 +803,9 @@ describe('Adaptive authority in pages', () => {
 
     render(<Step4Page />);
 
-    const heading = await screen.findByRole('heading', { name: 'Step 4' });
+    await screen.findByRole('heading', { name: 'Step 4' });
     await waitFor(() => expect(getAdaptiveCore).toHaveBeenCalled());
-    expect(heading.parentElement).toHaveTextContent('En progreso');
+    expect(screen.getByText(/Todavía no hay un resultado confirmado disponible/i)).toBeInTheDocument();
   });
 
   it('shows a real load error once when route project hydration fails', async () => {
@@ -763,7 +844,7 @@ describe('Adaptive authority in pages', () => {
 
     render(<ProjectHomePage />);
 
-    await waitFor(() => expect(screen.getByText(/Step activo: 1/i)).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText(/Step actual: 1/i)).toBeInTheDocument());
     fireEvent.click(screen.getAllByText(/Step 2: Step 2 server/i).at(-1)!);
 
     expect(navigate).not.toHaveBeenCalledWith('/projects/p1/step/2');
@@ -785,7 +866,7 @@ describe('Adaptive authority in pages', () => {
 
     render(<ProjectHomePage />);
 
-    await waitFor(() => expect(screen.getByText(/Step activo: 2/i)).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText(/Step actual: 2/i)).toBeInTheDocument());
     fireEvent.click(screen.getAllByText(/Step 2: Step 2 server/i).at(-1)!);
 
     expect(navigate).toHaveBeenCalledWith('/projects/p1/step/2');
@@ -808,7 +889,7 @@ describe('Adaptive authority in pages', () => {
     render(<Step3Page />);
 
     expect(await screen.findByText(/Step 3 bloqueado/i)).toBeInTheDocument();
-    expect(screen.getByText(/El backend Adaptive Core todavia no habilita Step 3/i)).toBeInTheDocument();
+    expect(screen.getByText(/El Adaptive Core todavía no habilita Step 3/i)).toBeInTheDocument();
     expect(navigate).not.toHaveBeenCalledWith('/projects/p1/step/4');
   });
 

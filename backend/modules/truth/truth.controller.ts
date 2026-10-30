@@ -5,7 +5,8 @@ import { TruthService } from './truth.service';
 
 function actorFrom(req: AuthenticatedRequest) {
   const user = req.user!;
-  return { id: user.id, role: user.role, type: 'human' as const };
+  const effectiveRole = (req as any).projectAuthority?.effectiveRole;
+  return { id: user.id, role: effectiveRole ?? user.role, type: 'human' as const };
 }
 
 export class TruthController {

@@ -9,8 +9,30 @@ import {
   getCheckpoint,
   listProjectCheckpoints,
 } from './sponsor.controller';
+import { prisma } from '../../shared/db/prisma';
+import { AppError } from '../../shared/errors/AppError';
+import { requireProjectTeamAccess } from '../projects/project-team-access';
 
 const router = Router();
+const canReadProject = requireProjectTeamAccess(prisma, 'read', 'projectId');
+
+const resolveCheckpointReadAccess = async (req: any, res: any, next: any) => {
+  try {
+    const checkpoint = await prisma.sponsorCheckpoint.findUnique({
+      where: { id: req.params.id },
+      select: { projectId: true, sponsorId: true },
+    });
+    if (!checkpoint) throw AppError.notFound('Checkpoint', 'CHECKPOINT_NOT_FOUND');
+    if (checkpoint.sponsorId === req.user!.id) {
+      req.projectAuthority = { projectId: checkpoint.projectId, effectiveRole: 'sponsor', need: 'read' };
+      return next();
+    }
+    req.params.projectId = checkpoint.projectId;
+    return canReadProject(req, res, next);
+  } catch (err) {
+    next(err);
+  }
+};
 
 // All routes require authentication
 router.use(authenticate);
@@ -24,7 +46,7 @@ router.post(
 );
 
 // Get checkpoint details (any authenticated user with project access)
-router.get('/checkpoints/:id', getCheckpoint);
+router.get('/checkpoints/:id', resolveCheckpointReadAccess, getCheckpoint);
 
 // Sponsor responds to checkpoint
 router.patch(
@@ -42,6 +64,6 @@ router.patch(
 );
 
 // List checkpoints for a project
-router.get('/projects/:projectId/checkpoints', listProjectCheckpoints);
+router.get('/projects/:projectId/checkpoints', canReadProject, listProjectCheckpoints);
 
 export { router as sponsorRouter };

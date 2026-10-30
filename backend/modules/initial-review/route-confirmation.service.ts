@@ -96,12 +96,12 @@ export class RouteConfirmationService {
       throw AppError.badRequest('No pudimos terminar de crear la iniciativa.', 'INITIATIVE_CREATE_FAILED', { hint: 'Tu revisión quedó guardada. Intenta nuevamente.' });
     }
 
-    await this.finalize(confirmation.id, project.id, snapshot, review, userId);
+    await this.finalize(confirmation.id, project.id, snapshot, review, userId, project.organizationId);
     return this.result(confirmation.id, project.id);
   }
 
   /** Campos de procedencia + prefill + estados, atómico. Repetible: sólo escribe valores fijos. */
-  private async finalize(confirmationId: string, projectId: string, snapshot: any, review: { id: string; challengeId?: string | null }, userId: string) {
+  private async finalize(confirmationId: string, projectId: string, snapshot: any, review: { id: string; challengeId?: string | null }, userId: string, knownOrganizationId?: string | null) {
     try {
       await this.prisma.$transaction([
         this.prisma.project.update({
@@ -111,7 +111,23 @@ export class RouteConfirmationService {
         this.prisma.routeConfirmation.update({ where: { id: confirmationId }, data: { createdProjectId: projectId, status: 'initiative_created' } }),
         this.prisma.initialReview.update({ where: { id: review.id }, data: { status: 'converted_to_initiative' } }),
       ]);
-      await new AdaptiveCoreService(this.prisma).ensureInitialized(projectId, userId, 'participante');
+      const adaptiveCore = new AdaptiveCoreService(this.prisma);
+      const organizationId = knownOrganizationId ?? (
+        typeof (this.prisma as any).project.findUnique === 'function'
+          ? (await (this.prisma as any).project.findUnique({ where: { id: projectId }, select: { organizationId: true } }))?.organizationId
+          : null
+      );
+      if (organizationId) {
+        await adaptiveCore.activateInitiativeCycle(projectId, userId, 'participante', {
+          idempotencyKey: `initial-review-${confirmationId}`,
+          expectedVersion: 0,
+          origin: { kind: 'INITIAL_REVIEW', refId: confirmationId },
+        });
+      } else {
+        // Legacy personal Initial Review has no canonical tenant yet. Preserve its
+        // current behavior; fail-closed SEC-02B activation cannot infer a tenant.
+        await adaptiveCore.ensureInitialized(projectId, userId, 'participante');
+      }
     } catch (err) {
       if (err instanceof AppError) throw err;
       throw AppError.badRequest('La iniciativa se creó pero no terminó de prepararse.', 'INITIATIVE_FINALIZE_FAILED', {

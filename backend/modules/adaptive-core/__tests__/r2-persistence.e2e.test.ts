@@ -10,9 +10,12 @@ const adaptive = new AdaptiveCoreService(prisma);
 const truth = new TruthService(prisma);
 
 const userId = 'user-r2-persistence-e2e';
+const mentorId = 'user-r2-persistence-mentor';
 const otherUserId = 'user-r2-persistence-other';
+const organizationId = 'org-r2-persistence-e2e';
 const projectPrefix = 'project-r2-persistence-e2e';
-const actor = { id: userId, role: 'mentor' };
+const ownerActor = { id: userId, role: 'participante' };
+const mentorActor = { id: mentorId, role: 'mentor' };
 
 type TruthState = 'supported' | 'contradicted' | 'insufficient' | 'unvalidated';
 
@@ -48,18 +51,22 @@ async function clean() {
   await prisma.truthClaim.deleteMany({ where });
   await prisma.sourceRef.deleteMany({ where });
   await prisma.project.deleteMany({ where: { id: { in: projectIds } } });
-  await prisma.user.deleteMany({ where: { id: { in: [userId, otherUserId] } } });
+  await prisma.organizationMember.deleteMany({ where: { organizationId } });
+  await prisma.user.deleteMany({ where: { id: { in: [userId, mentorId, otherUserId] } } });
+  await prisma.organization.deleteMany({ where: { id: organizationId } });
 }
 
-async function createUser(id: string, email: string) {
+async function createUser(id: string, email: string, role: 'participante' | 'mentor' = 'participante') {
   return prisma.user.create({
     data: {
       id,
       email,
       name: email,
-      role: 'mentor',
+      role,
+      roles: [role],
       initials: 'RP',
       skills: [],
+      organizationId,
     },
   });
 }
@@ -71,6 +78,7 @@ async function createProject(id: string) {
       name: `R2 persistence ${id}`,
       description: 'Disposable R2 persistence E2E project.',
       ownerId: userId,
+      organizationId,
       step0Status: 'IN_PROGRESS',
       step0Data: {
         challengeType: 'growth',
@@ -81,6 +89,10 @@ async function createProject(id: string) {
         pendingQuestions: [{ question: 'Que evidencia valida el foco?' }],
         nextRecommendedStep: 'Completar Step 0',
       },
+      teamMembers: { create: [
+        { userId, role: 'OWNER', status: 'ACTIVE', modulePermissions: [] },
+        { userId: mentorId, role: 'VIEWER', status: 'ACTIVE', modulePermissions: [] },
+      ] },
     },
   });
 }
@@ -90,7 +102,7 @@ async function createTruthBinding(projectId: string, state: TruthState = 'suppor
     projectId: String(overrides.sourceProjectId ?? projectId),
     sourceType: 'USER_INPUT',
     reference: String(overrides.reference ?? `${projectId}-${state}-source`),
-  }, actor);
+  }, ownerActor);
   const claim = await truth.createClaim({
     projectId: String(overrides.claimProjectId ?? projectId),
     subjectType: 'initiative',
@@ -99,7 +111,7 @@ async function createTruthBinding(projectId: string, state: TruthState = 'suppor
     statement: String(overrides.statement ?? 'La evidencia persistente soporta el foco de Step 1.'),
     createdByType: 'human',
     sourceRefIds: [],
-  }, actor);
+  }, ownerActor);
   const evidence = await truth.attachEvidence({
     projectId: String(overrides.evidenceProjectId ?? projectId),
     targetClaimId: String(overrides.evidenceClaimId ?? claim.id),
@@ -109,7 +121,7 @@ async function createTruthBinding(projectId: string, state: TruthState = 'suppor
     truthStatus: state === 'supported' ? 'supports' : state === 'contradicted' ? 'contradicts' : state === 'insufficient' ? 'insufficient' : 'supports',
     stepRef: Number(overrides.stepRef ?? 1),
     provenance: { test: 'r2-persistence-e2e' },
-  }, actor);
+  }, ownerActor);
   if (state !== 'unvalidated') {
     await truth.recordValidation({
       projectId,
@@ -118,8 +130,9 @@ async function createTruthBinding(projectId: string, state: TruthState = 'suppor
       result: state,
       validatorType: 'human',
       validatorRole: 'mentor',
+      expectedVersion: 0,
       rationale: `R2 persistence ${state} validation.`,
-    }, actor);
+    }, mentorActor);
   }
   return {
     claim,
@@ -138,6 +151,11 @@ async function createTruthBinding(projectId: string, state: TruthState = 'suppor
 }
 
 async function completeStep0(projectId: string) {
+  await adaptive.activateInitiativeCycle(projectId, userId, 'participante', {
+    idempotencyKey: `${projectId}-activate`,
+    expectedVersion: 0,
+    origin: { kind: 'DIRECT_PROJECT' },
+  });
   await adaptive.confirmCheckpoint(projectId, userId, 'mentor', {
     idempotencyKey: `${projectId}-cp01`,
     checkpointKey: 'CP-0.1',
@@ -380,8 +398,15 @@ async function reloadState(projectId: string) {
 describeR2Persistence('R2 Adaptive Core persistence E2E', () => {
   beforeAll(async () => {
     await clean();
+    await prisma.organization.create({ data: { id: organizationId, name: 'R2 persistence org', slug: 'r2-persistence-org', seatLimit: 10 } });
     await createUser(userId, 'r2.persistence.e2e@starteria.test');
+    await createUser(mentorId, 'r2.persistence.mentor@starteria.test', 'mentor');
     await createUser(otherUserId, 'r2.persistence.other@starteria.test');
+    await prisma.organizationMember.createMany({ data: [userId, mentorId, otherUserId].map((memberId) => ({
+      id: `r2-org-member-${memberId}`,
+      organizationId,
+      userId: memberId,
+    })) });
   });
 
   afterAll(async () => {

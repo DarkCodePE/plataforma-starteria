@@ -91,8 +91,15 @@ describe('ProjectService.createProject — team materialization (#111)', () => {
     expect(tx.teamMember.createMany).not.toHaveBeenCalled();
   });
 
-  it('persists the tenant from an authorized V2 Challenge link', async () => {
-    const tx = makeTx();
+  it('persists the tenant and inherited roster from an authorized V2 Challenge link', async () => {
+    const tx = makeTx({
+      challengeTeamMember: {
+        findMany: vi.fn().mockResolvedValue([
+          { userId: 'owner', role: 'OWNER', status: 'ACTIVE' },
+          { userId: 'u2', role: 'EDITOR', status: 'ACTIVE' },
+        ]),
+      },
+    });
     const linkedChallenge = {
       id: 'ch-v2', status: 'recibiendo_iniciativas', strategicFrontId: 'sf-v2',
       type: 'exploracion', title: 'Reto V2', name: 'Reto V2', whatWeWantToMove: null,
@@ -115,6 +122,13 @@ describe('ProjectService.createProject — team materialization (#111)', () => {
     expect(tx.project.create).toHaveBeenCalledWith(expect.objectContaining({
       data: expect.objectContaining({ organizationId: 'org-1' }),
     }));
+    expect(tx.teamMember.createMany).toHaveBeenCalledWith({
+      data: [{
+        projectId: 'newproj', userId: 'u2', role: 'EDITOR', status: 'ACTIVE',
+        inheritedFromChallenge: true,
+      }],
+      skipDuplicates: true,
+    });
   });
 
   it('rejects a V2 Challenge link outside the actor tenant without creating a Project', async () => {

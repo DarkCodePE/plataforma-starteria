@@ -17,9 +17,12 @@ import * as stepService from '../services/stepService';
 import { getById } from '../services/projectService';
 import { LeaderFeedbackStatusCard } from '../components/LeaderFeedbackStatusCard';
 import type { AdaptiveInitiativeCore } from '../../features/adaptive-core/domain/types';
-import { canNavigateToAdaptiveStep, latestAdaptiveStepOutput } from '../../features/adaptive-core/domain/adaptiveAuthority';
+import { canNavigateToAdaptiveStep, getAuthoritativeActiveStep, latestAdaptiveStepOutput } from '../../features/adaptive-core/domain/adaptiveAuthority';
 import { AdaptiveCheckpointWorkspace } from '../../features/adaptive-core/components';
 import { confirmAdaptiveCheckpoint, explainCheckpointError, confirmStep2Output, getAdaptiveCore } from '../../features/adaptive-core/services/adaptiveCoreService';
+import { ContinuityStepWorkspace } from '../../features/initiative-continuity/components/ContinuityExperience';
+import { StepReasoningPanel } from '../../features/step-reasoning/components';
+import { isStepReasoningCopilotEnabled } from '../services/featureFlags';
 
 type ModuleId = 'A' | 'B' | 'C' | 'D';
 
@@ -217,6 +220,7 @@ export function Step2Page() {
   const [mentorNotes, setMentorNotes] = useState('');
   const [adaptiveCore, setAdaptiveCore] = useState<AdaptiveInitiativeCore | null>(null);
   const [adaptiveCoreStatus, setAdaptiveCoreStatus] = useState<'loading' | 'loaded' | 'error'>('loading');
+  const [stepDataHydrated, setStepDataHydrated] = useState(false);
   const [adaptiveAuthorityError, setAdaptiveAuthorityError] = useState<string | null>(null);
   const [adaptiveTransitionSaving, setAdaptiveTransitionSaving] = useState(false);
 
@@ -333,8 +337,12 @@ export function Step2Page() {
   // session, rehydrate the local state. Falls back silently to the existing
   // default fixtures when nothing is persisted (preserves the empty state).
   useEffect(() => {
-    if (!projectId) return;
+    if (!projectId) {
+      setStepDataHydrated(true);
+      return;
+    }
     let cancelled = false;
+    setStepDataHydrated(false);
     (async () => {
       try {
         const stored = await stepService.getStepData(projectId, 2);
@@ -356,6 +364,8 @@ export function Step2Page() {
         if (typeof formData.prototypeFirstVersion === 'string') setPrototypeFirstVersion(formData.prototypeFirstVersion);
       } catch {
         // 404 or auth error — keep defaults silently; AutosaveIndicator will reflect future writes.
+      } finally {
+        if (!cancelled) setStepDataHydrated(true);
       }
     })();
     return () => { cancelled = true; };
@@ -377,6 +387,7 @@ export function Step2Page() {
     prototypeAutonomy,
     prototypeFirstVersion,
   };
+  const operationalStep = getAuthoritativeActiveStep(adaptiveCore) ?? project?.currentStep ?? 0;
 
   const autosaveFn = useCallback(
     async (data: typeof step2FormData) => {
@@ -395,7 +406,7 @@ export function Step2Page() {
     delay: 2000,
     // Sólo quien puede escribir guarda: el Portfolio Lead asignado lee la iniciativa sin ser del
     // equipo y el backend le rechaza el PUT (step.access.ts).
-    enabled: !!projectId && (!!contextProject || user?.role === 'admin' || user?.role === 'mentor'),
+    enabled: !!projectId && stepDataHydrated && adaptiveCoreStatus === 'loaded' && operationalStep === 2 && canEdit,
   });
 
   const loadAdaptiveCore = useCallback(async () => {
@@ -463,6 +474,7 @@ export function Step2Page() {
     try {
       const nextCore = await confirmAdaptiveCheckpoint(projectId, {
         idempotencyKey: `${projectId}-${adaptiveCore.activeCheckpoint.checkpointKey}-${Date.now()}-ui-confirm`,
+        expectedVersion: adaptiveCore.activeCheckpoint.version,
         checkpointKey: adaptiveCore.activeCheckpoint.checkpointKey,
         responses,
         truthBindings,
@@ -607,29 +619,38 @@ export function Step2Page() {
   // ── HMW live checks ──────────────────────────────────────────────────────────
   if (adaptiveCoreStatus === 'loading') {
     return (
-      <div className="p-8 max-w-lg mx-auto text-center">
-        <div className="w-14 h-14 rounded-2xl bg-slate-100 flex items-center justify-center mx-auto mb-4"><Lock size={24} className="text-slate-400" /></div>
-        <h2 className="text-slate-900 mb-2" style={{ fontWeight: 600 }}>Cargando estado adaptativo</h2>
-        <p className="text-sm text-slate-500">Validando con backend si Step 2 esta disponible.</p>
-      </div>
+      <ContinuityStepWorkspace
+        projectName={project.name}
+        step={2}
+        core={adaptiveCore}
+        state="loading"
+        readOnly={!canEdit}
+        onRetry={() => void loadAdaptiveCore()}
+        onBack={() => navigate(`/projects/${projectId}`)}
+      />
     );
   }
-  if (adaptiveCoreStatus === 'error' || !adaptiveStep2Allowed) {
+  if (adaptiveCoreStatus === 'error') {
+    return (
+      <ContinuityStepWorkspace
+        projectName={project.name}
+        step={2}
+        core={adaptiveCore}
+        state="error"
+        error={adaptiveAuthorityError}
+        readOnly={!canEdit}
+        onRetry={() => void loadAdaptiveCore()}
+        onBack={() => navigate(`/projects/${projectId}`)}
+      />
+    );
+  }
+  if (!adaptiveStep2Allowed) {
     return (
       <div className="p-8 max-w-lg mx-auto text-center">
         <div className="w-14 h-14 rounded-2xl bg-slate-100 flex items-center justify-center mx-auto mb-4"><Lock size={24} className="text-slate-400" /></div>
         <h2 className="text-slate-900 mb-2" style={{ fontWeight: 600 }}>Step 2 bloqueado</h2>
-        <p className="text-sm text-slate-500 mb-4">
-          {adaptiveCoreStatus === 'error'
-            ? adaptiveAuthorityError
-            : 'El backend Adaptive Core todavia no habilita Step 2.'}
-        </p>
+        <p className="text-sm text-slate-500 mb-4">El backend Adaptive Core todavia no habilita Step 2.</p>
         <div className="flex justify-center gap-2">
-          {adaptiveCoreStatus === 'error' ? (
-            <button onClick={() => void loadAdaptiveCore()} className="bg-indigo-600 text-white px-5 py-2.5 rounded-xl text-sm hover:bg-indigo-700 transition-colors" style={{ fontWeight: 500 }}>
-              Reintentar
-            </button>
-          ) : null}
           <button onClick={() => navigate(`/projects/${projectId}/step/1`)} className="border border-slate-200 text-slate-600 px-5 py-2.5 rounded-xl text-sm hover:bg-slate-50 transition-colors" style={{ fontWeight: 500 }}>
             Ir al Step 1
           </button>
@@ -642,10 +663,26 @@ export function Step2Page() {
   const adaptiveStep2Draft = latestAdaptiveStepOutput(adaptiveCore, 2, 'draft');
   const adaptiveStep2Confirmed = Boolean(latestAdaptiveStepOutput(adaptiveCore, 2, 'confirmed'));
   return (
-    <main className="min-h-full overflow-y-auto bg-slate-50 p-4 md:p-8">
-      <div className="mx-auto max-w-6xl">
-        <button type="button" onClick={() => navigate(`/projects/${projectId}`)} className="mb-5 text-sm text-slate-500 hover:text-slate-800">Volver al proyecto</button>
-        <ReadOnlyNotice reason={readOnlyReason} className="mb-5" />
+    <ContinuityStepWorkspace
+      projectName={project.name}
+      step={2}
+      core={adaptiveCore}
+      state="loaded"
+      readOnly={!canEdit}
+      copilot={isStepReasoningCopilotEnabled(user?.id) ? (
+        <StepReasoningPanel
+          projectId={project.id}
+          step={2}
+          core={adaptiveCore}
+          readOnly={!canEdit}
+          onReviewCheckpoint={() => document.getElementById('official-checkpoint-workspace')?.scrollIntoView({ behavior: 'smooth' })}
+        />
+      ) : undefined}
+      onRetry={() => void loadAdaptiveCore()}
+      onBack={() => navigate(`/projects/${projectId}`)}
+      onContinueNext={() => navigate(`/projects/${projectId}/step/${operationalStep}`)}
+    >
+      <ReadOnlyNotice reason={readOnlyReason} className="mb-5" />
         <AdaptiveCheckpointWorkspace
           readOnly={!canEdit}
           core={adaptiveCore!}
@@ -661,8 +698,7 @@ export function Step2Page() {
           onConfirmOutput={adaptiveStep2Draft ? confirmStep2Transition : undefined}
           onRefresh={() => void loadAdaptiveCore()}
         />
-      </div>
-    </main>
+    </ContinuityStepWorkspace>
   );
 
   const hmwChecks = {

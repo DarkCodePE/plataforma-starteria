@@ -49,6 +49,7 @@ const adaptiveCore = {
     checkpointKey: 'CP-1.1',
     status: 'ready',
     sequence: 1,
+    version: 0,
     questions: [],
     configurationId: 'cfg-1',
   },

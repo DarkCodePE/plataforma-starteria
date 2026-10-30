@@ -84,7 +84,7 @@ describe.skipIf(!run)('KAN-178 Owner continuity disposable HTTP E2E', () => {
       stepConfigurations: { create: {
         id: 'kan178-ready-config-2', projectId: ids.readyProject, stepNumber: 2, version: 1,
         status: 'active', routeType: 'explore_validate', depthLevel: 'standard', maturity: 'execution',
-        configurationJson: { step: 2, visibleName: 'DiseÃ±ar apuesta y experimento', stablePurpose: 'Continuar desde el estado real', shortTitle: 'DiseÃ±ar apuesta', description: 'Continuar desde el estado real', objective: 'Retomar trabajo persistido', expectedOutput: 'Apuesta validable', nextAction: 'Continuar Step 2', checkpoints: [] },
+        configurationJson: { step: 2, visibleName: 'Diseñar apuesta y experimento', stablePurpose: 'Continuar desde el estado real', shortTitle: 'Diseñar apuesta', description: 'Continuar desde el estado real', objective: 'Retomar trabajo persistido', expectedOutput: 'Apuesta validable', nextAction: 'Continuar Step 2', checkpoints: [] },
         sourceContextJson: {},
       } },
       progressSignals: { create: {
@@ -172,4 +172,3 @@ describe.skipIf(!run)('KAN-178 Owner continuity disposable HTTP E2E', () => {
     await expect(Promise.all([prisma.project.count(), prisma.step.count()])).resolves.toEqual([projectsBefore, stepsBefore]);
   });
 });
-

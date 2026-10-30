@@ -226,6 +226,20 @@ describe('PortfolioHomeReadService', () => {
     });
   });
 
+  it('projects the latest confirmed Adaptive Core output without creating another source of truth', async () => {
+    const confirmedAt = new Date('2026-10-28T08:30:00.000Z');
+    const result = await new PortfolioHomeReadService(makePrisma([
+      front({ challenges: [challenge({ initiativeMetas: [initiativeMeta(project({
+        currentStep: 3,
+        adaptiveStepOutputs: [{ id: 'output-step2-v4', cycleId: 'cycle-1', stepNumber: 2, version: 4, status: 'confirmed', outputKey: 'step2.execution-ready', sourceConfigurationId: 'step2-config-v4', confirmedAt, updatedAt: confirmedAt }],
+      }))] })] }),
+    ])).getHome('user-1');
+
+    expect(result.strategicUnits[0].challenges[0].initiatives[0].lastConfirmedOutput).toEqual({
+      id: 'output-step2-v4', cycleId: 'cycle-1', stepNumber: 2, version: 4, status: 'confirmed', outputKey: 'step2.execution-ready', sourceConfigurationId: 'step2-config-v4', confirmedAt: '2026-10-28T08:30:00.000Z', updatedAt: '2026-10-28T08:30:00.000Z',
+    });
+  });
+
   it('exposes the existing capacity reading without inventing hours or cost', async () => {
     const result = await new PortfolioHomeReadService(makePrisma([
       front({ challenges: [challenge({ initiativeMetas: [initiativeMeta(project(), { status: 'en_step_1' })] })] }),

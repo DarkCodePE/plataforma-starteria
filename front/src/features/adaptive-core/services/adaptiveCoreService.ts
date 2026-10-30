@@ -21,6 +21,7 @@ export async function confirmAdaptiveCheckpoint(
   projectId: string,
   input: {
     idempotencyKey: string;
+    expectedVersion: number;
     checkpointKey: string;
     responses: Record<string, unknown>;
     truthBindings?: TruthBinding;

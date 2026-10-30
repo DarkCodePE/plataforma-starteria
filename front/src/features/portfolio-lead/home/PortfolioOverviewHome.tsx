@@ -97,10 +97,10 @@ export function PortfolioOverviewHome({
           <MetricField label="Horizonte" value={activeFront?.horizon} />
           <MetricField label="Última lectura" value={latestObservation ? `${latestObservation.value} ${latestObservation.unit}` : null} field="latest-observation" />
         </dl>
-        <div className="mt-3 grid gap-3 sm:grid-cols-2">
+        <dl className="mt-3 grid gap-3 sm:grid-cols-2">
           <MetricField label="Distancia a meta" value={null} />
           <MetricField label="Fuente de configuración" value={activeFront?.metricSource ?? null} />
-        </div>
+        </dl>
         <p className="mt-3 text-xs leading-5 text-slate-500">{latestObservation ? `Lectura del ${formatDate(latestObservation.observedAt)} · fuente ${latestObservation.source}.` : 'Sin serie canónica fechada, unidad y fuente; no se muestra gráfico.'}</p>
       </article>
     </section>
@@ -124,11 +124,11 @@ export function PortfolioOverviewHome({
 
     <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm md:p-7" aria-label="Capacidad, tiempo y recursos">
       <h2 className="font-semibold text-slate-950">Capacidad, tiempo y recursos</h2>
-      {model.availability?.capacity === 'unavailable' ? <p role="status" className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950">No disponible: no pudimos recuperar la lectura de capacidad.</p> : <div className="mt-4 grid gap-3 sm:grid-cols-3">
+      {model.availability?.capacity === 'unavailable' ? <p role="status" className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950">No disponible: no pudimos recuperar la lectura de capacidad.</p> : <dl className="mt-4 grid gap-3 sm:grid-cols-3">
         <MetricField label="Capacidad observada" value={model.capacity ? `${model.capacity.totalActiveInitiatives} ${model.capacity.totalActiveInitiatives === 1 ? 'iniciativa activa' : 'iniciativas activas'}` : null} />
         <MetricField label="Horas observadas" value={null} />
         <MetricField label="Coste observado" value={null} />
-      </div>}
+      </dl>}
       {model.capacity ? <><p className="mt-3 text-xs leading-5 text-slate-500">{model.capacity.note}</p>{model.capacity.signals.length > 0 ? <ul className="mt-3 space-y-2 text-sm text-slate-700">{model.capacity.signals.slice(0, 3).map((signal) => <li key={`${signal.kind}-${signal.frontId}-${signal.challengeId ?? ''}`} className="rounded-lg bg-slate-50 px-3 py-2">{signal.message}</li>)}</ul> : null}</> : null}
       <p className="mt-3 text-xs text-slate-500">{model.learningsUnavailable ? 'Los aprendizajes de decisiones no están disponibles.' : `${model.learnings.length} aprendizajes persistidos disponibles.`}</p>
     </section>
@@ -143,7 +143,8 @@ export function PortfolioOverviewHome({
           const challengeHandoffs = assignments.filter((assignment) => assignment.challengeRef === challenge.id && assignment.targetKind === 'CHALLENGE');
           return <div key={challenge.id} className="rounded-lg border border-slate-200 bg-white p-4"><div className="flex flex-wrap items-start justify-between gap-2"><div><p className="text-xs font-bold uppercase tracking-wide text-slate-500">Reto</p><h4 className="mt-1 font-semibold text-slate-950">{challenge.title}</h4></div><a href={`/portfolio/retos?challengeId=${encodeURIComponent(challenge.id)}`} className="text-xs font-semibold text-violet-800 underline-offset-4 hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2">Ver reto {challenge.title}</a></div><div className="mt-3 grid gap-3 sm:grid-cols-2"><div><p className="text-xs font-semibold text-slate-500">Iniciativas canónicas</p>{challenge.initiatives.length ? <ul className="mt-1 space-y-2 text-sm text-slate-800">{challenge.initiatives.map((initiative) => {
             const initiativeHandoff = assignments.find((assignment) => assignment.initiativeRef === initiative.initiativeId);
-            return <li key={initiative.initiativeId} className="rounded-md bg-slate-50 px-2.5 py-2"><a href={`/portfolio/iniciativas?initiativeId=${encodeURIComponent(initiative.initiativeId)}`} className="font-semibold text-violet-900 underline-offset-4 hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2">Abrir iniciativa {initiative.title ?? initiative.initiativeId}</a><p className="mt-1 text-xs text-slate-600">Project: {initiative.currentExecutionState.projectStatus ?? 'estado no disponible'} · Handoff: {initiativeHandoff ? assignmentStatusLabel(initiativeHandoff) : 'sin Assignment vinculado'}</p></li>;
+            const confirmedOutput = initiative.lastConfirmedOutput;
+            return <li key={initiative.initiativeId} className="rounded-md bg-slate-50 px-2.5 py-2"><a href={`/portfolio/iniciativas?initiativeId=${encodeURIComponent(initiative.initiativeId)}`} className="font-semibold text-violet-900 underline-offset-4 hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2">Abrir iniciativa {initiative.title ?? initiative.initiativeId}</a><p className="mt-1 text-xs text-slate-600">Project: {initiative.currentExecutionState.projectStatus ?? 'estado no disponible'} · Handoff: {initiativeHandoff ? assignmentStatusLabel(initiativeHandoff) : 'sin Assignment vinculado'}</p><p className="mt-1 text-xs text-slate-600">Step registrado: {initiative.currentExecutionState.currentStep ?? 'sin dato'} · Fuente: Project · {initiative.updatedAt ? `actualizado ${formatDate(initiative.updatedAt)}` : 'Sin actualización disponible'}</p>{confirmedOutput ? <div className="mt-2 rounded-lg border border-emerald-200 bg-emerald-50 p-2 text-xs text-emerald-950"><p className="font-bold">Último resultado confirmado: Step {confirmedOutput.stepNumber}</p><p className="mt-1">v{confirmedOutput.version} · {confirmedOutput.outputKey} · {confirmedOutput.confirmedAt ? formatDate(confirmedOutput.confirmedAt) : 'fecha no disponible'}</p><a href={`/projects/${encodeURIComponent(initiative.initiativeId)}/step/${confirmedOutput.stepNumber}`} className="mt-2 inline-flex min-h-11 items-center font-bold text-emerald-900 underline underline-offset-4 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2">Ver resultado confirmado de Step {confirmedOutput.stepNumber}</a></div> : <p className="mt-1 text-xs leading-5 text-amber-800">El avance no acredita un output ni evidencia confirmada.</p>}</li>;
           })}</ul> : <p className="mt-1 text-sm text-slate-500">Ninguna todavía</p>}</div><div><p className="text-xs font-semibold text-slate-500">Encargos del reto</p>{challengeHandoffs.length ? <ul className="mt-1 space-y-2 text-xs text-slate-700">{challengeHandoffs.map((assignment) => <li key={assignment.assignmentId} className="rounded-md bg-slate-50 px-2.5 py-2"><span className="font-semibold">{assignmentStatusLabel(assignment)}</span><br />Assignment {assignment.assignmentId}{assignment.briefVersionId ? ` · BriefVersion ${assignment.briefVersionId}` : ''}</li>)}</ul> : <p className="mt-1 text-sm text-slate-500">0 encargos del reto</p>}<p className="mt-2 text-xs text-slate-500">{challengeHandoffs.length} {challengeHandoffs.length === 1 ? 'encargo del reto' : 'encargos del reto'} · no cuentan como iniciativas</p></div></div></div>;
         })}</div>
       </article>)}</div>}

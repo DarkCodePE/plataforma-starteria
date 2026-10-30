@@ -6,7 +6,6 @@ import { getProjectAccess } from '../authz/projectAccess';
 import { ReadOnlyNotice } from '../components/ReadOnlyNotice';
 import { depthLevelLabel, outputLabel, routeTypeLabel } from '../../features/adaptive-core/domain/adaptiveLabels';
 import { MentorVirtualPanel } from '../components/MentorVirtualPanel';
-import { MentorSupportModal } from '../components/MentorSupportModal';
 import { AutosaveIndicator, useAutosave } from '../components/AutosaveIndicator';
 import { LeaderFeedbackStatusCard } from '../components/LeaderFeedbackStatusCard';
 import { usePortfolioLead } from '../portfolio/PortfolioLeadContext';
@@ -44,6 +43,11 @@ import { confirmAdaptiveCheckpoint, explainCheckpointError, confirmStep0Brief, g
 import { AutofillField } from '../components/autofill/AutofillField';
 import { CHALLENGE_TYPE_LABELS, type ChallengeType, type InitialReviewArtifact } from '../../features/initial-review/domain/types';
 import { getById } from '../services/projectService';
+import { isStepReasoningCopilotEnabled } from '../services/featureFlags';
+import { StepReasoningPanel } from '../../features/step-reasoning/components';
+import { StepHelpDialog } from '../../features/initiative-continuity/components/ContinuityExperience';
+import { buildStep0MissionContext, countConfirmedCheckpoints } from '../../features/step-reasoning/domain/missionContext';
+import { HistoricalStepContinuity } from '../../features/initiative-continuity/components/ContinuityExperience';
 
 type ModuleId = 'start' | 'impact' | 'decision';
 type AdaptiveCoreLoadState = 'loading' | 'loaded' | 'error';
@@ -450,7 +454,7 @@ function CheckpointSection({
             <p className="text-sm text-slate-950" style={{ fontWeight: 800 }}>
               {completed ? '✓ ' : ''}{title}
             </p>
-            <p className="text-xs text-slate-500">Checkpoint {sequence} de 3</p>
+            <p className="text-xs text-slate-600">Checkpoint {sequence} de 3</p>
           </div>
         </div>
         <span className={`text-xs ${isActive ? 'text-indigo-700' : completed ? 'text-emerald-700' : 'text-slate-400'}`} style={{ fontWeight: 700 }}>
@@ -749,6 +753,29 @@ const adaptiveCore =
     ? serverAdaptiveCore
     : null;
 
+const operationalStep = Number(
+  (adaptiveCore as (AdaptiveInitiativeCore & { cycle?: { currentStep?: number } }) | null)?.cycle?.currentStep
+  ?? adaptiveCore?.progressSignal?.step
+  ?? project.currentStep
+  ?? 0,
+);
+
+if (adaptiveCoreStatus === 'loaded' && adaptiveCore && operationalStep > 0) {
+  return (
+    <HistoricalStepContinuity
+      projectName={project.name}
+      step={0}
+      operationalStep={operationalStep}
+      core={adaptiveCore}
+      state="loaded"
+      notice={checkpointError}
+      onRetry={retryAdaptiveCore}
+      onBack={() => navigate(`/projects/${projectId}`)}
+      onReturnOperational={() => navigate(`/projects/${projectId}/step/${operationalStep}`)}
+    />
+  );
+}
+
 const activeConfiguration = adaptiveCore
   ? getActiveStepConfiguration(adaptiveCore)
   : null;
@@ -761,7 +788,6 @@ const step0Configuration = adaptiveCore
       adaptiveCore.stepConfigurations
         .filter(config => config.step === 0)
         .sort((a, b) => (b.version ?? 0) - (a.version ?? 0))[0]
-      ?? activeConfiguration
     )
   : null;
 
@@ -820,10 +846,7 @@ const checkpointSections =
       })
     : [];
 
-const completedCheckpoints =
-  checkpointSections.filter(
-    section => section.status === 'completed',
-  ).length;
+const completedCheckpoints = countConfirmedCheckpoints(checkpointSections);
 
 // El output solo se habilita cuando el recorrido persistido está cerrado.
 const canSave =
@@ -1048,6 +1071,7 @@ const confirmedStep0Brief = (adaptiveCore?.stepOutputs ?? []).find(
     try {
       const core = await confirmAdaptiveCheckpoint(projectId, {
         idempotencyKey: `step0-${projectId}-${activeCheckpoint.code}-${Date.now()}`,
+        expectedVersion: adaptiveCore.activeCheckpoint?.version ?? 0,
         checkpointKey: activeCheckpoint.code,
         responses: { ...buildCheckpointResponses(), ...(workspaceResponses ?? {}) },
       });
@@ -1085,12 +1109,40 @@ const confirmedStep0Brief = (adaptiveCore?.stepOutputs ?? []).find(
     await persistStep0();
   };
 
+  const reviewActiveCheckpoint = () => {
+    const review = document.getElementById('step0-checkpoint-review');
+    review?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    window.setTimeout(() => review?.focus({ preventScroll: true }), 350);
+  };
+
   const primaryLabel = (() => {
     if (analysisState === 'done') return `Ver ${stepOutputLabel}`;
     if (firstMissingInModule(form, activeModule)) return 'Continuar este bloque';
     if (activeModule === 'start') return 'Pasar a impacto y urgencia';
     if (activeModule === 'impact') return 'Pasar a apoyo y decisión';
     return `Elaborar ${stepOutputLabel}`;
+  })();
+
+  const stepReasoningEnabled = Boolean(
+    adaptiveCore
+    && isStepReasoningCopilotEnabled(user?.id),
+  );
+
+  const missionContext = buildStep0MissionContext({
+    projectName: project.name,
+    projectDescription: project.description,
+    fallbackMission: form.quePasaQueQuieres,
+    linkedToChallenge: mode === 'linked_to_challenge',
+    masterContext: adaptiveCore?.masterContext,
+    confirmedResponses: confirmedCheckpointResponses,
+    challengeContribution: adaptiveCore?.challengeContribution,
+    stepMethodObjective: step0Configuration?.objective,
+    activeCheckpointPurpose: activeCheckpoint?.purpose,
+  });
+
+  const checkpointActionLabel = (() => {
+    if (stepReasoningEnabled) return 'Revisar checkpoint';
+    return primaryLabel;
   })();
 
   // Se define una sola vez y se monta dentro de la seccion del checkpoint activo, para que
@@ -1134,33 +1186,27 @@ const confirmedStep0Brief = (adaptiveCore?.stepOutputs ?? []).find(
   return (
     <div className="flex h-full flex-col">
       <div className="flex-1 overflow-y-auto">
-        <div className="border-b border-slate-100 bg-white px-5 pb-5 pt-6">
+        <div className={stepReasoningEnabled ? 'border-b border-slate-100 bg-white px-3 pb-3 pt-3 sm:px-5 sm:pb-5 sm:pt-6' : 'border-b border-slate-100 bg-white px-5 pb-5 pt-6'}>
           <div className="mx-auto max-w-[1480px]">
-            <button onClick={() => navigate(`/projects/${project.id}`)} className="mb-4 flex items-center gap-1.5 text-sm text-slate-400 hover:text-slate-700">
+            <button onClick={() => navigate(`/projects/${project.id}`)} className={stepReasoningEnabled ? 'mb-2 flex items-center gap-1.5 text-sm text-slate-600 hover:text-slate-800 sm:mb-4' : 'mb-4 flex items-center gap-1.5 text-sm text-slate-600 hover:text-slate-800'}>
               <ArrowLeft size={14} /> Volver al proyecto
             </button>
             <div className="flex flex-wrap items-start justify-between gap-4">
               <div>
                 <div className="mb-2 flex items-center gap-2">
                   <span className="rounded-full bg-indigo-100 px-2 py-0.5 text-xs text-indigo-700" style={{ fontWeight: 700 }}>PASO 0</span>
-                  <span className="text-xs text-slate-400">{progress}% completado</span>
                   <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-xs text-slate-600">
                     {mode === 'linked_to_challenge' ? 'Iniciativa dentro de reto' : 'Proyecto independiente'}
                   </span>
                 </div>
-                {/* El encabezado nombra el resultado del paso, no una consigna generica:
-                    lo que se construye aqui es la hipotesis que Step 1 va a validar. */}
-                <h1 className="text-xl text-slate-900" style={{ fontWeight: 700 }}>
-                  En este espacio aterrizaremos tu objetivo inicial en una hipótesis a validar
+                <h1 className={stepReasoningEnabled ? 'text-lg text-slate-900 sm:text-xl' : 'text-xl text-slate-900'} style={{ fontWeight: 700 }}>
+                  Step 0 · Enmarcar el ciclo actual
                 </h1>
-                <p className="mt-1 max-w-3xl text-sm text-slate-500">
-                  Completa estos {checkpointSections.length} checkpoints para llegar a ella.
-                  Cada uno se arma con lo que ya nos contaste, así que solo te preguntamos lo que falta.
-                </p>
+                <p className="mt-2 max-w-4xl text-sm leading-6 text-slate-700"><strong>Objetivo:</strong> {step0Configuration?.objective || 'Definir qué es razonable lograr ahora, con sus restricciones y la decisión que este ciclo debe habilitar.'}</p>
               </div>
               <div className="flex items-center gap-2">
-                <button onClick={() => setShowMentorModal(true)} className="flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-600 hover:bg-slate-50">
-                  <Calendar size={14} /> Pedir ayuda a un mentor
+                <button aria-label="Pedir ayuda" title="Pedir ayuda" onClick={() => setShowMentorModal(true)} className={stepReasoningEnabled ? 'flex min-h-11 items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-600 hover:bg-slate-50' : 'flex min-h-11 items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-600 hover:bg-slate-50'}>
+                  <Calendar size={14} /> <span className={stepReasoningEnabled ? 'hidden sm:inline' : ''}>Pedir ayuda</span>
                 </button>
                 <AutosaveIndicator state={saveState.state} />
               </div>
@@ -1168,7 +1214,10 @@ const confirmedStep0Brief = (adaptiveCore?.stepOutputs ?? []).find(
 
             {/* La tira de modulos vivia aqui con su propio contador (`Listo · n/3`), en
                 paralelo al del checkpoint. Ahora el recorrido se lee por checkpoints. */}
-            <div className="mt-5 flex flex-wrap items-center gap-2">
+            <div className={stepReasoningEnabled ? '' : 'mt-5 flex flex-wrap items-center gap-2'}>
+              {stepReasoningEnabled ? <p className="sr-only">{completedCheckpoints}/{checkpointSections.length} checkpoints confirmados. La conversación no modifica este progreso.</p> : null}
+              {!stepReasoningEnabled ? (
+                <>
               {checkpointSections.map(section => (
                 <button
                   key={section.code}
@@ -1188,6 +1237,8 @@ const confirmedStep0Brief = (adaptiveCore?.stepOutputs ?? []).find(
               <span className="ml-auto text-xs text-slate-500">
                 {completedCheckpoints}/{checkpointSections.length} checkpoints · Output: {stepOutputLabel}
               </span>
+                </>
+              ) : null}
             </div>
           </div>
         </div>
@@ -1310,6 +1361,16 @@ const confirmedStep0Brief = (adaptiveCore?.stepOutputs ?? []).find(
   </div>
 )}
 
+{stepReasoningEnabled && (
+  <StepReasoningPanel
+    projectId={project.id}
+    missionContext={missionContext}
+    core={adaptiveCore}
+    onReviewCheckpoint={reviewActiveCheckpoint}
+    readOnly={!canEdit}
+  />
+)}
+
 {adaptiveCore && activeCheckpoint && (
         <div className="hidden">
           <div className="mx-auto max-w-[1480px] rounded-2xl border border-slate-200 bg-slate-50 p-4">
@@ -1387,7 +1448,24 @@ const confirmedStep0Brief = (adaptiveCore?.stepOutputs ?? []).find(
         </div>
         )}
 
-        <div className="mx-auto grid max-w-[1480px] items-start gap-6 px-5 py-6 min-[1280px]:grid-cols-[minmax(0,1fr)_340px]">
+        {stepReasoningEnabled && activeCheckpoint && (
+          <section id="step0-checkpoint-review" tabIndex={-1} aria-labelledby="step0-checkpoint-review-title" className="border-b border-slate-200 bg-white px-3 py-4 outline-none focus-visible:ring-4 focus-visible:ring-inset focus-visible:ring-indigo-200 sm:px-5">
+            <div className="mx-auto flex max-w-[1480px] flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <p className="text-xs font-bold uppercase tracking-[0.1em] text-slate-500">Revisión canónica · separada del chat</p>
+                <h2 id="step0-checkpoint-review-title" className="mt-1 text-base font-bold text-slate-950">{activeCheckpoint.title}</h2>
+                <p className="mt-1 max-w-3xl text-sm text-slate-600">Revisa las respuestas y usa los controles de este bloque cuando quieras confirmar. Ningún mensaje del Copilot puede hacerlo por ti.</p>
+              </div>
+              <div className="flex shrink-0 items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
+                <span className="font-bold text-slate-900">Checkpoint {sectionFor(activeModule)?.sequence ?? 1} de {checkpointSections.length}</span>
+                <span aria-hidden="true" className="text-slate-300">·</span>
+                <span>{completedCheckpoints} confirmados</span>
+              </div>
+            </div>
+          </section>
+        )}
+
+        <div aria-label={stepReasoningEnabled ? 'Revisión de checkpoints de Step 0' : undefined} className="mx-auto grid max-w-[1480px] items-start gap-6 px-3 py-5 sm:px-5 sm:py-6 min-[1280px]:grid-cols-[minmax(0,1fr)_340px]">
           <div className="space-y-4">
             {mode === 'linked_to_challenge' && inherited.items.length > 0 && (
               <div className="rounded-2xl border border-slate-200 bg-white p-5">
@@ -1643,7 +1721,7 @@ const confirmedStep0Brief = (adaptiveCore?.stepOutputs ?? []).find(
                       ))}
                     </div>
                     <div className="mt-4 border-t border-slate-100 pt-4">
-                      <div className="mb-1.5 flex justify-between text-xs text-slate-400">
+                      <div className="mb-1.5 flex justify-between text-xs text-slate-600">
                         <span>Checkpoints cerrados</span>
                         <span className="text-indigo-600" style={{ fontWeight: 700 }}>{completedCheckpoints}/{checkpointSections.length}</span>
                       </div>
@@ -1654,7 +1732,7 @@ const confirmedStep0Brief = (adaptiveCore?.stepOutputs ?? []).find(
                   </>
                 )}
               </div>
-              {canEdit && (
+              {canEdit && !stepReasoningEnabled && (
                 <>
                   <button onClick={openIA} className="w-full rounded-xl border border-violet-100 bg-violet-50 px-3 py-2.5 text-left text-sm text-violet-700 hover:bg-violet-100" style={{ fontWeight: 600 }}><Sparkles size={14} className="mr-2 inline" />Hacerlo más claro sin inventar</button>
                   <p className="text-xs text-slate-500">La IA puede mejorar redacción y estructura, pero no agregará evidencia que no hayas dado.</p>
@@ -1665,29 +1743,47 @@ const confirmedStep0Brief = (adaptiveCore?.stepOutputs ?? []).find(
         </div>
       </div>
 
-      <div className="shrink-0 border-t border-slate-200 bg-white px-5 py-4">
-        <div className="mx-auto flex max-w-[1480px] flex-wrap items-center gap-3">
+      <div data-testid="step0-canonical-action-bar" className="shrink-0 border-t border-slate-200 bg-white px-3 py-3 [padding-bottom:max(0.75rem,env(safe-area-inset-bottom))] sm:px-5">
+        <div className="mx-auto flex max-w-[1480px] flex-wrap items-center gap-2.5 sm:gap-3">
           {canEdit && (
-          <button onClick={handlePrimaryAction} disabled={saving} className="rounded-xl bg-indigo-600 px-5 py-2.5 text-sm text-white disabled:cursor-not-allowed disabled:opacity-50" style={{ fontWeight: 600 }}>
-            {saving ? 'Guardando...' : <>{primaryLabel} <ChevronRight size={14} className="ml-1 inline" /></>}
-          </button>
+            <div className="w-full sm:w-auto">
+              {stepReasoningEnabled && <p className="mb-1 text-[11px] font-bold uppercase tracking-[0.08em] text-slate-600">Revisión del checkpoint</p>}
+              <button
+                onClick={stepReasoningEnabled ? reviewActiveCheckpoint : handlePrimaryAction}
+                disabled={saving || (stepReasoningEnabled && !activeCheckpoint)}
+                className={stepReasoningEnabled
+                  ? 'min-h-11 w-full rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-bold text-slate-800 hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-slate-200 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto'
+                  : 'min-h-11 w-full rounded-xl bg-indigo-600 px-5 py-2.5 text-sm text-white disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto'}
+                style={{ fontWeight: 600 }}
+              >
+                {saving ? 'Guardando...' : <>{checkpointActionLabel} <ChevronRight size={14} className="ml-1 inline" /></>}
+              </button>
+            </div>
           )}
           {canEdit && analysisState === 'done' && (
             <button onClick={requestStep1Advance} disabled={checkpointSaving} className="rounded-xl border border-indigo-200 px-4 py-2.5 text-sm text-indigo-700 hover:bg-indigo-50 disabled:cursor-not-allowed disabled:opacity-60" style={{ fontWeight: 700 }}>
               Avanzar a Step 1
             </button>
           )}
-          {canEdit && <button onClick={openIA} className="rounded-xl border border-violet-200 px-4 py-2.5 text-sm text-violet-600" style={{ fontWeight: 600 }}><Sparkles size={14} className="mr-2 inline" />Hacerlo más claro sin inventar</button>}
+          {canEdit && !stepReasoningEnabled && <button onClick={openIA} className="rounded-xl border border-violet-200 px-4 py-2.5 text-sm text-violet-600" style={{ fontWeight: 600 }}><Sparkles size={14} className="mr-2 inline" />Hacerlo más claro sin inventar</button>}
           {/* PRD-03 §6 (Zona 4): un unico CTA contextual. El aviso "Te falta 1 campo clave"
               era un cuarto contador de faltantes; el que manda es el del checkpoint. */}
           <div className="flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
             {activeCheckpoint ? (
-              <>
-                <span style={{ fontWeight: 800 }}>{activeCheckpoint.code}</span>
-                <span>{activeCheckpoint.title ?? ''}</span>
-                <span className="text-slate-400">·</span>
-                <span>{completedCheckpoints}/{checkpointSections.length} cerrados</span>
-              </>
+              stepReasoningEnabled ? (
+                <>
+                  <span style={{ fontWeight: 800 }}>{activeCheckpoint.title ?? 'Checkpoint actual'}</span>
+                  <span className="text-slate-400">·</span>
+                  <span>{completedCheckpoints}/{checkpointSections.length} confirmados</span>
+                </>
+              ) : (
+                <>
+                  <span style={{ fontWeight: 800 }}>{activeCheckpoint.code}</span>
+                  <span>{activeCheckpoint.title ?? ''}</span>
+                  <span className="text-slate-400">·</span>
+                  <span>{completedCheckpoints}/{checkpointSections.length} cerrados</span>
+                </>
+              )
             ) : confirmedStep0Brief ? (
               <span style={{ fontWeight: 800 }}>Step 0 completado</span>
             ) : (
@@ -1695,7 +1791,7 @@ const confirmedStep0Brief = (adaptiveCore?.stepOutputs ?? []).find(
             )}
           </div>
           <div className="ml-auto hidden items-center gap-3 sm:flex">
-            {project.mentorCredits !== undefined && <div className="flex items-center gap-1.5 text-xs text-slate-400"><CreditCard size={12} /><span>{project.mentorCredits} créditos disponibles</span></div>}
+            {project.mentorCredits !== undefined && <div className="flex items-center gap-1.5 text-xs text-slate-600"><CreditCard size={12} /><span>{project.mentorCredits} créditos disponibles</span></div>}
             <AutosaveIndicator state={saveState.state} />
           </div>
         </div>
@@ -1884,7 +1980,12 @@ const confirmedStep0Brief = (adaptiveCore?.stepOutputs ?? []).find(
       )}
 
       <MentorVirtualPanel open={showIAPanel} onClose={() => setShowIAPanel(false)} context={`Paso 0 · ${stepOutputLabel}`} feedback={IA_FEEDBACK} loading={iaLoading} />
-      {showMentorModal && <MentorSupportModal onClose={() => setShowMentorModal(false)} context={`Paso 0 · ${stepOutputLabel}`} mentorCredits={project.mentorCredits ?? 3} onOpenIA={() => { setShowMentorModal(false); openIA(); }} />}
+      <StepHelpDialog
+        open={showMentorModal}
+        onClose={() => setShowMentorModal(false)}
+        onReviewCheckpoint={reviewActiveCheckpoint}
+        onRefresh={retryAdaptiveCore}
+      />
     </div>
   );
 }

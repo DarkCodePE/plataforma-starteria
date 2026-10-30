@@ -1,5 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
-import { assertProjectTeamAccess, requireProjectTeamAccess, type ProjectTeamNeed } from '../project-team-access';
+import {
+  assertProjectTeamAccess,
+  requireProjectTeamAccess,
+  type ProjectTeamNeed,
+} from '../project-team-access';
 
 const check = (
   platformRole: string,
@@ -11,7 +15,7 @@ const check = (
     assertProjectTeamAccess({
       platformRole,
       teamRole,
-      teamStatus: options.teamStatus,
+      teamStatus: options.teamStatus ?? (teamRole ? 'ACTIVE' : null),
       isAssignedPortfolioLead: options.isAssignedPortfolioLead ?? false,
       isAssignedMentor: options.isAssignedMentor ?? false,
       sameOrganization: options.sameOrganization ?? true,
@@ -43,8 +47,8 @@ describe('assertProjectTeamAccess', () => {
   });
 
   it('keeps a pending invite outside corporate Project data', () => {
-    expect(check('participante', 'EDITOR', 'read', { teamStatus: 'PENDING' })).toBe('TEAM_INVITATION_PENDING');
-    expect(check('participante', 'EDITOR', 'write', { teamStatus: 'PENDING' })).toBe('TEAM_INVITATION_PENDING');
+    expect(check('participante', 'EDITOR', 'read', { teamStatus: 'PENDING' })).toBe('TEAM_MEMBERSHIP_INACTIVE');
+    expect(check('participante', 'EDITOR', 'write', { teamStatus: 'PENDING' })).toBe('TEAM_MEMBERSHIP_INACTIVE');
   });
 
   it('requires a same-tenant assignment for mentors', () => {
@@ -100,7 +104,7 @@ describe('requireProjectTeamAccess', () => {
 
   it('allows only an explicitly assigned mentor', async () => {
     expect(await run(prisma({ assignedMentor: true }), 'write', 'mentor')).toBeUndefined();
-    await expect(run(prisma(), 'write', 'mentor')).resolves.toMatchObject({ code: 'PROJECT_ACCESS_DENIED' });
+    await expect(run(prisma(), 'write', 'mentor')).resolves.toMatchObject({ code: 'PROJECT_NOT_FOUND' });
   });
 
   it('passes role errors to next instead of throwing', async () => {

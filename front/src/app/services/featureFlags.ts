@@ -26,6 +26,15 @@ export function isEnabled(flagId: string, _userId?: string): boolean {
     const raw = readFlagEnv('VITE_PORTFOLIO_COPILOT_ENABLED');
     return raw === 'true' || raw === '1';
   }
+  if (flagId === 'feature.stepReasoningCopilot') {
+    const enabled = readFlagEnv('VITE_STEP_REASONING_COPILOT_ENABLED');
+    if (enabled !== 'true' && enabled !== '1') return false;
+    const allowlist = (readFlagEnv('VITE_STEP_REASONING_QA_USER_IDS') ?? '')
+      .split(',')
+      .map(value => value.trim())
+      .filter(Boolean);
+    return Boolean(_userId && allowlist.includes(_userId));
+  }
   return false;
 }
 
@@ -41,3 +50,7 @@ export const isPdfAutofillEnabled = (userId?: string): boolean =>
 /** Portfolio Copilot (copilot-first vertical). Default off; see docs/implementation/copilot-first-rollout-plan.md. */
 export const isPortfolioCopilotEnabled = (userId?: string): boolean =>
   isEnabled('feature.portfolioCopilot', userId);
+
+/** Step 0-4 contextual reasoning QA. Default off and restricted to explicit synthetic QA users. */
+export const isStepReasoningCopilotEnabled = (userId?: string): boolean =>
+  isEnabled('feature.stepReasoningCopilot', userId);

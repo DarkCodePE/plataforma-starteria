@@ -95,6 +95,19 @@ export class AdaptiveCycleService {
   }
 
   private async backfillLegacyCycleRelationsTx(tx: Db, projectId: string, cycleId: string) {
+    // Prisma now models these cycleId columns as required, so `cycleId: null` is
+    // rejected by the generated client even when an older database still contains
+    // pre-cycle rows. Keep the compatibility backfill at the SQL boundary.
+    if (typeof tx.$executeRawUnsafe === 'function') {
+      for (const table of ['AdaptiveStepConfiguration', 'AdaptiveCheckpointInstance', 'AdaptiveStepOutput', 'AdaptiveProgressSignal']) {
+        await tx.$executeRawUnsafe(
+          `UPDATE "${table}" SET "cycleId" = $1 WHERE "projectId" = $2 AND "cycleId" IS NULL`,
+          cycleId,
+          projectId,
+        );
+      }
+      return;
+    }
     await tx.adaptiveStepConfiguration.updateMany({
       where: { projectId, cycleId: null },
       data: { cycleId },

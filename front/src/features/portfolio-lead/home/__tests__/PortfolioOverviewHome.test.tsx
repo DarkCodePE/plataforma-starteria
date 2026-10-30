@@ -125,4 +125,26 @@ describe('PortfolioOverviewHome', () => {
     fireEvent.click(screen.getByRole('button', { name: /Abrir Copilot/i }));
     expect(onOpenCopilot).toHaveBeenCalledOnce();
   });
+
+  it('labels Project progress as a dated read projection, not confirmed evidence', () => {
+    render(<PortfolioOverviewHome model={model as any} onOpenCopilot={vi.fn()} onOpenAdditionalFront={vi.fn()} />);
+
+    expect(screen.getByText(/Step registrado: 1/i)).toBeInTheDocument();
+    expect(screen.getByText(/Fuente: Project/i)).toBeInTheDocument();
+    expect(screen.getByText(/Sin actualización disponible/i)).toBeInTheDocument();
+    expect(screen.getByText(/El avance no acredita un output ni evidencia confirmada/i)).toBeInTheDocument();
+  });
+
+  it('shows the latest canonical output with version, date and Step link', () => {
+    const withOutput = structuredClone(model) as any;
+    withOutput.strategicUnits[0].challenges[0].initiatives[0].lastConfirmedOutput = {
+      id: 'output-step2-v4', cycleId: 'cycle-1', stepNumber: 2, version: 4, status: 'confirmed', outputKey: 'step2.execution-ready', sourceConfigurationId: 'step2-v4', confirmedAt: '2026-10-28T08:30:00.000Z', updatedAt: '2026-10-28T08:30:00.000Z',
+    };
+
+    render(<PortfolioOverviewHome model={withOutput} onOpenCopilot={vi.fn()} onOpenAdditionalFront={vi.fn()} />);
+
+    expect(screen.getByText(/Último resultado confirmado: Step 2/i)).toBeInTheDocument();
+    expect(screen.getByText(/v4/i)).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /Ver resultado confirmado de Step 2/i })).toHaveAttribute('href', '/projects/project-1/step/2');
+  });
 });
