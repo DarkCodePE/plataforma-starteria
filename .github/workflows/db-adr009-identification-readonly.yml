@@ -1,0 +1,88 @@
+name: ADR-009 Blocking Project Identification (readonly)
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: db-adr009-identification-readonly
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  NAMESPACE: starteria
+
+jobs:
+  identify:
+    runs-on: ubuntu-latest
+    environment: production
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install kubectl
+        uses: azure/setup-kubectl@v4
+        with:
+          version: 'v1.30.0'
+
+      - name: Fetch kubeconfig from Rackspace Spot API
+        env:
+          RACKSPACE_REFRESH_TOKEN: ${{ secrets.RACKSPACE_REFRESH_TOKEN }}
+          RACKSPACE_ORG_NAME: ${{ secrets.RACKSPACE_ORG_NAME }}
+          RACKSPACE_CLOUDSPACE_NAME: ${{ secrets.RACKSPACE_CLOUDSPACE_NAME }}
+        run: |
+          set -euo pipefail
+          payload=$(jq -nc \
+            --arg org "$RACKSPACE_ORG_NAME" \
+            --arg cs "$RACKSPACE_CLOUDSPACE_NAME" \
+            --arg rt "$RACKSPACE_REFRESH_TOKEN" \
+            '{organization_name:$org, cloudspace_name:$cs, refresh_token:$rt}')
+          response="$RUNNER_TEMP/spot-response.json"
+          http_status=$(curl -sS -o "$response" -w '%{http_code}' \
+            -X POST 'https://spot.rackspace.com/apis/auth.ngpc.rxt.io/v1/generate-kubeconfig' \
+            -H 'Content-Type: application/json' \
+            --data "$payload")
+          if [ "$http_status" != "200" ]; then
+            echo "::error::Rackspace API returned HTTP $http_status."
+            exit 1
+          fi
+          mkdir -p "$RUNNER_TEMP/kube"
+          jq -er '.data.kubeconfig' "$response" > "$RUNNER_TEMP/kube/config"
+          chmod 600 "$RUNNER_TEMP/kube/config"
+          rm -f "$response"
+          echo "KUBECONFIG=$RUNNER_TEMP/kube/config" >> "$GITHUB_ENV"
+
+      - name: Generate private ADR-009 identification report
+        run: |
+          set -euo pipefail
+          REPORT_PATH="$RUNNER_TEMP/adr009-private-identification.txt"
+          echo "REPORT_PATH=$REPORT_PATH" >> "$GITHUB_ENV"
+          kubectl exec -i -n "$NAMESPACE" statefulset/starteria-db -- \
+            env PGAPPNAME=adr009-private-identification \
+              PGOPTIONS="-c default_transaction_read_only=on -c statement_timeout=20000 -c lock_timeout=2000 -c idle_in_transaction_session_timeout=30000" \
+            psql -X -U starteria -d starteria_db -P pager=off -v ON_ERROR_STOP=1 \
+            -f - < scripts/preflight/adr009-blocking-project-identification-readonly.sql \
+            > "$REPORT_PATH"
+          chmod 600 "$REPORT_PATH"
+          test -s "$REPORT_PATH"
+          line_count=$(wc -l < "$REPORT_PATH")
+          echo "Private ADR-009 report generated (${line_count} lines); contents intentionally omitted from logs."
+
+      - name: Upload private identification report
+        uses: actions/upload-artifact@v4
+        with:
+          name: adr009-private-identification-${{ github.run_id }}
+          path: ${{ env.REPORT_PATH }}
+          retention-days: 1
+          if-no-files-found: error
+          compression-level: 9
+          include-hidden-files: false
+
+      - name: Remove private report and kubeconfig
+        if: always()
+        run: |
+          set -euo pipefail
+          REPORT_PATH="${REPORT_PATH:-$RUNNER_TEMP/adr009-private-identification.txt}"
+          rm -f "$REPORT_PATH"
+          rm -f "$RUNNER_TEMP/kube/config" "$RUNNER_TEMP/spot-response.json"
