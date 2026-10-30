@@ -1,0 +1,184 @@
+# Runbook: docs/operations/ADR009_STARTERIA_INTERNAL_LAB_ADMIN_RUNBOOK.md
+name: Create Startería Internal Lab (administrative)
+
+on:
+  workflow_dispatch:
+    inputs:
+      custodian_user_id:
+        description: 'Existing internal user approved as the tenant custodian.'
+        required: true
+        type: string
+      approved_by_user_id:
+        description: 'Existing active platform-admin user responsible for this operation.'
+        required: true
+        type: string
+      approval_reference:
+        description: 'Approved ADR009-* decision reference.'
+        required: true
+        type: string
+      apply:
+        description: 'false = read-only preflight; true = provision after separate human authorization.'
+        required: true
+        type: boolean
+        default: false
+      confirmation:
+        description: 'With apply=true, enter CREATE_STARTERIA_INTERNAL_LAB.'
+        required: false
+        type: string
+        default: ''
+
+concurrency:
+  group: starteria-production
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  NAMESPACE: starteria
+
+jobs:
+  provision:
+    runs-on: ubuntu-latest
+    environment: production
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20.20.2'
+          cache: npm
+          cache-dependency-path: front/package-lock.json
+
+      - name: Install fixed administrative dependencies
+        working-directory: front
+        run: |
+          set -euo pipefail
+          npm ci
+          npx prisma generate
+          ln -sfn "$GITHUB_WORKSPACE/front/node_modules" "$GITHUB_WORKSPACE/node_modules"
+
+      - name: Install kubectl
+        uses: azure/setup-kubectl@v4
+        with:
+          version: 'v1.30.0'
+
+      - name: Fetch kubeconfig from Rackspace Spot API
+        env:
+          RACKSPACE_REFRESH_TOKEN: ${{ secrets.RACKSPACE_REFRESH_TOKEN }}
+          RACKSPACE_ORG_NAME: ${{ secrets.RACKSPACE_ORG_NAME }}
+          RACKSPACE_CLOUDSPACE_NAME: ${{ secrets.RACKSPACE_CLOUDSPACE_NAME }}
+        run: |
+          set -euo pipefail
+          payload=$(jq -nc \
+            --arg org "$RACKSPACE_ORG_NAME" \
+            --arg cs "$RACKSPACE_CLOUDSPACE_NAME" \
+            --arg rt "$RACKSPACE_REFRESH_TOKEN" \
+            '{organization_name:$org, cloudspace_name:$cs, refresh_token:$rt}')
+          response="$RUNNER_TEMP/spot-response.json"
+          http_status=$(curl -sS -o "$response" -w '%{http_code}' \
+            -X POST 'https://spot.rackspace.com/apis/auth.ngpc.rxt.io/v1/generate-kubeconfig' \
+            -H 'Content-Type: application/json' \
+            --data "$payload")
+          if [ "$http_status" != "200" ]; then
+            echo "::error::Rackspace API returned HTTP $http_status."
+            exit 1
+          fi
+          mkdir -p "$RUNNER_TEMP/kube"
+          jq -er '.data.kubeconfig' "$response" > "$RUNNER_TEMP/kube/config"
+          chmod 600 "$RUNNER_TEMP/kube/config"
+          rm -f "$response"
+          echo "KUBECONFIG=$RUNNER_TEMP/kube/config" >> "$GITHUB_ENV"
+
+      - name: Open controlled database tunnel
+        run: |
+          set -euo pipefail
+          password=$(kubectl -n "$NAMESPACE" get secret starteria-db-secrets -o jsonpath='{.data.POSTGRES_PASSWORD}' | base64 -d)
+          echo "::add-mask::$password"
+          encoded=$(jq -nr --arg value "$password" '$value|@uri')
+          echo "DATABASE_URL=postgresql://starteria:${encoded}@127.0.0.1:15432/starteria_db" >> "$GITHUB_ENV"
+          kubectl -n "$NAMESPACE" port-forward statefulset/starteria-db 15432:5432 > "$RUNNER_TEMP/internal-lab-pf.log" 2>&1 &
+          echo $! > "$RUNNER_TEMP/internal-lab-pf.pid"
+          for _ in $(seq 30); do
+            (echo > /dev/tcp/127.0.0.1/15432) 2>/dev/null && break
+            sleep 1
+          done
+          if ! (echo > /dev/tcp/127.0.0.1/15432) 2>/dev/null; then
+            echo "::error::Database tunnel did not become ready."
+            exit 1
+          fi
+
+      - name: Run fixed Internal Lab operation
+        working-directory: front
+        env:
+          APPLY: ${{ inputs.apply }}
+          CONFIRMATION: ${{ inputs.confirmation }}
+          CUSTODIAN_USER_ID: ${{ inputs.custodian_user_id }}
+          APPROVED_BY_USER_ID: ${{ inputs.approved_by_user_id }}
+          APPROVAL_REFERENCE: ${{ inputs.approval_reference }}
+          INTERNAL_LAB_REPORT_RECIPIENT_CERT_B64: ${{ secrets.INTERNAL_LAB_REPORT_RECIPIENT_CERT_B64 }}
+        run: |
+          set -euo pipefail
+          REPORT_PATH="$RUNNER_TEMP/starteria-internal-lab-private.json"
+          ENCRYPTED_REPORT_PATH="$RUNNER_TEMP/starteria-internal-lab-private.p7m"
+          RECIPIENT_CERT="$RUNNER_TEMP/internal-lab-report-recipient.pem"
+          echo "REPORT_PATH=$REPORT_PATH" >> "$GITHUB_ENV"
+          echo "ENCRYPTED_REPORT_PATH=$ENCRYPTED_REPORT_PATH" >> "$GITHUB_ENV"
+          if [ -z "$INTERNAL_LAB_REPORT_RECIPIENT_CERT_B64" ]; then
+            echo "::error::The private-report recipient certificate is not configured."
+            exit 1
+          fi
+          printf '%s' "$INTERNAL_LAB_REPORT_RECIPIENT_CERT_B64" | base64 -d > "$RECIPIENT_CERT"
+          chmod 600 "$RECIPIENT_CERT"
+          openssl x509 -in "$RECIPIENT_CERT" -noout -checkend 86400 > /dev/null
+          export PGOPTIONS="-c statement_timeout=20000 -c lock_timeout=2000 -c idle_in_transaction_session_timeout=30000"
+          extra=()
+          if [ "$APPLY" = "true" ]; then
+            if [ "$CONFIRMATION" != "CREATE_STARTERIA_INTERNAL_LAB" ]; then
+              echo "::error::Exact write confirmation is required."
+              exit 1
+            fi
+            extra=(--apply --confirm "$CONFIRMATION")
+          else
+            export PGOPTIONS="$PGOPTIONS -c default_transaction_read_only=on"
+          fi
+          npx tsx ../backend/scripts/starteria-internal-lab-admin.ts \
+            --custodian-user-id "$CUSTODIAN_USER_ID" \
+            --approved-by-user-id "$APPROVED_BY_USER_ID" \
+            --approval-reference "$APPROVAL_REFERENCE" \
+            --report-file "$REPORT_PATH" \
+            "${extra[@]}"
+          chmod 600 "$REPORT_PATH"
+          test -s "$REPORT_PATH"
+          openssl cms -encrypt -binary -aes-256-cbc \
+            -in "$REPORT_PATH" \
+            -outform DER \
+            -out "$ENCRYPTED_REPORT_PATH" \
+            "$RECIPIENT_CERT"
+          chmod 600 "$ENCRYPTED_REPORT_PATH"
+          test -s "$ENCRYPTED_REPORT_PATH"
+          rm -f "$REPORT_PATH" "$RECIPIENT_CERT"
+          echo "Encrypted Internal Lab report generated; contents intentionally omitted from logs."
+
+      - name: Upload private organization report
+        uses: actions/upload-artifact@v4
+        with:
+          name: starteria-internal-lab-${{ github.run_id }}
+          path: ${{ env.ENCRYPTED_REPORT_PATH }}
+          retention-days: 1
+          if-no-files-found: error
+          compression-level: 9
+          include-hidden-files: false
+
+      - name: Remove private report, tunnel and kubeconfig
+        if: always()
+        run: |
+          set -euo pipefail
+          if [ -f "$RUNNER_TEMP/internal-lab-pf.pid" ]; then
+            kill "$(cat "$RUNNER_TEMP/internal-lab-pf.pid")" 2>/dev/null || true
+          fi
+          REPORT_PATH="${REPORT_PATH:-$RUNNER_TEMP/starteria-internal-lab-private.json}"
+          ENCRYPTED_REPORT_PATH="${ENCRYPTED_REPORT_PATH:-$RUNNER_TEMP/starteria-internal-lab-private.p7m}"
+          rm -f "$REPORT_PATH" "$ENCRYPTED_REPORT_PATH" "$RUNNER_TEMP/internal-lab-report-recipient.pem"
+          rm -f "$RUNNER_TEMP/kube/config" "$RUNNER_TEMP/spot-response.json" "$RUNNER_TEMP/internal-lab-pf.log"
