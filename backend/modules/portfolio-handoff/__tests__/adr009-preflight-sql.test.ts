@@ -90,3 +90,37 @@ describe('KAN-183 ADR-009 catalog equivalence preflight', () => {
     expect(sql).toContain('155045d9d30412a47727641200f63d3cdd7da076a990570e8501ccfc9f12e0f3');
   });
 });
+
+describe('production DB schema sync workflow', () => {
+  it('continues after opening the tunnel and runs every read-only preflight before apply', () => {
+    const workflow = readFileSync(
+      resolve(process.cwd(), '../.github/workflows/db-schema-sync.yml'),
+      'utf8',
+    );
+
+    const tunnelStart = workflow.indexOf('- name: Open tunnel to the production database');
+    const installStart = workflow.indexOf('- name: Install Prisma CLI (same version as the repo)');
+    const pendingStart = workflow.indexOf('- name: Pending migrations (read-only)');
+    const preflightStart = workflow.indexOf('- name: ADR-009 production preflights (read-only)');
+    const preflightEnd = workflow.indexOf('- name: Validate mark_applied');
+    const applyStart = workflow.indexOf('- name: Apply pending migrations (prisma migrate deploy)');
+
+    expect(tunnelStart).toBeGreaterThan(-1);
+    expect(installStart).toBeGreaterThan(tunnelStart);
+    expect(pendingStart).toBeGreaterThan(installStart);
+    expect(preflightStart).toBeGreaterThan(pendingStart);
+    expect(preflightEnd).toBeGreaterThan(preflightStart);
+    expect(applyStart).toBeGreaterThan(preflightStart);
+
+    const tunnelStep = workflow.slice(tunnelStart, installStart);
+    expect(tunnelStep).toContain('&& break');
+    expect(tunnelStep).not.toMatch(/&&\s*exit\s+0/);
+
+    const preflightStep = workflow.slice(preflightStart, preflightEnd);
+    expect(preflightStep).toContain('kan182-adr009-migration-history-readonly.sql');
+    expect(preflightStep).toContain('kan182-adr009-production-readonly.sql');
+    expect(preflightStep).toContain('kan183-adr009-catalog-equivalence-readonly.sql');
+    expect(preflightStep).toContain('ON_ERROR_STOP=1');
+    expect(preflightStep).not.toContain('if: ${{ inputs.apply }}');
+  });
+});
