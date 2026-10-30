@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import { z } from 'zod/v3';
 
 export const stepReasoningTurnSchema = z.object({
   sessionId: z.string().cuid().optional(),
@@ -46,6 +46,8 @@ export const stepReasoningAiResponseSchema = z.object({
   }
 });
 
-export type StepReasoningTurnInput = z.infer<typeof stepReasoningTurnSchema>;
+export type StepReasoningTurnInput = Omit<z.infer<typeof stepReasoningTurnSchema>, 'retryFailed'> & {
+  retryFailed?: boolean;
+};
 export type StepReasoningAiResponse = z.infer<typeof stepReasoningAiResponseSchema>;
 

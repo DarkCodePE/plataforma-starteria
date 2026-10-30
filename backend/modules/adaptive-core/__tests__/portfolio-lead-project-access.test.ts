@@ -50,6 +50,7 @@ describe('Acceso de mentor limitado por asignacion real', () => {
     const mentor = { userId: 'mentor-assigned', projectId: project.id, role: 'VIEWER', status: 'ACTIVE' };
     project.teamMembers.push(mentor);
     store.teamMember.push(mentor);
+    store.user.push({ id: mentor.userId, organizationId: project.organizationId });
     store.initiativeCycle.push({ id: 'cycle-mentor', projectId: project.id, cycleNumber: 1, startStep: 0, currentStep: 0, status: 'active' });
 
     await expect(new AdaptiveCoreService(makeCyclePrisma(store) as any).getState(project.id, mentor.userId, 'mentor'))

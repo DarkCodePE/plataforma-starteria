@@ -55,7 +55,7 @@ describe('requireStepProjectAccess', () => {
     const prisma = makePrisma({ mentor: true });
     expect(await run(prisma, 'PUT', { id: 'a1', role: 'admin' })).toBeUndefined();
     expect(await run(prisma, 'POST', { id: 'm1', role: 'mentor' })).toBeUndefined();
-    expect(await run(makePrisma(), 'POST', { id: 'm2', role: 'mentor' })).toMatchObject({ code: 'PROJECT_ACCESS_DENIED' });
+    expect(await run(makePrisma(), 'POST', { id: 'm2', role: 'mentor' })).toMatchObject({ code: 'PROJECT_NOT_FOUND' });
     expect(await run(makePrisma({ userOrg: 'org-2' }), 'PUT', { id: 'a2', role: 'admin' })).toMatchObject({ code: 'PROJECT_NOT_FOUND' });
   });
 });

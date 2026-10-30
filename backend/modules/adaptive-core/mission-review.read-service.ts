@@ -122,7 +122,7 @@ export class MissionReviewReadService {
     const assignedMentor = role === 'mentor' && project.mentorSessions.length > 0;
     const assignedPortfolioLead = governance?.portfolioLeadUserId === userId;
     if (role !== 'admin' && !activeMember && !assignedMentor && !assignedPortfolioLead) {
-      throw AppError.forbidden('No tienes acceso a este proyecto.', 'PROJECT_ACCESS_DENIED');
+      throw AppError.notFound('Proyecto', 'PROJECT_NOT_FOUND');
     }
 
     const prefill = (project.step0Data ?? {}) as Record<string, unknown>;

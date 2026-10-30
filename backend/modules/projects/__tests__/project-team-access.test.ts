@@ -15,7 +15,7 @@ const check = (
     assertProjectTeamAccess({
       platformRole,
       teamRole,
-      teamStatus: options.teamStatus,
+      teamStatus: options.teamStatus ?? (teamRole ? 'ACTIVE' : null),
       isAssignedPortfolioLead: options.isAssignedPortfolioLead ?? false,
       isAssignedMentor: options.isAssignedMentor ?? false,
       sameOrganization: options.sameOrganization ?? true,
@@ -104,7 +104,7 @@ describe('requireProjectTeamAccess', () => {
 
   it('allows only an explicitly assigned mentor', async () => {
     expect(await run(prisma({ assignedMentor: true }), 'write', 'mentor')).toBeUndefined();
-    await expect(run(prisma(), 'write', 'mentor')).resolves.toMatchObject({ code: 'PROJECT_ACCESS_DENIED' });
+    await expect(run(prisma(), 'write', 'mentor')).resolves.toMatchObject({ code: 'PROJECT_NOT_FOUND' });
   });
 
   it('passes role errors to next instead of throwing', async () => {

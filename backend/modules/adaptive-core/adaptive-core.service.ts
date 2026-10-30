@@ -2414,7 +2414,7 @@ const sufficiency = this.evaluateCheckpoint(
       const isAssignedPortfolioLead = !isMember && Boolean(
         (await (this.prisma as any).initiativeGovernance.findUnique({ where: { projectId } }))?.portfolioLeadUserId === userId,
       );
-      if (!isMember && !isAssignedMentor && !isAssignedPortfolioLead) throw AppError.forbidden('No tienes acceso a este proyecto.', 'PROJECT_ACCESS_DENIED');
+      if (!isMember && !isAssignedMentor && !isAssignedPortfolioLead) throw AppError.notFound('Proyecto', 'PROJECT_NOT_FOUND');
     }
     return project as any;
   }

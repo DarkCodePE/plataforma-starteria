@@ -35,6 +35,6 @@ describe('KAN-188 private preview hardening', () => {
     expect(backendBlock).toContain('networks:');
     expect(backendBlock).toContain('private:');
     expect(backendBlock).not.toContain('outbound');
-    expect(compose).toContain('private:\n    internal: true');
+    expect(compose).toMatch(/private:\r?\n    internal: true/);
   });
 });

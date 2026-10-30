@@ -136,7 +136,7 @@ describe('MissionReviewReadService', () => {
 
   it('el Mentor necesita una asignacion explicita', async () => {
     await expect(new MissionReviewReadService(makePrisma(project())).get('p1', 'mentor-1', 'mentor'))
-      .rejects.toMatchObject({ code: 'PROJECT_ACCESS_DENIED' });
+      .rejects.toMatchObject({ code: 'PROJECT_NOT_FOUND' });
     await expect(new MissionReviewReadService(makePrisma(project({ mentorSessions: [{ id: 'ms-1' }] }))).get('p1', 'mentor-1', 'mentor'))
       .resolves.toBeTruthy();
   });
