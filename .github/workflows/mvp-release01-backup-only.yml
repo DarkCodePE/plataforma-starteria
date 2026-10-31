@@ -144,14 +144,17 @@ jobs:
         env:
           AUTHORIZATION_REF: ${{ inputs.authorization_ref }}
           AUTHORIZATION_COMMENT_ID: ${{ steps.authorization.outputs.comment_id }}
+          AUTHORIZATION_CREATED_AT_UTC: ${{ steps.authorization.outputs.created_at_utc }}
+          CLONE_DESTROY_BY_UTC: ${{ steps.authorization.outputs.clone_destroy_by_utc }}
           ENCRYPTED_SHA256: ${{ steps.backup.outputs.sha256 }}
           ENCRYPTED_SIZE: ${{ steps.backup.outputs.size }}
         run: |
           set -euo pipefail
           # Backticks below are Markdown, not shell expansion.
           # shellcheck disable=SC2016
-          printf '## MVP Release 01 encrypted backup\n\n- Status: `encrypted-artifact-published`\n- Source SHA: `%s`\n- Run ID: `%s`\n- Authorization: `%s` (comment `%s`)\n- Encrypted size: `%s` bytes\n- SHA-256: `%s`\n- Retention: 1 day\n' \
+          printf '## MVP Release 01 encrypted backup\n\n- Status: `encrypted-artifact-published`\n- Source SHA: `%s`\n- Run ID: `%s`\n- Authorization: `%s` (comment `%s`)\n- Approval created: `%s`\n- Clone destroy by: `%s`\n- Encrypted size: `%s` bytes\n- SHA-256: `%s`\n- Artifact retention: 1 day\n' \
             "$GITHUB_SHA" "$GITHUB_RUN_ID" "$AUTHORIZATION_REF" "$AUTHORIZATION_COMMENT_ID" \
+            "$AUTHORIZATION_CREATED_AT_UTC" "$CLONE_DESTROY_BY_UTC" \
             "$ENCRYPTED_SIZE" "$ENCRYPTED_SHA256" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Remove kubeconfig and temporary files

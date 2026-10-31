@@ -12,7 +12,8 @@ set -Eeuo pipefail
 : "${EXPECTED_CLONE_SYSTEM_IDENTIFIER:?EXPECTED_CLONE_SYSTEM_IDENTIFIER is required}"
 : "${PRODUCTION_SYSTEM_IDENTIFIER:?PRODUCTION_SYSTEM_IDENTIFIER is required}"
 : "${AUTHORIZATION_REF:?AUTHORIZATION_REF is required}"
-: "${DESTRUCTION_AT_UTC:?DESTRUCTION_AT_UTC is required}"
+: "${AUTHORIZATION_CREATED_AT_UTC:?AUTHORIZATION_CREATED_AT_UTC is required}"
+: "${AUTHORIZED_CLONE_DESTROY_BY_UTC:?AUTHORIZED_CLONE_DESTROY_BY_UTC is required}"
 
 OPENSSL_BIN="${OPENSSL_BIN:-openssl}"
 PSQL_BIN="${PSQL_BIN:-psql}"
@@ -37,10 +38,21 @@ actual_sha256=$(sha256sum "$ENCRYPTED_BACKUP" | awk '{print $1}')
 "$OPENSSL_BIN" cms -cmsout -inform DER -in "$ENCRYPTED_BACKUP" -noout >/dev/null
 
 now_epoch=$(date -u +%s)
-destruction_epoch=$(date -u -d "$DESTRUCTION_AT_UTC" +%s 2>/dev/null) \
-  || { echo 'Invalid DESTRUCTION_AT_UTC.' >&2; exit 1; }
-(( destruction_epoch > now_epoch && destruction_epoch <= now_epoch + 259200 )) \
-  || { echo 'Destruction deadline must be within the next 72 hours.' >&2; exit 1; }
+utc_pattern='^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$'
+[[ "$AUTHORIZATION_CREATED_AT_UTC" =~ $utc_pattern ]] \
+  || { echo 'AUTHORIZATION_CREATED_AT_UTC must be an explicit UTC timestamp.' >&2; exit 1; }
+[[ "$AUTHORIZED_CLONE_DESTROY_BY_UTC" =~ $utc_pattern ]] \
+  || { echo 'AUTHORIZED_CLONE_DESTROY_BY_UTC must be an explicit UTC timestamp.' >&2; exit 1; }
+authorization_created_epoch=$(date -u -d "$AUTHORIZATION_CREATED_AT_UTC" +%s 2>/dev/null) \
+  || { echo 'Invalid AUTHORIZATION_CREATED_AT_UTC.' >&2; exit 1; }
+destruction_epoch=$(date -u -d "$AUTHORIZED_CLONE_DESTROY_BY_UTC" +%s 2>/dev/null) \
+  || { echo 'Invalid AUTHORIZED_CLONE_DESTROY_BY_UTC.' >&2; exit 1; }
+(( authorization_created_epoch <= now_epoch )) \
+  || { echo 'Authorization creation time is in the future.' >&2; exit 1; }
+(( destruction_epoch > now_epoch )) \
+  || { echo 'Authorized clone destruction deadline has passed.' >&2; exit 1; }
+(( destruction_epoch <= authorization_created_epoch + 259200 )) \
+  || { echo 'Authorized clone retention may not exceed 72 hours from approval creation.' >&2; exit 1; }
 
 runtime_dir=$(mktemp -d)
 cleanup() {
@@ -79,4 +91,4 @@ if ! "$OPENSSL_BIN" cms -decrypt -binary -inform DER \
 fi
 
 echo "Encrypted restore completed on clone database=$actual_database address=$server_address port=$server_port"
-echo "Authorization=$AUTHORIZATION_REF destruction_at_utc=$DESTRUCTION_AT_UTC"
+echo "Authorization=$AUTHORIZATION_REF destroy_by_utc=$AUTHORIZED_CLONE_DESTROY_BY_UTC"

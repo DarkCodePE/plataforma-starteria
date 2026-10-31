@@ -88,7 +88,26 @@ KUBECTL_BIN="$work_dir/mock-kubectl" \
   "$backup_script" >/dev/null
 
 expected_sha256=$(sha256sum "$work_dir/roundtrip.p7m" | awk '{print $1}')
+authorization_created_at=$(date -u -d '-1 minute' '+%Y-%m-%dT%H:%M:%SZ')
 destruction_at=$(date -u -d '+1 hour' '+%Y-%m-%dT%H:%M:%SZ')
+excessive_destruction_at=$(date -u -d '+73 hours' '+%Y-%m-%dT%H:%M:%SZ')
+if ENCRYPTED_BACKUP="$work_dir/roundtrip.p7m" \
+  EXPECTED_SHA256="$expected_sha256" \
+  RECIPIENT_CERT_FILE="$work_dir/cert.pem" \
+  RECIPIENT_PRIVATE_KEY_FILE="$work_dir/key.pem" \
+  PGSERVICE_FILE="$work_dir/pg_service.conf" \
+  PGSERVICE_NAME=starteria_release01_clone \
+  EXPECTED_CLONE_DATABASE=roundtrip_target \
+  EXPECTED_CLONE_SERVER_ADDRESS="$target_address" \
+  EXPECTED_CLONE_SYSTEM_IDENTIFIER="$target_system_identifier" \
+  PRODUCTION_SYSTEM_IDENTIFIER="$source_system_identifier" \
+  AUTHORIZATION_REF=MVPREL01-ROUNDTRIP-0001 \
+  AUTHORIZATION_CREATED_AT_UTC="$authorization_created_at" \
+  AUTHORIZED_CLONE_DESTROY_BY_UTC="$excessive_destruction_at" \
+    "$restore_script" >/dev/null 2>&1; then
+  echo 'Restore unexpectedly accepted retention beyond 72 hours from approval creation.' >&2
+  exit 1
+fi
 if ENCRYPTED_BACKUP="$work_dir/roundtrip.p7m" \
   EXPECTED_SHA256="$expected_sha256" \
   RECIPIENT_CERT_FILE="$work_dir/cert.pem" \
@@ -100,7 +119,8 @@ if ENCRYPTED_BACKUP="$work_dir/roundtrip.p7m" \
   EXPECTED_CLONE_SYSTEM_IDENTIFIER=9999999999999999999 \
   PRODUCTION_SYSTEM_IDENTIFIER="$source_system_identifier" \
   AUTHORIZATION_REF=MVPREL01-ROUNDTRIP-0001 \
-  DESTRUCTION_AT_UTC="$destruction_at" \
+  AUTHORIZATION_CREATED_AT_UTC="$authorization_created_at" \
+  AUTHORIZED_CLONE_DESTROY_BY_UTC="$destruction_at" \
     "$restore_script" >/dev/null 2>&1; then
   echo 'Restore unexpectedly accepted a mismatched clone system identifier.' >&2
   exit 1
@@ -116,7 +136,8 @@ if ENCRYPTED_BACKUP="$work_dir/roundtrip.p7m" \
   EXPECTED_CLONE_SYSTEM_IDENTIFIER="$target_system_identifier" \
   PRODUCTION_SYSTEM_IDENTIFIER="$source_system_identifier" \
   AUTHORIZATION_REF=MVPREL01-ROUNDTRIP-0001 \
-  DESTRUCTION_AT_UTC="$destruction_at" \
+  AUTHORIZATION_CREATED_AT_UTC="$authorization_created_at" \
+  AUTHORIZED_CLONE_DESTROY_BY_UTC="$destruction_at" \
     "$restore_script" >/dev/null 2>&1; then
   echo 'Restore unexpectedly accepted a mismatched clone server address.' >&2
   exit 1
@@ -132,7 +153,8 @@ if ENCRYPTED_BACKUP="$work_dir/roundtrip.p7m" \
   EXPECTED_CLONE_SYSTEM_IDENTIFIER="$source_system_identifier" \
   PRODUCTION_SYSTEM_IDENTIFIER="$source_system_identifier" \
   AUTHORIZATION_REF=MVPREL01-ROUNDTRIP-0001 \
-  DESTRUCTION_AT_UTC="$destruction_at" \
+  AUTHORIZATION_CREATED_AT_UTC="$authorization_created_at" \
+  AUTHORIZED_CLONE_DESTROY_BY_UTC="$destruction_at" \
     "$restore_script" >/dev/null 2>&1; then
   echo 'Restore unexpectedly accepted the production system identifier.' >&2
   exit 1
@@ -148,7 +170,8 @@ EXPECTED_CLONE_SERVER_ADDRESS="$target_address" \
 EXPECTED_CLONE_SYSTEM_IDENTIFIER="$target_system_identifier" \
 PRODUCTION_SYSTEM_IDENTIFIER="$source_system_identifier" \
 AUTHORIZATION_REF=MVPREL01-ROUNDTRIP-0001 \
-DESTRUCTION_AT_UTC="$destruction_at" \
+AUTHORIZATION_CREATED_AT_UTC="$authorization_created_at" \
+AUTHORIZED_CLONE_DESTROY_BY_UTC="$destruction_at" \
   "$restore_script" >/dev/null
 
 source_digest=$(docker exec "$source_container" psql -At -U postgres -d roundtrip_source \

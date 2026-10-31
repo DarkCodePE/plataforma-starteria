@@ -35,11 +35,14 @@ Create a private or appropriately access-controlled repository issue for the ext
   "destruction_required": true,
   "source_sha": "40-character-main-sha",
   "recipient_certificate_sha256": "64-character-lowercase-sha256",
-  "valid_until_utc": "2026-11-01T12:00:00Z"
+  "valid_until_utc": "2026-11-01T12:00:00Z",
+  "clone_destroy_by_utc": "2026-11-03T11:00:00Z"
 }
 ```
 
-`valid_until_utc` must be in the future and no more than 24 hours from workflow execution. Closing the issue, changing the SHA/certificate/operator, removing the variable or allowing the approval to expire makes the workflow fail closed. Workflow inputs alone never authorize extraction.
+`valid_until_utc` must be in the future and no more than 24 hours after the GitHub comment `created_at`. The comment must be unedited (`updated_at` equals `created_at`); any change invalidates it and the data owner must post a new complete approval comment. This prevents an old approval from being extended by editing its date.
+
+`clone_destroy_by_utc` is the absolute approved destruction deadline. It must be in the future and no more than 72 hours after the same comment `created_at`. Closing the issue, changing the SHA/certificate/operator, removing the variable, editing the comment or allowing either deadline to expire makes the workflow fail closed. Workflow inputs alone never authorize extraction.
 
 Obtain the public certificate fingerprint locally without exposing the certificate contents:
 
@@ -74,7 +77,7 @@ The destination must be inside the authorized LUKS2 environment. Verify that the
 
 Before restore, the clone administrator records three non-secret identity values from the newly provisioned empty PostgreSQL 16 instance: its database name, `inet_server_addr()` and `system_identifier` from `pg_control_system()`. The production `system_identifier` is recorded separately through the authorized read-only production channel. The two identifiers must differ. These values are provision evidence; do not derive them from the restore command itself.
 
-Store the clone connection in a libpq service file inside the authorized LUKS2 volume, mode `0600`. The helper copies it to a private runtime directory and removes that copy on exit, so credentials never appear in process arguments. The restore helper decrypts as a stream into `pg_restore`; it never creates a clear archive. It refuses the production database name or system identifier, an unexpected server address, a non-PostgreSQL-16 target, a mismatched database, a non-empty target or a destruction deadline beyond 72 hours:
+Store the clone connection in a libpq service file inside the authorized LUKS2 volume, mode `0600`. The helper copies it to a private runtime directory and removes that copy on exit, so credentials never appear in process arguments. Copy `created_at_utc` and `clone_destroy_by_utc` exactly from the workflow summary. The restore helper decrypts as a stream into `pg_restore`; it never creates a clear archive. It refuses the production database name or system identifier, an unexpected server address, a non-PostgreSQL-16 target, a mismatched database, a non-empty target, an expired destruction deadline or one more than 72 hours after approval creation:
 
 ```sh
 export ENCRYPTED_BACKUP=/authorized/luks2/incoming/starteria-mvp-release01-RUN_ID.p7m
@@ -88,7 +91,8 @@ export EXPECTED_CLONE_SERVER_ADDRESS=ISOLATED_CLONE_IP_FROM_PROVISION_EVIDENCE
 export EXPECTED_CLONE_SYSTEM_IDENTIFIER=CLONE_SYSTEM_IDENTIFIER_FROM_PROVISION_EVIDENCE
 export PRODUCTION_SYSTEM_IDENTIFIER=PRODUCTION_SYSTEM_IDENTIFIER_FROM_AUTHORIZED_READ_ONLY_EVIDENCE
 export AUTHORIZATION_REF=MVPREL01-EXAMPLE-0001
-export DESTRUCTION_AT_UTC=UTC_TIMESTAMP_NOT_MORE_THAN_72_HOURS_AFTER_RESTORE
+export AUTHORIZATION_CREATED_AT_UTC=UTC_TIMESTAMP_FROM_WORKFLOW_SUMMARY
+export AUTHORIZED_CLONE_DESTROY_BY_UTC=EXACT_CLONE_DESTROY_BY_UTC_FROM_WORKFLOW_SUMMARY
 scripts/ci/mvp-release01-restore-encrypted-backup.sh
 ```
 
@@ -97,7 +101,7 @@ Do not place the private key, service-file contents or decrypted contents in log
 ## Retention and destruction
 
 - GitHub encrypted artifact: one day.
-- Restored clone, local encrypted artifact and runtime: at most 72 hours from completed restore, or earlier if the approval specifies.
+- Restored clone, local encrypted artifact and runtime: until the absolute `clone_destroy_by_utc` approved in the unedited comment, never more than 72 hours after that comment was created.
 - At expiry: stop the isolated runtime, remove the clone, encrypted archive, temporary credentials and recipient-key session, then record resource identifiers and deletion timestamps without copied data.
 
 The ADR-009 reconciliation and 18 migrations require separate approval and occur only after restore validation. This workflow never performs them.
