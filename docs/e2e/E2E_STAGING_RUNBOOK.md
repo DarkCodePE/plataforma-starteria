@@ -5,17 +5,21 @@
 ## Isolation contract
 
 - Kubernetes namespace: `starteria-e2e` only.
+- Kubernetes identity: a dedicated service identity scoped to `starteria-e2e`; the workflow fails if that identity can read or mutate the production namespace or create/delete namespaces.
 - Database: PostgreSQL 16 StatefulSet and PVC created inside `starteria-e2e`, reached by the application at `starteria-db:5432` in that namespace.
 - Tenant: `org-e2e-prod`, created after migration only in that isolated database. The legacy script name is retained because its user and role fixture contract is reused; it is never run against production here.
 - Images: `orlandogtp/starteria-{backend,frontend,ai-service}:e2e-<12-char-sha>`.
 - GitHub Environment: `e2e-staging`. The workflow has no `production` environment and its namespace guard rejects every value other than `starteria-e2e`.
 - Tunnel: its token becomes the `cloudflared-token` secret only in `starteria-e2e`. It must be a tunnel separate from the production tunnel.
+- Email: a pinned Mailpit pod with ephemeral storage accepts SMTP only from the staging backend; no production SMTP credential or real recipient is configured.
 
 The workflow does not read production Kubernetes secrets, target the `starteria` namespace, mount a production PVC, or use the production database URL.
 
 ## Required GitHub Environment
 
 Create the GitHub Environment named `e2e-staging`. Configure deployment protection rules appropriate for an isolated, non-production E2E target.
+
+Before adding secrets, the Rackspace administrator must create `starteria-e2e` and bind the workflow identity only to that namespace. It needs the namespaced `get/list/watch/create/patch` permissions enumerated by the workflow for Secrets, Deployments, StatefulSets, Services, PVCs, NetworkPolicies, Pods, Events and port-forward. It does not need pod exec, namespace reads or namespace creation. It must not have access to `starteria`, cluster-wide Secret/Pod access, or permission to create/delete namespaces. The workflow checks both the required and forbidden permissions before its first write.
 
 ### Environment variable
 
@@ -29,7 +33,7 @@ Create the GitHub Environment named `e2e-staging`. Configure deployment protecti
 |---|---|
 | `DOCKERHUB_USERNAME` | Docker Hub authentication for the isolated immutable release images. |
 | `DOCKERHUB_TOKEN` | Docker Hub authentication token. |
-| `RACKSPACE_REFRESH_TOKEN` | Fetches Kubernetes credentials for the authorized cluster. |
+| `RACKSPACE_REFRESH_TOKEN` | Fetches the dedicated, namespace-scoped E2E Kubernetes credential. A production-capable credential is rejected by RBAC preflight. |
 | `RACKSPACE_ORG_NAME` | Rackspace organization selector. |
 | `RACKSPACE_CLOUDSPACE_NAME` | Rackspace cloudspace selector. |
 | `E2E_STAGING_DB_PASSWORD` | PostgreSQL password for `starteria-db` in `starteria-e2e`. |
@@ -65,7 +69,7 @@ Store that tunnel's token as `E2E_STAGING_CLOUDFLARED_TOKEN` and its public URL 
 2. Open **Actions → E2E staging P12 → Run workflow**.
 3. Enter `source_ref` as one remote branch, tag, or full 40-character commit SHA.
 4. Approve the `e2e-staging` Environment deployment if its protection rule requests it.
-5. The workflow resolves and checks out that exact commit, emits `e2e-<first-12-source-sha>`, builds all three images, deploys only `starteria-e2e`, migrates its database with `prisma migrate deploy`, provisions its E2E tenant, runs health plus authenticated smoke, then runs `npm run test:e2e:prod` against `E2E_STAGING_BASE_URL`.
+5. The workflow resolves and checks out that exact commit, emits `e2e-<first-12-source-sha>`, builds all three images, deploys only `starteria-e2e`, rejects a non-empty PostgreSQL database, applies all 72 canonical migrations with `prisma migrate deploy`, verifies 72/72 and zero schema drift, provisions its synthetic E2E tenant, verifies Mailpit delivery plus Handoff acceptance and Steps continuity, runs health plus authenticated smoke, then runs `npm run test:e2e:prod` against `E2E_STAGING_BASE_URL`.
 
 The source resolver deliberately does **not** require the commit to be an ancestor of `main`. It validates that the source ref resolves from this repository's `origin`, resolves the full SHA, checks it out detached, and makes the SHA-derived Docker tag immutable for the run.
 
@@ -75,8 +79,9 @@ The workflow keeps staging available after a run. It uploads artifacts for 14 da
 
 - `deployment-identity.json` with selected SHA, immutable image references, AI service version, prompt source hash, namespace, base URL, database environment identifier, tenant ID, actor identities, feature configuration, and deployment timestamp;
 - rendered staging manifests;
-- Prisma apply and verify output;
+- Prisma bootstrap and post-rollout verification output, including 72/72 and drift checks;
 - tenant provisioning and authenticated smoke output;
+- Mailpit invitation delivery, claim, acceptance, start and post-start continuity output;
 - namespace status and events without secret data;
 - Playwright output, report, screenshots, traces, and videos when generated.
 
