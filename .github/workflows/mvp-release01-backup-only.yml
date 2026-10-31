@@ -1,0 +1,166 @@
+name: MVP Release 01 encrypted backup only
+
+on:
+  workflow_dispatch:
+    inputs:
+      authorization_issue:
+        description: 'Open repository issue containing the structured data-owner approval.'
+        required: true
+        type: string
+      authorization_ref:
+        description: 'Immutable MVPREL01-* reference recorded in the approved issue comment.'
+        required: true
+        type: string
+      confirmation:
+        description: 'Enter EXPORT_ENCRYPTED_PRODUCTION_BACKUP.'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  issues: read
+
+concurrency:
+  group: starteria-production
+  cancel-in-progress: false
+
+env:
+  NAMESPACE: starteria
+  DATABASE_STATEFULSET: starteria-db
+
+jobs:
+  encrypted-backup:
+    name: Authorized encrypted PostgreSQL backup
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: production
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ github.sha }}
+
+      - name: Enforce manual main-only execution
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          SELECTED_REF: ${{ github.ref }}
+          CONFIRMATION: ${{ inputs.confirmation }}
+        run: |
+          set -euo pipefail
+          [[ "$EVENT_NAME" == "workflow_dispatch" ]] || { echo '::error::Only workflow_dispatch is authorized.'; exit 1; }
+          [[ "$SELECTED_REF" == "refs/heads/main" ]] || { echo '::error::Select main when dispatching this workflow.'; exit 1; }
+          [[ "$CONFIRMATION" == "EXPORT_ENCRYPTED_PRODUCTION_BACKUP" ]] || { echo '::error::Exact confirmation is required.'; exit 1; }
+
+      - name: Validate recipient certificate
+        id: certificate
+        env:
+          RECIPIENT_CERT_B64: ${{ secrets.MVP_RELEASE01_BACKUP_RECIPIENT_CERT_B64 }}
+          CERTIFICATE_FILE: ${{ runner.temp }}/mvp-release01-recipient.pem
+        run: scripts/ci/mvp-release01-validate-recipient-cert.sh
+
+      - name: Verify independent data-owner authorization
+        id: authorization
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          AUTHORIZATION_ISSUE: ${{ inputs.authorization_issue }}
+          AUTHORIZATION_REF: ${{ inputs.authorization_ref }}
+          DATA_APPROVER_LOGIN: ${{ vars.MVP_RELEASE01_DATA_APPROVER_LOGIN }}
+          RECIPIENT_CERT_SHA256: ${{ steps.certificate.outputs.sha256 }}
+        run: scripts/ci/mvp-release01-verify-data-authorization.sh
+
+      - name: Check Rackspace inputs
+        env:
+          RACKSPACE_REFRESH_TOKEN: ${{ secrets.RACKSPACE_REFRESH_TOKEN }}
+          RACKSPACE_ORG_NAME: ${{ secrets.RACKSPACE_ORG_NAME }}
+          RACKSPACE_CLOUDSPACE_NAME: ${{ secrets.RACKSPACE_CLOUDSPACE_NAME }}
+        run: |
+          set -euo pipefail
+          for name in RACKSPACE_REFRESH_TOKEN RACKSPACE_ORG_NAME RACKSPACE_CLOUDSPACE_NAME; do
+            [[ -n "${!name}" ]] || { echo "::error::Missing required secret $name"; exit 1; }
+          done
+
+      - name: Install kubectl
+        uses: azure/setup-kubectl@776406bce94f63e41d621b960d78ee25c8b76ede # v4
+        with:
+          version: v1.30.0
+
+      - name: Fetch ephemeral kubeconfig from Rackspace Spot
+        env:
+          RACKSPACE_REFRESH_TOKEN: ${{ secrets.RACKSPACE_REFRESH_TOKEN }}
+          RACKSPACE_ORG_NAME: ${{ secrets.RACKSPACE_ORG_NAME }}
+          RACKSPACE_CLOUDSPACE_NAME: ${{ secrets.RACKSPACE_CLOUDSPACE_NAME }}
+        run: |
+          set -euo pipefail
+          umask 077
+          payload=$(jq -nc \
+            --arg org "$RACKSPACE_ORG_NAME" \
+            --arg cs "$RACKSPACE_CLOUDSPACE_NAME" \
+            --arg rt "$RACKSPACE_REFRESH_TOKEN" \
+            '{organization_name:$org,cloudspace_name:$cs,refresh_token:$rt}')
+          response="$RUNNER_TEMP/spot-response.json"
+          status=$(curl --silent --show-error --output "$response" --write-out '%{http_code}' \
+            --request POST 'https://spot.rackspace.com/apis/auth.ngpc.rxt.io/v1/generate-kubeconfig' \
+            --header 'Content-Type: application/json' \
+            --data "$payload")
+          [[ "$status" == "200" ]] || { echo "::error::Rackspace kubeconfig request failed (HTTP $status)."; exit 1; }
+          mkdir -p "$RUNNER_TEMP/kube"
+          jq -er '.data.kubeconfig' "$response" > "$RUNNER_TEMP/kube/config"
+          chmod 600 "$RUNNER_TEMP/kube/config"
+          rm -f "$response"
+          echo "KUBECONFIG=$RUNNER_TEMP/kube/config" >> "$GITHUB_ENV"
+
+      - name: Verify read-only extraction target
+        run: |
+          set -euo pipefail
+          kubectl auth can-i get statefulsets.apps -n "$NAMESPACE" | grep -qx yes
+          kubectl auth can-i create pods/exec -n "$NAMESPACE" | grep -qx yes
+          image=$(kubectl -n "$NAMESPACE" get "statefulset/$DATABASE_STATEFULSET" \
+            -o 'jsonpath={.spec.template.spec.containers[0].image}')
+          [[ "$image" == postgres:16* || "$image" == *'/postgres:16'* ]] \
+            || { echo '::error::The live database workload is not pinned to PostgreSQL 16.'; exit 1; }
+          version=$(kubectl -n "$NAMESPACE" exec "statefulset/$DATABASE_STATEFULSET" -- pg_dump --version)
+          [[ "$version" == 'pg_dump (PostgreSQL) 16.'* ]] \
+            || { echo '::error::The remote pg_dump binary is not PostgreSQL 16.'; exit 1; }
+          echo 'PostgreSQL 16 extraction target verified; no database query executed.'
+
+      - name: Stream and encrypt backup
+        id: backup
+        env:
+          RECIPIENT_CERT_FILE: ${{ runner.temp }}/mvp-release01-recipient.pem
+          OUTPUT_FILE: ${{ runner.temp }}/starteria-mvp-release01-${{ github.run_id }}.p7m
+          AUTHORIZATION_REF: ${{ inputs.authorization_ref }}
+        run: scripts/ci/mvp-release01-backup-only.sh
+
+      - name: Upload encrypted backup only
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: starteria-mvp-release01-encrypted-backup-${{ github.run_id }}
+          path: ${{ steps.backup.outputs.path }}
+          retention-days: 1
+          if-no-files-found: error
+          compression-level: 0
+          include-hidden-files: false
+
+      - name: Record non-sensitive integrity evidence
+        env:
+          AUTHORIZATION_REF: ${{ inputs.authorization_ref }}
+          AUTHORIZATION_COMMENT_ID: ${{ steps.authorization.outputs.comment_id }}
+          ENCRYPTED_SHA256: ${{ steps.backup.outputs.sha256 }}
+          ENCRYPTED_SIZE: ${{ steps.backup.outputs.size }}
+        run: |
+          set -euo pipefail
+          # Backticks below are Markdown, not shell expansion.
+          # shellcheck disable=SC2016
+          printf '## MVP Release 01 encrypted backup\n\n- Status: `encrypted-artifact-published`\n- Source SHA: `%s`\n- Run ID: `%s`\n- Authorization: `%s` (comment `%s`)\n- Encrypted size: `%s` bytes\n- SHA-256: `%s`\n- Retention: 1 day\n' \
+            "$GITHUB_SHA" "$GITHUB_RUN_ID" "$AUTHORIZATION_REF" "$AUTHORIZATION_COMMENT_ID" \
+            "$ENCRYPTED_SIZE" "$ENCRYPTED_SHA256" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Remove kubeconfig and temporary files
+        if: always()
+        run: |
+          set -u
+          rm -f \
+            "$RUNNER_TEMP/kube/config" \
+            "$RUNNER_TEMP/spot-response.json" \
+            "$RUNNER_TEMP/mvp-release01-recipient.pem" \
+            "$RUNNER_TEMP"/starteria-mvp-release01-*.p7m \
+            "$RUNNER_TEMP"/starteria-mvp-release01-*.tmp
