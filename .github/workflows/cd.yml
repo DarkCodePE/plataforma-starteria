@@ -206,6 +206,7 @@ jobs:
           for name in DOCKERHUB_USERNAME DOCKERHUB_TOKEN RACKSPACE_REFRESH_TOKEN RACKSPACE_ORG_NAME RACKSPACE_CLOUDSPACE_NAME STARTERIA_JWT_SECRET STARTERIA_DB_PASSWORD STARTERIA_AI_SERVICE_TOKEN STARTERIA_BRIDGE_SHARED_SECRET STARTERIA_BILLING_WEBHOOK_SECRET STARTERIA_PILOT_CODE_SECRET OPENROUTER_API_KEY JEV_API_KEY PORTFOLIO_ENTRY_API_KEY GOOGLE_CLIENT_ID; do
             [[ -n "${!name}" ]] || { echo "::error::Missing required secret $name"; exit 1; }
           done
+          bash scripts/ci/validate-production-secrets.sh
       - uses: azure/setup-kubectl@v4
         with:
           version: v1.30.0
@@ -253,6 +254,8 @@ jobs:
           JWT_SECRET: ${{ secrets.STARTERIA_JWT_SECRET }}
           AI_SERVICE_TOKEN: ${{ secrets.STARTERIA_AI_SERVICE_TOKEN }}
           BRIDGE_SHARED_SECRET: ${{ secrets.STARTERIA_BRIDGE_SHARED_SECRET }}
+          BILLING_WEBHOOK_SECRET: ${{ secrets.STARTERIA_BILLING_WEBHOOK_SECRET }}
+          PILOT_CODE_SECRET: ${{ secrets.STARTERIA_PILOT_CODE_SECRET }}
           PORTFOLIO_ENTRY_API_KEY: ${{ secrets.PORTFOLIO_ENTRY_API_KEY }}
           GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
@@ -337,11 +340,11 @@ jobs:
             kubectl -n "$NAMESPACE" rollout status "deployment/starteria-$svc" --timeout="$ROLLOUT_TIMEOUT"
           done
       - name: Verify database schema and API after rollout
+        id: post_rollout
         run: |
           set -euo pipefail
           scripts/ci/prod-db-migrate.sh verify
-          code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 20 https://starter-ia.com/api/health)
-          [ "$code" = 200 ] || { echo "::error::/api/health respondió $code después del rollout"; exit 1; }
+          bash scripts/ci/wait-for-http-health.sh https://starter-ia.com/api/health 12 5
       # /api/health no toca la base; este smoke sí (portafolio con sesión). Se activa con la
       # variable E2E_PROD_TENANT_READY=true, que se pone después de crear el tenant con
       # e2e-prod-tenant.yml: el secret solo no alcanza (el 2026-10-07 estaba cargado antes que el
@@ -355,21 +358,12 @@ jobs:
             echo "::warning::tenant E2E no habilitado (vars.E2E_PROD_TENANT_READY): se omite el smoke con sesión"; exit 0
           fi
           scripts/ci/prod-api-smoke.sh
-      - name: Restore previous images on rollout failure
-        if: ${{ failure() && steps.rollout.outcome == 'failure' }}
+      - name: Report recoverable production incident
+        if: ${{ failure() && steps.rollout.outcome == 'success' }}
         run: |
-          failed=0
-          for svc in backend frontend ai-service; do
-            if [[ -s "$RUNNER_TEMP/previous-$svc-image" ]]; then
-              image=$(cat "$RUNNER_TEMP/previous-$svc-image")
-              kubectl -n "$NAMESPACE" set image "deployment/starteria-$svc" "$svc=$image" || failed=1
-            fi
-          done
-          for svc in backend frontend ai-service; do
-            kubectl -n "$NAMESPACE" rollout status "deployment/starteria-$svc" --timeout="$ROLLOUT_TIMEOUT" || failed=1
-          done
-          [[ "$failed" == 0 ]] || echo '::error::Automatic image restore failed; operator action required'
-          exit "$failed"
+          echo '::error::A post-rollout verification failed. Images remain pinned to the authorized release.'
+          echo '::error::Automatic rollback is disabled because schema compatibility with older images is not guaranteed.'
+          echo '::error::Treat this run as a production incident and perform an authorized, evidence-based recovery.'
       - name: Report release
         if: always()
         # Every value goes through `env`. The previous version interpolated
