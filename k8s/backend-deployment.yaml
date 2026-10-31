@@ -30,10 +30,32 @@ spec:
         imagePullPolicy: Always
         ports:
         - containerPort: 3001
+        startupProbe:
+          httpGet:
+            path: /api/health
+            port: 3001
+          periodSeconds: 2
+          timeoutSeconds: 2
+          failureThreshold: 30
+        readinessProbe:
+          httpGet:
+            path: /api/health
+            port: 3001
+          periodSeconds: 5
+          timeoutSeconds: 2
+          failureThreshold: 2
+        livenessProbe:
+          httpGet:
+            path: /api/health
+            port: 3001
+          periodSeconds: 15
+          timeoutSeconds: 2
+          failureThreshold: 3
         envFrom:
         # Secret synced by .github/workflows/cd.yml at deploy time.
         # Provides: DATABASE_URL, JWT_SECRET, AI_SERVICE_TOKEN, AI_SERVICE_URL,
-        # BRIDGE_SHARED_SECRET, SMTP_HOST, SMTP_USER, SMTP_PASS, PILOT_LEAD_NOTIFY_FROM.
+        # BRIDGE_SHARED_SECRET, BILLING_WEBHOOK_SECRET, PILOT_CODE_SECRET,
+        # SMTP_HOST, SMTP_USER, SMTP_PASS, PILOT_LEAD_NOTIFY_FROM.
         - secretRef:
             name: starteria-backend-secrets
         env:

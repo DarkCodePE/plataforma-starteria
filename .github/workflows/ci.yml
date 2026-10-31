@@ -53,6 +53,10 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Test production CD recovery guards
+        working-directory: .
+        run: bash scripts/ci/tests/cd-recovery.test.sh
+
       - name: Setup Node.js 20.x
         uses: actions/setup-node@v4
         with:
