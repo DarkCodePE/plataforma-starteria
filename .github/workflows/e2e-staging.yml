@@ -70,10 +70,22 @@ jobs:
           cache-dependency-path: front/package-lock.json
       - name: Install dependencies
         working-directory: front
-        run: npm ci
-      - name: Typecheck
+        run: |
+          npm ci
+          npx prisma generate
+      - name: Typecheck frontend
         working-directory: front
-        run: npm run typecheck
+        run: npm run typecheck:front
+      - name: Validate staging shell and Playwright entrypoint
+        working-directory: front
+        env:
+          E2E_PROD_BASE_URL: https://e2e.invalid
+          E2E_STAGING_MAILPIT_URL: http://127.0.0.1:18025
+          E2E_PROD_LEAD_PASSWORD: synthetic-validation-only
+          E2E_PROD_PARTICIPANT_PASSWORD: synthetic-validation-only
+        run: |
+          bash -n ../scripts/ci/render-e2e-staging-manifests.sh ../scripts/ci/e2e-staging-db-bootstrap.sh ../scripts/ci/e2e-staging-api-smoke.sh
+          npx playwright test e2e/prod/handoff-mailpit-staging.spec.ts --list
       - name: Lint
         working-directory: front
         run: npm run lint
@@ -196,12 +208,77 @@ jobs:
           chmod 600 "$RUNNER_TEMP/kube/config"
           rm -f "$RUNNER_TEMP/spot.json"
           echo "KUBECONFIG=$RUNNER_TEMP/kube/config" >> "$GITHUB_ENV"
-      - name: Guard and create the isolated namespace
+      - name: Validate isolated runner RBAC
+        run: |
+          set -euo pipefail
+          [[ "$NAMESPACE" == starteria-e2e && "$NAMESPACE" != starteria ]] || exit 1
+          for check in \
+            "get secrets -n $NAMESPACE" \
+            "list pods -n $NAMESPACE" \
+            "create secrets -n $NAMESPACE" \
+            "patch secrets -n $NAMESPACE" \
+            "get deployments.apps -n $NAMESPACE" \
+            "list deployments.apps -n $NAMESPACE" \
+            "watch deployments.apps -n $NAMESPACE" \
+            "create deployments.apps -n $NAMESPACE" \
+            "patch deployments.apps -n $NAMESPACE" \
+            "get statefulsets.apps -n $NAMESPACE" \
+            "list statefulsets.apps -n $NAMESPACE" \
+            "watch statefulsets.apps -n $NAMESPACE" \
+            "create statefulsets.apps -n $NAMESPACE" \
+            "patch statefulsets.apps -n $NAMESPACE" \
+            "get services -n $NAMESPACE" \
+            "list services -n $NAMESPACE" \
+            "create services -n $NAMESPACE" \
+            "patch services -n $NAMESPACE" \
+            "get persistentvolumeclaims -n $NAMESPACE" \
+            "list persistentvolumeclaims -n $NAMESPACE" \
+            "create persistentvolumeclaims -n $NAMESPACE" \
+            "patch persistentvolumeclaims -n $NAMESPACE" \
+            "get networkpolicies.networking.k8s.io -n $NAMESPACE" \
+            "list networkpolicies.networking.k8s.io -n $NAMESPACE" \
+            "create networkpolicies.networking.k8s.io -n $NAMESPACE" \
+            "patch networkpolicies.networking.k8s.io -n $NAMESPACE" \
+            "list events -n $NAMESPACE" \
+            "create pods/portforward -n $NAMESPACE"; do
+            read -r verb resource flag scope <<<"$check"
+            if [[ "${flag:-}" == "-n" ]]; then
+              kubectl auth can-i "$verb" "$resource" -n "$scope" | grep -qx yes
+            else
+              kubectl auth can-i "$verb" "$resource" | grep -qx yes
+            fi
+          done
+          for forbidden in \
+            "get secrets -n starteria" \
+            "list pods -n starteria" \
+            "create pods/exec -n starteria" \
+            "create pods/portforward -n starteria" \
+            "patch deployments.apps -n starteria" \
+            "get namespace/starteria" \
+            "create namespaces" \
+            "delete namespaces"; do
+            read -r verb resource flag scope <<<"$forbidden"
+            if [[ "${flag:-}" == "-n" ]]; then
+              allowed=$(kubectl auth can-i "$verb" "$resource" -n "$scope")
+            else
+              allowed=$(kubectl auth can-i "$verb" "$resource")
+            fi
+            [[ "$allowed" != yes ]] || { echo "::error::credential can access production or cluster-wide resource: $forbidden"; exit 1; }
+          done
+          for verb in get list watch create update patch delete deletecollection; do
+            for resource in secrets pods deployments.apps statefulsets.apps services persistentvolumeclaims networkpolicies.networking.k8s.io; do
+              allowed=$(kubectl auth can-i "$verb" "$resource" -n starteria)
+              [[ "$allowed" != yes ]] || {
+                echo "::error::credential can access production: $verb $resource"
+                exit 1
+              }
+            done
+          done
+      - name: Guard and require the pre-provisioned isolated namespace
         run: |
           set -euo pipefail
           [[ "$NAMESPACE" == starteria-e2e && "$NAMESPACE" != starteria ]] || { echo '::error::production namespace is forbidden'; exit 1; }
-          kubectl get namespace "$NAMESPACE" >/dev/null 2>&1 || kubectl create namespace "$NAMESPACE"
-          kubectl get namespace "$NAMESPACE" >/dev/null
+          kubectl -n "$NAMESPACE" get services >/dev/null || { echo '::error::Rackspace admin must pre-provision starteria-e2e with isolated RBAC'; exit 1; }
       - name: Synchronize isolated runtime secrets
         env:
           E2E_STAGING_DB_PASSWORD: ${{ secrets.E2E_STAGING_DB_PASSWORD }}
@@ -256,17 +333,16 @@ jobs:
       - name: Apply and verify Prisma migrations in staging
         run: |
           set -o pipefail
-          scripts/ci/prod-db-migrate.sh apply 2>&1 | tee artifacts/e2e-staging/migrate-apply.log
-          scripts/ci/prod-db-migrate.sh verify 2>&1 | tee artifacts/e2e-staging/migrate-verify.log
+          scripts/ci/e2e-staging-db-bootstrap.sh 2>&1 | tee artifacts/e2e-staging/migrate-bootstrap.log
       - name: Apply isolated workloads and immutable images
         run: |
           set -euo pipefail
           [[ "$NAMESPACE" == starteria-e2e && "$NAMESPACE" != starteria ]] || exit 1
           kubectl -n "$NAMESPACE" apply -f "$RUNNER_TEMP/e2e-staging-manifests"
-          for deployment in starteria-backend starteria-frontend starteria-ai-service cloudflared-tunnel; do
+          for deployment in starteria-backend starteria-frontend starteria-ai-service mailpit cloudflared-tunnel; do
             kubectl -n "$NAMESPACE" rollout status "deployment/$deployment" --timeout="$ROLLOUT_TIMEOUT"
           done
-          scripts/ci/prod-db-migrate.sh verify 2>&1 | tee artifacts/e2e-staging/migrate-post-rollout-verify.log
+          scripts/ci/e2e-staging-db-bootstrap.sh verify 2>&1 | tee artifacts/e2e-staging/migrate-post-rollout-verify.log
       - name: Wait for public health endpoint
         env:
           E2E_STAGING_BASE_URL: ${{ vars.E2E_STAGING_BASE_URL }}
@@ -302,6 +378,20 @@ jobs:
           export E2E_PROD_PARTICIPANT_PASSWORD="$E2E_STAGING_PARTICIPANT_PASSWORD"
           export E2E_PROD_MEMBER_PASSWORD="$E2E_STAGING_MEMBER_PASSWORD"
           npx tsx ../backend/scripts/e2e-prod-tenant.ts setup --apply 2>&1 | tee "$GITHUB_WORKSPACE/artifacts/e2e-staging/tenant-provision.log"
+      - name: Exercise Mailpit delivery, invitation acceptance and Steps continuity
+        working-directory: front
+        env:
+          E2E_PROD_BASE_URL: ${{ vars.E2E_STAGING_BASE_URL }}
+          E2E_PROD_LEAD_PASSWORD: ${{ secrets.E2E_STAGING_LEAD_PASSWORD }}
+          E2E_PROD_PARTICIPANT_PASSWORD: ${{ secrets.E2E_STAGING_PARTICIPANT_PASSWORD }}
+          E2E_STAGING_MAILPIT_URL: http://127.0.0.1:18025
+        run: |
+          set -euo pipefail
+          kubectl -n "$NAMESPACE" port-forward service/mailpit 18025:8025 > "$RUNNER_TEMP/e2e-mailpit-port-forward.log" 2>&1 &
+          pf=$!; trap 'kill $pf 2>/dev/null || true' EXIT
+          for _ in $(seq 30); do curl -fsS "$E2E_STAGING_MAILPIT_URL/livez" >/dev/null 2>&1 && break; sleep 1; done
+          curl -fsS "$E2E_STAGING_MAILPIT_URL/livez" >/dev/null
+          npx playwright test e2e/prod/handoff-mailpit-staging.spec.ts --workers=1
       - name: Execute authenticated staging API smoke
         env:
           E2E_PROD_BASE_URL: ${{ vars.E2E_STAGING_BASE_URL }}
@@ -334,7 +424,7 @@ jobs:
         if: always()
         run: |
           if [[ "${NAMESPACE:-}" == starteria-e2e && -n "${KUBECONFIG:-}" && -f "$KUBECONFIG" ]]; then
-            kubectl -n "$NAMESPACE" get deployments,statefulsets,services,pvc,pods -o wide > artifacts/e2e-staging/namespace-status.txt || true
+            kubectl -n "$NAMESPACE" get deployments,statefulsets,services,pvc,pods,networkpolicies -o wide > artifacts/e2e-staging/namespace-status.txt || true
             kubectl -n "$NAMESPACE" get events --sort-by=.lastTimestamp > artifacts/e2e-staging/namespace-events.txt || true
           fi
       - uses: actions/upload-artifact@v4
