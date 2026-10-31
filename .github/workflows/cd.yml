@@ -265,13 +265,28 @@ jobs:
           SMTP_USER: ${{ secrets.STARTERIA_SMTP_USER }}
           SMTP_PASS: ${{ secrets.STARTERIA_SMTP_PASS }}
           PILOT_LEAD_NOTIFY_FROM: ${{ secrets.STARTERIA_PILOT_LEAD_NOTIFY_FROM }}
+          BILLING_WEBHOOK_SECRET: ${{ secrets.STARTERIA_BILLING_WEBHOOK_SECRET }}
+          PILOT_CODE_SECRET: ${{ secrets.STARTERIA_PILOT_CODE_SECRET }}
         run: |
           set -euo pipefail
           encoded_password=$(jq -nr --arg v "$DB_PASSWORD" '$v|@uri')
           database_url="postgresql://starteria:${encoded_password}@starteria-db:5432/starteria_db"
           kubectl -n "$NAMESPACE" create secret generic starteria-db-secrets --from-literal=POSTGRES_PASSWORD="$DB_PASSWORD" --dry-run=client -o yaml | kubectl apply -f -
-          export DATABASE_URL="$database_url"
-          bash scripts/ci/sync-backend-secret.sh
+          kubectl -n "$NAMESPACE" create secret generic starteria-backend-secrets \
+            --from-literal=DATABASE_URL="$database_url" --from-literal=JWT_SECRET="$JWT_SECRET" \
+            --from-literal=AI_SERVICE_TOKEN="$AI_SERVICE_TOKEN" --from-literal=AI_SERVICE_URL=http://starteria-ai-service:8001 \
+            --from-literal=BRIDGE_SHARED_SECRET="$BRIDGE_SHARED_SECRET" \
+            --from-literal=PORTFOLIO_ENTRY_API_KEY="$PORTFOLIO_ENTRY_API_KEY" \
+            --from-literal=PORTFOLIO_ENTRY_PROVIDER=openai_responses \
+            --from-literal=PORTFOLIO_ENTRY_MODEL=openai/gpt-5.6-luna \
+            --from-literal=PORTFOLIO_ENTRY_BASE_URL=https://openrouter.ai/api/v1 \
+            --from-literal=JEV_API_KEY="$JEV_API_KEY" \
+            --from-literal=PORTFOLIO_ENTRY_CLASSIFIER=jev \
+            --from-literal=GOOGLE_CLIENT_ID="$GOOGLE_CLIENT_ID" \
+            --from-literal=SMTP_HOST="${SMTP_HOST:-}" --from-literal=SMTP_USER="${SMTP_USER:-}" \
+            --from-literal=SMTP_PASS="${SMTP_PASS:-}" --from-literal=PILOT_LEAD_NOTIFY_FROM="${PILOT_LEAD_NOTIFY_FROM:-}" \
+            --from-literal=BILLING_WEBHOOK_SECRET="$BILLING_WEBHOOK_SECRET" --from-literal=PILOT_CODE_SECRET="$PILOT_CODE_SECRET" \
+            --dry-run=client -o yaml | kubectl apply -f -
           kubectl -n "$NAMESPACE" create secret generic starteria-ai-service-secrets \
             --from-literal=OPENROUTER_API_KEY="$OPENROUTER_API_KEY" --from-literal=JEV_API_KEY="$JEV_API_KEY" \
             --from-literal=LANGSMITH_API_KEY="${LANGSMITH_API_KEY:-}" \
