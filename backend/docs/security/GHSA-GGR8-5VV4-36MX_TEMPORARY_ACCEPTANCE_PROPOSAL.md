@@ -2,8 +2,8 @@
 
 ## Estado de decisión
 
-- Estado: `PENDING_HUMAN_APPROVAL`
-- Vigencia propuesta: desde la aprobación expresa hasta el 30/11/2026 inclusive.
+- Estado: `APPROVED` (aceptación temporal vigente hasta el 30/11/2026 inclusive).
+- Vigencia: desde el 31/10/2026 hasta el 30/11/2026 inclusive.
 - Responsable de aprobación: `DarkCodePE`, como responsable humano del producto y del repositorio.
 - Alcance: candidato MVP de los PR #222 y #229. Esta propuesta no autoriza despliegues ni migraciones productivas.
 - Condición de validez: el riesgo no se considera aceptado hasta que el responsable registre una aprobación explícita y trazable.
@@ -55,10 +55,10 @@ La aceptación, si se aprueba, deberá suspenderse y revisarse antes del 30/11/2
 
 ## Registro de aprobación
 
-- Decisión: `PENDING_HUMAN_APPROVAL`
-- Aprobador: pendiente (`DarkCodePE`).
-- Fecha: pendiente.
-- Evidencia de aprobación: pendiente.
-- Caducidad propuesta: 30/11/2026.
+- Decisión: `APPROVED`
+- Aprobador: `DarkCodePE`.
+- Fecha: 31/10/2026.
+- Evidencia de aprobación: el PR que registra esta decisión, abierto y mergeado por `DarkCodePE`.
+- Caducidad: 30/11/2026.
 
-Sin completar este registro mediante aprobación humana expresa, la excepción permanece solamente como propuesta y no habilita el merge.
+La aprobación cubre sólo el riesgo descrito arriba con sus controles compensatorios; no autoriza despliegues ni migraciones productivas, que siguen su propia aprobación en el entorno `production`.
