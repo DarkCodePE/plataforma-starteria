@@ -195,13 +195,15 @@ jobs:
           STARTERIA_DB_PASSWORD: ${{ secrets.STARTERIA_DB_PASSWORD }}
           STARTERIA_AI_SERVICE_TOKEN: ${{ secrets.STARTERIA_AI_SERVICE_TOKEN }}
           STARTERIA_BRIDGE_SHARED_SECRET: ${{ secrets.STARTERIA_BRIDGE_SHARED_SECRET }}
+          STARTERIA_BILLING_WEBHOOK_SECRET: ${{ secrets.STARTERIA_BILLING_WEBHOOK_SECRET }}
+          STARTERIA_PILOT_CODE_SECRET: ${{ secrets.STARTERIA_PILOT_CODE_SECRET }}
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
           JEV_API_KEY: ${{ secrets.JEV_API_KEY }}
           PORTFOLIO_ENTRY_API_KEY: ${{ secrets.PORTFOLIO_ENTRY_API_KEY }}
           GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
         run: |
           set -euo pipefail
-          for name in DOCKERHUB_USERNAME DOCKERHUB_TOKEN RACKSPACE_REFRESH_TOKEN RACKSPACE_ORG_NAME RACKSPACE_CLOUDSPACE_NAME STARTERIA_JWT_SECRET STARTERIA_DB_PASSWORD STARTERIA_AI_SERVICE_TOKEN STARTERIA_BRIDGE_SHARED_SECRET OPENROUTER_API_KEY JEV_API_KEY PORTFOLIO_ENTRY_API_KEY GOOGLE_CLIENT_ID; do
+          for name in DOCKERHUB_USERNAME DOCKERHUB_TOKEN RACKSPACE_REFRESH_TOKEN RACKSPACE_ORG_NAME RACKSPACE_CLOUDSPACE_NAME STARTERIA_JWT_SECRET STARTERIA_DB_PASSWORD STARTERIA_AI_SERVICE_TOKEN STARTERIA_BRIDGE_SHARED_SECRET STARTERIA_BILLING_WEBHOOK_SECRET STARTERIA_PILOT_CODE_SECRET OPENROUTER_API_KEY JEV_API_KEY PORTFOLIO_ENTRY_API_KEY GOOGLE_CLIENT_ID; do
             [[ -n "${!name}" ]] || { echo "::error::Missing required secret $name"; exit 1; }
           done
       - uses: azure/setup-kubectl@v4
@@ -260,6 +262,8 @@ jobs:
           SMTP_USER: ${{ secrets.STARTERIA_SMTP_USER }}
           SMTP_PASS: ${{ secrets.STARTERIA_SMTP_PASS }}
           PILOT_LEAD_NOTIFY_FROM: ${{ secrets.STARTERIA_PILOT_LEAD_NOTIFY_FROM }}
+          BILLING_WEBHOOK_SECRET: ${{ secrets.STARTERIA_BILLING_WEBHOOK_SECRET }}
+          PILOT_CODE_SECRET: ${{ secrets.STARTERIA_PILOT_CODE_SECRET }}
         run: |
           set -euo pipefail
           encoded_password=$(jq -nr --arg v "$DB_PASSWORD" '$v|@uri')
@@ -278,6 +282,7 @@ jobs:
             --from-literal=GOOGLE_CLIENT_ID="$GOOGLE_CLIENT_ID" \
             --from-literal=SMTP_HOST="${SMTP_HOST:-}" --from-literal=SMTP_USER="${SMTP_USER:-}" \
             --from-literal=SMTP_PASS="${SMTP_PASS:-}" --from-literal=PILOT_LEAD_NOTIFY_FROM="${PILOT_LEAD_NOTIFY_FROM:-}" \
+            --from-literal=BILLING_WEBHOOK_SECRET="$BILLING_WEBHOOK_SECRET" --from-literal=PILOT_CODE_SECRET="$PILOT_CODE_SECRET" \
             --dry-run=client -o yaml | kubectl apply -f -
           kubectl -n "$NAMESPACE" create secret generic starteria-ai-service-secrets \
             --from-literal=OPENROUTER_API_KEY="$OPENROUTER_API_KEY" --from-literal=JEV_API_KEY="$JEV_API_KEY" \
