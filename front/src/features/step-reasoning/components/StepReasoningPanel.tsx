@@ -190,8 +190,12 @@ export function StepReasoningPanel({
   const focusComposer = () => {
     const composer = composerInputRef.current;
     if (!composer) return;
-    if (typeof composer.scrollIntoView === 'function') composer.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    composer.focus({ preventScroll: true });
+    // The mobile shortcut must bring the real text field into the *usable*
+    // viewport, rather than only moving focus behind the fixed checkpoint bar.
+    composer.focus();
+    if (typeof composer.scrollIntoView === 'function') {
+      composer.scrollIntoView({ behavior: 'auto', block: 'center' });
+    }
   };
 
   const selectPrompt = (suggestion: string) => {
@@ -316,7 +320,9 @@ export function StepReasoningPanel({
                 aria-relevant="additions text"
                 aria-label="Historial de conversación"
                 onScroll={handleHistoryScroll}
-                className="h-[clamp(12rem,34dvh,20rem)] space-y-4 overflow-y-auto overscroll-contain rounded-2xl border border-slate-200 bg-slate-50 p-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 sm:h-[clamp(16rem,38dvh,24rem)] sm:p-4 lg:h-[clamp(20rem,42dvh,26rem)]"
+                className={effectiveReadOnly
+                  ? 'h-[clamp(12rem,34dvh,20rem)] space-y-4 overflow-y-auto overscroll-contain rounded-2xl border border-slate-200 bg-slate-50 p-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 sm:h-[clamp(16rem,38dvh,24rem)] sm:p-4 lg:h-[clamp(20rem,42dvh,26rem)]'
+                  : 'h-[clamp(7rem,16dvh,10rem)] space-y-4 overflow-y-auto overscroll-contain rounded-2xl border border-slate-200 bg-slate-50 p-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 sm:h-[clamp(8rem,16dvh,11rem)] sm:p-4 lg:h-[clamp(9rem,16dvh,12rem)]'}
               >
                 {loading && <p className="text-sm text-slate-500">Recuperando la conversación guardada…</p>}
                 {!loading && turns.length === 0 && (
@@ -369,6 +375,17 @@ export function StepReasoningPanel({
               {latestQuestion && <p className="mt-3 border-l-2 border-indigo-300 pl-3 text-sm font-medium text-indigo-900">Siguiente pregunta sugerida: {latestQuestion}</p>}
               {error && <p role="alert" className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">{error}</p>}
 
+              {!effectiveReadOnly ? <form data-testid="step-reasoning-composer" onSubmit={submit} className="mt-4 grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
+                <label className="grid min-w-0 gap-1.5 text-sm font-semibold text-slate-800">
+                  Cuéntale a Starteria qué sabes o qué te genera duda
+                  <textarea id="step-reasoning-composer-input" ref={composerInputRef} value={message} onChange={event => setMessage(event.target.value)} rows={2} maxLength={8000} disabled={sending} className="min-h-20 scroll-mb-28 resize-y rounded-2xl border border-slate-300 px-4 py-3 font-normal text-slate-950 outline-none transition focus:border-indigo-500 focus:ring-4 focus:ring-indigo-100 disabled:bg-slate-100" placeholder="Ej.: Sabemos que hay retrabajo, pero todavía no sabemos en qué parte medirlo." />
+                </label>
+                <button type="submit" disabled={sending || !message.trim()} className="min-h-12 rounded-2xl bg-indigo-600 px-6 py-3 text-sm font-bold text-white shadow-sm transition hover:bg-indigo-700 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-indigo-200 disabled:cursor-not-allowed disabled:opacity-50">
+                  {sending ? 'Enviando…' : 'Enviar mensaje'}
+                </button>
+              </form> : <p className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700">Conversación en sólo lectura. Tu permiso actual no permite enviar ni reintentar mensajes.</p>}
+
+              {/* Prompts remain available, but writing takes priority over choosing one. */}
               {!effectiveReadOnly && <div className="mt-4" aria-label="Preguntas sugeridas para el Copilot">
                 <p className="text-xs font-bold uppercase tracking-wide text-slate-500">Puedes empezar por</p>
                 <div className="mt-2 grid gap-2 sm:grid-cols-2">
@@ -385,16 +402,6 @@ export function StepReasoningPanel({
                   ))}
                 </div>
               </div>}
-
-              {!effectiveReadOnly ? <form data-testid="step-reasoning-composer" onSubmit={submit} className="mt-4 grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
-                <label className="grid min-w-0 gap-1.5 text-sm font-semibold text-slate-800">
-                  Cuéntale a Starteria qué sabes o qué te genera duda
-                  <textarea id="step-reasoning-composer-input" ref={composerInputRef} value={message} onChange={event => setMessage(event.target.value)} rows={2} maxLength={8000} disabled={sending} className="min-h-20 resize-y rounded-2xl border border-slate-300 px-4 py-3 font-normal text-slate-950 outline-none transition focus:border-indigo-500 focus:ring-4 focus:ring-indigo-100 disabled:bg-slate-100" placeholder="Ej.: Sabemos que hay retrabajo, pero todavía no sabemos en qué parte medirlo." />
-                </label>
-                <button type="submit" disabled={sending || !message.trim()} className="min-h-12 rounded-2xl bg-indigo-600 px-6 py-3 text-sm font-bold text-white shadow-sm transition hover:bg-indigo-700 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-indigo-200 disabled:cursor-not-allowed disabled:opacity-50">
-                  {sending ? 'Enviando…' : 'Enviar mensaje'}
-                </button>
-              </form> : <p className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700">Conversación en sólo lectura. Tu permiso actual no permite enviar ni reintentar mensajes.</p>}
               </div>
             </div>
 
