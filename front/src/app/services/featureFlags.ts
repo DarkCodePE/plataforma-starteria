@@ -27,10 +27,13 @@ export function isEnabled(flagId: string, _userId?: string): boolean {
     return raw === 'true' || raw === '1';
   }
   if (flagId === 'feature.stepReasoningCopilot') {
-    // Static property access guarantees Vite replaces this flag in the bundle.
-    // A dynamically indexed env key can be missed by build-time substitution.
-    const enabled = import.meta.env.VITE_STEP_REASONING_COPILOT_ENABLED;
-    return enabled === 'true' || enabled === '1';
+    // Vite inlines static properties in production. Keep the dynamic fallback
+    // for Vitest's vi.stubEnv and toolchains that expose import.meta.env as
+    // an object. Neither value grants access; the backend checks eligibility.
+    const buildEnabled = import.meta.env.VITE_STEP_REASONING_COPILOT_ENABLED;
+    const runtimeEnabled = readFlagEnv('VITE_STEP_REASONING_COPILOT_ENABLED');
+    return buildEnabled === 'true' || buildEnabled === '1'
+      || runtimeEnabled === 'true' || runtimeEnabled === '1';
   }
   return false;
 }
