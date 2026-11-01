@@ -41,7 +41,11 @@ function reduce(current: PortfolioHandoffProjection | null, event: HandoffSemant
 }
 
 function initial(event: HandoffSemanticEvent): PortfolioHandoffProjection { const p = event.payload; return { assignmentId: event.entityId, organizationId: event.organizationId ?? null, portfolioScopeRef: event.portfolioScopeRef ?? null, strategicFrontRef: (p.strategicFrontRef as string | null) ?? null, challengeRef: event.challengeId ?? String(p.challengeId ?? ''), challengeVersionRef: (p.challengeVersionRef as string | null) ?? null, targetKind: (p.targetKind as HandoffAssignment['targetKind']) ?? 'CHALLENGE', initiativeRef: event.initiativeId ?? null, invitedIdentity: (p.invitedIdentity as string | null) ?? null, initiativeOwnerRef: (p.initiativeOwnerRef as string | null) ?? null, executionTeam: [], observers: [], inviterRef: (p.inviterRef as string | null) ?? event.actorId ?? null, handoffState: (p.handoffState as HandoffAssignment['state']) ?? 'CREATED', acceptedAt: null, rejectedAt: null, rejectionReason: null, portfolioResponse: null, startedAt: null, resultingInitiativeRef: null, lastMaterialEvent: null, sourceEventRefs: [], projectionVersion: 0, generatedAt: new Date(event.recordedAt) }; }
-function stateForEvent(current: HandoffAssignment['state'], type: HandoffSemanticEvent['eventType']): HandoffAssignment['state'] { const map: Partial<Record<HandoffSemanticEvent['eventType'], HandoffAssignment['state']>> = { assignment_created: 'CREATED', invitation_sent: 'SENT', invitation_viewed: 'VIEWED', assignment_accepted: 'ACCEPTED', assignment_rejected: 'REJECTED', handoff_assignment_started: 'STARTED', assignment_revoked: 'REVOKED', assignment_expired: 'EXPIRED' }; return map[type] ?? current; }
+function stateForEvent(current: HandoffAssignment['state'], type: HandoffSemanticEvent['eventType']): HandoffAssignment['state'] {
+  if (type === 'invitation_viewed' && !['CREATED', 'SENT', 'VIEWED'].includes(current)) return current;
+  const map: Partial<Record<HandoffSemanticEvent['eventType'], HandoffAssignment['state']>> = { assignment_created: 'CREATED', invitation_sent: 'SENT', invitation_viewed: 'VIEWED', assignment_accepted: 'ACCEPTED', assignment_rejected: 'REJECTED', handoff_assignment_started: 'STARTED', assignment_revoked: 'REVOKED', assignment_expired: 'EXPIRED' };
+  return map[type] ?? current;
+}
 
 export class DurableHandoffEventPort {
   constructor(private readonly events: HandoffSemanticEventRepository, private readonly projector: PortfolioHandoffProjector) {}

@@ -90,6 +90,13 @@ export function HandoffShell({ preview, onAccept, onReject, acceptBusy = false, 
           { label: 'Tipo de encargo', value: typeLabel },
         ]} />
 
+        {preview.briefVersion && <section data-testid="handoff-brief-version" className="rounded-ds-md border border-border-default bg-surface-default p-5" aria-labelledby="handoff-brief-title">
+          <h2 id="handoff-brief-title" className="text-base font-semibold">Brief confirmado · versión {preview.briefVersion.versionNumber}</h2>
+          {preview.briefVersion.intent && <p className="mt-3 text-sm leading-6 text-text-secondary"><span className="font-medium text-text-primary">Objetivo:</span> {preview.briefVersion.intent}</p>}
+          {preview.briefVersion.scope && <p className="mt-2 text-sm leading-6 text-text-secondary"><span className="font-medium text-text-primary">Alcance:</span> {preview.briefVersion.scope}</p>}
+          <p className="mt-3 text-xs text-text-muted">Referencia inmutable: {preview.briefVersion.id}</p>
+        </section>}
+
         <section className="grid gap-5 md:grid-cols-2">
           <section className="rounded-ds-md border border-border-default bg-surface-default p-5" aria-labelledby="handoff-why-title">
             <h2 id="handoff-why-title" className="text-base font-semibold">Por qué importa</h2>

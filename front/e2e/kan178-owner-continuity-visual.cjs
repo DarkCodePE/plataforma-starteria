@@ -61,6 +61,7 @@ async function main() {
     observe(leadPage, 'portfolio-lead');
     await login(leadPage, baseUrl, credentials.KAN178_LEAD_EMAIL, credentials.KAN178_PASSWORD);
     if (!leadPage.url().includes('/portfolio')) throw new Error(`Portfolio Lead landed outside Portfolio surface: ${leadPage.url()}`);
+    await leadPage.getByTestId('portfolio-overview-home').waitFor({ timeout: 15000 });
     await capture(leadPage, '00-portfolio-lead-independent-session.png');
     evidence.checks.push('independent-portfolio-lead-session');
 
@@ -84,10 +85,10 @@ async function main() {
     await ownerPage.waitForURL((url) => url.pathname === '/projects/kan178-project-ready', { timeout: 15000 });
     await ownerPage.getByText('Iniciativa operativa KAN-178', { exact: true }).first().waitFor({ timeout: 15000 });
     await ownerPage.getByText('¿Cómo quieres empezar tu iniciativa?').waitFor({ state: 'detached', timeout: 15000 });
-    await ownerPage.getByText(/Step activo:\s*2/i).waitFor({ timeout: 15000 }).catch(async () => {
+    await ownerPage.getByText(/Step actual:\s*2/i).waitFor({ timeout: 15000 }).catch(async () => {
       await capture(ownerPage, '02b-existing-operational-overview-timeout.png');
       const bodyCopy = (await ownerPage.locator('body').innerText()).replace(/\s+/g, ' ').slice(0, 700);
-      throw new Error(`Operational Overview did not expose Step 2; url=${ownerPage.url()} responses=${JSON.stringify(evidence.failedResponses)} body=${JSON.stringify(bodyCopy)}`);
+      throw new Error(`Operational Overview did not expose canonical Step actual 2; url=${ownerPage.url()} responses=${JSON.stringify(evidence.failedResponses)} body=${JSON.stringify(bodyCopy)}`);
     });
     await capture(ownerPage, '02-existing-operational-overview-desktop.png');
     if (/\/step\/\d+$/.test(new URL(ownerPage.url()).pathname)) throw new Error('Owner was redirected directly to a Step');

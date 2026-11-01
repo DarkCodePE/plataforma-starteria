@@ -65,7 +65,8 @@ describe('KAN-178 HandoffInvitationPage continuity', () => {
 
     await user.click(await screen.findByRole('button', { name: 'Empezar' }));
     expect(mocks.start).toHaveBeenCalledWith('assignment-1', 3);
-    expect(await screen.findByRole('heading', { name: /continÃºa tu iniciativa/i })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: /continúa tu iniciativa/i })).toBeInTheDocument();
+    expect(screen.getByText(/los Steps existentes están disponibles/i)).toBeInTheDocument();
     expect(mocks.resolve).toHaveBeenCalledWith('assignment-1');
     expect(screen.queryByText('WORKSPACE_REAL')).not.toBeInTheDocument();
 
@@ -78,7 +79,7 @@ describe('KAN-178 HandoffInvitationPage continuity', () => {
     mocks.claim.mockResolvedValue(started);
     renderPage();
 
-    expect(await screen.findByRole('heading', { name: /continÃºa tu iniciativa/i })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: /continúa tu iniciativa/i })).toBeInTheDocument();
     await waitFor(() => expect(mocks.resolve).toHaveBeenCalledWith('assignment-1'));
     expect(mocks.start).not.toHaveBeenCalled();
   });

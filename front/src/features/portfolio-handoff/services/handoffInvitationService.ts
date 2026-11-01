@@ -83,20 +83,20 @@ export async function acceptHandoffAssignment(assignmentId: string, expectedVers
   const { data } = await api.post(`/handoff/assignments/${encodeURIComponent(assignmentId)}/accept`, { expectedVersion }, {
     headers: { 'Idempotency-Key': createIdempotencyKey('accept', assignmentId) },
   });
-  return { ...data.data, authenticationRequired: true, identityClaimStatus: 'MATCHED' };
+  return { ...data.data, assignmentId, authenticationRequired: true, identityClaimStatus: 'MATCHED' };
 }
 
 export async function rejectHandoffAssignment(assignmentId: string, reason: string, expectedVersion: number): Promise<HandoffInvitationPreview> {
   const { data } = await api.post(`/handoff/assignments/${encodeURIComponent(assignmentId)}/reject`, { reason: reason.trim(), expectedVersion }, {
     headers: { 'Idempotency-Key': createIdempotencyKey('reject', assignmentId) },
   });
-  return { ...data.data, authenticationRequired: true, identityClaimStatus: 'MATCHED' };
+  return { ...data.data, assignmentId, authenticationRequired: true, identityClaimStatus: 'MATCHED' };
 }
 
 export async function startAssignedWork(assignmentId: string, expectedVersion: number): Promise<HandoffInvitationPreview> {
   const idempotencyKey = createIdempotencyKey('start', assignmentId);
   const { data } = await api.post(`/handoff/assignments/${encodeURIComponent(assignmentId)}/start`, { expectedVersion, idempotencyKey }, { headers: { 'Idempotency-Key': idempotencyKey } });
-  return { ...data.data, authenticationRequired: true, identityClaimStatus: 'MATCHED' };
+  return { ...data.data, assignmentId, authenticationRequired: true, identityClaimStatus: 'MATCHED' };
 }
 
 export async function resolvePostStartContinuity(assignmentId: string): Promise<HandoffOwnerContinuity> {
