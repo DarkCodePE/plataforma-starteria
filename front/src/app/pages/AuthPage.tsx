@@ -4,6 +4,7 @@ import { Zap, Eye, EyeOff, AlertCircle, ArrowRight, Clock3, Mail } from 'lucide-
 import { useApp } from '../context/AppContext';
 import { can } from '../authz/permissions';
 import { resolveInitialWorkspace } from '../authz/workspaces';
+import { consumePostAuthDestination } from '../services/api';
 import type { AuthError } from '../services/api';
 import { GoogleSignInButton } from '../components/auth/GoogleSignInButton';
 import { getPendingPilotClaim } from '../../features/public-start/services/publicPilotLeadService';
@@ -182,6 +183,15 @@ export function AuthPage() {
           navigate('/dashboard', { replace: true });
         }
       })();
+      return;
+    }
+
+    // An interrupted project/Step can be resumed after a valid new login.
+    // This path was allowlisted before being stored; project API permissions
+    // remain enforced on the destination.
+    const resumePath = consumePostAuthDestination();
+    if (resumePath && user?.role !== 'sponsor') {
+      navigate(resumePath, { replace: true });
       return;
     }
 
