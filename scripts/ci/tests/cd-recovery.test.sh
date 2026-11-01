@@ -31,10 +31,8 @@ export BILLING_WEBHOOKS_ENABLED=false
 
 saved_pilot=$STARTERIA_PILOT_CODE_SECRET
 unset STARTERIA_PILOT_CODE_SECRET
-if bash "$validator" >/dev/null 2>&1; then
-  echo 'validator accepted a missing pilot secret' >&2
-  exit 1
-fi
+# The CD validator must allow absence; Kubernetes will persist a strong key.
+bash "$validator" >/dev/null
 export STARTERIA_PILOT_CODE_SECRET=$saved_pilot
 
 export STARTERIA_PILOT_CODE_SECRET=$STARTERIA_BILLING_WEBHOOK_SECRET
@@ -86,11 +84,23 @@ cat > "$tmp/kubectl" <<'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
 if [[ " $* " == *' get secret '* ]]; then
-  printf 'secret/starteria-backend-secrets\n'
+  if [[ " $* " == *' -o name '* ]]; then
+    [[ ! -f "$KUBECTL_CAPTURE_DIR/stored-secret.json" ]] || printf 'secret/starteria-backend-secrets\n'
+    exit 0
+  fi
+  if [[ " $* " == *' -o json '* ]]; then
+    cat "$KUBECTL_CAPTURE_DIR/stored-secret.json"
+    exit 0
+  fi
+fi
+if [[ " $* " == *' create secret '* ]]; then
+  printf '{"data":{}}\n' > "$KUBECTL_CAPTURE_DIR/stored-secret.json"
   exit 0
 fi
 if [[ " $* " == *' patch secret '* ]]; then
   cat > "$KUBECTL_CAPTURE_DIR/patch.json"
+  jq -s '.[0] * .[1]' "$KUBECTL_CAPTURE_DIR/stored-secret.json" "$KUBECTL_CAPTURE_DIR/patch.json" > "$KUBECTL_CAPTURE_DIR/merged-secret.json"
+  mv "$KUBECTL_CAPTURE_DIR/merged-secret.json" "$KUBECTL_CAPTURE_DIR/stored-secret.json"
   exit 0
 fi
 echo "unexpected kubectl invocation" >&2
@@ -106,6 +116,41 @@ jq -e '.data.BILLING_WEBHOOK_SECRET and .data.BILLING_WEBHOOKS_ENABLED == "dHJ1Z
 export BILLING_WEBHOOKS_ENABLED=false
 merged=$(jq -n --slurpfile patch "$tmp/patch.json" '{data:{UNKNOWN_EXISTING_KEY:"cHJlc2VydmU="}} * $patch[0]')
 printf '%s' "$merged" | jq -e '.data.UNKNOWN_EXISTING_KEY == "cHJlc2VydmU="' >/dev/null
+
+# No GitHub secret: an existing Kubernetes key must survive every sync unchanged.
+initial_pilot_key=$(jq -r '.data.PILOT_CODE_SECRET' "$tmp/stored-secret.json")
+unset PILOT_CODE_SECRET
+KUBECTL_BIN="$tmp/kubectl" bash "$syncer" >/dev/null
+[[ "$(jq -r '.data.PILOT_CODE_SECRET' "$tmp/stored-secret.json")" == "$initial_pilot_key" ]]
+
+# First deployment with no pilot secret in GitHub or Kubernetes: generate 32
+# random bytes once; subsequent deployments must reuse that persisted value.
+rm -f "$tmp/stored-secret.json"
+KUBECTL_BIN="$tmp/kubectl" bash "$syncer" > "$tmp/bootstrap-output.log"
+bootstrapped_pilot=$(jq -r '.data.PILOT_CODE_SECRET | @base64d' "$tmp/stored-secret.json")
+[[ "$bootstrapped_pilot" =~ ^[a-f0-9]{64}$ ]]
+if grep -Fq "$bootstrapped_pilot" "$tmp/bootstrap-output.log"; then
+  echo 'pilot secret leaked into sync output' >&2
+  exit 1
+fi
+KUBECTL_BIN="$tmp/kubectl" bash "$syncer" >/dev/null
+[[ "$(jq -r '.data.PILOT_CODE_SECRET | @base64d' "$tmp/stored-secret.json")" == "$bootstrapped_pilot" ]]
+
+# An explicit GitHub value may not rotate existing bearer codes accidentally.
+export PILOT_CODE_SECRET=$saved_pilot
+if KUBECTL_BIN="$tmp/kubectl" bash "$syncer" >/dev/null 2>&1; then
+  echo 'sync accepted a conflicting pilot secret and could rotate issued bearers' >&2
+  exit 1
+fi
+unset PILOT_CODE_SECRET
+
+# Existing corrupted/weak values fail closed instead of being silently replaced.
+jq '.data.PILOT_CODE_SECRET = "eA=="' "$tmp/stored-secret.json" > "$tmp/weak-secret.json"
+mv "$tmp/weak-secret.json" "$tmp/stored-secret.json"
+if KUBECTL_BIN="$tmp/kubectl" bash "$syncer" >/dev/null 2>&1; then
+  echo 'sync accepted a weak persisted pilot key' >&2
+  exit 1
+fi
 
 cat > "$tmp/curl" <<'EOF'
 #!/usr/bin/env bash

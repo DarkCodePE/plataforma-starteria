@@ -10,7 +10,6 @@ required=(
   JWT_SECRET
   AI_SERVICE_TOKEN
   BRIDGE_SHARED_SECRET
-  PILOT_CODE_SECRET
   PORTFOLIO_ENTRY_API_KEY
   JEV_API_KEY
   GOOGLE_CLIENT_ID
@@ -32,6 +31,54 @@ existing_secret=$("$kubectl_bin" -n "$namespace" get secret "$secret_name" --ign
 if [[ -z "$existing_secret" ]]; then
   "$kubectl_bin" -n "$namespace" create secret generic "$secret_name" >/dev/null
 fi
+
+# Pilot bearers are HMAC-derived and must survive app restarts, deploys and
+# idempotent resubmissions. Prefer the cluster's persisted value. A GitHub
+# environment secret is optional, but may never silently rotate an existing key.
+provided_pilot_code_secret="${PILOT_CODE_SECRET:-}"
+cluster_pilot_code_secret=''
+if [[ -n "$existing_secret" ]]; then
+  existing_pilot_code_b64=$("$kubectl_bin" -n "$namespace" get secret "$secret_name" -o json | jq -er '(.data // {}).PILOT_CODE_SECRET // ""')
+  if [[ -n "$existing_pilot_code_b64" ]]; then
+    if ! cluster_pilot_code_secret="$(printf '%s' "$existing_pilot_code_b64" | base64 --decode)"; then
+      echo '::error::Existing Kubernetes PILOT_CODE_SECRET cannot be decoded; refusing secret rotation' >&2
+      exit 1
+    fi
+  fi
+fi
+
+if [[ -n "$cluster_pilot_code_secret" && -n "$provided_pilot_code_secret" && "$cluster_pilot_code_secret" != "$provided_pilot_code_secret" ]]; then
+  echo '::error::GitHub pilot secret differs from Kubernetes; rotate explicitly in a separate approved operation' >&2
+  exit 1
+fi
+if [[ -n "$cluster_pilot_code_secret" ]]; then
+  PILOT_CODE_SECRET="$cluster_pilot_code_secret"
+elif [[ -n "$provided_pilot_code_secret" ]]; then
+  PILOT_CODE_SECRET="$provided_pilot_code_secret"
+else
+  command -v openssl >/dev/null 2>&1 || { echo '::error::openssl is required to bootstrap PILOT_CODE_SECRET' >&2; exit 1; }
+  PILOT_CODE_SECRET="$(openssl rand -hex 32)" || { echo '::error::Unable to generate PILOT_CODE_SECRET' >&2; exit 1; }
+fi
+export PILOT_CODE_SECRET
+
+pilot_trimmed=$(printf '%s' "$PILOT_CODE_SECRET" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+pilot_lower=$(printf '%s' "$pilot_trimmed" | tr '[:upper:]' '[:lower:]')
+pilot_unique=$(printf '%s' "$pilot_trimmed" | fold -w1 | sort -u | wc -l | tr -d '[:space:]')
+if [[ "$pilot_trimmed" != "$PILOT_CODE_SECRET" || ${#pilot_trimmed} -lt 32 || "$pilot_unique" -lt 8 || "$pilot_lower" == *change-me* || "$pilot_lower" == *do-not-use* || "$pilot_lower" == *replace_with* || "$pilot_lower" == *whatever* ]]; then
+  echo '::error::PILOT_CODE_SECRET must be a non-placeholder, non-repetitive value of at least 32 characters' >&2
+  exit 1
+fi
+for independent_name in JWT_SECRET AI_SERVICE_TOKEN BRIDGE_SHARED_SECRET; do
+  if [[ "$PILOT_CODE_SECRET" == "${!independent_name}" ]]; then
+    echo "::error::PILOT_CODE_SECRET must be independent of $independent_name" >&2
+    exit 1
+  fi
+done
+if [[ "$billing_webhooks_enabled" == true && "$PILOT_CODE_SECRET" == "$BILLING_WEBHOOK_SECRET" ]]; then
+  echo '::error::PILOT_CODE_SECRET must be independent of the enabled billing secret' >&2
+  exit 1
+fi
+unset pilot_trimmed pilot_lower pilot_unique cluster_pilot_code_secret provided_pilot_code_secret existing_pilot_code_b64
 
 jq -n '
   def encoded($name): env[$name] | @base64;
