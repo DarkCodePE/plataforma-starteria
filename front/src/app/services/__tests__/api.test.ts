@@ -8,6 +8,8 @@ import {
   getAccessToken,
   initAuth,
   isPublicPath,
+  rememberPostAuthDestination,
+  consumePostAuthDestination,
 } from '../api';
 
 /**
@@ -188,6 +190,53 @@ describe('initAuth', () => {
     await initAuth();
     expect(getAccessToken()).toBeNull();
     spy.mockRestore();
+  });
+});
+
+describe('KAN-204 authentication recovery', () => {
+  beforeEach(() => setAccessToken(null));
+
+  it('reuses a single boot refresh for simultaneous startup calls', async () => {
+    let finish!: (value: unknown) => void;
+    const pending = new Promise(resolve => { finish = resolve; });
+    const spy = vi.spyOn(axios, 'post').mockReturnValueOnce(pending as never);
+
+    const first = initAuth();
+    const second = initAuth();
+    expect(first).toBe(second);
+    expect(spy).toHaveBeenCalledTimes(1);
+
+    finish({ data: { data: { accessToken: 'fresh-singleflight' } } });
+    await Promise.all([first, second]);
+    expect(getAccessToken()).toBe('fresh-singleflight');
+    spy.mockRestore();
+  });
+
+  it('never discards a login token when boot refresh fails concurrently', async () => {
+    let rejectRefresh!: (error: unknown) => void;
+    const pending = new Promise((_resolve, reject) => { rejectRefresh = reject; });
+    const spy = vi.spyOn(axios, 'post').mockReturnValueOnce(pending as never);
+
+    const boot = initAuth();
+    setAccessToken('explicit-new-login-token');
+    rejectRefresh(new Error('refresh cookie unavailable'));
+    await boot;
+    expect(getAccessToken()).toBe('explicit-new-login-token');
+    spy.mockRestore();
+  });
+
+  it('preserves only safe project/Step destinations and consumes them once', () => {
+    const stepPath = '/projects/cmvbhaq3100cdfb01n822nxtr/step/0';
+    rememberPostAuthDestination(stepPath);
+    expect(consumePostAuthDestination()).toBe(stepPath);
+    expect(consumePostAuthDestination()).toBeNull();
+
+    rememberPostAuthDestination('https://attacker.example/');
+    expect(consumePostAuthDestination()).toBeNull();
+    rememberPostAuthDestination('//attacker.example/');
+    expect(consumePostAuthDestination()).toBeNull();
+    rememberPostAuthDestination('/auth?next=https://attacker.example/');
+    expect(consumePostAuthDestination()).toBeNull();
   });
 });
 
