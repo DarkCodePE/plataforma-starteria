@@ -19,6 +19,7 @@ describe('production backend startup contract', () => {
       BRIDGE_SHARED_SECRET: 'bridge-B8g0@rM3#tN5$vP7%xQ9&za1*-2026',
       AI_SERVICE_TOKEN: 'ai-C9h1#sN4$vP6%xQ8&yR0*zb2@Lm7!Qx-2026',
       BILLING_WEBHOOK_SECRET: 'billing-D0j2$tP5%xQ7&yR9*zA1@bc3#-2026',
+      BILLING_WEBHOOKS_ENABLED: 'false',
       PILOT_CODE_SECRET: 'pilot-E1k3%uQ6&yR8*zA0@bc2#de4$-2026',
     };
   });
@@ -35,9 +36,16 @@ describe('production backend startup contract', () => {
     expect(response.body.status).toBe('ok');
   });
 
-  it('fails before startup when BILLING_WEBHOOK_SECRET is missing', async () => {
+  it('serves health without billing secret when billing webhooks are disabled', async () => {
     delete process.env.BILLING_WEBHOOK_SECRET;
+    const { createApp } = await import('../app');
+    expect((await request(createApp()).get('/api/health')).status).toBe(200);
+    expect((await request(createApp()).post('/api/v1/internal/billing/webhooks/manual')).status).toBe(404);
+  });
 
+  it('fails when webhooks are enabled but the billing secret is absent', async () => {
+    process.env.BILLING_WEBHOOKS_ENABLED = 'true';
+    delete process.env.BILLING_WEBHOOK_SECRET;
     await expect(import('../app')).rejects.toThrow(/BILLING_WEBHOOK_SECRET/);
   });
 
