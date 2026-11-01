@@ -130,11 +130,29 @@ jobs:
     needs: [resolve, authorize]
     uses: ./.github/workflows/ci.yml
 
+  step-reasoning-qa-config:
+    name: Validate synthetic Step Copilot exposure
+    needs: [resolve, authorize]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.resolve.outputs.sha }}
+      - name: Validate fail-closed QA flags
+        env:
+          STEP_REASONING_COPILOT_ENABLED: ${{ vars.STEP_REASONING_COPILOT_ENABLED || 'false' }}
+          STEP_REASONING_QA_USER_IDS: ${{ vars.STEP_REASONING_QA_USER_IDS }}
+          STEP_REASONING_PROVIDER_MODE: qa_stub
+        run: bash scripts/ci/validate-step-reasoning-qa-config.sh
+
   build-and-push:
     name: Build and push ${{ matrix.service }}
-    needs: [tests, resolve, authorize]
+    needs: [tests, step-reasoning-qa-config, resolve, authorize]
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    environment: production
     strategy:
       fail-fast: true
       matrix:
@@ -168,6 +186,8 @@ jobs:
           cache-to: type=gha,mode=max,scope=${{ matrix.service }}
           build-args: |
             VITE_GOOGLE_CLIENT_ID=${{ secrets.GOOGLE_CLIENT_ID }}
+            VITE_STEP_REASONING_COPILOT_ENABLED=${{ vars.STEP_REASONING_COPILOT_ENABLED || 'false' }}
+            VITE_STEP_REASONING_QA_USER_IDS=${{ vars.STEP_REASONING_QA_USER_IDS }}
           tags: ${{ env.DOCKERHUB_NAMESPACE }}/starteria-${{ matrix.service }}:${{ needs.resolve.outputs.tag }}
 
   deploy:
@@ -269,13 +289,22 @@ jobs:
           SMTP_USER: ${{ secrets.STARTERIA_SMTP_USER }}
           SMTP_PASS: ${{ secrets.STARTERIA_SMTP_PASS }}
           PILOT_LEAD_NOTIFY_FROM: ${{ secrets.STARTERIA_PILOT_LEAD_NOTIFY_FROM }}
+          STEP_REASONING_COPILOT_ENABLED: ${{ vars.STEP_REASONING_COPILOT_ENABLED || 'false' }}
+          STEP_REASONING_QA_USER_IDS: ${{ vars.STEP_REASONING_QA_USER_IDS }}
+          STEP_REASONING_PROVIDER_MODE: qa_stub
         run: |
           set -euo pipefail
+          bash scripts/ci/validate-step-reasoning-qa-config.sh
           encoded_password=$(jq -nr --arg v "$DB_PASSWORD" '$v|@uri')
           database_url="postgresql://starteria:${encoded_password}@starteria-db:5432/starteria_db"
           kubectl -n "$NAMESPACE" create secret generic starteria-db-secrets --from-literal=POSTGRES_PASSWORD="$DB_PASSWORD" --dry-run=client -o yaml | kubectl apply -f -
           export DATABASE_URL="$database_url"
           bash scripts/ci/sync-backend-secret.sh
+          kubectl -n "$NAMESPACE" create configmap starteria-step-reasoning-qa \
+            --from-literal=STEP_REASONING_COPILOT_ENABLED="$STEP_REASONING_COPILOT_ENABLED" \
+            --from-literal=STEP_REASONING_QA_USER_IDS="$STEP_REASONING_QA_USER_IDS" \
+            --from-literal=STEP_REASONING_PROVIDER_MODE="$STEP_REASONING_PROVIDER_MODE" \
+            --dry-run=client -o yaml | kubectl apply -f -
           kubectl -n "$NAMESPACE" create secret generic starteria-ai-service-secrets \
             --from-literal=OPENROUTER_API_KEY="$OPENROUTER_API_KEY" --from-literal=JEV_API_KEY="$JEV_API_KEY" \
             --from-literal=LANGSMITH_API_KEY="${LANGSMITH_API_KEY:-}" \
@@ -321,6 +350,8 @@ jobs:
               || { echo "::error::Image substitution did not match in $manifest; refusing to apply"; exit 1; }
             printf '%s\n' "$substituted" | kubectl -n "$NAMESPACE" apply -f -
           done
+          kubectl -n "$NAMESPACE" set env deployment/starteria-backend \
+            --from=configmap/starteria-step-reasoning-qa
           kubectl -n "$NAMESPACE" apply -f k8s/cloudflared-deployment.yaml
           for svc in backend frontend ai-service; do
             kubectl -n "$NAMESPACE" set image "deployment/starteria-$svc" "$svc=${DOCKERHUB_NAMESPACE}/starteria-$svc:${TAG}"

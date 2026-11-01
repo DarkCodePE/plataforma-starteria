@@ -18,7 +18,7 @@ const context = {
   sourceContextHash: `sha256:${'a'.repeat(64)}`,
 };
 
-function harness(model = 'openrouter:test/model') {
+function harness(model = 'openrouter:test/model', providerMode: 'live_llm' | 'qa_stub' = 'live_llm') {
   const sessions: any[] = [];
   const turns: any[] = [];
   const repository = {
@@ -58,7 +58,7 @@ function harness(model = 'openrouter:test/model') {
     })),
   };
   const contextBuilder = { build: vi.fn(async () => context) };
-  return { repository, bridge, contextBuilder, service: new StepReasoningService(contextBuilder as any, repository as any, bridge as any) };
+  return { repository, bridge, contextBuilder, service: new StepReasoningService(contextBuilder as any, repository as any, bridge as any, providerMode) };
 }
 
 const actor = { id: 'user-1', role: 'participante' as const };
@@ -93,6 +93,26 @@ describe('StepReasoningService', () => {
     const h = harness('qa-stub/step-reasoning-v1');
     const result = await h.service.submitTurn('project-1', 0, actor, input, 'request-1');
     expect(result.turn).toMatchObject({ status: 'SUCCEEDED', executionMode: 'qa_stub' });
+  });
+
+  it('uses the deterministic QA provider without contacting an LLM bridge', async () => {
+    const h = harness('openrouter:must-not-run', 'qa_stub');
+    const result = await h.service.submitTurn('project-1', 0, actor, input, 'request-1');
+    expect(h.bridge.callAiService).not.toHaveBeenCalled();
+    expect(result.turn).toMatchObject({
+      status: 'SUCCEEDED',
+      executionMode: 'qa_stub',
+    });
+    expect(h.repository.completeTurn).toHaveBeenCalledWith('turn-1', expect.objectContaining({
+      providerModel: 'qa-stub/kan-204-step-reasoning',
+      tokensUsed: 0,
+      costUsd: 0,
+    }));
+    expect(result.turn.assistantText).toMatch(/Simulación QA/i);
+    const structuredOutput = result.turn.structuredOutput as { warnings: string[] };
+    expect(structuredOutput.warnings).toContain(
+      'Respuesta simulada y determinista de QA; no procede de un proveedor LLM.',
+    );
   });
 
   it('passes the requested operational Step to context and provider', async () => {

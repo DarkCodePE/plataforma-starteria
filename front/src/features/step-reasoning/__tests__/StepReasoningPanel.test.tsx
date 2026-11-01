@@ -137,6 +137,22 @@ describe('StepReasoningPanel', () => {
     expect(client.getSession).toHaveBeenCalledWith('project-2', 2);
   });
 
+  it('prioritizes writing before suggested prompts and focuses from the mobile shortcut', async () => {
+    const client = {
+      getSession: vi.fn(async () => ({ session: null, turns: [] })),
+      sendTurn: vi.fn(),
+    };
+    render(<StepReasoningPanel projectId="project-compose" client={client as any} />);
+    const composer = await screen.findByTestId('step-reasoning-composer');
+    const suggestions = screen.getByTestId('step-reasoning-panel')
+      .querySelector('[aria-label="Preguntas sugeridas para el Copilot"]');
+    expect(suggestions).not.toBeNull();
+    expect(composer.compareDocumentPosition(suggestions!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Escribir a Startería' }));
+    expect(screen.getByRole('textbox')).toHaveFocus();
+  });
+
   it('keeps history visible but removes every write control in read-only mode', async () => {
     const client = {
       getSession: vi.fn(async () => ({
@@ -277,9 +293,9 @@ describe('StepReasoningPanel', () => {
     render(<StepReasoningPanel projectId="project-height" step={2} client={client as any} />);
 
     const history = await screen.findByRole('log', { name: 'Historial de conversación' });
-    expect(history.className).toContain('h-[clamp(12rem,34dvh,20rem)]');
-    expect(history.className).toContain('sm:h-[clamp(16rem,38dvh,24rem)]');
-    expect(history.className).toContain('lg:h-[clamp(20rem,42dvh,26rem)]');
+    expect(history.className).toContain('h-[clamp(7rem,16dvh,10rem)]');
+    expect(history.className).toContain('sm:h-[clamp(8rem,16dvh,11rem)]');
+    expect(history.className).toContain('lg:h-[clamp(9rem,16dvh,12rem)]');
     expect(Array.from(screen.getByTestId('step-reasoning-panel').querySelectorAll('div')).some(element =>
       element.className.includes('xl:grid-cols-[minmax(0,7fr)_minmax(17rem,3fr)]'),
     )).toBe(true);

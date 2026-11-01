@@ -10,11 +10,14 @@ describe('Step reasoning QA feature flag', () => {
     expect(isStepReasoningCopilotEnabled('user-qa')).toBe(false);
   });
 
-  it('requires both the build flag and an explicit QA user allowlist entry', () => {
+  it('requires both the build flag and exactly one explicit QA user', () => {
     vi.stubEnv('VITE_STEP_REASONING_COPILOT_ENABLED', 'true');
-    vi.stubEnv('VITE_STEP_REASONING_QA_USER_IDS', 'user-qa,user-two');
+    vi.stubEnv('VITE_STEP_REASONING_QA_USER_IDS', 'user-qa');
     expect(isStepReasoningCopilotEnabled('user-qa')).toBe(true);
     expect(isStepReasoningCopilotEnabled('user-other')).toBe(false);
     expect(isStepReasoningCopilotEnabled()).toBe(false);
+
+    vi.stubEnv('VITE_STEP_REASONING_QA_USER_IDS', 'user-qa,user-two');
+    expect(isStepReasoningCopilotEnabled('user-qa')).toBe(false);
   });
 });

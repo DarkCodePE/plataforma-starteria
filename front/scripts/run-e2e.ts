@@ -280,6 +280,7 @@ async function main() {
       env.STEP_REASONING_COPILOT_ENABLED = 'true';
       env.STEP_REASONING_QA_USER_IDS = user.id;
       env.STEP_REASONING_QA_USER_ID = user.id;
+      env.STEP_REASONING_PROVIDER_MODE = process.env.STEP_REASONING_PROVIDER_MODE || 'qa_stub';
       env.VITE_STEP_REASONING_COPILOT_ENABLED = 'true';
       env.VITE_STEP_REASONING_QA_USER_IDS = user.id;
       console.log(`[E2E] Step reasoning QA allowlist resolved for seeded user ${user.id}`);

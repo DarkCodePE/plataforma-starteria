@@ -57,6 +57,10 @@ jobs:
         working-directory: .
         run: bash scripts/ci/tests/cd-recovery.test.sh
 
+      - name: Test KAN-204 Step reasoning QA guards
+        working-directory: .
+        run: bash scripts/ci/tests/step-reasoning-qa-config.test.sh
+
       - name: Setup Node.js 20.x
         uses: actions/setup-node@v4
         with:
@@ -292,6 +296,29 @@ jobs:
 
       - name: POSTGRES_CONFIRMATION_INTEGRATION (119E)
         run: npm run test:e2e -- --portfolio-entry-postgres-confirmation-test
+
+      # Production runtime stays off by default; this regression exercises the
+      # explicitly allow-listed synthetic actor only, using a disposable DB and
+      # a local deterministic provider. It does NOT call a real LLM or CD.
+      - name: KAN-204 - Copilot first-viewport and mobile focus
+        env:
+          E2E_STEP_REASONING_QA_AUTO_ALLOWLIST: 'true'
+          STEP_REASONING_PROVIDER_MODE: qa_stub
+        run: |
+          rm -f ../artifacts/KAN-204/*.png ../artifacts/KAN-204/KAN204_BROWSER_EVIDENCE.json
+          npm run test:e2e -- e2e/kan204-steps-conversational.spec.ts
+
+      - name: Upload KAN-204 browser UX evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: kan204-steps-browser-ux
+          path: |
+            artifacts/KAN-204/*.png
+            artifacts/KAN-204/KAN204_BROWSER_EVIDENCE.json
+            front/test-results/
+          retention-days: 7
+          if-no-files-found: warn
 
   # ---------------------------------------------------------------------------
   # Job 5: Aggregate summary — runs even on partial failure to give one place

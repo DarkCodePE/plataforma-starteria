@@ -33,7 +33,7 @@ export function isEnabled(flagId: string, _userId?: string): boolean {
       .split(',')
       .map(value => value.trim())
       .filter(Boolean);
-    return Boolean(_userId && allowlist.includes(_userId));
+    return Boolean(_userId && allowlist.length === 1 && allowlist[0] === _userId);
   }
   return false;
 }
