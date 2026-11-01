@@ -162,7 +162,7 @@ export function initAuth(): Promise<void> {
 // Restore only an existing project/Step path after the user signs in again.
 // Never persist tokens or allow external/attacker-controlled redirect URLs.
 const POST_AUTH_DESTINATION = 'starteria.auth.returnTo';
-const SAFE_PROJECT_PATH = /^\\/projects\\/c[a-z0-9]{20,30}(?:\\/step\\/[0-4])?$/i;
+const SAFE_PROJECT_PATH = new RegExp('^/projects/c[a-z0-9]{20,30}(?:/step/[0-4])?$', 'i');
 
 export function rememberPostAuthDestination(path: string): void {
   if (typeof window !== 'undefined' && SAFE_PROJECT_PATH.test(path)) {
