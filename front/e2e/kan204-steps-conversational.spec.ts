@@ -258,6 +258,8 @@ test('KAN-204: Copilot simulado conserva continuidad en iniciativa independiente
   await mobile.getByRole('button', { name: 'Escribir a Startería' }).click();
   const mobileComposer = mobile.getByLabel(/Cuéntale a Starteria/i);
   await expect(mobileComposer).toBeFocused();
+  await mobileComposer.fill('Dato sintético: preparado para continuar desde móvil.');
+  await expect(mobile.getByRole('button', { name: /^Enviar mensaje$/ })).toBeEnabled();
   await assertComposerInInitialViewport(mobile);
   await mobile.screenshot({ path: path.join(ARTIFACTS, 'portfolio-linked-mobile-composer-390x844.png'), fullPage: true });
   await mobileContext.close();
