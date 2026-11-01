@@ -47,6 +47,12 @@ describe('backend/config', () => {
     delete process.env.PILOT_CODE_SECRET;
     delete process.env.AI_WEBHOOKS_ENABLED;
     delete process.env.BILLING_WEBHOOKS_ENABLED;
+    delete process.env.BILLING_ENFORCEMENT_ENABLED;
+    delete process.env.STARTERIA_PRIVATE_PREVIEW_ENABLED;
+    delete process.env.PORTFOLIO_ENTRY_RUNTIME_MODE;
+    delete process.env.HANDOFF_EMAIL_TRANSPORT_MODE;
+    delete process.env.HANDOFF_EMAIL_PILOT_ENABLED;
+    delete process.env.HANDOFF_INVITATION_PUBLIC_BASE_URL;
     delete process.env.TRUST_PROXY_HOPS;
   });
 
@@ -160,6 +166,84 @@ describe('backend/config', () => {
     delete process.env.BILLING_WEBHOOK_SECRET;
     const { config } = await import('../index');
     expect(config.billingWebhooksEnabled).toBe(false);
+  });
+
+  it('allows deterministic production runtime only for a fail-closed private preview', async () => {
+    process.env.NODE_ENV = 'production';
+    process.env.DATABASE_URL = 'postgresql://preview:test@postgres:5432/starteria_preview';
+    process.env.JWT_SECRET = STRONG.jwt;
+    process.env.BRIDGE_SHARED_SECRET = STRONG.bridge;
+    process.env.AI_SERVICE_TOKEN = STRONG.ai;
+    process.env.PILOT_CODE_SECRET = STRONG.pilot;
+    process.env.STARTERIA_PRIVATE_PREVIEW_ENABLED = 'true';
+    process.env.PORTFOLIO_ENTRY_RUNTIME_MODE = 'deterministic';
+    process.env.BILLING_WEBHOOKS_ENABLED = 'false';
+    process.env.BILLING_ENFORCEMENT_ENABLED = 'false';
+    process.env.AI_WEBHOOKS_ENABLED = 'false';
+    process.env.HANDOFF_EMAIL_TRANSPORT_MODE = 'sandbox';
+    process.env.HANDOFF_EMAIL_PILOT_ENABLED = 'false';
+    process.env.CORS_ORIGIN = 'https://preview.example.test';
+    process.env.HANDOFF_INVITATION_PUBLIC_BASE_URL = 'https://preview.example.test';
+
+    const { config } = await import('../index');
+    expect(config.privatePreviewEnabled).toBe(true);
+    expect(config.portfolioEntryRuntimeMode).toBe('deterministic');
+    expect(config.billingEnforcementEnabled).toBe(false);
+  });
+
+  it.each([
+    ['billing enforcement', { BILLING_ENFORCEMENT_ENABLED: 'true' }],
+    ['billing webhooks', { BILLING_WEBHOOKS_ENABLED: 'true', BILLING_WEBHOOK_SECRET: STRONG.billing }],
+    ['AI webhooks', { AI_WEBHOOKS_ENABLED: 'true' }],
+    ['pilot email mode', { HANDOFF_EMAIL_TRANSPORT_MODE: 'pilot' }],
+    ['pilot email switch', { HANDOFF_EMAIL_PILOT_ENABLED: 'true' }],
+    ['live runtime', { PORTFOLIO_ENTRY_RUNTIME_MODE: 'live' }],
+  ])('rejects private preview when %s is enabled', async (_label, override) => {
+    Object.assign(process.env, {
+      NODE_ENV: 'production',
+      DATABASE_URL: 'postgresql://preview:test@postgres:5432/starteria_preview',
+      JWT_SECRET: STRONG.jwt,
+      BRIDGE_SHARED_SECRET: STRONG.bridge,
+      AI_SERVICE_TOKEN: STRONG.ai,
+      PILOT_CODE_SECRET: STRONG.pilot,
+      STARTERIA_PRIVATE_PREVIEW_ENABLED: 'true',
+      PORTFOLIO_ENTRY_RUNTIME_MODE: 'deterministic',
+      BILLING_WEBHOOKS_ENABLED: 'false',
+      BILLING_ENFORCEMENT_ENABLED: 'false',
+      AI_WEBHOOKS_ENABLED: 'false',
+      HANDOFF_EMAIL_TRANSPORT_MODE: 'sandbox',
+      HANDOFF_EMAIL_PILOT_ENABLED: 'false',
+      CORS_ORIGIN: 'https://preview.example.test',
+      HANDOFF_INVITATION_PUBLIC_BASE_URL: 'https://preview.example.test',
+      ...override,
+    });
+    await expect(import('../index')).rejects.toThrow(/Private preview requires/);
+  });
+
+  it.each([
+    ['a non-preview database', { DATABASE_URL: 'postgresql://synthetic:synthetic@clone.invalid:5432/synthetic' }],
+    ['the production origin', { CORS_ORIGIN: 'https://starter-ia.com', HANDOFF_INVITATION_PUBLIC_BASE_URL: 'https://starter-ia.com' }],
+    ['different browser and invitation origins', { HANDOFF_INVITATION_PUBLIC_BASE_URL: 'https://other.example.test' }],
+  ])('rejects private preview against %s', async (_label, override) => {
+    Object.assign(process.env, {
+      NODE_ENV: 'production',
+      DATABASE_URL: 'postgresql://preview:test@postgres:5432/starteria_preview',
+      JWT_SECRET: STRONG.jwt,
+      BRIDGE_SHARED_SECRET: STRONG.bridge,
+      AI_SERVICE_TOKEN: STRONG.ai,
+      PILOT_CODE_SECRET: STRONG.pilot,
+      STARTERIA_PRIVATE_PREVIEW_ENABLED: 'true',
+      PORTFOLIO_ENTRY_RUNTIME_MODE: 'deterministic',
+      BILLING_WEBHOOKS_ENABLED: 'false',
+      BILLING_ENFORCEMENT_ENABLED: 'false',
+      AI_WEBHOOKS_ENABLED: 'false',
+      HANDOFF_EMAIL_TRANSPORT_MODE: 'sandbox',
+      HANDOFF_EMAIL_PILOT_ENABLED: 'false',
+      CORS_ORIGIN: 'https://preview.example.test',
+      HANDOFF_INVITATION_PUBLIC_BASE_URL: 'https://preview.example.test',
+      ...override,
+    });
+    await expect(import('../index')).rejects.toThrow(/Private preview requires/);
   });
 
   it('requires an independent strong billing secret when billing webhooks are enabled', async () => {

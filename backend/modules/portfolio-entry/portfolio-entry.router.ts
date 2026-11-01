@@ -228,7 +228,7 @@ export function buildPortfolioEntryRouter(
 
 function configuredAgentAdapter(): PortfolioEntryAgentAdapterV2 {
   if (config.portfolioEntryRuntimeMode === 'deterministic') {
-    if (config.nodeEnv === 'production') {
+    if (config.nodeEnv === 'production' && !config.privatePreviewEnabled) {
       throw new Error('PORTFOLIO_ENTRY_RUNTIME_MODE=deterministic is not allowed in production.');
     }
     return new DeterministicPortfolioEntryAgentAdapter();
@@ -265,7 +265,7 @@ function configuredClassifier(): JevClassifier | undefined {
 
 function configuredHandoffMaterializer(): PortfolioEntryHandoffMaterializer {
   if (config.portfolioEntryRuntimeMode === 'deterministic') {
-    if (config.nodeEnv === 'production') {
+    if (config.nodeEnv === 'production' && !config.privatePreviewEnabled) {
       throw new Error('PORTFOLIO_ENTRY_RUNTIME_MODE=deterministic is not allowed in production.');
     }
     return new DeterministicPortfolioEntryHandoffMaterializer();
@@ -277,6 +277,9 @@ function configuredHandoffMaterializer(): PortfolioEntryHandoffMaterializer {
 }
 
 export function configuredLiveUnderstandingSynthesizer(): PortfolioEntryLiveUnderstandingSynthesizer {
+  if (config.portfolioEntryRuntimeMode === 'deterministic') {
+    return { synthesize: async () => null };
+  }
   try {
     const provider = loadCriticalSynthesisProviderConfig();
     const adapter = new CriticalSituationSynthesisAdapter(createResilientModel(provider));

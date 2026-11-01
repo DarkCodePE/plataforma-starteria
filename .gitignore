@@ -41,6 +41,7 @@ research/notes/*
 .env
 .env.*
 !.env.example
+/deploy/kan188-private-preview/preview.env
 
 # Resultados de las corridas de evals: son de cada corrida, no del harness
 evals/results/

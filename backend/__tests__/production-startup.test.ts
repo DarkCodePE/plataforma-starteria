@@ -43,6 +43,33 @@ describe('production backend startup contract', () => {
     expect((await request(createApp()).post('/api/v1/internal/billing/webhooks/manual')).status).toBe(404);
   });
 
+  it('starts the explicit private preview with deterministic runtime and sandbox mail', async () => {
+    Object.assign(process.env, {
+      STARTERIA_PRIVATE_PREVIEW_ENABLED: 'true',
+      PORTFOLIO_ENTRY_RUNTIME_MODE: 'deterministic',
+      BILLING_ENFORCEMENT_ENABLED: 'false',
+      AI_WEBHOOKS_ENABLED: 'false',
+      HANDOFF_EMAIL_TRANSPORT_MODE: 'sandbox',
+      HANDOFF_EMAIL_PILOT_ENABLED: 'false',
+      SMTP_HOST: 'mailpit',
+      PILOT_LEAD_NOTIFY_FROM: 'Starteria Sandbox <sandbox@starteria.test>',
+      DATABASE_URL: 'postgresql://preview:test@postgres:5432/starteria_preview',
+      CORS_ORIGIN: 'https://preview.example.test',
+      HANDOFF_INVITATION_PUBLIC_BASE_URL: 'https://preview.example.test',
+    });
+
+    const { createApp } = await import('../app');
+    expect((await request(createApp()).get('/api/health')).status).toBe(200);
+    const { configuredLiveUnderstandingSynthesizer } = await import('../modules/portfolio-entry/portfolio-entry.router');
+    expect(await configuredLiveUnderstandingSynthesizer().synthesize({} as never)).toBeNull();
+  });
+
+  it('still rejects deterministic production runtime outside the explicit private preview', async () => {
+    process.env.PORTFOLIO_ENTRY_RUNTIME_MODE = 'deterministic';
+    delete process.env.STARTERIA_PRIVATE_PREVIEW_ENABLED;
+    await expect(import('../app')).rejects.toThrow(/deterministic is not allowed in production/);
+  });
+
   it('fails when webhooks are enabled but the billing secret is absent', async () => {
     process.env.BILLING_WEBHOOKS_ENABLED = 'true';
     delete process.env.BILLING_WEBHOOK_SECRET;
