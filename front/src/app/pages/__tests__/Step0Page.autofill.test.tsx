@@ -23,7 +23,10 @@ import { AutofillField } from '../../components/autofill/AutofillField';
 vi.mock('../../services/featureFlags', () => ({
   isEnabled: () => true,
   isPdfAutofillEnabled: () => true,
-  isStepReasoningCopilotEnabled: () => false,
+}));
+
+vi.mock('../../../features/step-reasoning/hooks/useStepReasoningEligibility', () => ({
+  useStepReasoningEligibility: () => false,
 }));
 
 // Stub the service so confirm/edit/discard don't issue real HTTP.

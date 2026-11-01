@@ -1,67 +1,68 @@
-# KAN-204 — Steps conversational QA exposure
+# KAN-204 — Steps conversacional con autorización persistida
 
 ## Resultado
 
-El slice queda preparado para revisión humana y validación UX. No se ha ejecutado CD ni se ha modificado producción.
+El slice queda preparado para revisión humana. No se ha ejecutado CD ni se ha modificado producción.
 
-El cambio no rediseña `StepReasoningPanel`: publica de forma coherente el diseño ya integrado en `main` para una única cuenta sintética E2E. La conversación es la interacción principal; la card de avance/output y el workspace oficial de checkpoints conservan la autoridad canónica.
+La autorización ya no depende de copiar un `User.id` a GitHub. En cada petición, el backend parte del `User.id` autenticado y consulta la identidad persistida. Sólo habilita la experiencia cuando coinciden simultáneamente:
 
-## Hallazgo de despliegue
+- email `e2e-participante@starteria.test`;
+- roles efectivos que incluyen `participante` y excluyen `admin`;
+- `organizationId=org-e2e-prod`;
+- membresía canónica `OrganizationMember` con rol `member` en ese tenant;
+- `isActive=true`.
 
-| Capa | Estado previo | Cierre KAN-204 |
+Las claims autenticadas deben concordar con esa misma identidad y presentar rol primario `participante`, sin `admin`. El gate se ejecuta antes del control de acceso al Project y el servicio recibe el actor persistido autorizado, por lo que un JWT antiguo con privilegios superiores falla cerrado.
+
+El frontend no evalúa email, nombre, tenant, rol ni ID: consulta el endpoint autenticado de elegibilidad y refleja su respuesta. Los endpoints de sesión y turn mantienen la misma comprobación server-side.
+
+## Matriz de exposición
+
+| Control | Valor de release | Función |
 |---|---|---|
-| Frontend | `VITE_STEP_REASONING_*` se evaluaba en código, pero `Dockerfile.frontend` y CD no lo inyectaban. | Build args explícitos, apagados por defecto y restringidos a una identidad. |
-| Backend | El router exigía flag + allowlist, pero Kubernetes/CD no los configuraban. | ConfigMap no sensible creada por el CD protegido; ausencia equivale a feature apagada; el runtime falla al arrancar si se intenta habilitar más de una identidad o un proveedor distinto de `qa_stub`. |
-| Proveedor | El servicio derivaba al endpoint LLM real cuando el flag se activaba. | `STEP_REASONING_PROVIDER_MODE=qa_stub`; respuesta determinista local, cero llamadas al bridge y cero coste. |
-| UI | Copilot, progreso/output y checkpoint ya estaban implementados. | Se conservan sin cambios visuales; la respuesta muestra `Respuesta de integración QA · no es razonamiento de un LLM`. |
-| Autoridad | Copilot sólo tenía `reason`/`suggest`, pero faltaba evidencia integrada de continuidad. | E2E prueba que ciclo, Step, checkpoints y outputs canónicos no cambian después de conversar y recargar. |
+| `VITE_STEP_REASONING_COPILOT_ENABLED` | `true`, fijado por el CD manual | Permite al bundle consultar elegibilidad; no concede acceso. |
+| `STEP_REASONING_COPILOT_ENABLED` | `true`, fijado por el CD manual | Habilita la modalidad code-driven en backend. |
+| `STEP_REASONING_COPILOT_EMERGENCY_DISABLED` | variable protegida, default `false` | Kill switch backend. En `true`, elegibilidad y endpoints quedan cerrados sin ampliar usuarios. |
+| `STEP_REASONING_PROVIDER_MODE` | `qa_stub`, fijado por el CD | Único proveedor admitido. Cualquier otro valor detiene el runtime/validación. |
+| `STEP_REASONING_QA_USER_IDS` | eliminado | Ya no existe allowlist manual ni se propaga identidad al bundle o Kubernetes. |
 
-## Matriz de flags
+Billing, proveedores LLM reales y flags de Portfolio Copilot no cambian.
 
-| Variable | Capa | Default | Valor para validación KAN-204 | Restricción |
-|---|---|---:|---:|---|
-| `VITE_STEP_REASONING_COPILOT_ENABLED` | bundle frontend | `false` | derivado de `vars.STEP_REASONING_COPILOT_ENABLED=true` | Sólo decide visibilidad; no concede acceso API. |
-| `VITE_STEP_REASONING_QA_USER_IDS` | bundle frontend | vacío | una identidad sintética | Exactamente un ID, sin credenciales ni correo. |
-| `STEP_REASONING_COPILOT_ENABLED` | backend | `false`/ausente | `true` | Backend falla cerrado si falta. |
-| `STEP_REASONING_QA_USER_IDS` | backend | vacío | el mismo ID sintético | Allowlist efectiva del endpoint autenticado. |
-| `STEP_REASONING_PROVIDER_MODE` | backend | `qa_stub` | `qa_stub` en el CD KAN-204 | El proveedor no generativo es fail-closed por defecto; `live_llm` requiere una autorización futura y ajena a KAN-204. |
-| `COPILOT_ENABLED` / `COPILOT_WRITE_ENABLED` | Copilot de Portfolio | sin cambio | sin cambio | No controla `StepReasoningPanel`. |
-| `OPENROUTER_API_KEY` y flags del AI Service | AI Service | sin cambio | no utilizados por KAN-204 | Ningún proveedor real se activa. |
+## Autoridad y continuidad
 
-Activar sólo una de las capas no constituye una experiencia válida: frontend y backend deben compartir el mismo flag y el mismo ID, y el proveedor debe permanecer en `qa_stub`.
+- `StepReasoningPanel` conserva la identificación visible de QA simulado.
+- Los turnos sólo persisten conversación y sugerencias; no confirman checkpoints.
+- No cambian `InitiativeCycle.currentStep`, outputs adaptativos ni relaciones Portfolio.
+- Adaptive Core, autenticación, transiciones y contratos de Steps no se modifican.
+- La segunda identidad autenticada, aunque pertenezca al mismo tenant, recibe elegibilidad `false` y `STEP_REASONING_QA_ACCOUNT_REQUIRED` al acceder al razonador.
 
-## Evidencia funcional
+## Validación esperada
 
-- PostgreSQL 16 descartable, 72/72 migraciones canónicas.
-- Cuenta E2E sintética generada por `seed.e2e.ts` y resuelta dinámicamente; ningún ID se fija en código o documentación.
-- Iniciativa independiente: conversación persistida tras recarga; ciclo activo único; Step 0 sin avance; checkpoints intactos; cero `AdaptiveStepOutput` implícitos.
-- Iniciativa vinculada: Frente/Reto/relación sintéticos en la misma organización; contexto muestra `Reto vinculado en Adaptive Core`; mismas garantías de continuidad.
-- La relación `InitiativePortfolioMeta` y sus registros Front/Challenge se vuelven a consultar después de conversar y permanecen vinculados al mismo Project y organización.
-- Una segunda cuenta sintética autenticada de la misma organización recibe `STEP_REASONING_QA_ACCOUNT_REQUIRED`; no basta con tener acceso al Project.
-- Los dos turns persistidos registran exclusivamente `providerModel=qa-stub/kan-204-step-reasoning`, cero tokens y cero coste; el test unitario demuestra además que el bridge no es invocado en este modo.
-- Los únicos POST de negocio observados durante la interacción controlada fueron los dos turns `/steps/0/copilot/turn`; no hubo confirmación de checkpoints ni transición de Step.
-- Unit/integration cubren la presentación contextual de Steps 0, 1, 2, 3 y 4, modo histórico/read-only, output confirmado, idempotencia y fail-closed.
+La prueba KAN-204 usa PostgreSQL 16 descartable y crea únicamente datos sintéticos. Verifica en desktop 1440 px y móvil 390 px:
 
-Capturas y evidencia JSON, todas con datos sintéticos:
+- la cuenta exacta persistida ve «Conversa con Startería»;
+- una segunda cuenta queda excluida;
+- iniciativa independiente y vinculada conservan ciclo, Step, checkpoints, output y relación Portfolio;
+- recarga mantiene la conversación;
+- los turnos usan exclusivamente `qa-stub/kan-204-step-reasoning`, con cero tokens y coste;
+- no existen POST implícitos de checkpoint, output o transición.
+
+Evidencia generada por CI:
 
 - `artifacts/KAN-204/independent-desktop-1440x900.png`
 - `artifacts/KAN-204/portfolio-linked-desktop-1440x900.png`
 - `artifacts/KAN-204/portfolio-linked-mobile-390x844.png`
+- `artifacts/KAN-204/portfolio-linked-mobile-composer-390x844.png`
 - `artifacts/KAN-204/KAN204_BROWSER_EVIDENCE.json`
 
-## Configuración del operador para una validación posterior
+## Operación posterior al merge
 
-En el GitHub Environment protegido `production`, crear o actualizar únicamente estas variables no secretas:
+No es necesario configurar un ID. El único control operativo opcional es `STEP_REASONING_COPILOT_EMERGENCY_DISABLED`; dejarlo ausente o en `false` permite la cuenta exacta, y establecerlo en `true` cierra la modalidad en backend.
 
-1. `STEP_REASONING_COPILOT_ENABLED=true`
-2. `STEP_REASONING_QA_USER_IDS=<userId de una cuenta E2E sintética autorizada>`
-
-El ID debe corresponder a una sola cuenta sintética existente con acceso legítimo a sus iniciativas. No usar una cuenta humana, una identidad productiva de cliente ni una lista múltiple. No se necesita ningún secreto de proveedor LLM.
-
-Después, una ejecución futura del CD manual requerirá la aprobación humana normal del environment y una autorización separada de release. Este PR no la solicita ni la ejecuta. Para desactivar la exposición en un release posterior, establecer `STEP_REASONING_COPILOT_ENABLED=false` y reconstruir/desplegar el frontend por el mismo CD autorizado.
+Tras merge y CI verde, un operador debe iniciar el CD manual existente sobre el SHA aprobado y superar la aprobación humana del environment `production`. Este cambio no ejecuta ese CD.
 
 ## GO / NO_GO
 
-- **GO para revisión de código y validación UX humana:** sí.
-- **NO_GO para merge o CD automático:** se requiere revisión humana, CI remoto verde y aceptación visual de las capturas.
-- **NO_GO para LLM real:** privacidad, seguridad, coste y evaluación del proveedor siguen fuera de alcance.
+- **GO para revisión humana y merge:** sujeto a CI remoto verde y aceptación de la revisión independiente.
+- **NO_GO para CD automático:** el despliegue sigue siendo manual y protegido.
+- **NO_GO para LLM real, billing o acceso global:** quedan expresamente fuera de KAN-204.

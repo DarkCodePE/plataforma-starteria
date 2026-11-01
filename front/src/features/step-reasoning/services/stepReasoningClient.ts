@@ -3,6 +3,16 @@ import type { StepReasoningClient, StepReasoningSessionView, StepReasoningTurnRe
 
 interface Envelope<T> { success: boolean; data: T }
 
+export interface StepReasoningEligibility {
+  enabled: boolean;
+  mode: 'qa_stub' | null;
+}
+
+export async function getStepReasoningEligibility(): Promise<StepReasoningEligibility> {
+  const { data } = await api.get<Envelope<StepReasoningEligibility>>('/projects/step-reasoning/eligibility');
+  return data.data;
+}
+
 export const httpStepReasoningClient: StepReasoningClient = {
   async getSession(projectId, stepNumber): Promise<StepReasoningSessionView> {
     const { data } = await api.get<Envelope<StepReasoningSessionView>>(`/projects/${projectId}/steps/${stepNumber}/copilot/session`);

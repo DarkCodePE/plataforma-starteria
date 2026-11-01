@@ -43,7 +43,7 @@ import { ContinuityStepWorkspace } from '../../features/initiative-continuity/co
 import { confirmAdaptiveCheckpoint, explainCheckpointError, confirmStep4Output, getAdaptiveCore } from '../../features/adaptive-core/services/adaptiveCoreService';
 import { canNavigateToAdaptiveStep } from '../../features/adaptive-core/domain/adaptiveAuthority';
 import { StepReasoningPanel } from '../../features/step-reasoning/components';
-import { isStepReasoningCopilotEnabled } from '../services/featureFlags';
+import { useStepReasoningEligibility } from '../../features/step-reasoning/hooks/useStepReasoningEligibility';
 
 type ModuleId = 'overview' | 'A' | 'B' | 'C';
 type Audiencia =
@@ -494,6 +494,7 @@ function TextArea({
 
 export function Step4Page() {
   const { projectId } = useParams();
+  const stepReasoningEligible = useStepReasoningEligibility();
   const navigate = useNavigate();
   const { projects, projectsLoading, updateProject, user } = useApp();
   const contextProject = projects.find((item) => item.id === projectId);
@@ -1310,7 +1311,7 @@ ${meetingOwner} / ${meetingRole}
       core={adaptiveCore}
       state="loaded"
       readOnly={!canEdit}
-      copilot={isStepReasoningCopilotEnabled(user?.id) ? (
+      copilot={stepReasoningEligible ? (
         <StepReasoningPanel
           projectId={project.id}
           step={4}

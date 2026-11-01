@@ -212,7 +212,16 @@ async function main() {
     DATABASE_URL: databaseURL,
     E2E_DATABASE_URL: databaseURL,
     E2E_DATABASE_ADMIN_URL: adminDatabaseURL,
-    E2E_USER_EMAIL: process.env.E2E_USER_EMAIL || 'portfolio.e2e@starteria.test',
+    E2E_USER_EMAIL: process.env.E2E_USER_EMAIL
+      || (process.env.E2E_STEP_REASONING_CODE_DRIVEN_QA === 'true'
+        ? 'e2e-participante@starteria.test'
+        : 'portfolio.e2e@starteria.test'),
+    E2E_ORGANIZATION_ID: process.env.E2E_ORGANIZATION_ID
+      || (process.env.E2E_STEP_REASONING_CODE_DRIVEN_QA === 'true'
+        ? 'org-e2e-prod'
+        : 'org-e2e-portfolio-adaptive'),
+    E2E_USER_ROLE: process.env.E2E_USER_ROLE
+      || (process.env.E2E_STEP_REASONING_CODE_DRIVEN_QA === 'true' ? 'participante' : 'portfolio_lead'),
     E2E_USER_PASSWORD: process.env.E2E_USER_PASSWORD || 'demo123',
     E2E_ADMIN_PASSWORD: process.env.E2E_ADMIN_PASSWORD || process.env.E2E_USER_PASSWORD || 'demo123',
     E2E_UNAUTHORIZED_USER_EMAIL: process.env.E2E_UNAUTHORIZED_USER_EMAIL || 'viewer.e2e@starteria.test',
@@ -268,25 +277,12 @@ async function main() {
   console.log('[E2E] Provision database');
   runChecked(npmCmd, ['run', 'db:e2e:provision'], frontRoot, env);
 
-  if (process.env.E2E_STEP_REASONING_QA_AUTO_ALLOWLIST === 'true') {
-    const { PrismaClient } = await import('@prisma/client');
-    const prisma = new PrismaClient({ datasourceUrl: databaseURL });
-    try {
-      const user = await prisma.user.findUnique({
-        where: { email: env.E2E_USER_EMAIL },
-        select: { id: true },
-      });
-      if (!user) throw new Error(`Seeded E2E user not found: ${env.E2E_USER_EMAIL}`);
-      env.STEP_REASONING_COPILOT_ENABLED = 'true';
-      env.STEP_REASONING_QA_USER_IDS = user.id;
-      env.STEP_REASONING_QA_USER_ID = user.id;
-      env.STEP_REASONING_PROVIDER_MODE = process.env.STEP_REASONING_PROVIDER_MODE || 'qa_stub';
-      env.VITE_STEP_REASONING_COPILOT_ENABLED = 'true';
-      env.VITE_STEP_REASONING_QA_USER_IDS = user.id;
-      console.log(`[E2E] Step reasoning QA allowlist resolved for seeded user ${user.id}`);
-    } finally {
-      await prisma.$disconnect();
-    }
+  if (process.env.E2E_STEP_REASONING_CODE_DRIVEN_QA === 'true') {
+    env.STEP_REASONING_COPILOT_ENABLED = 'true';
+    env.STEP_REASONING_COPILOT_EMERGENCY_DISABLED = 'false';
+    env.STEP_REASONING_PROVIDER_MODE = process.env.STEP_REASONING_PROVIDER_MODE || 'qa_stub';
+    env.VITE_STEP_REASONING_COPILOT_ENABLED = 'true';
+    console.log('[E2E] Step reasoning code-driven QA enabled; backend will verify persisted identity');
   }
 
   if (postgresConfirmationIntegration) {

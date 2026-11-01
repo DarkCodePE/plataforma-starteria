@@ -21,7 +21,7 @@ const NEXT_QUESTION: Record<number, string> = {
 };
 
 /**
- * Deterministic, non-generative response for an explicitly allow-listed QA actor.
+ * Deterministic, non-generative response for the code-authorized persisted QA identity.
  * It never derives canonical values, proposes mutations or confirms a checkpoint.
  */
 export function buildStepReasoningQaStub(

@@ -69,7 +69,10 @@ vi.mock('../../services/stepService', () => ({
 
 vi.mock('../../services/featureFlags', () => ({
   isPdfAutofillEnabled: () => false,
-  isStepReasoningCopilotEnabled: () => stepReasoningFeature.enabled,
+}));
+
+vi.mock('../../../features/step-reasoning/hooks/useStepReasoningEligibility', () => ({
+  useStepReasoningEligibility: () => stepReasoningFeature.enabled,
 }));
 
 vi.mock('../../../features/step-reasoning/components', () => ({

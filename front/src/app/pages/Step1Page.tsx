@@ -34,7 +34,7 @@ import type { AdaptiveInitiativeCore } from '../../features/adaptive-core/domain
 import { AdaptiveCheckpointWorkspace } from '../../features/adaptive-core/components';
 import { ContinuityStepWorkspace, HistoricalStepContinuity } from '../../features/initiative-continuity/components/ContinuityExperience';
 import { StepReasoningPanel } from '../../features/step-reasoning/components';
-import { isStepReasoningCopilotEnabled } from '../services/featureFlags';
+import { useStepReasoningEligibility } from '../../features/step-reasoning/hooks/useStepReasoningEligibility';
 
 type ModuleId = Step1ModuleId | 'D' | 'S';
 
@@ -227,6 +227,7 @@ const syncLegacyModuleBFromV2 = (
 
 export function Step1Page() {
   const { projectId } = useParams();
+  const stepReasoningEligible = useStepReasoningEligibility();
   const { projects, projectsLoading, setCurrentProject, updateProject, user } = useApp();
   const navigate = useNavigate();
 
@@ -693,7 +694,7 @@ export function Step1Page() {
       core={adaptiveCore}
       state="loaded"
       readOnly={!canEdit}
-      copilot={isStepReasoningCopilotEnabled(user?.id) ? (
+      copilot={stepReasoningEligible ? (
         <StepReasoningPanel
           projectId={project.id}
           step={1}
