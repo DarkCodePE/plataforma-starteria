@@ -264,10 +264,16 @@ test('KAN-204: Copilot simulado conserva continuidad en iniciativa independiente
   await mobile.screenshot({ path: path.join(ARTIFACTS, 'portfolio-linked-mobile-composer-390x844.png'), fullPage: true });
   await mobileContext.close();
 
-  expect(domainPosts).toEqual([
+  // Initial sign-in may create a Portfolio bootstrap session unrelated to
+  // Step reasoning. Keep observing ALL writes, but classify that one explicit
+  // app-entry operation rather than mistaking it for a Step checkpoint write.
+  const expectedCopilotPosts = [
     `/api/v1/projects/${independent.projectId}/steps/0/copilot/turn`,
     `/api/v1/projects/${linked.projectId}/steps/0/copilot/turn`,
-  ]);
+  ];
+  const expectedEntryBootstrap = '/api/v1/portfolio-bootstrap/sessions/direct';
+  expect(domainPosts.filter(path => path === expectedEntryBootstrap)).toHaveLength(1);
+  expect(domainPosts.filter(path => path !== expectedEntryBootstrap)).toEqual(expectedCopilotPosts);
 
   const observedTurns = await prisma.stepReasoningTurn.findMany({
     where: { session: { projectId: { in: [independent.projectId, linked.projectId] } } },
@@ -297,6 +303,7 @@ test('KAN-204: Copilot simulado conserva continuidad en iniciativa independiente
       'Mobile Write CTA focuses and exposes Composer and Send above the fixed checkpoint bar.',
       'Copilot is the primary interaction for the allow-listed synthetic actor.',
       'Progress/output card and official checkpoint remain separate human-review surfaces.',
+      'Sign-in Portfolio bootstrap is distinct from the only two Step reasoning write requests.',
       'Conversation persistence does not advance, restart or duplicate the Adaptive Cycle.',
       'No checkpoint or AdaptiveStepOutput is confirmed from a Copilot message.',
     ],
