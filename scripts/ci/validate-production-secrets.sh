@@ -5,8 +5,13 @@ secret_names=(
   STARTERIA_JWT_SECRET
   STARTERIA_BRIDGE_SHARED_SECRET
   STARTERIA_AI_SERVICE_TOKEN
-  STARTERIA_PILOT_CODE_SECRET
 )
+
+# Optional in GitHub: the CD can reuse/bootstrap this key in the Kubernetes
+# Secret. An explicitly supplied value remains subject to full validation.
+if [[ -n "${STARTERIA_PILOT_CODE_SECRET-}" ]]; then
+  secret_names+=(STARTERIA_PILOT_CODE_SECRET)
+fi
 
 billing_webhooks_enabled="${BILLING_WEBHOOKS_ENABLED:-false}"
 case "$billing_webhooks_enabled" in
