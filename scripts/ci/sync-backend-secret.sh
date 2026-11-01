@@ -10,12 +10,18 @@ required=(
   JWT_SECRET
   AI_SERVICE_TOKEN
   BRIDGE_SHARED_SECRET
-  BILLING_WEBHOOK_SECRET
   PILOT_CODE_SECRET
   PORTFOLIO_ENTRY_API_KEY
   JEV_API_KEY
   GOOGLE_CLIENT_ID
 )
+billing_webhooks_enabled="${BILLING_WEBHOOKS_ENABLED:-false}"
+case "$billing_webhooks_enabled" in
+  true) required+=(BILLING_WEBHOOK_SECRET) ;;
+  false) ;;
+  *) echo '::error::BILLING_WEBHOOKS_ENABLED must be true or false'; exit 1 ;;
+esac
+
 for name in "${required[@]}"; do
   [[ -n "${!name-}" ]] || { echo "::error::Missing backend secret input: $name"; exit 1; }
 done
@@ -41,8 +47,8 @@ jq -n '
       AI_SERVICE_TOKEN: encoded("AI_SERVICE_TOKEN"),
       AI_SERVICE_URL: ("http://starteria-ai-service:8001" | @base64),
       BRIDGE_SHARED_SECRET: encoded("BRIDGE_SHARED_SECRET"),
-      BILLING_WEBHOOK_SECRET: encoded("BILLING_WEBHOOK_SECRET"),
       PILOT_CODE_SECRET: encoded("PILOT_CODE_SECRET"),
+      BILLING_WEBHOOKS_ENABLED: (env.BILLING_WEBHOOKS_ENABLED // "false" | @base64),
       PORTFOLIO_ENTRY_API_KEY: encoded("PORTFOLIO_ENTRY_API_KEY"),
       PORTFOLIO_ENTRY_PROVIDER: ("openai_responses" | @base64),
       PORTFOLIO_ENTRY_MODEL: ("openai/gpt-5.6-luna" | @base64),
@@ -51,6 +57,7 @@ jq -n '
       PORTFOLIO_ENTRY_CLASSIFIER: ("jev" | @base64),
       GOOGLE_CLIENT_ID: encoded("GOOGLE_CLIENT_ID")
     }
+    + (if (env.BILLING_WEBHOOKS_ENABLED // "false") == "true" then {BILLING_WEBHOOK_SECRET: encoded("BILLING_WEBHOOK_SECRET")} else {} end)
     + optional("SMTP_HOST")
     + optional("SMTP_USER")
     + optional("SMTP_PASS")
