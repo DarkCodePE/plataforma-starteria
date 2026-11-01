@@ -149,6 +149,38 @@ describe('backend/config', () => {
     expect(config.billingWebhooksEnabled).toBe(false);
   });
 
+  it('does not require a billing webhook secret when billing webhooks are disabled', async () => {
+    process.env.NODE_ENV = 'production';
+    process.env.DATABASE_URL = 'postgres://x';
+    process.env.JWT_SECRET = STRONG.jwt;
+    process.env.BRIDGE_SHARED_SECRET = STRONG.bridge;
+    process.env.AI_SERVICE_TOKEN = STRONG.ai;
+    process.env.PILOT_CODE_SECRET = STRONG.pilot;
+    process.env.BILLING_WEBHOOKS_ENABLED = 'false';
+    delete process.env.BILLING_WEBHOOK_SECRET;
+    const { config } = await import('../index');
+    expect(config.billingWebhooksEnabled).toBe(false);
+  });
+
+  it('requires an independent strong billing secret when billing webhooks are enabled', async () => {
+    process.env.NODE_ENV = 'production';
+    process.env.DATABASE_URL = 'postgres://x';
+    process.env.JWT_SECRET = STRONG.jwt;
+    process.env.BRIDGE_SHARED_SECRET = STRONG.bridge;
+    process.env.AI_SERVICE_TOKEN = STRONG.ai;
+    process.env.PILOT_CODE_SECRET = STRONG.pilot;
+    process.env.BILLING_WEBHOOKS_ENABLED = 'true';
+    delete process.env.BILLING_WEBHOOK_SECRET;
+    await expect(import('../index')).rejects.toThrow(/BILLING_WEBHOOK_SECRET/);
+    vi.resetModules();
+    process.env.BILLING_WEBHOOK_SECRET = STRONG.pilot;
+    await expect(import('../index')).rejects.toThrow(/independent/);
+    vi.resetModules();
+    process.env.BILLING_WEBHOOK_SECRET = STRONG.billing;
+    const { config } = await import('../index');
+    expect(config.billingWebhooksEnabled).toBe(true);
+  });
+
   it('rejects whitespace-only and repetitive production secrets', async () => {
     process.env.NODE_ENV = 'production';
     process.env.DATABASE_URL = 'postgres://x';
