@@ -43,7 +43,7 @@ import { confirmAdaptiveCheckpoint, explainCheckpointError, confirmStep0Brief, g
 import { AutofillField } from '../components/autofill/AutofillField';
 import { CHALLENGE_TYPE_LABELS, type ChallengeType, type InitialReviewArtifact } from '../../features/initial-review/domain/types';
 import { getById } from '../services/projectService';
-import { useStepReasoningEligibility } from '../../features/step-reasoning/hooks/useStepReasoningEligibility';
+import { useStepReasoningEligibilityState } from '../../features/step-reasoning/hooks/useStepReasoningEligibility';
 import { StepReasoningPanel } from '../../features/step-reasoning/components';
 import { StepHelpDialog } from '../../features/initiative-continuity/components/ContinuityExperience';
 import { buildStep0MissionContext, countConfirmedCheckpoints } from '../../features/step-reasoning/domain/missionContext';
@@ -522,7 +522,8 @@ function ModuleShell({
 
 export function Step0Page() {
   const { projectId } = useParams();
-  const stepReasoningEligible = useStepReasoningEligibility();
+  const stepReasoningEligibility = useStepReasoningEligibilityState();
+  const stepReasoningEligible = stepReasoningEligibility.enabled;
   const { projects, projectsLoading, updateProject, updateStep0, hydrateProjectStep0FromPrefill, user } = useApp();
   const { challenges, strategicFronts } = usePortfolioLead();
   const navigate = useNavigate();
@@ -1358,6 +1359,23 @@ const confirmedStep0Brief = (adaptiveCore?.stepOutputs ?? []).find(
           </button>
         )}
       </div>
+    </div>
+  </div>
+)}
+
+{adaptiveCore && stepReasoningEligibility.status === 'unavailable' && (
+  <div role="alert" data-testid="step-reasoning-unavailable" className="border-b border-amber-200 bg-amber-50 px-5 py-3">
+    <div className="mx-auto flex max-w-[1480px] flex-wrap items-center justify-between gap-3">
+      <p className="text-sm text-amber-900">
+        No pudimos comprobar el acceso a la conversación. Puedes revisar los checkpoints sin perder tus avances.
+      </p>
+      <button
+        type="button"
+        onClick={stepReasoningEligibility.retry}
+        className="min-h-10 rounded-lg border border-amber-300 bg-white px-4 py-2 text-sm font-semibold text-amber-900 hover:bg-amber-100"
+      >
+        Reintentar conversación
+      </button>
     </div>
   </div>
 )}

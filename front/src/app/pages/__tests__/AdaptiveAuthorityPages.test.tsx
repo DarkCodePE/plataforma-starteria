@@ -73,6 +73,11 @@ vi.mock('../../services/featureFlags', () => ({
 
 vi.mock('../../../features/step-reasoning/hooks/useStepReasoningEligibility', () => ({
   useStepReasoningEligibility: () => stepReasoningFeature.enabled,
+  useStepReasoningEligibilityState: () => ({
+    enabled: stepReasoningFeature.enabled,
+    status: stepReasoningFeature.enabled ? 'allowed' : 'denied',
+    retry: vi.fn(),
+  }),
 }));
 
 vi.mock('../../../features/step-reasoning/components', () => ({

@@ -10,6 +10,7 @@ import { isDemoDataEnabled } from '../featureFlags';
 import { can } from '../authz/permissions';
 import { ROLE_LABELS, userRoleLabel } from './roleLabels';
 import { AutofillHydrator } from '../components/autofill/AutofillHydrator';
+import { rememberPostAuthDestination } from '../services/api';
 import * as portfolioService from '../services/portfolioService';
 import type { InitiativeMeta } from '../services/portfolioService';
 
@@ -44,6 +45,7 @@ export function AppLayout() {
     if (authLoading) return;
 
     if (!isAuthenticated) {
+      rememberPostAuthDestination(location.pathname);
       navigate('/auth', { replace: true });
       return;
     }

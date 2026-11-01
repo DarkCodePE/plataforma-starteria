@@ -1,0 +1,107 @@
+# KAN-204: authenticated, synthetic-only production evidence.
+# Manual and production-gated. No project/checkpoint/business writes.
+# Login/refresh rotate synthetic authentication tokens as part of the probe.
+name: KAN-204 Production Auth and Step Eligibility Smoke
+
+on:
+  workflow_dispatch:
+    inputs:
+      project_id:
+        description: 'Optional existing synthetic E2E project CUID to inspect Adaptive Core'
+        required: false
+        default: ''
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: starteria-production
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    name: Check E2E participant identity, eligibility and refresh
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: production
+    steps:
+      - name: Authenticated synthetic API checks (sanitized output)
+        env:
+          E2E_PASSWORD: ${{ secrets.E2E_PROD_PARTICIPANT_PASSWORD }}
+          PROJECT_ID: ${{ inputs.project_id }}
+        run: |
+          set -euo pipefail
+          [[ -n "$E2E_PASSWORD" ]] || { echo '::error::Missing synthetic E2E participant secret'; exit 1; }
+          if [[ -n "$PROJECT_ID" && ! "$PROJECT_ID" =~ ^c[a-z0-9]{20,30}$ ]]; then
+            echo '::error::Invalid synthetic project CUID'
+            exit 1
+          fi
+
+          tmp=$(mktemp -d)
+          trap 'rm -rf "$tmp"' EXIT
+          base='https://starter-ia.com/api/v1'
+          payload=$(jq -nc --arg email 'e2e-participante@starteria.test' --arg password "$E2E_PASSWORD" '{email:$email,password:$password}')
+          unset E2E_PASSWORD
+          login_status=$(curl --silent --show-error --max-time 25 --cookie-jar "$tmp/cookies" \
+            --output "$tmp/login.json" --write-out '%{http_code}' \
+            --header 'Content-Type: application/json' --data "$payload" "$base/auth/login")
+          unset payload
+          [[ "$login_status" == 200 ]] || { echo "::error::Synthetic login HTTP $login_status"; exit 1; }
+          access_token=$(jq -er '.data.accessToken' "$tmp/login.json")
+          echo "::add-mask::$access_token"
+
+          get_status() {
+            curl --silent --show-error --max-time 25 --output "$2" --write-out '%{http_code}' \
+              --header "Authorization: Bearer $access_token" "$base$1"
+          }
+          me_status=$(get_status /auth/me "$tmp/me.json")
+          identity_match=false
+          if [[ "$me_status" == 200 ]] && jq -e \
+              '.data.email == "e2e-participante@starteria.test" and .data.role == "participante"' \
+              "$tmp/me.json" >/dev/null; then identity_match=true; fi
+
+          eligibility_status=$(get_status /projects/step-reasoning/eligibility "$tmp/eligibility.json")
+          eligibility_enabled=$(jq -r '.data.enabled // false' "$tmp/eligibility.json")
+          eligibility_mode=$(jq -r '.data.mode // "none"' "$tmp/eligibility.json")
+
+          core_status=not_checked
+          core_step=not_checked
+          if [[ -n "$PROJECT_ID" ]]; then
+            core_status=$(get_status "/projects/$PROJECT_ID/adaptive-core" "$tmp/core.json")
+            if [[ "$core_status" == 200 ]]; then
+              core_step=$(jq -r '.data.cycle.currentStep // "unknown"' "$tmp/core.json")
+            fi
+          fi
+
+          # Uses the HttpOnly refresh cookie issued on login. The cookie file,
+          # responses and access tokens are never printed or uploaded.
+          refresh_status=$(curl --silent --show-error --max-time 25 \
+            --cookie "$tmp/cookies" --cookie-jar "$tmp/cookies" \
+            --output "$tmp/refresh.json" --write-out '%{http_code}' \
+            --header 'Content-Type: application/json' -X POST "$base/auth/refresh")
+
+          {
+            echo '## KAN-204 synthetic production smoke'
+            echo ''
+            echo "- Login: HTTP $login_status"
+            echo "- Identity: HTTP $me_status; synthetic identity matches: $identity_match"
+            echo "- Step eligibility: HTTP $eligibility_status; enabled=$eligibility_enabled; mode=$eligibility_mode"
+            echo "- Adaptive Core: $core_status; operational Step=$core_step"
+            echo "- Refresh with synthetic HttpOnly cookie: HTTP $refresh_status"
+            echo '- No project, checkpoint, organization or business data mutated.'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          [[ "$identity_match" == true ]] || { echo '::error::Synthetic identity mismatch'; exit 1; }
+          [[ "$eligibility_status" == 200 && "$eligibility_enabled" == true && "$eligibility_mode" == qa_stub ]] || {
+            echo '::error::Synthetic user is not eligible for Step reasoning. Inspect persisted identity/tenant/membership read-only.'
+            exit 1
+          }
+          [[ "$refresh_status" == 200 ]] || {
+            echo "::error::Refresh with newly issued synthetic cookie failed HTTP $refresh_status"
+            exit 1
+          }
+          if [[ -n "$PROJECT_ID" && "$core_status" != 200 ]]; then
+            echo "::error::Adaptive Core for the specified synthetic project returned HTTP $core_status"
+            exit 1
+          fi

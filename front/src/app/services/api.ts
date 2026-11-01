@@ -133,17 +133,48 @@ export function getAccessToken(): string | null {
   return accessToken;
 }
 
-export async function initAuth(): Promise<void> {
-  try {
-    const { data } = await axios.post(
-      `${API_BASE_URL}/auth/refresh`,
-      {},
-      { withCredentials: true },
-    );
-    accessToken = data.data.accessToken;
-  } catch {
-    accessToken = null;
+// A refresh token is single-use. Multiple startup callers must share one
+// rotation; otherwise the second call can receive 401 and wipe a valid session.
+let initAuthInFlight: Promise<void> | null = null;
+
+export function initAuth(): Promise<void> {
+  if (initAuthInFlight) return initAuthInFlight;
+  const tokenAtStart = accessToken;
+  const operation = (async () => {
+    try {
+      const { data } = await axios.post(
+        `${API_BASE_URL}/auth/refresh`,
+        {},
+        { withCredentials: true },
+      );
+      // Never overwrite a successful explicit login that completed meanwhile.
+      if (accessToken === tokenAtStart) accessToken = data.data.accessToken;
+    } catch {
+      // A missing/invalid refresh cookie still requires a new login. Do not
+      // discard a newer token created by a concurrent explicit login.
+      if (accessToken === tokenAtStart) accessToken = null;
+    }
+  })();
+  initAuthInFlight = operation.finally(() => { initAuthInFlight = null; });
+  return initAuthInFlight;
+}
+
+// Restore only an existing project/Step path after the user signs in again.
+// Never persist tokens or allow external/attacker-controlled redirect URLs.
+const POST_AUTH_DESTINATION = 'starteria.auth.returnTo';
+const SAFE_PROJECT_PATH = new RegExp('^/projects/c[a-z0-9]{20,30}(?:/step/[0-4])?$', 'i');
+
+export function rememberPostAuthDestination(path: string): void {
+  if (typeof window !== 'undefined' && SAFE_PROJECT_PATH.test(path)) {
+    window.sessionStorage.setItem(POST_AUTH_DESTINATION, path);
   }
+}
+
+export function consumePostAuthDestination(): string | null {
+  if (typeof window === 'undefined') return null;
+  const stored = window.sessionStorage.getItem(POST_AUTH_DESTINATION);
+  window.sessionStorage.removeItem(POST_AUTH_DESTINATION);
+  return stored && SAFE_PROJECT_PATH.test(stored) ? stored : null;
 }
 
 const api = axios.create({
@@ -213,6 +244,7 @@ api.interceptors.response.use(
         processQueue(refreshError, null);
         accessToken = null;
         if (typeof window !== 'undefined' && !isPublicPath(window.location.pathname)) {
+          rememberPostAuthDestination(window.location.pathname);
           window.location.href = '/auth';
         }
         return Promise.reject(refreshError);
