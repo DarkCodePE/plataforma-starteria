@@ -38,10 +38,14 @@ fi
 export STARTERIA_PILOT_CODE_SECRET=$saved_pilot
 
 export STARTERIA_PILOT_CODE_SECRET=$STARTERIA_BILLING_WEBHOOK_SECRET
+# An unused billing key does not participate in the disabled-webhooks security contract.
+bash "$validator" >/dev/null
+export BILLING_WEBHOOKS_ENABLED=true
 if bash "$validator" >/dev/null 2>&1; then
-  echo 'validator accepted dependent billing and pilot secrets' >&2
+  echo 'validator accepted dependent billing and pilot secrets with webhooks enabled' >&2
   exit 1
 fi
+export BILLING_WEBHOOKS_ENABLED=false
 export STARTERIA_PILOT_CODE_SECRET=$saved_pilot
 
 export STARTERIA_PILOT_CODE_SECRET='xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'
