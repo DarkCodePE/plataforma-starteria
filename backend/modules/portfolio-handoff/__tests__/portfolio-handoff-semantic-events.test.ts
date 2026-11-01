@@ -20,6 +20,25 @@ describe('H-TECH-08 durable semantic events and Portfolio projection', () => {
     expect(events.events).toHaveLength(3); expect(events.events[0].payload.token).toBeUndefined(); expect(projection).toMatchObject({ handoffState: 'STARTED', projectionVersion: 4, initiativeRef: null }); expect(projection?.sourceEventRefs).toEqual(['e-1', 'e-4']);
   });
 
+  it('does not regress accepted or started assignments when the invitation is reopened', async () => {
+    const repository = new InMemoryPortfolioHandoffProjectionRepository();
+    const projector = new PortfolioHandoffProjector(repository);
+    await projector.apply(event('assignment_created', 1));
+    await projector.apply(event('invitation_sent', 2));
+    await projector.apply(event('invitation_viewed', 3));
+    await projector.apply(event('assignment_accepted', 4, { handoffState: 'ACCEPTED' }));
+    await projector.apply(event('invitation_viewed', 4));
+    expect(await repository.findByAssignmentId('a-1')).toMatchObject({ handoffState: 'ACCEPTED' });
+
+    await projector.apply(event('handoff_assignment_started', 5, { handoffState: 'STARTED' }));
+    await projector.apply(event('invitation_viewed', 5));
+    expect(await repository.findByAssignmentId('a-1')).toMatchObject({
+      handoffState: 'STARTED',
+      projectionVersion: 5,
+      lastMaterialEvent: 'invitation_viewed',
+    });
+  });
+
   it('projects rejection and response without changing identity', async () => {
     const repository = new InMemoryPortfolioHandoffProjectionRepository(); const projector = new PortfolioHandoffProjector(repository);
     await projector.apply(event('assignment_created', 1, { targetKind: 'EXISTING_INITIATIVE', initiativeId: 'i-1', members: [{ identityKey: 'owner', userId: 'u-1', role: 'OWNER' }] }));

@@ -15,8 +15,17 @@ function preview(overrides: Partial<HandoffInvitationPreview> = {}): HandoffInvi
 
 describe('HandoffShell', () => {
   it('uses the same shell for invitation and keeps Start hidden', () => {
-    render(<HandoffShell preview={preview()} onAccept={vi.fn()} onReject={vi.fn()} />);
+    render(<HandoffShell preview={preview({
+      briefVersion: {
+        id: 'brief-version-7', versionNumber: 7, status: 'CONFIRMED',
+        intent: 'Reducir el tiempo de activación', scope: 'Piloto sintético autorizado',
+      },
+    })} onAccept={vi.fn()} onReject={vi.fn()} />);
     expect(screen.getByTestId('handoff-shell')).toBeInTheDocument();
+    expect(screen.getByText('Brief confirmado · versión 7')).toBeInTheDocument();
+    expect(screen.getByText(/Reducir el tiempo de activación/)).toBeInTheDocument();
+    expect(screen.getByText(/Piloto sintético autorizado/)).toBeInTheDocument();
+    expect(screen.getByText(/brief-version-7/)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Aceptar asignación' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Rechazar' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /^Empezar/ })).not.toBeInTheDocument();

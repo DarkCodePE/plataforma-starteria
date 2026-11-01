@@ -38,7 +38,8 @@ describe('KAN-178 Owner post-Start continuity', () => {
     };
 
     render(<OwnerPostStartContinuity continuity={continuity} onOpenWorkspace={onOpenWorkspace} />);
-    expect(screen.getByRole('heading', { name: /continÃºa tu iniciativa/i })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /continúa tu iniciativa/i })).toBeInTheDocument();
+    expect(screen.getByText(/los Steps existentes están disponibles/i)).toBeInTheDocument();
     expect(screen.getByText('Onboarding guiado')).toBeInTheDocument();
     expect(screen.getByText(/estado real.*Step 2/i)).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: /abrir overview/i }));
@@ -60,8 +61,8 @@ describe('KAN-178 Owner post-Start continuity', () => {
     };
 
     render(<OwnerPostStartContinuity continuity={continuity} onOpenWorkspace={vi.fn()} />);
-    expect(screen.getByRole('heading', { name: /necesita activaciÃ³n/i })).toBeInTheDocument();
-    expect(screen.getByText(/todavÃ­a no tiene Steps persistidos/i)).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /necesita activación/i })).toBeInTheDocument();
+    expect(screen.getByText(/todavía no tiene Steps persistidos/i)).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /abrir overview/i })).not.toBeInTheDocument();
     expect(screen.queryByText(/Step 0 creado/i)).not.toBeInTheDocument();
   });
@@ -77,7 +78,7 @@ describe('KAN-178 Owner post-Start continuity', () => {
     render(<OwnerPostStartContinuity continuity={continuity} onOpenWorkspace={vi.fn()} />);
     expect(screen.getByRole('heading', { name: /formula una iniciativa/i })).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'Reducir la friccion de activacion' })).toBeInTheDocument();
-    expect(screen.getByText(/Brief confirmado Â· versiÃ³n 7/i)).toBeInTheDocument();
+    expect(screen.getByText(/Brief confirmado · versión 7/i)).toBeInTheDocument();
     expect(screen.getByText(/no ha creado una iniciativa ni Steps/i)).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /crear iniciativa/i })).not.toBeInTheDocument();
   });
