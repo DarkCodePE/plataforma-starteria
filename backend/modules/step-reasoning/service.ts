@@ -6,6 +6,11 @@ import { logCopilotEvent } from '../copilot/observability/copilot-logger';
 import type { StepContextBuilder, StepReasoningContext, StepReasoningStepNumber } from './context-builder';
 import type { SessionKey, StepReasoningRepositoryLike } from './repository';
 import { stepReasoningAiResponseSchema, type StepReasoningTurnInput } from './step-reasoning.schemas';
+import {
+  buildStepReasoningQaStub,
+  resolveStepReasoningProviderMode,
+  type StepReasoningProviderMode,
+} from './qa-stub';
 
 const AI_PATH = '/api/v1/ai/steps/reason-turn';
 
@@ -99,6 +104,7 @@ export class StepReasoningService {
     private readonly contextBuilder: Pick<StepContextBuilder, 'build'>,
     private readonly repository: StepReasoningRepositoryLike,
     private readonly bridge: AiBridge = defaultAiBridge,
+    private readonly providerMode: StepReasoningProviderMode = resolveStepReasoningProviderMode(),
   ) {}
 
   async loadSession(projectId: string, stepNumber: StepReasoningStepNumber, actor: StepReasoningActor) {
@@ -185,22 +191,24 @@ export class StepReasoningService {
 
     try {
       logCopilotEvent('info', { eventName: 'step_reasoning.provider_started', requestId, conversationId: session.id, userId: actor.id });
-      const raw = await this.bridge.callAiService('POST', AI_PATH, {
-        projectId,
-        cycleId: context.cycle.id,
-        stepNumber,
-        sourceContextHash: context.sourceContextHash,
-        message: input.message,
-        mode: input.mode,
-        history,
-        context,
-      }, {
-        requestId,
-        userClaims: { userId: actor.id, role: actor.role, projectScope: [projectId] },
-        costCapUsd: '0.0500',
-        timeoutMs: 30_000,
-        maxRetries: 0,
-      });
+      const raw = this.providerMode === 'qa_stub'
+        ? buildStepReasoningQaStub(context, input)
+        : await this.bridge.callAiService('POST', AI_PATH, {
+          projectId,
+          cycleId: context.cycle.id,
+          stepNumber,
+          sourceContextHash: context.sourceContextHash,
+          message: input.message,
+          mode: input.mode,
+          history,
+          context,
+        }, {
+          requestId,
+          userClaims: { userId: actor.id, role: actor.role, projectScope: [projectId] },
+          costCapUsd: '0.0500',
+          timeoutMs: 30_000,
+          maxRetries: 0,
+        });
       const response = stepReasoningAiResponseSchema.parse(raw);
       const completed = await this.repository.completeTurn(claimed.turn.id, {
         assistantText: response.message,

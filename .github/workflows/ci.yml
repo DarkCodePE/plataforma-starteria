@@ -57,6 +57,10 @@ jobs:
         working-directory: .
         run: bash scripts/ci/tests/cd-recovery.test.sh
 
+      - name: Test KAN-204 Step reasoning QA guards
+        working-directory: .
+        run: bash scripts/ci/tests/step-reasoning-qa-config.test.sh
+
       - name: Setup Node.js 20.x
         uses: actions/setup-node@v4
         with:

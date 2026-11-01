@@ -62,7 +62,7 @@ describeDb('Step Reasoning PostgreSQL persistence', () => {
         };
       }),
     };
-    const makeService = () => new StepReasoningService(new StepContextBuilder(prisma), new PrismaStepReasoningRepository(prisma), bridge as any);
+    const makeService = () => new StepReasoningService(new StepContextBuilder(prisma), new PrismaStepReasoningRepository(prisma), bridge as any, 'live_llm');
     const beforeProject = await prisma.project.findUniqueOrThrow({ where: { id: projectId } });
     const beforeCoreCounts = await Promise.all([
       prisma.adaptiveCheckpointResponse.count({ where: { projectId } }),
@@ -96,7 +96,7 @@ describeDb('Step Reasoning PostgreSQL persistence', () => {
 
   it('denies an actor outside the project and never sends their message to the provider', async () => {
     const bridge = { callAiService: vi.fn() };
-    const service = new StepReasoningService(new StepContextBuilder(prisma), new PrismaStepReasoningRepository(prisma), bridge as any);
+    const service = new StepReasoningService(new StepContextBuilder(prisma), new PrismaStepReasoningRepository(prisma), bridge as any, 'live_llm');
     await expect(service.submitTurn(projectId, 0, { id: outsiderId, role: 'participante' }, {
       clientTurnId: '4bb5f956-6ff3-4f1f-b252-d74547c1af94', message: 'Mensaje ajeno', mode: 'work_with_me', retryFailed: false,
     }, 'request-outsider')).rejects.toMatchObject({ code: 'PROJECT_ACCESS_DENIED' });
@@ -112,7 +112,7 @@ describeDb('Step Reasoning PostgreSQL persistence', () => {
       model: 'openrouter:synthetic/model', promptVersion: 'steps/reasoning/v0.1', promptHash: 'sha256:synthetic',
     };
     const bridge = { callAiService: vi.fn().mockRejectedValueOnce(Object.assign(new Error('timeout'), { code: 'AI_UPSTREAM_TIMEOUT' })).mockResolvedValueOnce(success) };
-    const service = new StepReasoningService(new StepContextBuilder(prisma), new PrismaStepReasoningRepository(prisma), bridge as any);
+    const service = new StepReasoningService(new StepContextBuilder(prisma), new PrismaStepReasoningRepository(prisma), bridge as any, 'live_llm');
     const turnInput = { clientTurnId: retryId, message: 'Conserva este input.', mode: 'work_with_me' as const, retryFailed: false };
     const failed = await service.submitTurn(projectId, 0, { id: actorId, role: 'participante' }, turnInput, 'request-retry-a');
     expect(failed.turn).toMatchObject({ status: 'FAILED', errorCode: 'AI_UPSTREAM_TIMEOUT' });
@@ -135,7 +135,7 @@ describeDb('Step Reasoning PostgreSQL persistence', () => {
       known: [], unknown: ['Señal pendiente.'], contradictions: [], suggestions: [], warnings: [], isReadyForHumanReview: false,
       model: 'qa-stub/step-reasoning-v1', promptVersion: 'steps/reasoning/v0.1', promptHash: 'sha256:synthetic',
     })) };
-    const service = new StepReasoningService(new StepContextBuilder(prisma), new PrismaStepReasoningRepository(prisma), bridge as any);
+    const service = new StepReasoningService(new StepContextBuilder(prisma), new PrismaStepReasoningRepository(prisma), bridge as any, 'live_llm');
     const coreSnapshot = await Promise.all([
       prisma.adaptiveCheckpointInstance.count({ where: { projectId, stepNumber: 2 } }),
       prisma.adaptiveCheckpointResponse.count({ where: { projectId } }),
