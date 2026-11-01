@@ -141,6 +141,25 @@ async function openScenario(page: Page, scenario: Scenario) {
   await expect(page.getByText(scenario.linked ? 'Iniciativa dentro de reto' : 'Proyecto independiente')).toBeVisible();
 }
 
+// Playwright's CSS visibility assertion does not prove that a control is
+// actually usable before scrolling or that the fixed checkpoint bar hides it.
+async function assertComposerInInitialViewport(page: Page) {
+  const input = page.getByLabel(/Cuéntale a Starteria/i);
+  const send = page.getByRole('button', { name: /^Enviar mensaje$/ });
+  const checkpointBar = page.getByTestId('step0-canonical-action-bar');
+  const [inputBox, sendBox, barBox] = await Promise.all([
+    input.boundingBox(),
+    send.boundingBox(),
+    checkpointBar.boundingBox(),
+  ]);
+  expect(inputBox, 'the chat textarea must be rendered').not.toBeNull();
+  expect(sendBox, 'the chat send action must be rendered').not.toBeNull();
+  expect(barBox, 'the fixed checkpoint bar must be rendered').not.toBeNull();
+  expect(inputBox!.y, 'textarea must start inside the viewport').toBeGreaterThanOrEqual(0);
+  expect(sendBox!.y + sendBox!.height, 'send action must clear the fixed review bar')
+    .toBeLessThan(barBox!.y - 4);
+}
+
 async function sendSyntheticTurn(page: Page, message: string) {
   await page.getByLabel(/Cuéntale a Starteria/i).fill(message);
   await page.getByRole('button', { name: /^Enviar mensaje$/ }).click();
@@ -200,14 +219,17 @@ test('KAN-204: Copilot simulado conserva continuidad en iniciativa independiente
     }
   });
   await openScenario(page, independent);
+  await assertComposerInInitialViewport(page);
   await sendSyntheticTurn(page, 'Dato sintético: necesitamos observar dónde empieza el retrabajo.');
   await expect(page.getByText(/no confirma checkpoints ni cambia el progreso/i)).toBeVisible();
   await page.reload();
   await expect(page.getByText('Dato sintético: necesitamos observar dónde empieza el retrabajo.')).toBeVisible();
+  await assertComposerInInitialViewport(page);
   await page.screenshot({ path: path.join(ARTIFACTS, 'independent-desktop-1440x900.png'), fullPage: true });
   await assertCanonicalContinuity(independent);
 
   await openScenario(page, linked);
+  await assertComposerInInitialViewport(page);
   const contextButton = page.getByRole('button', { name: /Ver contexto y fuentes/i });
   await contextButton.click();
   await expect(page.getByText('Reto vinculado en Adaptive Core')).toBeVisible();
@@ -215,6 +237,7 @@ test('KAN-204: Copilot simulado conserva continuidad en iniciativa independiente
   await sendSyntheticTurn(page, 'Dato sintético: la señal del reto debe revisarse con la persona responsable.');
   await page.reload();
   await expect(page.getByText('Dato sintético: la señal del reto debe revisarse con la persona responsable.')).toBeVisible();
+  await assertComposerInInitialViewport(page);
   await page.screenshot({ path: path.join(ARTIFACTS, 'portfolio-linked-desktop-1440x900.png'), fullPage: true });
   await assertCanonicalContinuity(linked);
 
@@ -229,6 +252,14 @@ test('KAN-204: Copilot simulado conserva continuidad en iniciativa independiente
   }));
   expect(dimensions.scrollWidth).toBeLessThanOrEqual(dimensions.clientWidth);
   await mobile.screenshot({ path: path.join(ARTIFACTS, 'portfolio-linked-mobile-390x844.png'), fullPage: true });
+
+  // Mobile entry: the explicit "Escribir" action must focus the real composer,
+  // scroll it above the fixed review footer, and leave "Enviar" accessible.
+  await mobile.getByRole('button', { name: 'Escribir a Startería' }).click();
+  const mobileComposer = mobile.getByLabel(/Cuéntale a Starteria/i);
+  await expect(mobileComposer).toBeFocused();
+  await assertComposerInInitialViewport(mobile);
+  await mobile.screenshot({ path: path.join(ARTIFACTS, 'portfolio-linked-mobile-composer-390x844.png'), fullPage: true });
   await mobileContext.close();
 
   expect(domainPosts).toEqual([
@@ -260,6 +291,8 @@ test('KAN-204: Copilot simulado conserva continuidad en iniciativa independiente
     ],
     domainPosts,
     assertions: [
+      'Composer and Send are inside the initial desktop viewport above the fixed checkpoint bar.',
+      'Mobile Write CTA focuses and exposes Composer and Send above the fixed checkpoint bar.',
       'Copilot is the primary interaction for the allow-listed synthetic actor.',
       'Progress/output card and official checkpoint remain separate human-review surfaces.',
       'Conversation persistence does not advance, restart or duplicate the Adaptive Cycle.',
