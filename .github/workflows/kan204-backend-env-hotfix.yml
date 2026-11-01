@@ -1,0 +1,201 @@
+name: KAN-204 Backend Env Reference Hotfix
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirmation:
+        description: 'Type REMOVE_STEP_REASONING_QA_USER_IDS_FROM_STARTERIA_BACKEND'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: starteria-production
+  cancel-in-progress: false
+
+env:
+  NAMESPACE: starteria
+  DEPLOYMENT: starteria-backend
+  EXPECTED_IMAGE: orlandogtp/starteria-backend:main-09535d7
+  STALE_ENV_NAME: STEP_REASONING_QA_USER_IDS
+  CONFIG_MAP: starteria-step-reasoning-qa
+
+jobs:
+  recover-backend:
+    name: Remove obsolete backend env reference
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: production
+    steps:
+      - name: Validate manual authorization boundary
+        env:
+          CONFIRMATION: ${{ inputs.confirmation }}
+        run: |
+          set -euo pipefail
+          [[ "$GITHUB_EVENT_NAME" == "workflow_dispatch" ]] || {
+            echo '::error::This recovery accepts workflow_dispatch only.'
+            exit 1
+          }
+          [[ "$GITHUB_REF" == "refs/heads/main" ]] || {
+            echo '::error::This recovery must be dispatched from main.'
+            exit 1
+          }
+          [[ "$CONFIRMATION" == "REMOVE_STEP_REASONING_QA_USER_IDS_FROM_STARTERIA_BACKEND" ]] || {
+            echo '::error::The incident-specific confirmation does not match.'
+            exit 1
+          }
+
+      - uses: azure/setup-kubectl@v4
+        with:
+          version: v1.30.0
+
+      - name: Fetch kubeconfig from Rackspace Spot
+        env:
+          RACKSPACE_REFRESH_TOKEN: ${{ secrets.RACKSPACE_REFRESH_TOKEN }}
+          RACKSPACE_ORG_NAME: ${{ secrets.RACKSPACE_ORG_NAME }}
+          RACKSPACE_CLOUDSPACE_NAME: ${{ secrets.RACKSPACE_CLOUDSPACE_NAME }}
+        run: |
+          set -euo pipefail
+          for name in RACKSPACE_REFRESH_TOKEN RACKSPACE_ORG_NAME RACKSPACE_CLOUDSPACE_NAME; do
+            [[ -n "${!name}" ]] || { echo "::error::Missing required secret $name"; exit 1; }
+          done
+          payload=$(jq -nc \
+            --arg org "$RACKSPACE_ORG_NAME" \
+            --arg cs "$RACKSPACE_CLOUDSPACE_NAME" \
+            --arg rt "$RACKSPACE_REFRESH_TOKEN" \
+            '{organization_name:$org,cloudspace_name:$cs,refresh_token:$rt}')
+          response="$RUNNER_TEMP/spot-response.json"
+          status=$(curl --silent --show-error --output "$response" --write-out '%{http_code}' \
+            --request POST 'https://spot.rackspace.com/apis/auth.ngpc.rxt.io/v1/generate-kubeconfig' \
+            --header 'Content-Type: application/json' --data "$payload")
+          [[ "$status" == 200 ]] || {
+            echo "::error::Rackspace kubeconfig request failed (HTTP $status)"
+            exit 1
+          }
+          mkdir -p "$RUNNER_TEMP/kube"
+          jq -er '.data.kubeconfig' "$response" > "$RUNNER_TEMP/kube/config"
+          chmod 600 "$RUNNER_TEMP/kube/config"
+          rm -f "$response"
+          echo "KUBECONFIG=$RUNNER_TEMP/kube/config" >> "$GITHUB_ENV"
+
+      - name: Verify exact incident preconditions
+        run: |
+          set -euo pipefail
+          deployment_json="$RUNNER_TEMP/backend-deployment.json"
+          kubectl -n "$NAMESPACE" get "deployment/$DEPLOYMENT" -o json > "$deployment_json"
+
+          image=$(jq -er '.spec.template.spec.containers[] | select(.name == "backend") | .image' "$deployment_json")
+          [[ "$image" == "$EXPECTED_IMAGE" ]] || {
+            echo "::error::Backend image is not the incident image; refusing to mutate the Deployment."
+            exit 1
+          }
+
+          stale_count=$(jq --arg name "$STALE_ENV_NAME" '[
+            .spec.template.spec.containers[]
+            | select(.name == "backend")
+            | .env[]?
+            | select(.name == $name)
+          ] | length' "$deployment_json")
+          [[ "$stale_count" == "1" ]] || {
+            echo "::error::Expected exactly one obsolete env reference; found $stale_count."
+            exit 1
+          }
+
+          jq -e --arg name "$STALE_ENV_NAME" --arg config_map "$CONFIG_MAP" '
+            .spec.template.spec.containers[]
+            | select(.name == "backend")
+            | .env[]
+            | select(.name == $name)
+            | .valueFrom.configMapKeyRef
+            | .name == $config_map and .key == $name and (.optional // false) == false
+          ' "$deployment_json" >/dev/null || {
+            echo '::error::The obsolete entry does not have the expected fail-closed ConfigMap reference.'
+            exit 1
+          }
+
+          if kubectl -n "$NAMESPACE" get "configmap/$CONFIG_MAP" -o json \
+            | jq -e --arg name "$STALE_ENV_NAME" '.data != null and (.data | has($name))' >/dev/null; then
+            echo '::error::The ConfigMap now contains the key; the confirmed incident precondition is no longer true.'
+            exit 1
+          fi
+
+          {
+            echo '## KAN-204 backend recovery preflight'
+            echo
+            echo "- Deployment: \`$NAMESPACE/$DEPLOYMENT\`"
+            echo "- Preserved image: \`$image\`"
+            echo "- Authorized removal: \`$STALE_ENV_NAME\` only"
+            echo '- PostgreSQL, images, Secrets and ConfigMaps are not modified.'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Remove only the obsolete env reference
+        run: |
+          set -euo pipefail
+          kubectl -n "$NAMESPACE" set env "deployment/$DEPLOYMENT" "${STALE_ENV_NAME}-"
+
+      - name: Verify rollout and backend health
+        run: |
+          set -euo pipefail
+          kubectl -n "$NAMESPACE" rollout status "deployment/$DEPLOYMENT" --timeout=360s
+
+          deployment_json="$RUNNER_TEMP/backend-after.json"
+          kubectl -n "$NAMESPACE" get "deployment/$DEPLOYMENT" -o json > "$deployment_json"
+          image=$(jq -er '.spec.template.spec.containers[] | select(.name == "backend") | .image' "$deployment_json")
+          [[ "$image" == "$EXPECTED_IMAGE" ]] || {
+            echo '::error::Backend image changed during the recovery.'
+            exit 1
+          }
+
+          stale_count=$(jq --arg name "$STALE_ENV_NAME" '[
+            .spec.template.spec.containers[]
+            | select(.name == "backend")
+            | .env[]?
+            | select(.name == $name)
+          ] | length' "$deployment_json")
+          [[ "$stale_count" == "0" ]] || {
+            echo '::error::Obsolete env reference remains after the recovery.'
+            exit 1
+          }
+
+          desired=$(jq -r '.spec.replicas // 1' "$deployment_json")
+          ready=$(jq -r '.status.readyReplicas // 0' "$deployment_json")
+          available=$(jq -r '.status.availableReplicas // 0' "$deployment_json")
+          updated=$(jq -r '.status.updatedReplicas // 0' "$deployment_json")
+          [[ "$desired" == "1" && "$ready" == "1" && "$available" == "1" && "$updated" == "1" ]] || {
+            echo "::error::Backend is not 1/1 Ready (desired=$desired ready=$ready available=$available updated=$updated)."
+            exit 1
+          }
+
+          pod=$(kubectl -n "$NAMESPACE" get pods -l app=starteria-backend -o json \
+            | jq -er '.items[] | select(.status.phase == "Running")
+              | select(any(.status.conditions[]?; .type == "Ready" and .status == "True"))
+              | .metadata.name' | head -n 1)
+
+          kubectl -n "$NAMESPACE" exec "$pod" -- node -e '
+            fetch("http://127.0.0.1:3001/api/health").then((response) => {
+              if (response.status !== 200) throw new Error("localhost health returned " + response.status);
+            }).catch((error) => { console.error(error.message); process.exit(1); });
+          '
+          kubectl -n "$NAMESPACE" exec deployment/starteria-frontend -- \
+            wget -qO- http://starteria-backend:3001/api/health >/dev/null
+          kubectl -n "$NAMESPACE" exec deployment/starteria-frontend -- \
+            wget -qO- http://127.0.0.1/api/health >/dev/null
+          curl --fail --silent --show-error --retry 6 --retry-delay 5 --retry-all-errors \
+            https://starter-ia.com/api/health >/dev/null
+
+          {
+            echo '## KAN-204 backend recovery result'
+            echo
+            echo '- Backend Deployment: 1/1 Ready'
+            echo "- Image preserved: \`$image\`"
+            echo '- /api/health: HTTP 200 through backend localhost, Kubernetes Service, frontend Nginx and public HTTPS.'
+            echo '- No database command, migration, image change or rollback was executed.'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Remove kubeconfig and temporary files
+        if: always()
+        run: |
+          rm -f "$RUNNER_TEMP/kube/config" "$RUNNER_TEMP/spot-response.json" \
+            "$RUNNER_TEMP/backend-deployment.json" "$RUNNER_TEMP/backend-after.json"

@@ -61,6 +61,10 @@ jobs:
         working-directory: .
         run: bash scripts/ci/tests/step-reasoning-qa-config.test.sh
 
+      - name: Test KAN-204 backend recovery guardrails
+        working-directory: .
+        run: bash scripts/ci/tests/kan204-backend-env-hotfix.test.sh
+
       - name: Setup Node.js 20.x
         uses: actions/setup-node@v4
         with:
