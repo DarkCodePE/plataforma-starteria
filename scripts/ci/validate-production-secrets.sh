@@ -5,9 +5,15 @@ secret_names=(
   STARTERIA_JWT_SECRET
   STARTERIA_BRIDGE_SHARED_SECRET
   STARTERIA_AI_SERVICE_TOKEN
-  STARTERIA_BILLING_WEBHOOK_SECRET
   STARTERIA_PILOT_CODE_SECRET
 )
+
+billing_webhooks_enabled="${BILLING_WEBHOOKS_ENABLED:-false}"
+case "$billing_webhooks_enabled" in
+  true) secret_names+=(STARTERIA_BILLING_WEBHOOK_SECRET) ;;
+  false) ;;
+  *) echo '::error::BILLING_WEBHOOKS_ENABLED must be true or false'; exit 1 ;;
+esac
 
 failed=0
 for name in "${secret_names[@]}"; do

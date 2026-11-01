@@ -16,13 +16,18 @@ export STARTERIA_PILOT_CODE_SECRET='pilot-E1k3%uQ6&yR8*zA0@bc2#de4$-2026'
 
 bash "$validator" >/dev/null
 
+export BILLING_WEBHOOKS_ENABLED=false
 saved_billing=$STARTERIA_BILLING_WEBHOOK_SECRET
 unset STARTERIA_BILLING_WEBHOOK_SECRET
+bash "$validator" >/dev/null
+export BILLING_WEBHOOKS_ENABLED=true
 if bash "$validator" >/dev/null 2>&1; then
-  echo 'validator accepted a missing billing secret' >&2
+  echo 'validator accepted missing billing secret with webhooks enabled' >&2
   exit 1
 fi
 export STARTERIA_BILLING_WEBHOOK_SECRET=$saved_billing
+bash "$validator" >/dev/null
+export BILLING_WEBHOOKS_ENABLED=false
 
 saved_pilot=$STARTERIA_PILOT_CODE_SECRET
 unset STARTERIA_PILOT_CODE_SECRET
@@ -33,10 +38,14 @@ fi
 export STARTERIA_PILOT_CODE_SECRET=$saved_pilot
 
 export STARTERIA_PILOT_CODE_SECRET=$STARTERIA_BILLING_WEBHOOK_SECRET
+# An unused billing key does not participate in the disabled-webhooks security contract.
+bash "$validator" >/dev/null
+export BILLING_WEBHOOKS_ENABLED=true
 if bash "$validator" >/dev/null 2>&1; then
-  echo 'validator accepted dependent billing and pilot secrets' >&2
+  echo 'validator accepted dependent billing and pilot secrets with webhooks enabled' >&2
   exit 1
 fi
+export BILLING_WEBHOOKS_ENABLED=false
 export STARTERIA_PILOT_CODE_SECRET=$saved_pilot
 
 export STARTERIA_PILOT_CODE_SECRET='xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'
@@ -46,6 +55,7 @@ if bash "$validator" >/dev/null 2>&1; then
 fi
 export STARTERIA_PILOT_CODE_SECRET=$saved_pilot
 
+export BILLING_WEBHOOKS_ENABLED=true
 export STARTERIA_BILLING_WEBHOOK_SECRET='REPLACE_WITH_SECRET-0123456789-abcdef'
 if bash "$validator" >/dev/null 2>&1; then
   echo 'validator accepted a placeholder billing secret' >&2
@@ -59,6 +69,7 @@ if bash "$validator" >/dev/null 2>&1; then
   exit 1
 fi
 export STARTERIA_BILLING_WEBHOOK_SECRET=$saved_billing
+export BILLING_WEBHOOKS_ENABLED=false
 
 export DATABASE_URL='postgresql://synthetic:synthetic@clone.invalid:5432/synthetic'
 export JWT_SECRET=$STARTERIA_JWT_SECRET
@@ -88,7 +99,11 @@ EOF
 chmod +x "$tmp/kubectl"
 KUBECTL_BIN="$tmp/kubectl" bash "$syncer" >/dev/null
 
-jq -e '.data.BILLING_WEBHOOK_SECRET and .data.PILOT_CODE_SECRET and (.data.UNKNOWN_EXISTING_KEY | not)' "$tmp/patch.json" >/dev/null
+jq -e '.data.BILLING_WEBHOOKS_ENABLED == "ZmFsc2U=" and .data.PILOT_CODE_SECRET and (.data.BILLING_WEBHOOK_SECRET | not) and (.data.UNKNOWN_EXISTING_KEY | not)' "$tmp/patch.json" >/dev/null
+export BILLING_WEBHOOKS_ENABLED=true
+KUBECTL_BIN="$tmp/kubectl" bash "$syncer" >/dev/null
+jq -e '.data.BILLING_WEBHOOK_SECRET and .data.BILLING_WEBHOOKS_ENABLED == "dHJ1ZQ=="' "$tmp/patch.json" >/dev/null
+export BILLING_WEBHOOKS_ENABLED=false
 merged=$(jq -n --slurpfile patch "$tmp/patch.json" '{data:{UNKNOWN_EXISTING_KEY:"cHJlc2VydmU="}} * $patch[0]')
 printf '%s' "$merged" | jq -e '.data.UNKNOWN_EXISTING_KEY == "cHJlc2VydmU="' >/dev/null
 

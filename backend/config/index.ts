@@ -94,14 +94,15 @@ if (!databaseUrl) {
 const bridgeSharedSecret = process.env.BRIDGE_SHARED_SECRET ?? '';
 const aiServiceToken = process.env.AI_SERVICE_TOKEN ?? '';
 const billingWebhookSecret = process.env.BILLING_WEBHOOK_SECRET ?? '';
+const billingWebhooksEnabled = booleanEnv('BILLING_WEBHOOKS_ENABLED');
 const pilotCodeSecret = process.env.PILOT_CODE_SECRET ?? (nodeEnv === 'production' ? '' : 'dev-insecure-pilot-code-secret-do-not-use');
 productionSecret('JWT_SECRET', jwtSecret);
 productionSecret('BRIDGE_SHARED_SECRET', bridgeSharedSecret);
 productionSecret('AI_SERVICE_TOKEN', aiServiceToken);
-productionSecret('BILLING_WEBHOOK_SECRET', billingWebhookSecret);
+if (billingWebhooksEnabled) productionSecret('BILLING_WEBHOOK_SECRET', billingWebhookSecret);
 productionSecret('PILOT_CODE_SECRET', pilotCodeSecret);
 
-if (nodeEnv === 'production' && new Set([jwtSecret, bridgeSharedSecret, aiServiceToken, billingWebhookSecret, pilotCodeSecret]).size !== 5) {
+if (nodeEnv === 'production' && new Set([jwtSecret, bridgeSharedSecret, aiServiceToken, pilotCodeSecret, ...(billingWebhooksEnabled ? [billingWebhookSecret] : [])]).size !== (billingWebhooksEnabled ? 5 : 4)) {
   throw new Error('Production secrets must be independent values');
 }
 
@@ -149,7 +150,7 @@ export const config = {
   // (POST /api/v1/internal/billing/webhooks/:provider). Same auth class as the
   // ai-service webhook (ADR-013). Per-provider signature verification layers on top.
   billingWebhookSecret: billingWebhookSecret || 'dev-billing-secret-do-not-use-in-prod',
-  billingWebhooksEnabled: booleanEnv('BILLING_WEBHOOKS_ENABLED'),
+  billingWebhooksEnabled,
   // SPEC-003 / issue #54: SMTP transport for the pilot-lead notification email.
   // No SMTP_HOST → mailer disabled (dev/test default): the notifier degrades to a
   // non-PII log line instead of sending.
