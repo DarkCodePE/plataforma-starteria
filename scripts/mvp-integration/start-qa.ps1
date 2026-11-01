@@ -40,7 +40,8 @@ $env:CORS_ORIGIN = 'http://127.0.0.1:5181'
 $env:AI_SERVICE_URL = 'http://127.0.0.1:8004'
 $env:AI_SERVICE_SECRET = 'mvp-int01-qa-stub-secret'
 $env:STEP_REASONING_COPILOT_ENABLED = 'true'
-$env:STEP_REASONING_QA_USER_IDS = 'kan178-owner,cmvplho9n0000vx7ky9v1oaju'
+$env:STEP_REASONING_COPILOT_EMERGENCY_DISABLED = 'false'
+$env:STEP_REASONING_PROVIDER_MODE = 'qa_stub'
 $env:SMTP_HOST = '127.0.0.1'
 $env:SMTP_PORT = '1027'
 $env:SMTP_SECURE = 'false'
@@ -55,7 +56,6 @@ $backend = Start-Process -FilePath 'node.exe' `
 $env:VITE_API_URL = '/api/v1'
 $env:VITE_BACKEND_PROXY_TARGET = 'http://127.0.0.1:4105'
 $env:VITE_STEP_REASONING_COPILOT_ENABLED = 'true'
-$env:VITE_STEP_REASONING_QA_USER_IDS = 'kan178-owner,cmvplho9n0000vx7ky9v1oaju'
 $frontend = Start-Process -FilePath 'node.exe' `
   -ArgumentList @((Join-Path $front 'node_modules\vite\bin\vite.js'), '--host', '127.0.0.1', '--port', '5181', '--strictPort') `
   -WorkingDirectory $front -WindowStyle Hidden -PassThru `

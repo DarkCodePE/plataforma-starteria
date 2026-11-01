@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-11-01T13:48:17.453Z",
+  "generatedAt": "2026-11-01T19:09:18.571Z",
   "dataClassification": "synthetic-disposable",
   "provider": "qa-stub/kan-204-step-reasoning",
   "observedProviderModels": [
@@ -10,24 +10,27 @@
   "scenarios": [
     {
       "kind": "independent",
-      "projectId": "cmvxvxpyv0003vx4wyur9baqz",
-      "cycleId": "cmvxvxq8d000pvx4wkl77ilxm",
+      "projectId": "cmvy7elq20003vxuges1jy278",
+      "cycleId": "cmvy7em2s000pvxug9w9tldzz",
       "continuity": "PASS"
     },
     {
       "kind": "portfolio-linked",
-      "projectId": "cmvxvxqcb001dvx4wobtwa46j",
-      "cycleId": "cmvxvxqfn001zvx4wwixpt5w6",
+      "projectId": "cmvy7em7q001dvxugyb4ixmyv",
+      "cycleId": "cmvy7emac001zvxug0yhf4fpr",
       "continuity": "PASS"
     }
   ],
   "domainPosts": [
-    "/api/v1/projects/cmvxvxpyv0003vx4wyur9baqz/steps/0/copilot/turn",
-    "/api/v1/projects/cmvxvxqcb001dvx4wobtwa46j/steps/0/copilot/turn"
+    "/api/v1/projects/cmvy7elq20003vxuges1jy278/steps/0/copilot/turn",
+    "/api/v1/projects/cmvy7em7q001dvxugyb4ixmyv/steps/0/copilot/turn"
   ],
   "assertions": [
-    "Copilot is the primary interaction for the allow-listed synthetic actor.",
+    "Composer and Send are inside the initial desktop viewport above the fixed checkpoint bar.",
+    "Mobile Write CTA focuses and exposes Composer and Send above the fixed checkpoint bar.",
+    "Copilot is the primary interaction only for the code-authorized persisted synthetic identity.",
     "Progress/output card and official checkpoint remain separate human-review surfaces.",
+    "Sign-in Portfolio bootstrap is distinct from the only two Step reasoning write requests.",
     "Conversation persistence does not advance, restart or duplicate the Adaptive Cycle.",
     "No checkpoint or AdaptiveStepOutput is confirmed from a Copilot message."
   ]

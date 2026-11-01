@@ -22,7 +22,7 @@ import { canNavigateToAdaptiveStep, latestAdaptiveStepOutput } from '../../featu
 import { AdaptiveCheckpointWorkspace } from '../../features/adaptive-core/components';
 import { ContinuityStepWorkspace } from '../../features/initiative-continuity/components/ContinuityExperience';
 import { StepReasoningPanel } from '../../features/step-reasoning/components';
-import { isStepReasoningCopilotEnabled } from '../services/featureFlags';
+import { useStepReasoningEligibility } from '../../features/step-reasoning/hooks/useStepReasoningEligibility';
 import { confirmAdaptiveCheckpoint, explainCheckpointError, confirmStep3Output, getAdaptiveCore } from '../../features/adaptive-core/services/adaptiveCoreService';
 
 type ModuleId = 'A' | 'B' | 'C';
@@ -359,6 +359,7 @@ function SectionCard({ title, icon: Icon, children, className = '' }: {
 // ═════════════════════════════════════════════════════════════════════════════
 export function Step3Page() {
   const { projectId } = useParams();
+  const stepReasoningEligible = useStepReasoningEligibility();
   const { projects, projectsLoading, updateProject, user } = useApp();
   const navigate = useNavigate();
   const contextProject = projects.find(p => p.id === projectId);
@@ -839,7 +840,7 @@ export function Step3Page() {
       onRetry={() => void loadAdaptiveCore()}
       onBack={() => navigate(`/projects/${projectId}`)}
       onContinueNext={() => navigate(`/projects/${projectId}/step/4`)}
-      copilot={isStepReasoningCopilotEnabled(user?.id) ? (
+      copilot={stepReasoningEligible ? (
         <StepReasoningPanel
           projectId={project.id}
           step={3}

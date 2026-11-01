@@ -22,7 +22,7 @@ import { AdaptiveCheckpointWorkspace } from '../../features/adaptive-core/compon
 import { confirmAdaptiveCheckpoint, explainCheckpointError, confirmStep2Output, getAdaptiveCore } from '../../features/adaptive-core/services/adaptiveCoreService';
 import { ContinuityStepWorkspace } from '../../features/initiative-continuity/components/ContinuityExperience';
 import { StepReasoningPanel } from '../../features/step-reasoning/components';
-import { isStepReasoningCopilotEnabled } from '../services/featureFlags';
+import { useStepReasoningEligibility } from '../../features/step-reasoning/hooks/useStepReasoningEligibility';
 
 type ModuleId = 'A' | 'B' | 'C' | 'D';
 
@@ -199,6 +199,7 @@ const getExperimentRoute = (
 
 export function Step2Page() {
   const { projectId } = useParams();
+  const stepReasoningEligible = useStepReasoningEligibility();
   const { projects, projectsLoading, setCurrentProject, updateProject, user } = useApp();
   const navigate = useNavigate();
   const contextProject = projects.find(p => p.id === projectId);
@@ -669,7 +670,7 @@ export function Step2Page() {
       core={adaptiveCore}
       state="loaded"
       readOnly={!canEdit}
-      copilot={isStepReasoningCopilotEnabled(user?.id) ? (
+      copilot={stepReasoningEligible ? (
         <StepReasoningPanel
           projectId={project.id}
           step={2}

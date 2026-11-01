@@ -5,8 +5,11 @@ const prisma = new PrismaClient();
 
 const TEST_PASSWORD = process.env.E2E_USER_PASSWORD ?? 'demo123';
 const ADMIN_PASSWORD = process.env.E2E_ADMIN_PASSWORD ?? TEST_PASSWORD;
-export const E2E_ORG_ID = 'org-e2e-portfolio-adaptive';
+export const E2E_ORG_ID = process.env.E2E_ORGANIZATION_ID ?? 'org-e2e-portfolio-adaptive';
 export const E2E_OTHER_ORG_ID = 'org-e2e-other';
+const AUTHORIZED_ROLE = process.env.E2E_USER_ROLE === 'participante'
+  ? Role.participante
+  : Role.portfolio_lead;
 
 async function upsertUser(input: {
   email: string;
@@ -22,6 +25,7 @@ async function upsertUser(input: {
     update: {
       name: input.name,
       role: input.role,
+      roles: [input.role],
       passwordHash,
       failedLoginAttempts: 0,
       lockedUntil: null,
@@ -33,6 +37,7 @@ async function upsertUser(input: {
       name: input.name,
       passwordHash,
       role: input.role,
+      roles: [input.role],
       initials: input.initials,
       skills: ['E2E'],
       isActive: true,
@@ -78,7 +83,7 @@ async function main() {
     // ADR-028: era `Role.mentor` porque `portfolio_lead` no existía y el front lo
     // suplía con VITE_PORTFOLIO_LEAD_EMAIL. Ahora es el rol de verdad — sin esto las
     // escrituras de portafolio de la suite responden 403.
-    role: Role.portfolio_lead,
+    role: AUTHORIZED_ROLE,
     initials: 'PE',
     organizationId: organization.id,
     password: TEST_PASSWORD,

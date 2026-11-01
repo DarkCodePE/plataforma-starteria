@@ -18,7 +18,7 @@ import { StepContextBuilder } from '../step-reasoning/context-builder';
 import { PrismaStepReasoningRepository } from '../step-reasoning/repository';
 import { StepReasoningService } from '../step-reasoning/service';
 import { StepReasoningController } from '../step-reasoning/controller';
-import { validateStepReasoningRuntimeConfig } from '../step-reasoning/feature-flag';
+import { StepReasoningQaEligibility, validateStepReasoningRuntimeConfig } from '../step-reasoning/feature-flag';
 import { stepReasoningTurnSchema } from '../step-reasoning/step-reasoning.schemas';
 validateStepReasoningRuntimeConfig();
 const service = new ProjectService(prisma);
@@ -31,6 +31,7 @@ const stepReasoning = new StepReasoningController(
     new StepContextBuilder(prisma),
     new PrismaStepReasoningRepository(prisma),
   ),
+  new StepReasoningQaEligibility(prisma),
 );
 
 export const projectRouter = Router();
@@ -42,6 +43,7 @@ const canRead = requireProjectTeamAccess(prisma, 'read');
 projectRouter.use(authenticate);
 
 projectRouter.get('/', controller.list);
+projectRouter.get('/step-reasoning/eligibility', stepReasoning.getEligibility);
 // PRD-005 / ADR-020: gate project creation on the plan's `project_create` limit
 // (resource count = the user's active, non-archived projects). Shadow mode by default.
 projectRouter.post(
@@ -58,8 +60,8 @@ projectRouter.patch('/:id', canWrite, validate(updateProjectSchema), controller.
 projectRouter.delete('/:id', canManage, controller.archive);
 projectRouter.get('/:id/step0', canRead, controller.getStep0);
 projectRouter.patch('/:id/step0', canWrite, validate(updateStep0Schema), controller.updateStep0);
-projectRouter.get('/:id/steps/:stepNumber/copilot/session', canRead, stepReasoning.getSession);
-projectRouter.post('/:id/steps/:stepNumber/copilot/turn', canWrite, validate(stepReasoningTurnSchema), stepReasoning.postTurn);
+projectRouter.get('/:id/steps/:stepNumber/copilot/session', stepReasoning.requireEligibility, canRead, stepReasoning.getSession);
+projectRouter.post('/:id/steps/:stepNumber/copilot/turn', stepReasoning.requireEligibility, canWrite, validate(stepReasoningTurnSchema), stepReasoning.postTurn);
 projectRouter.get('/:id/adaptive-core', canRead, adaptiveCoreController.get);
 projectRouter.post('/:id/adaptive-core/activation', requireProjectCapability(prisma, 'cycle:activate'), validate(initiativeCycleActivationSchema), adaptiveCoreController.activateInitiativeCycle);
 // Modos del Copilot por intención (E2E Job-Driven §20): lectura del estado persistido, igual en

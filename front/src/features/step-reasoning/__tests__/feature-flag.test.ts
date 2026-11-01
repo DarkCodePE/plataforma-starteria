@@ -1,23 +1,16 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { isStepReasoningCopilotEnabled } from '../../../app/services/featureFlags';
+import { isStepReasoningCopilotCandidate } from '../../../app/services/featureFlags';
 
-describe('Step reasoning QA feature flag', () => {
+describe('Step reasoning frontend rollout flag', () => {
   afterEach(() => vi.unstubAllEnvs());
 
-  it('is off by default', () => {
+  it('is off by default and never evaluates user identity in the browser', () => {
     vi.stubEnv('VITE_STEP_REASONING_COPILOT_ENABLED', '');
-    vi.stubEnv('VITE_STEP_REASONING_QA_USER_IDS', 'user-qa');
-    expect(isStepReasoningCopilotEnabled('user-qa')).toBe(false);
+    expect(isStepReasoningCopilotCandidate()).toBe(false);
   });
 
-  it('requires both the build flag and exactly one explicit QA user', () => {
+  it('only permits the frontend to ask the backend for effective eligibility', () => {
     vi.stubEnv('VITE_STEP_REASONING_COPILOT_ENABLED', 'true');
-    vi.stubEnv('VITE_STEP_REASONING_QA_USER_IDS', 'user-qa');
-    expect(isStepReasoningCopilotEnabled('user-qa')).toBe(true);
-    expect(isStepReasoningCopilotEnabled('user-other')).toBe(false);
-    expect(isStepReasoningCopilotEnabled()).toBe(false);
-
-    vi.stubEnv('VITE_STEP_REASONING_QA_USER_IDS', 'user-qa,user-two');
-    expect(isStepReasoningCopilotEnabled('user-qa')).toBe(false);
+    expect(isStepReasoningCopilotCandidate()).toBe(true);
   });
 });

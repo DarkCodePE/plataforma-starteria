@@ -28,12 +28,7 @@ export function isEnabled(flagId: string, _userId?: string): boolean {
   }
   if (flagId === 'feature.stepReasoningCopilot') {
     const enabled = readFlagEnv('VITE_STEP_REASONING_COPILOT_ENABLED');
-    if (enabled !== 'true' && enabled !== '1') return false;
-    const allowlist = (readFlagEnv('VITE_STEP_REASONING_QA_USER_IDS') ?? '')
-      .split(',')
-      .map(value => value.trim())
-      .filter(Boolean);
-    return Boolean(_userId && allowlist.length === 1 && allowlist[0] === _userId);
+    return enabled === 'true' || enabled === '1';
   }
   return false;
 }
@@ -51,6 +46,6 @@ export const isPdfAutofillEnabled = (userId?: string): boolean =>
 export const isPortfolioCopilotEnabled = (userId?: string): boolean =>
   isEnabled('feature.portfolioCopilot', userId);
 
-/** Step 0-4 contextual reasoning QA. Default off and restricted to explicit synthetic QA users. */
-export const isStepReasoningCopilotEnabled = (userId?: string): boolean =>
-  isEnabled('feature.stepReasoningCopilot', userId);
+/** Coarse build gate only. Effective authorization is always returned by the backend. */
+export const isStepReasoningCopilotCandidate = (): boolean =>
+  isEnabled('feature.stepReasoningCopilot');

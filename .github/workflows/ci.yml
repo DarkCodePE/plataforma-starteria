@@ -297,12 +297,12 @@ jobs:
       - name: POSTGRES_CONFIRMATION_INTEGRATION (119E)
         run: npm run test:e2e -- --portfolio-entry-postgres-confirmation-test
 
-      # Production runtime stays off by default; this regression exercises the
-      # explicitly allow-listed synthetic actor only, using a disposable DB and
+      # This regression exercises the code-authorized synthetic actor only,
+      # using persisted identity in a disposable DB and
       # a local deterministic provider. It does NOT call a real LLM or CD.
       - name: KAN-204 - Copilot first-viewport and mobile focus
         env:
-          E2E_STEP_REASONING_QA_AUTO_ALLOWLIST: 'true'
+          E2E_STEP_REASONING_CODE_DRIVEN_QA: 'true'
           STEP_REASONING_PROVIDER_MODE: qa_stub
         run: |
           rm -f ../artifacts/KAN-204/*.png ../artifacts/KAN-204/KAN204_BROWSER_EVIDENCE.json

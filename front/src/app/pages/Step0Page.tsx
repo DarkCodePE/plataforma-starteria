@@ -43,7 +43,7 @@ import { confirmAdaptiveCheckpoint, explainCheckpointError, confirmStep0Brief, g
 import { AutofillField } from '../components/autofill/AutofillField';
 import { CHALLENGE_TYPE_LABELS, type ChallengeType, type InitialReviewArtifact } from '../../features/initial-review/domain/types';
 import { getById } from '../services/projectService';
-import { isStepReasoningCopilotEnabled } from '../services/featureFlags';
+import { useStepReasoningEligibility } from '../../features/step-reasoning/hooks/useStepReasoningEligibility';
 import { StepReasoningPanel } from '../../features/step-reasoning/components';
 import { StepHelpDialog } from '../../features/initiative-continuity/components/ContinuityExperience';
 import { buildStep0MissionContext, countConfirmedCheckpoints } from '../../features/step-reasoning/domain/missionContext';
@@ -522,6 +522,7 @@ function ModuleShell({
 
 export function Step0Page() {
   const { projectId } = useParams();
+  const stepReasoningEligible = useStepReasoningEligibility();
   const { projects, projectsLoading, updateProject, updateStep0, hydrateProjectStep0FromPrefill, user } = useApp();
   const { challenges, strategicFronts } = usePortfolioLead();
   const navigate = useNavigate();
@@ -1125,7 +1126,7 @@ const confirmedStep0Brief = (adaptiveCore?.stepOutputs ?? []).find(
 
   const stepReasoningEnabled = Boolean(
     adaptiveCore
-    && isStepReasoningCopilotEnabled(user?.id),
+    && stepReasoningEligible,
   );
 
   const missionContext = buildStep0MissionContext({

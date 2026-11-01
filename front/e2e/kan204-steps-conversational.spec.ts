@@ -3,7 +3,7 @@ import path from 'node:path';
 import { expect, test, type APIRequestContext, type Page } from '@playwright/test';
 import { PrismaClient } from '@prisma/client';
 
-const EMAIL = process.env.E2E_USER_EMAIL || 'portfolio.e2e@starteria.test';
+const EMAIL = process.env.E2E_USER_EMAIL || 'e2e-participante@starteria.test';
 const PASSWORD = process.env.E2E_USER_PASSWORD || 'demo123';
 const ADMIN_EMAIL = process.env.E2E_ADMIN_EMAIL || 'portfolio-admin.e2e@starteria.test';
 const ADMIN_PASSWORD = process.env.E2E_ADMIN_PASSWORD || PASSWORD;
@@ -198,11 +198,31 @@ test.afterAll(async () => prisma.$disconnect());
 test('KAN-204: Copilot simulado conserva continuidad en iniciativa independiente y vinculada', async ({ page, request, browser }) => {
   mkdirSync(ARTIFACTS, { recursive: true });
   const apiSession = await loginApi(request);
-  expect(apiSession.userId).toBe(process.env.STEP_REASONING_QA_USER_ID);
+  const persistedIdentity = await prisma.user.findUniqueOrThrow({
+    where: { id: apiSession.userId },
+    select: { email: true, role: true, roles: true, organizationId: true, isActive: true },
+  });
+  expect(persistedIdentity).toEqual({
+    email: 'e2e-participante@starteria.test',
+    role: 'participante',
+    roles: ['participante'],
+    organizationId: 'org-e2e-prod',
+    isActive: true,
+  });
+  const eligibility = await request.get('/api/v1/projects/step-reasoning/eligibility', {
+    headers: { Authorization: `Bearer ${apiSession.token}` },
+  });
+  expect(eligibility.status(), await eligibility.text()).toBe(200);
+  expect(await eligibility.json()).toMatchObject({ data: { enabled: true, mode: 'qa_stub' } });
   const independent = await createScenario(request, apiSession.token, apiSession.userId, false);
   const linked = await createScenario(request, apiSession.token, apiSession.userId, true);
   const secondActor = await loginApi(request, ADMIN_EMAIL, ADMIN_PASSWORD);
   expect(secondActor.userId).not.toBe(apiSession.userId);
+  const secondActorEligibility = await request.get('/api/v1/projects/step-reasoning/eligibility', {
+    headers: { Authorization: `Bearer ${secondActor.token}` },
+  });
+  expect(secondActorEligibility.status(), await secondActorEligibility.text()).toBe(200);
+  expect(await secondActorEligibility.json()).toMatchObject({ data: { enabled: false, mode: null } });
   const denied = await request.get(`/api/v1/projects/${independent.projectId}/steps/0/copilot/session`, {
     headers: { Authorization: `Bearer ${secondActor.token}` },
     failOnStatusCode: false,
@@ -301,7 +321,7 @@ test('KAN-204: Copilot simulado conserva continuidad en iniciativa independiente
     assertions: [
       'Composer and Send are inside the initial desktop viewport above the fixed checkpoint bar.',
       'Mobile Write CTA focuses and exposes Composer and Send above the fixed checkpoint bar.',
-      'Copilot is the primary interaction for the allow-listed synthetic actor.',
+      'Copilot is the primary interaction only for the code-authorized persisted synthetic identity.',
       'Progress/output card and official checkpoint remain separate human-review surfaces.',
       'Sign-in Portfolio bootstrap is distinct from the only two Step reasoning write requests.',
       'Conversation persistence does not advance, restart or duplicate the Adaptive Cycle.',

@@ -142,8 +142,8 @@ jobs:
           ref: ${{ needs.resolve.outputs.sha }}
       - name: Validate fail-closed QA flags
         env:
-          STEP_REASONING_COPILOT_ENABLED: ${{ vars.STEP_REASONING_COPILOT_ENABLED || 'false' }}
-          STEP_REASONING_QA_USER_IDS: ${{ vars.STEP_REASONING_QA_USER_IDS }}
+          STEP_REASONING_COPILOT_ENABLED: 'true'
+          STEP_REASONING_COPILOT_EMERGENCY_DISABLED: ${{ vars.STEP_REASONING_COPILOT_EMERGENCY_DISABLED || 'false' }}
           STEP_REASONING_PROVIDER_MODE: qa_stub
         run: bash scripts/ci/validate-step-reasoning-qa-config.sh
 
@@ -186,8 +186,7 @@ jobs:
           cache-to: type=gha,mode=max,scope=${{ matrix.service }}
           build-args: |
             VITE_GOOGLE_CLIENT_ID=${{ secrets.GOOGLE_CLIENT_ID }}
-            VITE_STEP_REASONING_COPILOT_ENABLED=${{ vars.STEP_REASONING_COPILOT_ENABLED || 'false' }}
-            VITE_STEP_REASONING_QA_USER_IDS=${{ vars.STEP_REASONING_QA_USER_IDS }}
+            VITE_STEP_REASONING_COPILOT_ENABLED=true
           tags: ${{ env.DOCKERHUB_NAMESPACE }}/starteria-${{ matrix.service }}:${{ needs.resolve.outputs.tag }}
 
   deploy:
@@ -289,8 +288,8 @@ jobs:
           SMTP_USER: ${{ secrets.STARTERIA_SMTP_USER }}
           SMTP_PASS: ${{ secrets.STARTERIA_SMTP_PASS }}
           PILOT_LEAD_NOTIFY_FROM: ${{ secrets.STARTERIA_PILOT_LEAD_NOTIFY_FROM }}
-          STEP_REASONING_COPILOT_ENABLED: ${{ vars.STEP_REASONING_COPILOT_ENABLED || 'false' }}
-          STEP_REASONING_QA_USER_IDS: ${{ vars.STEP_REASONING_QA_USER_IDS }}
+          STEP_REASONING_COPILOT_ENABLED: 'true'
+          STEP_REASONING_COPILOT_EMERGENCY_DISABLED: ${{ vars.STEP_REASONING_COPILOT_EMERGENCY_DISABLED || 'false' }}
           STEP_REASONING_PROVIDER_MODE: qa_stub
         run: |
           set -euo pipefail
@@ -302,7 +301,7 @@ jobs:
           bash scripts/ci/sync-backend-secret.sh
           kubectl -n "$NAMESPACE" create configmap starteria-step-reasoning-qa \
             --from-literal=STEP_REASONING_COPILOT_ENABLED="$STEP_REASONING_COPILOT_ENABLED" \
-            --from-literal=STEP_REASONING_QA_USER_IDS="$STEP_REASONING_QA_USER_IDS" \
+            --from-literal=STEP_REASONING_COPILOT_EMERGENCY_DISABLED="$STEP_REASONING_COPILOT_EMERGENCY_DISABLED" \
             --from-literal=STEP_REASONING_PROVIDER_MODE="$STEP_REASONING_PROVIDER_MODE" \
             --dry-run=client -o yaml | kubectl apply -f -
           kubectl -n "$NAMESPACE" create secret generic starteria-ai-service-secrets \
