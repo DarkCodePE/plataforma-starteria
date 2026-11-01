@@ -96,6 +96,7 @@ const aiServiceToken = process.env.AI_SERVICE_TOKEN ?? '';
 const billingWebhookSecret = process.env.BILLING_WEBHOOK_SECRET ?? '';
 const billingWebhooksEnabled = booleanEnv('BILLING_WEBHOOKS_ENABLED');
 const pilotCodeSecret = process.env.PILOT_CODE_SECRET ?? (nodeEnv === 'production' ? '' : 'dev-insecure-pilot-code-secret-do-not-use');
+const privatePreviewEnabled = booleanEnv('STARTERIA_PRIVATE_PREVIEW_ENABLED');
 productionSecret('JWT_SECRET', jwtSecret);
 productionSecret('BRIDGE_SHARED_SECRET', bridgeSharedSecret);
 productionSecret('AI_SERVICE_TOKEN', aiServiceToken);
@@ -104,6 +105,34 @@ productionSecret('PILOT_CODE_SECRET', pilotCodeSecret);
 
 if (nodeEnv === 'production' && new Set([jwtSecret, bridgeSharedSecret, aiServiceToken, pilotCodeSecret, ...(billingWebhooksEnabled ? [billingWebhookSecret] : [])]).size !== (billingWebhooksEnabled ? 5 : 4)) {
   throw new Error('Production secrets must be independent values');
+}
+
+if (privatePreviewEnabled) {
+  let previewDatabaseIsIsolated = false;
+  let previewOriginIsIsolated = false;
+  try {
+    const parsedDatabaseUrl = new URL(databaseUrl);
+    const parsedOrigin = new URL(process.env.CORS_ORIGIN ?? '');
+    const parsedInvitationOrigin = new URL(process.env.HANDOFF_INVITATION_PUBLIC_BASE_URL ?? '');
+    previewDatabaseIsIsolated = parsedDatabaseUrl.hostname === 'postgres' && parsedDatabaseUrl.pathname === '/starteria_preview';
+    previewOriginIsIsolated = parsedOrigin.protocol === 'https:'
+      && parsedOrigin.origin === parsedInvitationOrigin.origin
+      && !['starter-ia.com', 'www.starter-ia.com'].includes(parsedOrigin.hostname.toLowerCase());
+  } catch {
+    // Invalid URLs are rejected by the fail-closed condition below.
+  }
+  const unsafePreviewConfiguration = nodeEnv !== 'production'
+    || portfolioEntryRuntimeMode !== 'deterministic'
+    || !previewDatabaseIsIsolated
+    || !previewOriginIsIsolated
+    || billingWebhooksEnabled
+    || process.env.BILLING_ENFORCEMENT_ENABLED === 'true'
+    || process.env.AI_WEBHOOKS_ENABLED === 'true'
+    || handoffEmailTransportMode === 'pilot'
+    || process.env.HANDOFF_EMAIL_PILOT_ENABLED === 'true';
+  if (unsafePreviewConfiguration) {
+    throw new Error('Private preview requires an isolated preview database/origin, production hardening, deterministic runtime, disabled billing/AI webhooks and non-pilot email');
+  }
 }
 
 const jwtRefreshExpiresIn = process.env.JWT_REFRESH_EXPIRES_IN || '8h';
@@ -196,5 +225,6 @@ export const config = {
   portfolioEntryCriticalHandoffMaxMs: positiveIntegerEnv('PORTFOLIO_ENTRY_CRITICAL_HANDOFF_MAX_MS', 180000),
   portfolioEntryRuntimeMode,
   portfolioEntryClassifier,
+  privatePreviewEnabled,
   trustProxyHops: nonNegativeIntegerEnv('TRUST_PROXY_HOPS', 0),
 } as const;

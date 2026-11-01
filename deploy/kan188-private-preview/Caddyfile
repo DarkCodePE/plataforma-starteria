@@ -16,5 +16,11 @@
 		-Server
 	}
 
-	reverse_proxy frontend:80
+	handle /mailpit/* {
+		reverse_proxy mailpit:8025
+	}
+
+	handle {
+		reverse_proxy frontend:80
+	}
 }

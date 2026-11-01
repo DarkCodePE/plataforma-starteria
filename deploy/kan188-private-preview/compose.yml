@@ -39,6 +39,7 @@ services:
     environment:
       MP_MAX_MESSAGES: "500"
       MP_DATABASE: /data/mailpit.db
+      MP_WEBROOT: /mailpit/
     volumes:
       - preview_mailpit:/data
     networks:
@@ -70,6 +71,30 @@ services:
       postgres:
         condition: service_healthy
 
+  provision:
+    profiles: ["operations"]
+    build:
+      context: ../..
+      dockerfile: Dockerfile.backend
+      target: builder
+    command: ["npx", "tsx", "backend/scripts/e2e-prod-tenant.ts", "setup", "--apply"]
+    restart: "no"
+    mem_limit: 512m
+    cpus: 1.0
+    pids_limit: 200
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      DATABASE_URL: postgresql://starteria_preview:${PREVIEW_DB_PASSWORD:?set PREVIEW_DB_PASSWORD in preview.env}@postgres:5432/starteria_preview
+      E2E_PROD_LEAD_PASSWORD: ${PREVIEW_LEAD_PASSWORD:?set PREVIEW_LEAD_PASSWORD in preview.env}
+      E2E_PROD_PARTICIPANT_PASSWORD: ${PREVIEW_OWNER_PASSWORD:?set PREVIEW_OWNER_PASSWORD in preview.env}
+      E2E_PROD_MEMBER_PASSWORD: ${PREVIEW_MEMBER_PASSWORD:?set PREVIEW_MEMBER_PASSWORD in preview.env}
+    networks:
+      - private
+    depends_on:
+      postgres:
+        condition: service_healthy
+
   backend:
     build:
       context: ../..
@@ -89,6 +114,7 @@ services:
       - no-new-privileges:true
     environment:
       NODE_ENV: production
+      STARTERIA_PRIVATE_PREVIEW_ENABLED: "true"
       PORT: "3001"
       DATABASE_URL: postgresql://starteria_preview:${PREVIEW_DB_PASSWORD:?set PREVIEW_DB_PASSWORD in preview.env}@postgres:5432/starteria_preview
       JWT_SECRET: ${PREVIEW_JWT_SECRET:?set PREVIEW_JWT_SECRET in preview.env}
@@ -101,9 +127,10 @@ services:
       PILOT_CODE_SECRET: ${PREVIEW_PILOT_CODE_SECRET:?set PREVIEW_PILOT_CODE_SECRET in preview.env}
       AI_WEBHOOKS_ENABLED: "false"
       BILLING_WEBHOOKS_ENABLED: "false"
+      BILLING_ENFORCEMENT_ENABLED: "false"
       CORS_ORIGIN: https://${PREVIEW_HOST:?set PREVIEW_HOST in preview.env}
       HANDOFF_INVITATION_PUBLIC_BASE_URL: https://${PREVIEW_HOST:?set PREVIEW_HOST in preview.env}
-      HANDOFF_EMAIL_TRANSPORT_MODE: ${HANDOFF_EMAIL_TRANSPORT_MODE:-disabled}
+      HANDOFF_EMAIL_TRANSPORT_MODE: ${HANDOFF_EMAIL_TRANSPORT_MODE:-sandbox}
       HANDOFF_EMAIL_PILOT_ENABLED: ${HANDOFF_EMAIL_PILOT_ENABLED:-false}
       HANDOFF_EMAIL_PILOT_VERIFIED_FROM: ${HANDOFF_EMAIL_PILOT_VERIFIED_FROM:-}
       HANDOFF_EMAIL_REPLY_TO: ${HANDOFF_EMAIL_REPLY_TO:-}
