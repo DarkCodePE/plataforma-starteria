@@ -112,6 +112,46 @@ esta aprobación sólo cubre la slice descrita y no certifica Starteria V2 compl
 
 ---
 
+## Slice PORTFOLIO_LEAD_SETUP_NAVIGATION_REENTRY_G1 (KAN-205 / KAN-207)
+
+**Registrado:** 2026-11-02 por HU KAN-205 y aprobación funcional KAN-206 `RESUELTO`; implementación técnica acotada en KAN-207.
+
+```text
+slice_id: PORTFOLIO_LEAD_SETUP_NAVIGATION_REENTRY_G1
+HU: KAN-205
+functional_authority: KAN-206 (RESUELTO; CA-1..CA-8 y copy "Continuar a Incorporación")
+technical_task: KAN-207
+logic_status: ACTIVE_V2_BASELINE (solo navegación, sincronización con estado persistido y reentrada del setup)
+implementation_status: NOT_IMPLEMENTED
+visual_status: V2_TARGET_DEFINED
+evidence_status: SUPPORTED (riesgo verificado por inspección de código; E2E autenticado no ejecutado)
+semantic_owner: V2 Portfolio Lead frontend setup navigation
+authority: Jira KAN-205 + KAN-206; docs/STARTERIA_AUTHORITY.md; docs/governance/STARTERIA_V2_MIGRATION_GUARDRAILS.md; baseline Portfolio Lead congelada v1.0 dentro del alcance aprobado
+entry_boundary: /portfolio/inicio muestra PortfolioBootstrapHome con Objetivo/E2 visible y elegibilidad derivada de la proyección persistida
+exit_boundary: CTA explícito "Continuar a Incorporación" muestra E3 solo después de confirmación backend exitosa
+current_surface: front/src/features/portfolio-lead/bootstrap/components/PortfolioBootstrapHome.tsx; consumidor front/src/app/pages/PortfolioLeadHomePage.tsx
+current_route_note: /portfolio/setup monta PortfolioLeadFirstValuePage y no pertenece a este slice
+target: backend/proyección persistida gobierna elegibilidad; selectedStage es selección visual; revisión retrospectiva no altera datos ni bloquea la continuación; errores no simulan avance
+legacy_dependencies: NONE (se reutilizan proyección y comandos V2 existentes sin adoptar semántica V1)
+adapter_required: NO
+tests_protecting_current_behavior: PortfolioBootstrapHome.test.tsx; PortfolioLeadHomePage.bootstrap.test.tsx; usePortfolioBootstrap.test.tsx; portfolio-bootstrap router/integration/scoped-authority tests; portfolio-setup-home-handoff-141.integration.spec.ts
+tests_required: frontend CA-1..CA-6; regresiones CA-7; navegador autenticado CA-8 o BLOCKED explícito
+core_impact: NONE
+backend_impact: NONE
+prisma_impact: NONE
+step_impact: NONE
+handoff_impact: NONE
+ai_impact: NONE
+excluded: Core; backend/API; Prisma/migraciones; Steps 0-4; Handoff; Briefs; asignaciones; Portfolio Home operativo; soporte; IA; etapas posteriores no autorizadas; merge/deploy
+implementation_gate: V2_CHANGE_GUARDRAIL_CHECK must be YES before functional code changes
+```
+
+Este registro autoriza solamente la preparación del slice y su control previo. No acredita
+implementación, E2E, despliegue ni cierre productivo y no cambia la autoridad de Core, Backend,
+Handoff, Steps, Portfolio Home o IA.
+
+---
+
 ## Slice FIRST_VALUE_P3_RUNTIME_PROCESSOR (KAN-86)
 
 ```text
