@@ -165,9 +165,11 @@ functional_authority: KAN-210 (RESUELTO; CA-01..CA-04 y copy "Continuar sin inic
 technical_task: KAN-212
 depends_on: PORTFOLIO_LEAD_SETUP_NAVIGATION_REENTRY_G1 (sin modificar su estado, alcance ni evidencia)
 logic_status: ACTIVE_V2_BASELINE (solo E3 Incorporación, transición explícita a E4 y camino sin iniciativas a E5)
-implementation_status: NOT_IMPLEMENTED
+implementation_status: IMPLEMENTED_UNVERIFIED
 visual_status: V2_TARGET_DEFINED
-evidence_status: CURRENT_STATE_AUDITED / TESTS_CLASSIFIED
+evidence_status: TESTING (unit/integration/build PASS; authenticated V2 E2E BLOCKED by unavailable Docker engine)
+implementation_commits: 8611bfd (frontend + unit tests); 2a528dd (V2 E2E + LEGACY_COMPAT regression); 43b7748 (independent-review fix for no-work integrity and lost-response reconciliation)
+independent_review: APPROVED after two rounds; first round found and second round verified the no_existing_work + WorkItems guard
 semantic_owner: V2 Portfolio Lead frontend setup navigation and intake recovery
 authority: Jira KAN-209 + KAN-210; docs/STARTERIA_AUTHORITY.md; docs/governance/STARTERIA_V2_MIGRATION_GUARDRAILS.md; doc/product-adr/ADR-009-canonicalizacion-gobernada-iniciativas-documentales.md; baseline Portfolio Lead congelada v1.0 dentro de CA-01..CA-04 aprobados
 current_state_evidence: STARTERIA_G2_E3_E4_AUDITORIA_Y_HANDOFF_v0.1.md (AUDIT_ONLY; evidencia, no autoridad autónoma)
@@ -189,6 +191,9 @@ tests_v2_conformance_existing: PortfolioBootstrapHome.test.tsx (G1 persisted nav
 tests_legacy_compat: front/e2e/portfolio-entry-conversion.spec.ts scenarios tagged LEGACY_COMPAT for no-existing-work and CSV/XLSX analysis
 tests_unknown_or_missing: no backend test rejects intake before anchor confirmation/B2; no authenticated E2E classified as G2-A V2_CONFORMANCE yet
 tests_required: CA-01..CA-04 test-first frontend coverage; negative lateral-jump coverage; intake failure/retry coverage; reentry/reload; G1 regression; backend regression read-only; authenticated G2-A V2 E2E or explicit BLOCKED
+verification_local: focused frontend 57/57 PASS; complete frontend 1063/1063 PASS; backend router/scoped-authority 24/24 PASS; frontend typecheck PASS; lint PASS; build PASS; git diff --check PASS
+verification_limitations: authenticated G2-A V2_CONFORMANCE and LEGACY_COMPAT E2E BLOCKED because Docker Desktop Linux engine pipe is unavailable; backend integration tests requiring DATABASE_URL skipped; combined typecheck remains FAIL on unchanged baseline file critical-synthesis-reasoning.test.ts (identical blob at origin/main@e78241e)
+backend_enforcement_status: UNVERIFIED / NOT IMPLEMENTED by KAN-212; backend_authority_gap remains open and out of scope
 core_impact: NONE
 backend_impact: NONE AUTHORIZED (read-only provider; authority gap above remains blocked)
 api_impact: NONE
@@ -203,9 +208,9 @@ implementation_gate_backend: Proceed NO; separate functional and backend authori
 ```
 
 Este registro no promociona el handoff de auditoría a contrato ni amplía KAN-212. La brecha de
-enforcement backend queda visible y bloqueada; el frontend puede reutilizar únicamente estados y
-respuestas persistidas existentes. `CURRENT_STATE.md` no cambia porque todavía no existe cambio de
-runtime, implementación, merge, E2E o despliegue G2-A.
+enforcement backend queda visible y bloqueada; el frontend reutiliza únicamente estados y respuestas
+persistidas existentes. `CURRENT_STATE.md` no cambia: la implementación permanece sin merge, el E2E
+autenticado está bloqueado y no existe despliegue G2-A.
 
 ---
 
