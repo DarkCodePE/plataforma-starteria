@@ -75,6 +75,9 @@ jobs:
       - name: Install dependencies (npm ci)
         run: npm ci
 
+      - name: Generate Prisma Client
+        run: npm run db:generate
+
       - name: Provision disposable database and apply repository migrations
         env:
           E2E_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/starteria_e2e
