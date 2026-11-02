@@ -278,11 +278,12 @@ function PortfolioCopilotWorkspace({
   const hasAnalysisHardBlocker = projection.analysisSummary.hardBlockingNow > 0 && !organizationIsMaterialized;
   const progressStage = assignmentTarget ? 6 : organizationIsMaterialized ? 5 : inferredStage;
   const explicitOrganizationContinuation = organizationContinuationSessionId === projection.bootstrapSessionId;
+  const persistedNoWorkPath = projection.existingWorkStatus === 'no_existing_work' && projection.workItems.length === 0;
   const lastAvailableStage = assignmentTarget
     ? 6
     : organizationIsMaterialized
       ? 5
-      : projection.existingWorkStatus === 'no_existing_work'
+      : persistedNoWorkPath
         ? explicitOrganizationContinuation ? 4 : 2
         : bootstrapPhase === 'B3_PROVISIONAL_STRUCTURING'
           ? 2
@@ -1754,7 +1755,9 @@ function PortfolioBootstrapWorkIntake({
   const [reviewOpen, setReviewOpen] = useState(false);
   const [addMoreOpen, setAddMoreOpen] = useState(false);
   const hasItems = projection.workItems.length > 0;
-  const noWork = projection.existingWorkStatus === 'no_existing_work';
+  const declaredNoWork = projection.existingWorkStatus === 'no_existing_work';
+  const noWork = declaredNoWork && !hasItems;
+  const inconsistentNoWork = declaredNoWork && hasItems;
   const hasProposals = projection.proposedMutations.some((mutation) => mutation.status === 'proposed' || mutation.status === 'reviewed');
   const analyzing = analysisStatus === 'processing';
   const publishing = publishStatus === 'processing';
@@ -1780,7 +1783,7 @@ function PortfolioBootstrapWorkIntake({
         <ModeButton label="Pegar una lista" active={mode === 'paste'} onClick={() => setMode('paste')} />
         <ModeButton label="Anadir manualmente" active={mode === 'manual'} onClick={() => setMode('manual')} />
         <ModeButton label="Subir PDF, Excel o CSV" active={mode === 'upload'} onClick={() => setMode('upload')} />
-        <ModeButton label="Todavia no tenemos iniciativas" active={mode === 'none'} onClick={() => setMode('none')} />
+        {!hasItems ? <ModeButton label="Todavia no tenemos iniciativas" active={mode === 'none'} onClick={() => setMode('none')} /> : null}
       </div>
 
       {mode === 'paste' ? (
@@ -1929,6 +1932,12 @@ function PortfolioBootstrapWorkIntake({
         </div>
       ) : null}
 
+      {inconsistentNoWork ? (
+        <div role="alert" className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950">
+          No podemos continuar como si no hubiera iniciativas porque existen elementos persistidos. Revísalos o elimínalos antes de declarar su ausencia.
+        </div>
+      ) : null}
+
       {!analysisSurface && noWork ? (
         <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-950">
           Perfecto. Starteria puede conservar este punto de partida y ayudarte a decidir como abordar esta prioridad mas adelante.
@@ -1980,7 +1989,7 @@ function PortfolioBootstrapWorkIntake({
           description="La ausencia ya está persistida. Continuarás a Organización sin ejecutar un análisis ficticio."
           onClick={onContinueWithoutWork}
         />
-      ) : hasItems ? (
+      ) : hasItems && !inconsistentNoWork ? (
         <PrimaryAction
           label={hasProposals ? 'Revisar análisis y propuestas' : `Analizar ${projection.workItems.length} iniciativas`}
           description={hasProposals

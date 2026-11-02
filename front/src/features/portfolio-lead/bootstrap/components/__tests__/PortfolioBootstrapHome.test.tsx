@@ -471,6 +471,18 @@ describe('PortfolioBootstrapHome — frozen Copilot-first composition', () => {
     expect(screen.getByRole('button', { name: 'Analizar 1 iniciativas' })).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Agregar más información' }));
     expect(screen.getByText('Pegar una lista')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Todavia no tenemos iniciativas' })).not.toBeInTheDocument();
+  });
+
+  it('G2-A CA-03 blocks an inconsistent no-work projection that still contains persisted items', () => {
+    const data = makeBootstrapWithWorkItems();
+    data.bootstrapSession.existingWorkStatus = 'no_existing_work';
+    render(<PortfolioBootstrapHome {...props({ data })} />);
+
+    expect(screen.getByRole('alert')).toHaveTextContent('existen elementos persistidos');
+    expect(screen.queryByRole('button', { name: 'Continuar sin iniciativas' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Analizar 1 iniciativas' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /5 Organización/i })).toBeDisabled();
   });
 
   it('shows a mapped source status instead of claiming it was undeclared when normalization is unavailable', () => {

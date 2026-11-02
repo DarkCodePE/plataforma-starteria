@@ -267,8 +267,22 @@ export function usePortfolioBootstrap(
 
   const declareNoExistingWork = useCallback(async () => {
     if (!data?.bootstrapSession.id) return;
-    const result = await declareNoExistingPortfolioBootstrapWork(data.bootstrapSession.id);
-    mergeWorkItems(result);
+    const sessionId = data.bootstrapSession.id;
+    try {
+      const result = await declareNoExistingPortfolioBootstrapWork(sessionId);
+      mergeWorkItems(result);
+    } catch (error) {
+      try {
+        const persisted = await getPortfolioBootstrapSession(sessionId);
+        if (persisted.bootstrapSession.existingWorkStatus === 'no_existing_work' && persisted.workItems.length === 0) {
+          setData(persisted);
+          return;
+        }
+      } catch {
+        // Preserve the mutation error when the reconciliation read is unavailable.
+      }
+      throw error;
+    }
   }, [data?.bootstrapSession.id, mergeWorkItems]);
 
   const updateWorkItem = useCallback(async (workItemId: string, input: UpdatePortfolioBootstrapWorkItemInput) => {
