@@ -122,9 +122,11 @@ HU: KAN-205
 functional_authority: KAN-206 (RESUELTO; CA-1..CA-8 y copy "Continuar a Incorporación")
 technical_task: KAN-207
 logic_status: ACTIVE_V2_BASELINE (solo navegación, sincronización con estado persistido y reentrada del setup)
-implementation_status: NOT_IMPLEMENTED
+implementation_status: IMPLEMENTED_UNVERIFIED
 visual_status: V2_TARGET_DEFINED
-evidence_status: SUPPORTED (riesgo verificado por inspección de código; E2E autenticado no ejecutado)
+evidence_status: TESTING
+ca_8_status: BLOCKED (E2E autenticado no ejecutado; Docker Desktop/Linux Engine no disponible)
+implementation_commits: fed90bb (registro documental G1); 6f036fa (implementación frontend y tests KAN-207)
 semantic_owner: V2 Portfolio Lead frontend setup navigation
 authority: Jira KAN-205 + KAN-206; docs/STARTERIA_AUTHORITY.md; docs/governance/STARTERIA_V2_MIGRATION_GUARDRAILS.md; baseline Portfolio Lead congelada v1.0 dentro del alcance aprobado
 entry_boundary: /portfolio/inicio muestra PortfolioBootstrapHome con Objetivo/E2 visible y elegibilidad derivada de la proyección persistida
