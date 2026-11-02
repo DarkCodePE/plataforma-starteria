@@ -1534,6 +1534,9 @@ test.describe('Portfolio Entry 114D Critical Handoff and explicit legacy compati
     await page.getByRole('button', { name: /Todavia no tenemos iniciativas/i }).click();
     await page.getByRole('button', { name: /Todavia no tenemos iniciativas activas/i }).click();
 
+    const organizationStage = page.getByLabel('Tu avance').getByRole('button', { name: /Organización/i });
+    await expect(organizationStage).toBeEnabled();
+    await organizationStage.click();
     await expect(page.getByTestId('portfolio-organization-cascade')).toBeVisible({ timeout: 15_000 });
     expect(await canonicalCounts()).toEqual(beforeNoWork);
 
