@@ -290,6 +290,11 @@ function PortfolioCopilotWorkspace({
     if (nextStage > lastAvailableStage) return;
     setSelectedStage(nextStage);
   };
+  const confirmObjective = useCallback(async () => {
+    await onConfirmAnchor();
+    setSelectedStage(1);
+  }, [onConfirmAnchor]);
+  const reviewingConfirmedObjective = progressStage === 2 && lastAvailableStage >= 2 && stage < progressStage;
   useEffect(() => {
     if (organizationProposal?.materialization) {
       setConfirmedOrganization(organizationProposal);
@@ -343,7 +348,7 @@ function PortfolioCopilotWorkspace({
   return (
     <section className="space-y-5" data-testid="portfolio-bootstrap-home-a" data-frozen-composition="copilot-first">
       <header className="rounded-2xl border border-slate-200 bg-white px-5 py-5 shadow-sm md:px-7">
-        <p className="text-xs font-bold uppercase tracking-[0.16em] text-violet-700">Configurar con Copilot · {progressStage + 1} de 7</p>
+        <p className="text-xs font-bold uppercase tracking-[0.16em] text-violet-700">Configurar con Copilot · {progressStage + 1} de 7{reviewingConfirmedObjective ? ` · Revisando ${FROZEN_SETUP_STAGES[stage]}` : ''}</p>
         <h1 className="mt-2 text-2xl font-semibold tracking-tight text-slate-950">{frozenStageTitle(stage)}</h1>
         <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">Copilot construye contigo; las fuentes, inferencias y confirmaciones quedan diferenciadas. No necesitas completar formularios en paralelo.</p>
       </header>
@@ -359,12 +364,21 @@ function PortfolioCopilotWorkspace({
           </div>
           <div className="space-y-5 bg-slate-50/60 px-5 py-6 md:px-7">
             {stage === 0 ? <FrozenContextConversation anchor={projection.anchor} onSave={onUpdateAnchor} /> : null}
-            {stage === 1 ? <FrozenObjectiveConversation projection={projection} onSave={onUpdateAnchor} onConfirm={onConfirmAnchor} /> : null}
+            {stage === 1 ? <FrozenObjectiveConversation projection={projection} onSave={onUpdateAnchor} onConfirm={confirmObjective} /> : null}
             {stage === 2 ? <FrozenChatStage eyebrow="Incorporar iniciativas" title="¿Qué iniciativas existentes quieres que revisemos?" help="Puedes subir un archivo, pegar una lista o continuar sin iniciativas. No hay una respuesta obligatoria.">{runtimePanel}</FrozenChatStage> : null}
             {stage === 3 ? <FrozenChatStage eyebrow="Análisis explicable" title="¿Qué está contribuyendo, qué se solapa y qué requiere revisión?" help="Cada lectura conserva su fuente, evidencia, vacíos y estado de revisión humana.">{runtimePanel}</FrozenChatStage> : null}
             {stage === 4 ? <FrozenOrganizationStage projection={projection} proposal={organizationProposal} status={organizationStatus} error={organizationError} onSave={onSaveOrganizationProposal} onConfirm={onConfirmOrganizationProposal} onComplete={(confirmed) => { setConfirmedOrganization(confirmed); setSelectedStage(5); }} /> : null}
             {stage === 5 ? <FrozenBriefStage projection={projection} confirmedOrganization={confirmedOrganization} onBriefConfirmationChange={handleBriefConfirmationChange} onContinueToAssignment={openAssignment} /> : null}
             {stage === 6 && assignmentTarget ? <FrozenAssignmentStage target={assignmentTarget} onExit={exitAssignment} onCompleteSetup={onCompleteSetup} /> : null}
+            {reviewingConfirmedObjective ? (
+              <section className="rounded-xl border border-violet-200 bg-violet-50 p-4" aria-label="Continuar configuración">
+                <p className="text-sm font-semibold text-violet-950">Estás revisando {FROZEN_SETUP_STAGES[stage]}.</p>
+                <p className="mt-1 text-sm text-violet-900">Tu avance confirmado está en Incorporación.</p>
+                <button type="button" onClick={() => selectStage(2)} className="mt-3 inline-flex items-center gap-2 rounded-lg bg-violet-700 px-4 py-2 text-sm font-semibold text-white">
+                  Continuar a Incorporación <ChevronRight size={16} aria-hidden="true" />
+                </button>
+              </section>
+            ) : null}
           </div>
         </main>
         <FrozenProgress stage={stage} progressStage={progressStage} onSelect={selectStage} blockedAfterStage={lastAvailableStage} />
@@ -1567,7 +1581,7 @@ function UserBubble({ children }: { children: React.ReactNode }) { return <div c
 function FocusedQuestion({ eyebrow, title, help }: { eyebrow: string; title: string; help: string }) { return <section className="ml-0 rounded-xl border border-violet-200 bg-violet-50 p-4 md:ml-11"><p className="text-xs font-bold uppercase tracking-[0.14em] text-violet-800">{eyebrow}</p><h3 className="mt-1 text-lg font-semibold text-slate-950">{title}</h3><p className="mt-1 text-sm leading-6 text-slate-700">{help}</p></section>; }
 function FrozenProgress({ stage, progressStage, onSelect, blockedAfterStage }: { stage: number; progressStage: number; onSelect: (stage: number) => void; blockedAfterStage: number | null }) {
   const notes = ['Prompt de diagnóstico externo recibido', 'Conversación: resultado, contexto, señal, condiciones y decisión', 'Subir archivos, pegar iniciativas o continuar sin ellas', 'Comparar fuentes, detectar solapamientos y confirmar o posponer vínculos', 'Organizar retos cuando ayuden a orientar y coordinar', 'Preparar Brief de convocatoria o de iniciativa existente', 'Preparar encargos independientes; un responsable y hasta dos colaboradores por encargo'];
-  return <aside className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm xl:sticky xl:top-6" aria-label="Tu avance"><div className="flex items-center justify-between"><h2 className="font-semibold text-slate-950">Tu avance</h2><span className="rounded-full bg-violet-100 px-2 py-1 text-xs font-bold text-violet-800">{progressStage + 1} de 7</span></div><div className="mt-3 h-2 overflow-hidden rounded-full bg-slate-100"><span className="block h-full rounded-full bg-violet-600" style={{ width: `${((progressStage + 1) / 7) * 100}%` }} /></div><ol className="mt-5 space-y-3">{FROZEN_SETUP_STAGES.map((name, index) => { const blocked = blockedAfterStage !== null && index > blockedAfterStage; const completed = index < progressStage; const blockedReason = index === 6 && blockedAfterStage === 5 ? 'Disponible al continuar desde una versión de Brief confirmada' : 'Disponible cuando el scope confirme las etapas anteriores'; return <li key={name}><button type="button" disabled={blocked} onClick={() => onSelect(index)} className={`flex w-full gap-3 text-left ${blocked ? 'cursor-not-allowed text-slate-400' : index === stage ? 'text-slate-950' : 'text-slate-500'}`}><span className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[11px] font-bold ${completed ? 'bg-emerald-100 text-emerald-700' : index === stage ? 'bg-violet-600 text-white' : 'bg-slate-100 text-slate-500'}`}>{completed ? '✓' : index + 1}</span><span><b className="text-sm">{name}</b><small className="mt-0.5 block text-xs leading-4">{blocked ? blockedReason : index === stage ? notes[index] : completed ? 'Revisado o completado' : 'Todavía no necesario'}</small></span></button></li>; })}</ol><div className="mt-5 rounded-xl bg-violet-50 p-3 text-sm text-violet-950"><b>Lo importante ahora</b><p className="mt-1">{notes[stage]}</p></div><p className="mt-3 text-xs leading-5 text-slate-500">Los checks representan avance de configuración, no cumplimiento del objetivo de negocio.</p></aside>;
+  return <aside className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm xl:sticky xl:top-6" aria-label="Tu avance"><div className="flex items-center justify-between"><h2 className="font-semibold text-slate-950">Tu avance</h2><span className="rounded-full bg-violet-100 px-2 py-1 text-xs font-bold text-violet-800">{progressStage + 1} de 7</span></div><div className="mt-3 h-2 overflow-hidden rounded-full bg-slate-100"><span className="block h-full rounded-full bg-violet-600" style={{ width: `${((progressStage + 1) / 7) * 100}%` }} /></div><ol className="mt-5 space-y-3">{FROZEN_SETUP_STAGES.map((name, index) => { const blocked = blockedAfterStage !== null && index > blockedAfterStage; const completed = index < progressStage; const blockedReason = index === 2 && blockedAfterStage < 2 ? 'Disponible después de confirmar el Objetivo' : index === 6 && blockedAfterStage === 5 ? 'Disponible al continuar desde una versión de Brief confirmada' : 'Disponible cuando el scope confirme las etapas anteriores'; return <li key={name}><button type="button" disabled={blocked} onClick={() => onSelect(index)} className={`flex w-full gap-3 text-left ${blocked ? 'cursor-not-allowed text-slate-400' : index === stage ? 'text-slate-950' : 'text-slate-500'}`}><span className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[11px] font-bold ${completed ? 'bg-emerald-100 text-emerald-700' : index === stage ? 'bg-violet-600 text-white' : 'bg-slate-100 text-slate-500'}`}>{completed ? '✓' : index + 1}</span><span><b className="text-sm">{name}</b><small className="mt-0.5 block text-xs leading-4">{blocked ? blockedReason : index === stage ? notes[index] : completed ? 'Revisado o completado' : 'Todavía no necesario'}</small></span></button></li>; })}</ol><div className="mt-5 rounded-xl bg-violet-50 p-3 text-sm text-violet-950"><b>Lo importante ahora</b><p className="mt-1">{notes[stage]}</p></div><p className="mt-3 text-xs leading-5 text-slate-500">Los checks representan avance de configuración, no cumplimiento del objetivo de negocio.</p></aside>;
 }
 function frozenStageFrom(projection: BootstrapProjection): number { if (!projection.anchor.contextSummary?.trim()) return 0; if (projection.anchor.status !== 'anchor_confirmed') return 1; if (projection.existingWorkStatus === 'unknown') return 2; if (projection.existingWorkStatus === 'has_work' && (!projection.latestAnalysisRun || !projection.analysisSummary.materialReviewComplete)) return 3; return 4; }
 function frozenStageTitle(stage: number): string { return ['Empecemos con el contexto', 'Conversemos para definir qué queremos lograr', '¿Qué está haciendo hoy tu organización?', 'Analizar evidencias y relaciones', 'Estructurar retos solo si ayudan', 'Convertir necesidades en encargos claros', 'Activar equipos y dar seguimiento'][stage] ?? 'Configurar con Copilot'; }
@@ -2977,6 +2991,8 @@ function ObjectiveConversation({
   const [suggestionStatus, setSuggestionStatus] = useState<'idle' | 'loading' | 'error'>('idle');
   const [answerOrigin, setAnswerOrigin] = useState<'user_declared' | 'ai_suggested'>('user_declared');
   const [draft, setDraft] = useState(anchor);
+  const [confirming, setConfirming] = useState(false);
+  const [confirmationError, setConfirmationError] = useState<string | null>(null);
   const submittedAnswers = useRef(new Set<string>());
   useEffect(() => { setDraft(anchor); }, [anchor]);
   const question = nextObjectiveQuestion(draft);
@@ -3067,6 +3083,20 @@ function ObjectiveConversation({
     }
   };
 
+  const confirmObjective = async () => {
+    if (confirming) return;
+    setConfirming(true);
+    setConfirmationError(null);
+    try {
+      await onConfirm();
+    } catch (cause) {
+      const detail = cause instanceof Error && cause.message.trim() ? ` ${cause.message}` : '';
+      setConfirmationError(`No pudimos confirmar el objetivo. Revisa la información e inténtalo de nuevo.${detail}`);
+    } finally {
+      setConfirming(false);
+    }
+  };
+
   return (
     <section className="grid gap-4 rounded-xl border border-sky-200 bg-sky-50/50 p-4 lg:grid-cols-[minmax(0,1fr)_minmax(280px,0.8fr)]" data-testid="portfolio-objective-conversation">
       <div className="space-y-3" aria-label="Conversación de objetivo">
@@ -3138,7 +3168,8 @@ function ObjectiveConversation({
           <ObjectiveCardField label="Pendientes explícitos" value={unknownObjectiveFields(draft.sourceRefs).map((field) => objectiveQuestions[field].label).join(', ') || null} />
         </dl>
         <p className="mt-4 text-xs text-slate-600">Estado de revisión: {statusLabel(draft.status)}. Esta ficha no crea un frente, reto ni iniciativa.</p>
-        {canConfirm ? <button type="button" onClick={() => void onConfirm()} className="mt-4 inline-flex items-center gap-2 rounded-lg bg-slate-950 px-4 py-2 text-sm font-semibold text-white"><CheckCircle2 size={16} />Confirmar este punto de partida y continuar</button> : <p className="mt-4 text-sm text-slate-600">Podrás confirmarlo cuando el borrador tenga información suficiente o los vacíos estén declarados.</p>}
+        {canConfirm ? <button type="button" disabled={confirming} onClick={() => void confirmObjective()} className="mt-4 inline-flex items-center gap-2 rounded-lg bg-slate-950 px-4 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60"><CheckCircle2 size={16} />{confirming ? 'Confirmando objetivo…' : 'Confirmar este punto de partida y continuar'}</button> : <p className="mt-4 text-sm text-slate-600">Podrás confirmarlo cuando el borrador tenga información suficiente o los vacíos estén declarados.</p>}
+        {confirmationError ? <p role="alert" className="mt-3 rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-900">{confirmationError}</p> : null}
         <div className="mt-3"><AnchorEditor anchor={draft} onSave={onSave} /></div>
       </div>
     </section>
