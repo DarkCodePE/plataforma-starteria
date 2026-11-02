@@ -1526,9 +1526,11 @@ test.describe('Portfolio Entry 114D Critical Handoff and explicit legacy compati
     const confirmAnchor = page.getByRole('button', { name: /Confirmar este punto de partida y continuar/i });
     if (await confirmAnchor.isVisible().catch(() => false)) {
       await confirmAnchor.click();
+      await continueToPortfolioWorkIntake(page);
+    } else {
+      await expect(page.getByTestId('portfolio-bootstrap-work-intake')).toBeVisible({ timeout: 15_000 });
     }
     const beforeNoWork = await canonicalCounts();
-    await expect(page.getByTestId('portfolio-bootstrap-work-intake')).toBeVisible({ timeout: 15_000 });
     await page.getByRole('button', { name: /Todavia no tenemos iniciativas/i }).click();
     await page.getByRole('button', { name: /Todavia no tenemos iniciativas activas/i }).click();
 
@@ -1636,7 +1638,7 @@ async function startPortfolioBootstrapFromLegacyEntry(page: Page) {
   const confirmAnchor = page.getByRole('button', { name: /Confirmar este punto de partida y continuar/i });
   if (await confirmAnchor.isVisible().catch(() => false)) {
     await confirmAnchor.click();
-    await expect(page.getByTestId('portfolio-bootstrap-work-intake')).toBeVisible({ timeout: 15_000 });
+    await continueToPortfolioWorkIntake(page);
   }
   await page.reload();
   await expect(page.getByTestId('portfolio-bootstrap-work-intake')).toBeVisible({ timeout: 15_000 });
@@ -1644,6 +1646,14 @@ async function startPortfolioBootstrapFromLegacyEntry(page: Page) {
   expect(dbState.session.id).toBe(bootstrapSessionId);
   expect(dbState.session.anchor.id).toBe(anchorId);
   return { continuationId, bootstrapSessionId, anchorId };
+}
+
+async function continueToPortfolioWorkIntake(page: Page) {
+  const continueToIncorporation = page.getByRole('button', { name: 'Continuar a Incorporación', exact: true });
+  await expect(continueToIncorporation).toBeVisible({ timeout: 15_000 });
+  await expect(continueToIncorporation).toBeEnabled();
+  await continueToIncorporation.click();
+  await expect(page.getByTestId('portfolio-bootstrap-work-intake')).toBeVisible({ timeout: 15_000 });
 }
 
 function createPortfolioImportFixture(format: 'csv' | 'xlsx', testInfo: TestInfo): string {
