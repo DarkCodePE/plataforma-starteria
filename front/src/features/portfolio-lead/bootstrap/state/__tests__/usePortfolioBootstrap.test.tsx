@@ -273,6 +273,20 @@ describe('usePortfolioBootstrap', () => {
     expect(hook.result.current.analysisStatus).toBe('idle');
   });
 
+  it('keeps B3 selected when analysis fails by exposing and rethrowing the backend error', async () => {
+    analyzeWork.mockRejectedValueOnce(new Error('El análisis no pudo completarse.'));
+    const hook = renderHook(() => usePortfolioBootstrap('cont-1'));
+    await waitFor(() => expect(hook.result.current.status).toBe('ready'));
+
+    await act(async () => {
+      await expect(hook.result.current.analyzeWorkItems()).rejects.toThrow('El análisis no pudo completarse.');
+    });
+
+    expect(hook.result.current.analysisStatus).toBe('error');
+    expect(hook.result.current.analysisError).toBe('No pudimos analizar el trabajo detectado.');
+    expect(getSession).not.toHaveBeenCalled();
+  });
+
   it('reviews proposed mutations through explicit B4 actions and reloads', async () => {
     const hook = renderHook(() => usePortfolioBootstrap('cont-1'));
     await waitFor(() => expect(hook.result.current.status).toBe('ready'));

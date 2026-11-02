@@ -296,6 +296,7 @@ export function usePortfolioBootstrap(
       setAnalysisError(err instanceof PortfolioBootstrapClientError
         ? err.apiError.message
         : 'No pudimos analizar el trabajo detectado.');
+      throw err;
     }
   }, [data?.bootstrapSession.id, reloadCurrentSession]);
 

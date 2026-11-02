@@ -263,6 +263,7 @@ function PortfolioCopilotWorkspace({
   const [confirmedOrganization, setConfirmedOrganization] = useState<PortfolioOrganizationProposal | null>(
     organizationProposal?.materialization ? organizationProposal : null,
   );
+  const [organizationContinuationSessionId, setOrganizationContinuationSessionId] = useState<string | null>(null);
   const [briefConfirmedChallengeIds, setBriefConfirmedChallengeIds] = useState<Set<string>>(new Set());
   const handleBriefConfirmationChange = useCallback((challengeId: string, confirmed: boolean) => {
     setBriefConfirmedChallengeIds((current) => {
@@ -272,18 +273,24 @@ function PortfolioCopilotWorkspace({
       return next;
     });
   }, []);
-  const inferredStage = frozenStageFrom(projection);
+  const inferredStage = frozenStageFrom(projection, bootstrapPhase);
   const organizationIsMaterialized = Boolean(confirmedOrganization?.materialization ?? organizationProposal?.materialization);
   const hasAnalysisHardBlocker = projection.analysisSummary.hardBlockingNow > 0 && !organizationIsMaterialized;
   const progressStage = assignmentTarget ? 6 : organizationIsMaterialized ? 5 : inferredStage;
-  const earlyScope = bootstrapPhase === 'B1_ANCHOR' || bootstrapPhase === 'B2_WORK_INTAKE';
-  const lastAvailableStage = hasAnalysisHardBlocker
-    ? 3
-    : earlyScope
-      ? progressStage
-      : assignmentTarget
-        ? 6
-        : 5;
+  const explicitOrganizationContinuation = organizationContinuationSessionId === projection.bootstrapSessionId;
+  const lastAvailableStage = assignmentTarget
+    ? 6
+    : organizationIsMaterialized
+      ? 5
+      : projection.existingWorkStatus === 'no_existing_work'
+        ? explicitOrganizationContinuation ? 4 : 2
+        : bootstrapPhase === 'B3_PROVISIONAL_STRUCTURING'
+          ? 2
+          : bootstrapPhase === 'B4_MATERIAL_REVIEW'
+            ? hasAnalysisHardBlocker ? 3 : explicitOrganizationContinuation ? 4 : 3
+            : bootstrapPhase === 'B1_ANCHOR' || bootstrapPhase === 'B2_WORK_INTAKE'
+              ? progressStage
+              : 5;
   const requestedStage = selectedStage ?? progressStage;
   const stage = Math.min(requestedStage, lastAvailableStage);
   const selectStage = (nextStage: number) => {
@@ -294,6 +301,18 @@ function PortfolioCopilotWorkspace({
     await onConfirmAnchor();
     setSelectedStage(1);
   }, [onConfirmAnchor]);
+  const analyzeAndOpenReview = useCallback(async () => {
+    try {
+      await onAnalyzeWorkItems();
+      setSelectedStage(3);
+    } catch {
+      // The hook exposes the persisted backend error; the stage must remain E3.
+    }
+  }, [onAnalyzeWorkItems]);
+  const continueToOrganization = useCallback(() => {
+    setOrganizationContinuationSessionId(projection.bootstrapSessionId);
+    setSelectedStage(4);
+  }, [projection.bootstrapSessionId]);
   const reviewingConfirmedObjective = progressStage === 2 && lastAvailableStage >= 2 && stage < progressStage;
   useEffect(() => {
     if (organizationProposal?.materialization) {
@@ -327,7 +346,7 @@ function PortfolioCopilotWorkspace({
       onDeclareNoExistingWork={onDeclareNoExistingWork}
       onUpdateWorkItem={onUpdateWorkItem}
       onRemoveWorkItem={onRemoveWorkItem}
-      onAnalyzeWorkItems={onAnalyzeWorkItems}
+      onAnalyzeWorkItems={analyzeAndOpenReview}
       onConfirmProposedMutation={onConfirmProposedMutation}
       onReopenProposedMutationReview={onReopenProposedMutationReview}
       onCorrectProposedMutation={onCorrectProposedMutation}
@@ -341,7 +360,8 @@ function PortfolioCopilotWorkspace({
       importStatus={importStatus}
       importError={importError}
       activeImport={activeImport}
-      onContinueToOrganization={() => setSelectedStage(4)}
+      onContinueWithoutWork={continueToOrganization}
+      onContinueToOrganization={continueToOrganization}
     />
   );
 
@@ -1583,7 +1603,17 @@ function FrozenProgress({ stage, progressStage, onSelect, blockedAfterStage }: {
   const notes = ['Prompt de diagnóstico externo recibido', 'Conversación: resultado, contexto, señal, condiciones y decisión', 'Subir archivos, pegar iniciativas o continuar sin ellas', 'Comparar fuentes, detectar solapamientos y confirmar o posponer vínculos', 'Organizar retos cuando ayuden a orientar y coordinar', 'Preparar Brief de convocatoria o de iniciativa existente', 'Preparar encargos independientes; un responsable y hasta dos colaboradores por encargo'];
   return <aside className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm xl:sticky xl:top-6" aria-label="Tu avance"><div className="flex items-center justify-between"><h2 className="font-semibold text-slate-950">Tu avance</h2><span className="rounded-full bg-violet-100 px-2 py-1 text-xs font-bold text-violet-800">{progressStage + 1} de 7</span></div><div className="mt-3 h-2 overflow-hidden rounded-full bg-slate-100"><span className="block h-full rounded-full bg-violet-600" style={{ width: `${((progressStage + 1) / 7) * 100}%` }} /></div><ol className="mt-5 space-y-3">{FROZEN_SETUP_STAGES.map((name, index) => { const blocked = blockedAfterStage !== null && index > blockedAfterStage; const completed = index < progressStage; const blockedReason = index === 2 && blockedAfterStage < 2 ? 'Disponible después de confirmar el Objetivo' : index === 6 && blockedAfterStage === 5 ? 'Disponible al continuar desde una versión de Brief confirmada' : 'Disponible cuando el scope confirme las etapas anteriores'; return <li key={name}><button type="button" disabled={blocked} onClick={() => onSelect(index)} className={`flex w-full gap-3 text-left ${blocked ? 'cursor-not-allowed text-slate-400' : index === stage ? 'text-slate-950' : 'text-slate-500'}`}><span className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[11px] font-bold ${completed ? 'bg-emerald-100 text-emerald-700' : index === stage ? 'bg-violet-600 text-white' : 'bg-slate-100 text-slate-500'}`}>{completed ? '✓' : index + 1}</span><span><b className="text-sm">{name}</b><small className="mt-0.5 block text-xs leading-4">{blocked ? blockedReason : index === stage ? notes[index] : completed ? 'Revisado o completado' : 'Todavía no necesario'}</small></span></button></li>; })}</ol><div className="mt-5 rounded-xl bg-violet-50 p-3 text-sm text-violet-950"><b>Lo importante ahora</b><p className="mt-1">{notes[stage]}</p></div><p className="mt-3 text-xs leading-5 text-slate-500">Los checks representan avance de configuración, no cumplimiento del objetivo de negocio.</p></aside>;
 }
-function frozenStageFrom(projection: BootstrapProjection): number { if (!projection.anchor.contextSummary?.trim()) return 0; if (projection.anchor.status !== 'anchor_confirmed') return 1; if (projection.existingWorkStatus === 'unknown') return 2; if (projection.existingWorkStatus === 'has_work' && (!projection.latestAnalysisRun || !projection.analysisSummary.materialReviewComplete)) return 3; return 4; }
+function frozenStageFrom(
+  projection: BootstrapProjection,
+  bootstrapPhase: PortfolioBootstrapResponse['bootstrapSession']['bootstrapPhase'],
+): number {
+  if (!projection.anchor.contextSummary?.trim()) return 0;
+  if (projection.anchor.status !== 'anchor_confirmed') return 1;
+  if (projection.existingWorkStatus === 'unknown' || projection.existingWorkStatus === 'no_existing_work') return 2;
+  if (bootstrapPhase === 'B3_PROVISIONAL_STRUCTURING') return 2;
+  if (bootstrapPhase === 'B4_MATERIAL_REVIEW') return 3;
+  return 4;
+}
 function frozenStageTitle(stage: number): string { return ['Empecemos con el contexto', 'Conversemos para definir qué queremos lograr', '¿Qué está haciendo hoy tu organización?', 'Analizar evidencias y relaciones', 'Estructurar retos solo si ayudan', 'Convertir necesidades en encargos claros', 'Activar equipos y dar seguimiento'][stage] ?? 'Configurar con Copilot'; }
 
 function PortfolioBootstrapHomeA({
@@ -1660,6 +1690,10 @@ function PortfolioBootstrapHomeB({
   );
 }
 
+function intakeFailureMessage(error: unknown, fallback: string): string {
+  return error instanceof Error && error.message.trim() ? error.message : fallback;
+}
+
 function PortfolioBootstrapWorkIntake({
   projection,
   onPasteWorkItems,
@@ -1683,6 +1717,7 @@ function PortfolioBootstrapWorkIntake({
   importStatus,
   importError,
   activeImport,
+  onContinueWithoutWork,
   onContinueToOrganization,
 }: {
   projection: NonNullable<ReturnType<typeof projectBootstrapHome>>;
@@ -1707,6 +1742,7 @@ function PortfolioBootstrapWorkIntake({
   importStatus: 'idle' | 'uploading' | 'committing' | 'error';
   importError: string | null;
   activeImport: PortfolioBootstrapImportBatch | null;
+  onContinueWithoutWork: () => void;
   onContinueToOrganization: () => void;
 }) {
   const [mode, setMode] = useState<'paste' | 'manual' | 'upload' | 'none'>('paste');
@@ -1714,6 +1750,7 @@ function PortfolioBootstrapWorkIntake({
   const [manual, setManual] = useState({ label: '', purpose: '', currentStateHint: 'unknown' });
   const [mappingDraft, setMappingDraft] = useState<PortfolioBootstrapImportMapping>({});
   const [saving, setSaving] = useState(false);
+  const [intakeError, setIntakeError] = useState<string | null>(null);
   const [reviewOpen, setReviewOpen] = useState(false);
   const [addMoreOpen, setAddMoreOpen] = useState(false);
   const hasItems = projection.workItems.length > 0;
@@ -1752,9 +1789,15 @@ function PortfolioBootstrapWorkIntake({
           onSubmit={async (event) => {
             event.preventDefault();
             setSaving(true);
-            await onPasteWorkItems(pasteText);
-            setPasteText('');
-            setSaving(false);
+            setIntakeError(null);
+            try {
+              await onPasteWorkItems(pasteText);
+              setPasteText('');
+            } catch (err) {
+              setIntakeError(intakeFailureMessage(err, 'No pudimos guardar las iniciativas.'));
+            } finally {
+              setSaving(false);
+            }
           }}
         >
           <label className="block text-sm font-semibold text-slate-700">
@@ -1783,13 +1826,19 @@ function PortfolioBootstrapWorkIntake({
           onSubmit={async (event) => {
             event.preventDefault();
             setSaving(true);
-            await onAddManualWorkItem({
-              label: manual.label,
-              purpose: manual.purpose || undefined,
-              currentStateHint: manual.currentStateHint as ManualPortfolioBootstrapWorkItemInput['currentStateHint'],
-            });
-            setManual({ label: '', purpose: '', currentStateHint: 'unknown' });
-            setSaving(false);
+            setIntakeError(null);
+            try {
+              await onAddManualWorkItem({
+                label: manual.label,
+                purpose: manual.purpose || undefined,
+                currentStateHint: manual.currentStateHint as ManualPortfolioBootstrapWorkItemInput['currentStateHint'],
+              });
+              setManual({ label: '', purpose: '', currentStateHint: 'unknown' });
+            } catch (err) {
+              setIntakeError(intakeFailureMessage(err, 'No pudimos guardar el alta manual.'));
+            } finally {
+              setSaving(false);
+            }
           }}
         >
           <input
@@ -1855,8 +1904,14 @@ function PortfolioBootstrapWorkIntake({
             type="button"
             onClick={async () => {
               setSaving(true);
-              await onDeclareNoExistingWork();
-              setSaving(false);
+              setIntakeError(null);
+              try {
+                await onDeclareNoExistingWork();
+              } catch (err) {
+                setIntakeError(intakeFailureMessage(err, 'No pudimos guardar la ausencia de iniciativas.'));
+              } finally {
+                setSaving(false);
+              }
             }}
             disabled={saving}
             className="inline-flex items-center gap-2 rounded-lg bg-slate-950 px-4 py-2.5 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:bg-slate-300"
@@ -1867,6 +1922,12 @@ function PortfolioBootstrapWorkIntake({
         </div>
       ) : null}
       </> : null}
+
+      {intakeError ? (
+        <div role="alert" className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950">
+          {intakeError} Inténtalo de nuevo; conservamos la información que introdujiste.
+        </div>
+      ) : null}
 
       {!analysisSurface && noWork ? (
         <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-950">
@@ -1913,16 +1974,20 @@ function PortfolioBootstrapWorkIntake({
         />
       ) : null}
 
-      {analysisSurface ? <AnalysisCompletionGate projection={projection} onContinue={onContinueToOrganization} /> : hasItems || noWork ? (
+      {analysisSurface ? <AnalysisCompletionGate projection={projection} onContinue={onContinueToOrganization} /> : noWork ? (
+        <PrimaryAction
+          label="Continuar sin iniciativas"
+          description="La ausencia ya está persistida. Continuarás a Organización sin ejecutar un análisis ficticio."
+          onClick={onContinueWithoutWork}
+        />
+      ) : hasItems ? (
         <PrimaryAction
           label={hasProposals ? 'Revisar análisis y propuestas' : `Analizar ${projection.workItems.length} iniciativas`}
           description={hasProposals
             ? 'Pendiente de tu revision. La propuesta sigue siendo provisional.'
-            : noWork
-              ? 'No hay trabajo declarado para analizar en B3.'
-              : 'Startería preparará una lectura revisable: alineamiento, evidencia, vacíos, posibles solapamientos y razones.'}
-          disabled={noWork || analyzing}
-          onClick={hasProposals ? () => setReviewOpen(true) : hasItems ? onAnalyzeWorkItems : undefined}
+            : 'Startería preparará una lectura revisable: alineamiento, evidencia, vacíos, posibles solapamientos y razones.'}
+          disabled={analyzing}
+          onClick={hasProposals ? () => setReviewOpen(true) : onAnalyzeWorkItems}
         />
       ) : null}
     </section>
@@ -1964,6 +2029,11 @@ function ImportWorkItemsPanel({
 
   return (
     <div className="space-y-4 rounded-lg border border-slate-200 bg-slate-50 p-4" data-testid="portfolio-import-panel">
+      <p className="text-sm leading-6 text-slate-700">
+        CSV y XLSX permiten incorporar filas provisionales. Un PDF se registra solo como referencia y metadatos:
+        Startería no extrae iniciativas de forma estructurada y no custodia el archivo binario. Para incorporar trabajo
+        analizable, pega una lista o añade iniciativas manualmente.
+      </p>
       <label className="block text-sm font-semibold text-slate-700">
         Sube un PDF, CSV o Excel con iniciativas, proyectos o trabajos existentes.
         <input
