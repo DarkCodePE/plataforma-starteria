@@ -1,4 +1,5 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import React from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { http, HttpResponse } from 'msw';
@@ -106,8 +107,10 @@ describe('PortfolioBootstrapHome — frozen Copilot-first composition', () => {
     fireEvent.click(futureStage);
 
     expect(futureStage).toBeDisabled();
+    expect(screen.getByText('Disponible después de confirmar el Objetivo')).toBeInTheDocument();
     expect(screen.getByText('Configurar con Copilot · 1 de 7')).toBeInTheDocument();
     expect(screen.queryByText('Revisado o completado')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Continuar a Incorporación' })).not.toBeInTheDocument();
     expect(input.onUpdateAnchor).not.toHaveBeenCalled();
     expect(input.onConfirmAnchor).not.toHaveBeenCalled();
   });
@@ -117,6 +120,80 @@ describe('PortfolioBootstrapHome — frozen Copilot-first composition', () => {
 
     expect(screen.getByText('Configurar con Copilot · 3 de 7')).toBeInTheDocument();
     expect(screen.getAllByText('Revisado o completado')).toHaveLength(2);
+  });
+
+  it('CA-1 confirms Objetivo and requires the explicit CTA before showing Incorporación', async () => {
+    const user = userEvent.setup();
+    const onConfirmAnchor = vi.fn().mockResolvedValue(undefined);
+    const input = props({ data: makeBootstrap('anchor_sufficient'), onConfirmAnchor });
+    const { rerender } = render(<PortfolioBootstrapHome {...input} />);
+
+    await user.click(screen.getByRole('button', { name: /Confirmar este punto de partida y continuar/i }));
+    await waitFor(() => expect(onConfirmAnchor).toHaveBeenCalledTimes(1));
+    rerender(<PortfolioBootstrapHome {...input} data={makeBootstrap('anchor_confirmed')} />);
+
+    expect(screen.getByRole('heading', { name: 'Conversemos para definir qué queremos lograr' })).toBeInTheDocument();
+    expect(screen.getByText('Tu avance confirmado está en Incorporación.')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Continuar a Incorporación' }));
+
+    expect(screen.getByRole('heading', { name: '¿Qué está haciendo hoy tu organización?' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Continuar a Incorporación' })).not.toBeInTheDocument();
+  });
+
+  it('CA-2 clears a manual E2 review selection through the explicit continuation after confirmation', async () => {
+    const user = userEvent.setup();
+    const onConfirmAnchor = vi.fn().mockResolvedValue(undefined);
+    const input = props({ data: makeBootstrap('anchor_sufficient'), onConfirmAnchor });
+    const { rerender } = render(<PortfolioBootstrapHome {...input} />);
+
+    await user.click(screen.getByRole('button', { name: /2 Objetivo/i }));
+    await user.click(screen.getByRole('button', { name: /Confirmar este punto de partida y continuar/i }));
+    await waitFor(() => expect(onConfirmAnchor).toHaveBeenCalledTimes(1));
+    rerender(<PortfolioBootstrapHome {...input} data={makeBootstrap('anchor_confirmed')} />);
+    await user.click(screen.getByRole('button', { name: 'Continuar a Incorporación' }));
+
+    expect(screen.getByRole('heading', { name: '¿Qué está haciendo hoy tu organización?' })).toBeInTheDocument();
+  });
+
+  it('CA-3 keeps Objetivo editable and shows an actionable error when confirmation fails', async () => {
+    const user = userEvent.setup();
+    const onConfirmAnchor = vi.fn().mockRejectedValue(new Error('No pudimos confirmar el objetivo. Revisa tu conexión e inténtalo de nuevo.'));
+    render(<PortfolioBootstrapHome {...props({ data: makeBootstrap('anchor_sufficient'), onConfirmAnchor })} />);
+
+    await user.click(screen.getByRole('button', { name: /Confirmar este punto de partida y continuar/i }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('No pudimos confirmar el objetivo. Revisa tu conexión e inténtalo de nuevo.');
+    expect(screen.getByRole('heading', { name: 'Conversemos para definir qué queremos lograr' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Confirmar este punto de partida y continuar/i })).toBeEnabled();
+    expect(screen.queryByRole('button', { name: 'Continuar a Incorporación' })).not.toBeInTheDocument();
+  });
+
+  it('CA-4 re-enters a confirmed setup at Incorporación without repeating confirmation', () => {
+    const input = props({ data: makeBootstrap('anchor_confirmed') });
+    render(<PortfolioBootstrapHome {...input} />);
+
+    expect(screen.getByRole('heading', { name: '¿Qué está haciendo hoy tu organización?' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Confirmar este punto de partida y continuar/i })).not.toBeInTheDocument();
+    expect(input.onConfirmAnchor).not.toHaveBeenCalled();
+  });
+
+  it('CA-5 reviews Objetivo without losing persisted progress and returns to Incorporación', async () => {
+    const user = userEvent.setup();
+    const data = makeBootstrap('anchor_confirmed');
+    const input = props({ data });
+    render(<PortfolioBootstrapHome {...input} />);
+
+    await user.click(screen.getByRole('button', { name: /Objetivo Revisado o completado/i }));
+
+    expect(screen.getByRole('heading', { name: 'Conversemos para definir qué queremos lograr' })).toBeInTheDocument();
+    expect(screen.getByText('Configurar con Copilot · 3 de 7 · Revisando Objetivo')).toBeInTheDocument();
+    expect(screen.getByText('Tu avance confirmado está en Incorporación.')).toBeInTheDocument();
+    expect(data.anchor?.status).toBe('anchor_confirmed');
+    await user.click(screen.getByRole('button', { name: 'Continuar a Incorporación' }));
+
+    expect(screen.getByRole('heading', { name: '¿Qué está haciendo hoy tu organización?' })).toBeInTheDocument();
+    expect(input.onUpdateAnchor).not.toHaveBeenCalled();
+    expect(input.onConfirmAnchor).not.toHaveBeenCalled();
   });
 
   it('persists PL-00 external context as a declared provisional source', async () => {
