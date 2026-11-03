@@ -5,6 +5,7 @@ import type { PortfolioOrganizationService } from './portfolio-organization.serv
 import type { PortfolioSetupCompletionService } from './portfolio-setup-completion.service';
 import {
   analyzeBodySchema,
+  advancementConditionParamsSchema,
   bootstrapSessionParamsSchema,
   completePortfolioSetupBodySchema,
   confirmPortfolioOrganizationBodySchema,
@@ -19,6 +20,7 @@ import {
   reviewProposedMutationBodySchema,
   savePortfolioOrganizationProposalBodySchema,
   updateAnchorBodySchema,
+  updateAdvancementConditionDispositionBodySchema,
   updateImportMappingBodySchema,
   updateWorkItemBodySchema,
   uploadImportBodySchema,
@@ -31,6 +33,41 @@ export class PortfolioBootstrapController {
     private readonly organizationService: PortfolioOrganizationService,
     private readonly completionService: PortfolioSetupCompletionService,
   ) {}
+
+  getE5Eligibility = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      if (!req.user?.id) throw AppError.unauthorized('No autorizado.', 'PORTFOLIO_BOOTSTRAP_AUTH_REQUIRED');
+      const { sessionId } = bootstrapSessionParamsSchema.parse(req.params);
+      const data = await this.organizationService.getE5Eligibility({
+        sessionId,
+        authenticatedUserId: req.user.id,
+        roles: req.user.roles,
+        permissions: req.user.permissions,
+      });
+      res.json({ success: true, data });
+    } catch (error) { next(error); }
+  };
+
+  updateAdvancementConditionDisposition = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      if (!req.user?.id) throw AppError.unauthorized('No autorizado.', 'PORTFOLIO_BOOTSTRAP_AUTH_REQUIRED');
+      const { sessionId, conditionId } = advancementConditionParamsSchema.parse(req.params);
+      const body = updateAdvancementConditionDispositionBodySchema.parse(req.body);
+      const data = await this.organizationService.updateAdvancementConditionDisposition({
+        sessionId,
+        conditionId,
+        authenticatedUserId: req.user.id,
+        roles: req.user.roles,
+        permissions: req.user.permissions,
+        disposition: body.disposition!,
+        expectedVersion: body.expectedVersion!,
+        reason: body.reason!,
+        evidenceRefs: body.evidenceRefs!,
+        idempotencyKey: req.get('Idempotency-Key') ?? '',
+      });
+      res.json({ success: true, data });
+    } catch (error) { next(error); }
+  };
 
   completeSetup = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {

@@ -30,6 +30,8 @@ const service = {
 };
 
 const organizationService = {
+  getE5Eligibility: vi.fn(),
+  updateAdvancementConditionDisposition: vi.fn(),
   getProposal: vi.fn(),
   saveReviewedProposal: vi.fn(),
   confirmAndMaterialize: vi.fn(),
@@ -101,6 +103,11 @@ describe('portfolio-bootstrap router', () => {
     });
     service.getLatestReading.mockResolvedValue({ id: 'reading-1', version: 1 });
     organizationService.getProposal.mockResolvedValue(null);
+    organizationService.getE5Eligibility.mockResolvedValue({ allowed: false, reasonCodes: ['HARD_BLOCKERS_ACTIVE'], blockers: [] });
+    organizationService.updateAdvancementConditionDisposition.mockResolvedValue({
+      condition: { id: 'condition-1', disposition: 'resolved', dispositionVersion: 2 },
+      eligibility: { allowed: true, reasonCodes: ['ANALYZED_WORK_ELIGIBLE'], blockers: [] },
+    });
     organizationService.saveReviewedProposal.mockResolvedValue({
       id: 'proposal-1', version: 1, status: 'reviewed', materialization: null,
     });
@@ -188,6 +195,31 @@ describe('portfolio-bootstrap router', () => {
     expect(confirmed.body.data).toMatchObject({
       status: 'materialized', materialization: { id: 'materialization-1' },
     });
+  });
+
+  it('exposes E5 eligibility and auditable blocker disposition commands', async () => {
+    await request(makeApp())
+      .get('/api/v1/portfolio-bootstrap/sessions/bs-1/e5-eligibility')
+      .expect(200);
+
+    await request(makeApp())
+      .patch('/api/v1/portfolio-bootstrap/sessions/bs-1/advancement-conditions/condition-1/disposition')
+      .set('Idempotency-Key', 'resolve-condition-1')
+      .send({
+        disposition: 'resolved',
+        expectedVersion: 1,
+        reason: 'Dependencia resuelta y verificada.',
+        evidenceRefs: ['evidence://ticket/123'],
+      })
+      .expect(200);
+
+    expect(organizationService.getE5Eligibility).toHaveBeenCalledWith(expect.objectContaining({
+      sessionId: 'bs-1', authenticatedUserId: 'portfolio-lead-1',
+    }));
+    expect(organizationService.updateAdvancementConditionDisposition).toHaveBeenCalledWith(expect.objectContaining({
+      sessionId: 'bs-1', conditionId: 'condition-1', disposition: 'resolved', expectedVersion: 1,
+      idempotencyKey: 'resolve-condition-1',
+    }));
   });
 
   it('opens the normal Portfolio Lead entry as a provisional direct Bootstrap session', async () => {
