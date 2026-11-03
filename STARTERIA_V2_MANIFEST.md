@@ -224,45 +224,45 @@ HU: KAN-215
 functional_authority: KAN-216 (RESUELTO; FA-01..FA-07, hard/soft, disposiciones humanas y anti-bypass PL-04)
 technical_task: KAN-217 (Por hacer)
 depends_on: KAN-216 RESUELTO; KAN-217 bloquea KAN-213; KAN-154/KAN-155 se preservan como autoridad PL-04 sin duplicar alcance
-logic_status: ACTIVE_V2_POLICY / PERSISTENCE_GAP_IDENTIFIED
-implementation_status: NOT_STARTED / BLOCKED_BY_AUTHORITY_GAP
+logic_status: ACTIVE_V2_POLICY / ADDITIVE_PERSISTENCE_AUTHORIZED
+implementation_status: NOT_STARTED / AUTHORIZED_FOR_TDD
 visual_status: NOT_APPLICABLE
-evidence_status: GATE_ANALYZED (repository + Jira; no backend/API implementation or E2E accreditation)
+evidence_status: REGATE_APPROVED (repository + Jira; implementation and E2E still unverified)
 semantic_owner: backend-authoritative E5 eligibility and PL-04 anti-bypass boundary
-authority: Jira KAN-215 + KAN-216; Jira KAN-154/KAN-155 for PL-04; docs/STARTERIA_AUTHORITY.md; docs/governance/STARTERIA_V2_MIGRATION_GUARDRAILS.md; doc/product-adr/ADR-009-canonicalizacion-gobernada-iniciativas-documentales.md
+authority: Jira KAN-215 + KAN-216; KAN-217 comment 10637 authorizes the minimum additive Prisma/migration/backend/API perimeter; Jira KAN-154/KAN-155 for PL-04; docs/STARTERIA_AUTHORITY.md; docs/governance/STARTERIA_V2_MIGRATION_GUARDRAILS.md; doc/product-adr/ADR-009-canonicalizacion-gobernada-iniciativas-documentales.md
 preserved_slices: PORTFOLIO_LEAD_SETUP_NAVIGATION_REENTRY_G1 and PORTFOLIO_LEAD_INTAKE_NAVIGATION_G2A remain unchanged
 target_contract: server returns allowed/blocked, reason codes, blocker references and a stable source version; the same evaluator guards navigation plus PL-04 saveReviewedProposal and confirmAndMaterialize
 material_review_separation: materialReviewComplete/B5 remains independent from E5 eligibility; a reviewed pending hard mutation does not become resolved by acknowledgement
 existing_persistence_no_work: PortfolioBootstrapSession.existingWorkStatus=no_existing_work plus zero non-rejected WorkItems can authorize E5 without AnalysisRun, fake E4 completion or E6 access
 existing_persistence_proposed_reviewed: ProposedMutation status, proposedValue.severity, reviewNote, reviewed/corrected actor and timestamps, sourceRefs and audit events can classify proposed/reviewed/rejected/corrected findings and preserve provenance
 existing_persistence_confirmed_active: PortfolioAdvancementCondition persists severity, finding status, source mutation, provenance, confirmer and timestamp; confirmed hard conditions can therefore fail closed as active
-authority_gap_confirmed_resolution: PortfolioAdvancementCondition has no lifecycle state, resolved/revoked timestamp, resolving actor, reason, evidence reference or replacement relation. Its free-form status stores the finding state (for example dependency_detected), not durable blocker disposition. Reopening creates a new ProposedMutation but does not deactivate the confirmed condition
-authority_gap_effect: a hard confirmed condition cannot be proven resolved from current persistence without ambiguity; treating a later review, replacement or B5 as resolution would violate KAN-216 and allow E5/PL-04 bypass
+authority_gap_confirmed_resolution: RESOLVED FOR IMPLEMENTATION by KAN-217 comment 10637. Add a separate durable disposition to PortfolioAdvancementCondition; never reuse the free-form finding status or infer permission from movementAffected
+authorized_persistence_extension: additive disposition active/resolved/dismissed, actor, timestamp, reason, evidence refs, optimistic version and idempotency marker; historical rows remain active/fail-closed; AuditLog records every transition including reopen
 pl04_current_guard: saveReviewedProposal and confirmAndMaterialize enforce role, permission, ownership, tenant, proposal version, source fingerprint and idempotency, but do not evaluate E5 eligibility or active hard blockers
 segments_derivable_without_schema: no-work eligibility; hard/soft proposed and reviewed classification; rejected proposal with explicit review note; stale/tenant/permission fail-closed; confirmed hard active fail-closed; shared read-only eligibility projection
-segment_not_derivable: durable resolution/deactivation of a confirmed hard condition with actor, reason, evidence and versioned lineage
-required_authority: explicit approval for a durable resolution representation. If implemented in PortfolioAdvancementCondition this requires Prisma schema/migration and API contract authority; an alternative existing-model design must first prove equivalent lifecycle, audit and concurrency semantics without changing Core
+segment_authorized: durable resolution/dismissal/reactivation of a confirmed hard condition with actor, reason, evidence, versioned lineage and same-session serialization
+authorized_migration: additive PostgreSQL migration only; conservative active default/backfill; disposable database execution only; no productive migration
 consumers_keep: PortfolioBootstrap session/read APIs; G2-A no-work path; G1 setup navigation; PL-04 proposal/materialization authority; ADR-009 human confirmation and no pre-confirmation canonical writes
 consumers_adapt_after_authorization: portfolio-bootstrap backend eligibility evaluator/DTO/controller/router; portfolio-organization save/confirm guards; frontend client/projection/navigation; focused backend/frontend/E2E tests
 tests_existing: portfolio-bootstrap router/integration/scoped-authority suites; portfolio-organization materialization integration suite; frontend hard/soft projection tests; G1/G2-A regressions
 tests_required: PostgreSQL cases for proposed/reviewed/rejected/corrected/confirmed-active/confirmed-resolved hard blockers, soft pending, no-work, mixtures and stale versions; direct API bypass denial for save/confirm/materialize; tenant/role/idempotency/concurrency/audit; authenticated V2 E2E without replacing G2-A or LEGACY_COMPAT evidence
 core_impact: NONE AUTHORIZED
-backend_impact: DESIGN ANALYZED; implementation NOT AUTHORIZED while lifecycle gap remains
-api_impact: REQUIRED for server-owned eligibility response and command guards; NOT AUTHORIZED by this preflight
-prisma_impact: POTENTIALLY REQUIRED for confirmed-hard resolution lifecycle; specific approval required before any schema or migration change
+backend_impact: AUTHORIZED within KAN-217 for one shared E5 evaluator, disposition command and PL-04 anti-bypass guards
+api_impact: AUTHORIZED within KAN-217 for allowed/blocked, reason codes, same-tenant blocker refs, snapshot version and human disposition command
+prisma_impact: AUTHORIZED additive extension and migration for confirmed-hard disposition lifecycle only
 step_impact: NONE
 handoff_impact: NONE
 portfolio_home_impact: NONE
 ai_impact: NONE
 excluded: Core/ADR changes; productive AI; Steps 0-4; Handoff; G1/G2-A rewrites; PL-04 redesign; automatic canonicalization; merge/deploy
-implementation_gate_derivable_segments: Proceed NO until the confirmed-resolution authority gap is resolved, so no partial evaluator may accidentally become the production gate
-implementation_gate_full: V2_CHANGE_GUARDRAIL_CHECK Proceed NO
-overall_proceed: NO
+implementation_gate_derivable_segments: Proceed YES; implement together so read eligibility and PL-04 commands cannot diverge
+implementation_gate_full: V2_CHANGE_GUARDRAIL_CHECK Proceed YES for the exact KAN-217 comment 10637 perimeter
+overall_proceed: YES
 ```
 
-Este registro no autoriza backend, API, Prisma ni migraciones. Mantiene el sistema fail-closed para
-bloqueos hard confirmados y solicita una decisión explícita sobre su resolución durable antes de
-implementar KAN-217 o reabrir el gate de KAN-213. `CURRENT_STATE.md` no cambia.
+Este registro autoriza solo TDD e implementación local del perímetro aditivo de KAN-217. Mantiene
+fail-closed los estados ambiguos y no autoriza Core, ADR, ontología nueva, cambios PL-04 fuera de
+anti-bypass, migraciones productivas, push, PR, merge ni despliegue. `CURRENT_STATE.md` no cambia.
 
 ---
 
