@@ -225,9 +225,9 @@ functional_authority: KAN-216 (RESUELTO; FA-01..FA-07, hard/soft, disposiciones 
 technical_task: KAN-217 (Por hacer)
 depends_on: KAN-216 RESUELTO; KAN-217 bloquea KAN-213; KAN-154/KAN-155 se preservan como autoridad PL-04 sin duplicar alcance
 logic_status: ACTIVE_V2_POLICY / ADDITIVE_PERSISTENCE_AUTHORIZED
-implementation_status: NOT_STARTED / AUTHORIZED_FOR_TDD
+implementation_status: IMPLEMENTED_UNVERIFIED / READY_FOR_REVIEW
 visual_status: NOT_APPLICABLE
-evidence_status: REGATE_APPROVED (repository + Jira; implementation and E2E still unverified)
+evidence_status: TESTING (local PostgreSQL, backend regression, frontend regression, lint and build PASS; CI/PR and productive migration unverified)
 semantic_owner: backend-authoritative E5 eligibility and PL-04 anti-bypass boundary
 authority: Jira KAN-215 + KAN-216; KAN-217 comment 10637 authorizes the minimum additive Prisma/migration/backend/API perimeter; Jira KAN-154/KAN-155 for PL-04; docs/STARTERIA_AUTHORITY.md; docs/governance/STARTERIA_V2_MIGRATION_GUARDRAILS.md; doc/product-adr/ADR-009-canonicalizacion-gobernada-iniciativas-documentales.md
 preserved_slices: PORTFOLIO_LEAD_SETUP_NAVIGATION_REENTRY_G1 and PORTFOLIO_LEAD_INTAKE_NAVIGATION_G2A remain unchanged
@@ -238,14 +238,18 @@ existing_persistence_proposed_reviewed: ProposedMutation status, proposedValue.s
 existing_persistence_confirmed_active: PortfolioAdvancementCondition persists severity, finding status, source mutation, provenance, confirmer and timestamp; confirmed hard conditions can therefore fail closed as active
 authority_gap_confirmed_resolution: RESOLVED FOR IMPLEMENTATION by KAN-217 comment 10637. Add a separate durable disposition to PortfolioAdvancementCondition; never reuse the free-form finding status or infer permission from movementAffected
 authorized_persistence_extension: additive disposition active/resolved/dismissed, actor, timestamp, reason, evidence refs, optimistic version and idempotency marker; historical rows remain active/fail-closed; AuditLog records every transition including reopen
-pl04_current_guard: saveReviewedProposal and confirmAndMaterialize enforce role, permission, ownership, tenant, proposal version, source fingerprint and idempotency, but do not evaluate E5 eligibility or active hard blockers
+pl04_current_guard: saveReviewedProposal and confirmAndMaterialize now share the backend E5 evaluator under session/evidence locks and SERIALIZABLE transactions; active/pending hard blockers deny both commands and stale eligibility invalidates the reviewed proposal
 segments_derivable_without_schema: no-work eligibility; hard/soft proposed and reviewed classification; rejected proposal with explicit review note; stale/tenant/permission fail-closed; confirmed hard active fail-closed; shared read-only eligibility projection
 segment_authorized: durable resolution/dismissal/reactivation of a confirmed hard condition with actor, reason, evidence, versioned lineage and same-session serialization
 authorized_migration: additive PostgreSQL migration only; conservative active default/backfill; disposable database execution only; no productive migration
 consumers_keep: PortfolioBootstrap session/read APIs; G2-A no-work path; G1 setup navigation; PL-04 proposal/materialization authority; ADR-009 human confirmation and no pre-confirmation canonical writes
-consumers_adapt_after_authorization: portfolio-bootstrap backend eligibility evaluator/DTO/controller/router; portfolio-organization save/confirm guards; frontend client/projection/navigation; focused backend/frontend/E2E tests
+consumers_adapted: portfolio-bootstrap backend eligibility evaluator/DTO/controller/router; durable hard-blocker disposition command; portfolio-organization save/confirm anti-bypass guards; focused unit/router/PostgreSQL tests
+consumers_pending_separate_gate: frontend client/projection/navigation and authenticated G2-B E2E remain under KAN-213 after its dependencies are satisfied
 tests_existing: portfolio-bootstrap router/integration/scoped-authority suites; portfolio-organization materialization integration suite; frontend hard/soft projection tests; G1/G2-A regressions
 tests_required: PostgreSQL cases for proposed/reviewed/rejected/corrected/confirmed-active/confirmed-resolved hard blockers, soft pending, no-work, mixtures and stale versions; direct API bypass denial for save/confirm/materialize; tenant/role/idempotency/concurrency/audit; authenticated V2 E2E without replacing G2-A or LEGACY_COMPAT evidence
+tests_evidence_local: 36/36 focused PASS; 1883/1883 backend PASS with 169 environment-gated skips; 1063/1063 frontend PASS; disposable PostgreSQL provision/migrate PASS with 73 migrations; lint/build/git diff check PASS; independent review APPROVED
+implementation_commit: 8330709 (local only; no push/PR/merge/deploy)
+typecheck_status: BLOCKED by pre-existing TS2740 in unchanged critical-synthesis-reasoning.test.ts; KAN-217 files add no typecheck diagnostics
 core_impact: NONE AUTHORIZED
 backend_impact: AUTHORIZED within KAN-217 for one shared E5 evaluator, disposition command and PL-04 anti-bypass guards
 api_impact: AUTHORIZED within KAN-217 for allowed/blocked, reason codes, same-tenant blocker refs, snapshot version and human disposition command
@@ -260,9 +264,10 @@ implementation_gate_full: V2_CHANGE_GUARDRAIL_CHECK Proceed YES for the exact KA
 overall_proceed: YES
 ```
 
-Este registro autoriza solo TDD e implementación local del perímetro aditivo de KAN-217. Mantiene
-fail-closed los estados ambiguos y no autoriza Core, ADR, ontología nueva, cambios PL-04 fuera de
-anti-bypass, migraciones productivas, push, PR, merge ni despliegue. `CURRENT_STATE.md` no cambia.
+Este registro deja la implementación local del perímetro aditivo de KAN-217 preparada para revisión,
+sin promoverla todavía a `IMPLEMENTED_VERIFIED`. Mantiene fail-closed los estados ambiguos y no
+autoriza Core, ADR, ontología nueva, cambios PL-04 fuera de anti-bypass, migraciones productivas,
+push, PR, merge ni despliegue. `CURRENT_STATE.md` no cambia.
 
 ---
 
