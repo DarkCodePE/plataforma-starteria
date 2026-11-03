@@ -142,6 +142,17 @@ export const confirmPortfolioOrganizationBodySchema = z.object({
   proposalVersion: z.number().int().positive(),
 }).strict();
 
+export const advancementConditionParamsSchema = bootstrapSessionParamsSchema.extend({
+  conditionId: z.string().min(1),
+});
+
+export const updateAdvancementConditionDispositionBodySchema = z.object({
+  disposition: z.enum(['active', 'resolved', 'dismissed']),
+  expectedVersion: z.number().int().positive(),
+  reason: z.string().trim().min(3).max(2_000),
+  evidenceRefs: z.array(z.string().trim().min(1).max(1_000)).min(1).max(100),
+}).strict();
+
 export type FromContinuationBody = z.infer<typeof fromContinuationBodySchema>;
 export type UpdateAnchorBody = z.infer<typeof updateAnchorBodySchema>;
 export type PasteWorkItemsBody = z.infer<typeof pasteWorkItemsBodySchema>;
@@ -154,3 +165,4 @@ export type CorrectProposedMutationBody = z.infer<typeof correctProposedMutation
 export type ReviewProposedMutationBody = z.infer<typeof reviewProposedMutationBodySchema>;
 export type PortfolioOrganizationPayload = z.infer<typeof portfolioOrganizationPayloadSchema>;
 export type SavePortfolioOrganizationProposalBody = z.infer<typeof savePortfolioOrganizationProposalBodySchema>;
+export type UpdateAdvancementConditionDispositionBody = z.infer<typeof updateAdvancementConditionDispositionBodySchema>;

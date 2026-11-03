@@ -51,6 +51,8 @@ export function buildPortfolioBootstrapRouter(deps: PortfolioBootstrapRouterDeps
   router.post('/sessions/:sessionId/proposed-mutations/:mutationId/review', auth, controller.leaveProposedMutationPending);
   router.post('/sessions/:sessionId/readings', auth, controller.publishFirstReading);
   router.get('/sessions/:sessionId/readings/latest', auth, controller.getLatestReading);
+  router.get('/sessions/:sessionId/e5-eligibility', auth, controller.getE5Eligibility);
+  router.patch('/sessions/:sessionId/advancement-conditions/:conditionId/disposition', auth, controller.updateAdvancementConditionDisposition);
   router.get('/sessions/:sessionId/organization-proposal', auth, controller.getOrganizationProposal);
   router.put('/sessions/:sessionId/organization-proposal', auth, controller.saveOrganizationProposal);
   router.post('/sessions/:sessionId/organization-proposal/confirm', auth, controller.confirmOrganizationProposal);

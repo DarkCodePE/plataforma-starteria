@@ -62,6 +62,10 @@ describe.runIf(Boolean(process.env.DATABASE_URL)).sequential('PL-04 organization
       { id: 'pl04-work-1', bootstrapSessionId: sessionId, sourceId: source.id, rawLabel: 'Onboarding guiado', proposedPurpose: 'Reducir abandono', sourceType: 'manual_entry', sourceRefs: { row: 1 }, createdBy: userId },
       { id: 'pl04-work-2', bootstrapSessionId: sessionId, sourceId: source.id, rawLabel: 'Nudges de activación', proposedPurpose: 'Aumentar adopción', sourceType: 'manual_entry', sourceRefs: { row: 2 }, createdBy: userId },
     ] });
+    await prisma.portfolioBootstrapAnalysisRun.create({ data: {
+      id: 'analysis-pl04', bootstrapSessionId: sessionId, status: 'completed', analyzerMode: 'deterministic',
+      inputVersion: 'pl04-input-v1', outputVersion: 'pl04-output-v1', createdBy: userId, completedAt: new Date(),
+    } });
     await prisma.portfolioBootstrapSession.create({ data: {
       id: otherSessionId, userId: otherUserId, organizationId: otherOrganizationId, existingWorkStatus: 'has_work', bootstrapPhase: 'B4_MATERIAL_REVIEW',
       anchor: { create: { outcomeStatement: 'Otro objetivo', status: 'anchor_confirmed', provenanceStatus: 'user_confirmed', sourceRefs: { source: 'pl04-test' }, version: 1 } },
@@ -158,6 +162,239 @@ describe.runIf(Boolean(process.env.DATABASE_URL)).sequential('PL-04 organization
     expect(await prisma.strategicFront.count({ where: { organizationId } })).toBe(0);
     expect(await prisma.challenge.count({ where: { strategicFront: { organizationId } } })).toBe(0);
   });
+
+  it('guards save and confirm against active hard blockers with durable idempotent resolution', async () => {
+    const mutation = await prisma.portfolioBootstrapProposedMutation.create({ data: {
+      id: 'mutation-pl04-hard', bootstrapSessionId: sessionId, analysisRunId: 'analysis-pl04',
+      targetType: 'advancement_condition', mutationType: 'create',
+      proposedValue: { severity: 'blocking' }, sourceRefs: { source: 'kan-217-test' },
+      provenanceStatus: 'ai_suggested', uncertainty: 'low', materiality: 'material',
+      status: 'confirmed', reviewedBy: userId, reviewedAt: new Date(),
+    } });
+    const condition = await prisma.portfolioAdvancementCondition.create({ data: {
+      id: 'condition-pl04-hard', bootstrapSessionId: sessionId, sourceMutationId: mutation.id,
+      type: 'critical_dependency', status: 'confirmed', statement: 'Resolver dependencia crítica.',
+      severity: 'blocking', movementAffected: 'Organización', provenanceStatus: 'user_confirmed',
+      sourceRefs: { source: 'kan-217-test' }, confirmedBy: userId, confirmedAt: new Date(),
+    } });
+    const service = new PortfolioOrganizationService(prisma);
+
+    expect(await service.getE5Eligibility({ ...authority, sessionId })).toMatchObject({
+      allowed: false, reasonCodes: ['HARD_BLOCKERS_ACTIVE'],
+      blockers: [{ id: condition.id, kind: 'confirmed_condition' }],
+    });
+    await expect(service.saveReviewedProposal({ ...authority, sessionId, expectedVersion: 0, payload: reviewedPayload() }))
+      .rejects.toMatchObject({ code: 'PORTFOLIO_E5_INELIGIBLE' });
+
+    const auditCountBeforeResolution = await prisma.auditLog.count({ where: { resourceId: condition.id } });
+    const resolved = await service.updateAdvancementConditionDisposition({
+      ...authority, sessionId, conditionId: condition.id, disposition: 'resolved', expectedVersion: 1,
+      reason: 'Dependencia verificada como resuelta.', evidenceRefs: ['evidence://kan-217/resolve-1'],
+      idempotencyKey: 'resolve-condition-pl04-1',
+    });
+    const retry = await service.updateAdvancementConditionDisposition({
+      ...authority, sessionId, conditionId: condition.id, disposition: 'resolved', expectedVersion: 1,
+      reason: 'Dependencia verificada como resuelta.', evidenceRefs: ['evidence://kan-217/resolve-1'],
+      idempotencyKey: 'resolve-condition-pl04-1',
+    });
+    expect(resolved.condition.dispositionVersion).toBe(2);
+    expect(retry.condition.dispositionVersion).toBe(2);
+    expect(retry.eligibility.allowed).toBe(true);
+    expect(await prisma.auditLog.count({ where: { resourceId: condition.id } })).toBe(auditCountBeforeResolution + 1);
+
+    const proposal = await service.saveReviewedProposal({ ...authority, sessionId, expectedVersion: 0, payload: reviewedPayload() });
+    await service.updateAdvancementConditionDisposition({
+      ...authority, sessionId, conditionId: condition.id, disposition: 'active', expectedVersion: 2,
+      reason: 'Nueva evidencia reabre la dependencia.', evidenceRefs: ['evidence://kan-217/reopen-1'],
+      idempotencyKey: 'reopen-condition-pl04-1',
+    });
+    const historicalRetry = await service.updateAdvancementConditionDisposition({
+      ...authority, sessionId, conditionId: condition.id, disposition: 'resolved', expectedVersion: 1,
+      reason: 'Dependencia verificada como resuelta.', evidenceRefs: ['evidence://kan-217/resolve-1'],
+      idempotencyKey: 'resolve-condition-pl04-1',
+    });
+    expect(historicalRetry).toMatchObject({
+      replayed: true,
+      originalDispositionVersion: 2,
+      condition: { disposition: 'active', dispositionVersion: 3 },
+      eligibility: { allowed: false },
+    });
+    expect(await prisma.auditLog.count({ where: { resourceId: condition.id } })).toBe(auditCountBeforeResolution + 2);
+    await expect(service.confirmAndMaterialize({
+      ...authority, sessionId, proposalVersion: proposal.version, idempotencyKey: 'confirm-blocked-pl04',
+    })).rejects.toMatchObject({ code: 'PORTFOLIO_E5_INELIGIBLE' });
+
+    const concurrent = await Promise.allSettled([
+      service.updateAdvancementConditionDisposition({
+        ...authority, sessionId, conditionId: condition.id, disposition: 'resolved', expectedVersion: 3,
+        reason: 'Resolución concurrente válida.', evidenceRefs: ['evidence://kan-217/concurrent-resolve'],
+        idempotencyKey: 'concurrent-resolve-pl04',
+      }),
+      service.updateAdvancementConditionDisposition({
+        ...authority, sessionId, conditionId: condition.id, disposition: 'dismissed', expectedVersion: 3,
+        reason: 'Descarte concurrente alternativo.', evidenceRefs: ['evidence://kan-217/concurrent-dismiss'],
+        idempotencyKey: 'concurrent-dismiss-pl04',
+      }),
+    ]);
+    expect(concurrent.filter((result) => result.status === 'fulfilled')).toHaveLength(1);
+    expect(concurrent.filter((result) => result.status === 'rejected')).toHaveLength(1);
+    expect(await service.getE5Eligibility({ ...authority, sessionId })).toMatchObject({ allowed: true, blockers: [] });
+
+    await expect(service.confirmAndMaterialize({
+      ...authority, sessionId, proposalVersion: proposal.version, idempotencyKey: 'confirm-stale-after-resolution',
+    })).rejects.toMatchObject({ code: 'PORTFOLIO_ORGANIZATION_STALE' });
+    const refreshed = await service.saveReviewedProposal({ ...authority, sessionId, expectedVersion: proposal.version, payload: reviewedPayload() });
+    await expect(service.confirmAndMaterialize({
+      ...authority, sessionId, proposalVersion: refreshed.version, idempotencyKey: 'confirm-after-resolution',
+    })).resolves.toMatchObject({ status: 'materialized' });
+  });
+
+  it('keeps soft reviewed findings non-blocking and hides cross-tenant blocker state', async () => {
+    const softMutation = await prisma.portfolioBootstrapProposedMutation.create({ data: {
+      id: 'mutation-pl04-soft', bootstrapSessionId: sessionId, analysisRunId: 'analysis-pl04',
+      targetType: 'advancement_condition', mutationType: 'create',
+      proposedValue: { severity: 'attention' }, sourceRefs: { source: 'kan-217-test' },
+      provenanceStatus: 'ai_suggested', uncertainty: 'medium', materiality: 'material',
+      status: 'confirmed', reviewedBy: userId, reviewedAt: new Date(),
+    } });
+    const softCondition = await prisma.portfolioAdvancementCondition.create({ data: {
+      id: 'condition-pl04-soft', bootstrapSessionId: sessionId, sourceMutationId: softMutation.id,
+      type: 'required_context', status: 'confirmed', statement: 'Contexto recomendable.',
+      severity: 'attention', movementAffected: 'Organización', provenanceStatus: 'user_confirmed',
+      sourceRefs: { source: 'kan-217-test' }, confirmedBy: userId, confirmedAt: new Date(),
+    } });
+    const service = new PortfolioOrganizationService(prisma);
+    expect(await service.getE5Eligibility({ ...authority, sessionId })).toMatchObject({
+      allowed: true, reasonCodes: ['ANALYZED_WORK_ELIGIBLE'], blockers: [],
+    });
+    await expect(service.updateAdvancementConditionDisposition({
+      ...authority, sessionId, conditionId: softCondition.id, disposition: 'resolved', expectedVersion: 1,
+      reason: 'No debe convertirse en un bloqueo duro.', evidenceRefs: ['evidence://kan-217/soft'],
+      idempotencyKey: 'resolve-soft-condition-pl04',
+    })).rejects.toMatchObject({ code: 'PORTFOLIO_CONDITION_NOT_HARD_BLOCKER' });
+    await expect(service.getE5Eligibility({
+      authenticatedUserId: otherUserId, roles: ['portfolio_lead'], permissions: ['portfolio:write'], sessionId,
+    })).rejects.toMatchObject({ code: 'PORTFOLIO_ORGANIZATION_SESSION_NOT_FOUND' });
+    await expect(service.getE5Eligibility({
+      authenticatedUserId: userId, roles: ['viewer'], permissions: ['portfolio:write'], sessionId,
+    })).rejects.toMatchObject({ code: 'PORTFOLIO_ORGANIZATION_AUTHORITY_REQUIRED' });
+  });
+
+  it('fails closed for proposed and reviewed hard findings until both are rejected', async () => {
+    await prisma.portfolioBootstrapProposedMutation.createMany({ data: [
+      {
+        id: 'mutation-pl04-hard-proposed', bootstrapSessionId: sessionId, analysisRunId: 'analysis-pl04',
+        targetType: 'advancement_condition', mutationType: 'create', proposedValue: { severity: 'blocking' },
+        sourceRefs: { source: 'kan-217-test' }, provenanceStatus: 'ai_suggested', uncertainty: 'low',
+        materiality: 'material', status: 'proposed',
+      },
+      {
+        id: 'mutation-pl04-hard-reviewed', bootstrapSessionId: sessionId, analysisRunId: 'analysis-pl04',
+        targetType: 'advancement_condition', mutationType: 'create', proposedValue: { severity: 'blocking' },
+        sourceRefs: { source: 'kan-217-test' }, provenanceStatus: 'ai_suggested', uncertainty: 'medium',
+        materiality: 'material', status: 'reviewed', reviewedBy: userId, reviewedAt: new Date(),
+      },
+    ] });
+    const service = new PortfolioOrganizationService(prisma);
+    expect(await service.getE5Eligibility({ ...authority, sessionId })).toMatchObject({
+      allowed: false, reasonCodes: ['HARD_BLOCKERS_PENDING'],
+      blockers: [
+        { id: 'mutation-pl04-hard-proposed', kind: 'proposed_mutation' },
+        { id: 'mutation-pl04-hard-reviewed', kind: 'proposed_mutation' },
+      ],
+    });
+    await expect(service.saveReviewedProposal({ ...authority, sessionId, expectedVersion: 0, payload: reviewedPayload() }))
+      .rejects.toMatchObject({ code: 'PORTFOLIO_E5_INELIGIBLE' });
+
+    await prisma.portfolioBootstrapProposedMutation.updateMany({
+      where: { id: { in: ['mutation-pl04-hard-proposed', 'mutation-pl04-hard-reviewed'] } },
+      data: { status: 'rejected', reviewedBy: userId, reviewedAt: new Date(), reviewNote: 'No aplica tras revisión humana.' },
+    });
+    expect(await service.getE5Eligibility({ ...authority, sessionId })).toMatchObject({
+      allowed: true, reasonCodes: ['ANALYZED_WORK_ELIGIBLE'], blockers: [],
+    });
+  });
+
+  it('fails closed when a reviewed finding changes from soft to hard during confirmation', async () => {
+    await prisma.portfolioBootstrapProposedMutation.create({ data: {
+      id: 'mutation-pl04-race', bootstrapSessionId: sessionId, analysisRunId: 'analysis-pl04',
+      targetType: 'advancement_condition', mutationType: 'create', proposedValue: { severity: 'attention' },
+      sourceRefs: { source: 'kan-217-race-test' }, provenanceStatus: 'ai_suggested', uncertainty: 'medium',
+      materiality: 'material', status: 'reviewed', reviewedBy: userId, reviewedAt: new Date(),
+    } });
+    const service = new PortfolioOrganizationService(prisma);
+    const proposal = await service.saveReviewedProposal({ ...authority, sessionId, expectedVersion: 0, payload: reviewedPayload() });
+
+    let markUpdated!: () => void;
+    let releaseUpdate!: () => void;
+    const updated = new Promise<void>((resolve) => { markUpdated = resolve; });
+    const release = new Promise<void>((resolve) => { releaseUpdate = resolve; });
+    const writer = prisma.$transaction(async (tx) => {
+      await tx.portfolioBootstrapProposedMutation.update({
+        where: { id: 'mutation-pl04-race' },
+        data: { proposedValue: { severity: 'blocking' }, correctedBy: userId, correctedAt: new Date() },
+      });
+      markUpdated();
+      await release;
+    });
+    await updated;
+    const confirmation = service.confirmAndMaterialize({
+      ...authority, sessionId, proposalVersion: proposal.version, idempotencyKey: 'confirm-soft-hard-race',
+    });
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    releaseUpdate();
+    await writer;
+
+    await expect(confirmation).rejects.toMatchObject({
+      code: expect.stringMatching(/PORTFOLIO_(E5_INELIGIBLE|E5_CONCURRENT_CHANGE|ORGANIZATION_STALE)/),
+    });
+    expect(await prisma.strategicFront.count({ where: { organizationId } })).toBe(0);
+    expect(await prisma.challenge.count({ where: { strategicFront: { organizationId } } })).toBe(0);
+  });
+
+  it('authorizes the persisted no-work path without inventing an analysis run', async () => {
+    await prisma.portfolioBootstrapWorkItem.deleteMany({ where: { bootstrapSessionId: sessionId } });
+    await prisma.portfolioBootstrapAnalysisRun.deleteMany({ where: { bootstrapSessionId: sessionId } });
+    await prisma.portfolioBootstrapSession.update({
+      where: { id: sessionId },
+      data: { existingWorkStatus: 'no_existing_work', bootstrapPhase: 'B3_PROVISIONAL_STRUCTURING' },
+    });
+    const service = new PortfolioOrganizationService(prisma);
+    expect(await service.getE5Eligibility({ ...authority, sessionId })).toMatchObject({
+      allowed: true, reasonCodes: ['NO_EXISTING_WORK_ELIGIBLE'], blockers: [],
+    });
+    await expect(service.saveReviewedProposal({
+      ...authority, sessionId, expectedVersion: 0, payload: reviewedPayload([]),
+    })).resolves.toMatchObject({ status: 'reviewed' });
+  });
+
+  it('does not let the no-work path bypass an active confirmed hard blocker', async () => {
+    const mutation = await prisma.portfolioBootstrapProposedMutation.create({ data: {
+      id: 'mutation-pl04-no-work-hard', bootstrapSessionId: sessionId, analysisRunId: 'analysis-pl04',
+      targetType: 'advancement_condition', mutationType: 'create', proposedValue: { severity: 'blocking' },
+      sourceRefs: { source: 'kan-217-no-work-test' }, provenanceStatus: 'ai_suggested', uncertainty: 'low',
+      materiality: 'material', status: 'confirmed', reviewedBy: userId, reviewedAt: new Date(),
+    } });
+    const condition = await prisma.portfolioAdvancementCondition.create({ data: {
+      id: 'condition-pl04-no-work-hard', bootstrapSessionId: sessionId, sourceMutationId: mutation.id,
+      type: 'critical_dependency', status: 'confirmed', statement: 'Bloqueo duro aún activo.',
+      severity: 'blocking', provenanceStatus: 'user_confirmed', sourceRefs: { source: 'kan-217-no-work-test' },
+      confirmedBy: userId, confirmedAt: new Date(),
+    } });
+    await prisma.portfolioBootstrapWorkItem.deleteMany({ where: { bootstrapSessionId: sessionId } });
+    await prisma.portfolioBootstrapSession.update({
+      where: { id: sessionId },
+      data: { existingWorkStatus: 'no_existing_work', bootstrapPhase: 'B3_PROVISIONAL_STRUCTURING' },
+    });
+    const service = new PortfolioOrganizationService(prisma);
+    expect(await service.getE5Eligibility({ ...authority, sessionId })).toMatchObject({
+      allowed: false, reasonCodes: ['HARD_BLOCKERS_ACTIVE'],
+      blockers: [{ id: condition.id, kind: 'confirmed_condition' }],
+    });
+    await expect(service.saveReviewedProposal({
+      ...authority, sessionId, expectedVersion: 0, payload: reviewedPayload([]),
+    })).rejects.toMatchObject({ code: 'PORTFOLIO_E5_INELIGIBLE' });
+  });
 });
 
 function transactionProxyThatFailsChallengeCreate(client: PrismaClient): PrismaClient {
@@ -179,6 +416,9 @@ function transactionProxyThatFailsChallengeCreate(client: PrismaClient): PrismaC
 
 async function clean() {
   const db = prisma as any;
+  await prisma.auditLog.deleteMany({ where: { resourceId: { in: [
+    'condition-pl04-hard', 'condition-pl04-soft', 'condition-pl04-no-work-hard',
+  ] } } });
   await db.portfolioOrganizationMaterialization?.deleteMany({ where: { organizationId: { in: [organizationId, otherOrganizationId] } } });
   await db.portfolioOrganizationProposal?.deleteMany({ where: { organizationId: { in: [organizationId, otherOrganizationId] } } });
   await prisma.challenge.deleteMany({ where: { strategicFront: { organizationId: { in: [organizationId, otherOrganizationId] } } } });

@@ -2942,6 +2942,12 @@ enum PortfolioBootstrapAdvancementSeverity {
   blocking
 }
 
+enum PortfolioAdvancementConditionDisposition {
+  active
+  resolved
+  dismissed
+}
+
 enum PortfolioBootstrapGovernedProvenanceStatus {
   user_confirmed
 }
@@ -3558,6 +3564,13 @@ model PortfolioAdvancementCondition {
   status                String
   statement             String
   severity              PortfolioBootstrapAdvancementSeverity
+  disposition           PortfolioAdvancementConditionDisposition      @default(active)
+  dispositionVersion    Int                                           @default(1)
+  dispositionUpdatedBy  String?
+  dispositionUpdatedAt  DateTime?
+  dispositionReason     String?
+  dispositionEvidenceRefs Json?
+  dispositionIdempotencyKey String?
   movementAffected      String?
   provenanceStatus      PortfolioBootstrapGovernedProvenanceStatus
   sourceRefs            Json
@@ -3574,6 +3587,7 @@ model PortfolioAdvancementCondition {
   @@index([workItemId])
   @@index([type])
   @@index([severity])
+  @@index([bootstrapSessionId, severity, disposition])
   @@index([confirmedBy])
 }
 
