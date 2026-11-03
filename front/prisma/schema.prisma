@@ -3587,7 +3587,7 @@ model PortfolioAdvancementCondition {
   @@index([workItemId])
   @@index([type])
   @@index([severity])
-  @@index([bootstrapSessionId, severity, disposition])
+  @@index([bootstrapSessionId, severity, disposition], map: "pac_session_severity_disposition_idx")
   @@index([confirmedBy])
 }
 

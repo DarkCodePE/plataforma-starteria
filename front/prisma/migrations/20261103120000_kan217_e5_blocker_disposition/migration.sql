@@ -11,5 +11,5 @@ ADD COLUMN "dispositionReason" TEXT,
 ADD COLUMN "dispositionEvidenceRefs" JSONB,
 ADD COLUMN "dispositionIdempotencyKey" TEXT;
 
-CREATE INDEX "PortfolioAdvancementCondition_bootstrapSessionId_severity_disposition_idx"
+CREATE INDEX "pac_session_severity_disposition_idx"
 ON "PortfolioAdvancementCondition"("bootstrapSessionId", "severity", "disposition");
