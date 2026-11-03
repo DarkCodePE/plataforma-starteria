@@ -210,6 +210,26 @@ describe('usePortfolioBootstrap', () => {
     expect(hook.result.current.data?.workItems).toHaveLength(0);
   });
 
+  it('reconciles a lost no-work response before allowing a retry', async () => {
+    declareNoExistingWork.mockRejectedValueOnce(new Error('La respuesta se perdió.'));
+    const persisted = makeBootstrap('anchor_confirmed');
+    persisted.bootstrapSession.status = 'awaiting_structuring';
+    persisted.bootstrapSession.bootstrapPhase = 'B3_PROVISIONAL_STRUCTURING';
+    persisted.bootstrapSession.existingWorkStatus = 'no_existing_work';
+    getSession.mockResolvedValueOnce(persisted);
+    const hook = renderHook(() => usePortfolioBootstrap('cont-1'));
+    await waitFor(() => expect(hook.result.current.status).toBe('ready'));
+
+    await act(async () => {
+      await hook.result.current.declareNoExistingWork();
+    });
+
+    expect(declareNoExistingWork).toHaveBeenCalledTimes(1);
+    expect(getSession).toHaveBeenCalledWith('bs-1');
+    expect(hook.result.current.data?.bootstrapSession.existingWorkStatus).toBe('no_existing_work');
+    expect(hook.result.current.data?.workItems).toHaveLength(0);
+  });
+
   it('runs analysis and reloads persisted B4 session state', async () => {
     getSession.mockResolvedValueOnce({
       ...makeBootstrap('anchor_confirmed'),
@@ -271,6 +291,20 @@ describe('usePortfolioBootstrap', () => {
     expect(hook.result.current.data?.bootstrapSession.bootstrapPhase).toBe('B4_MATERIAL_REVIEW');
     expect(hook.result.current.data?.proposedMutations).toHaveLength(1);
     expect(hook.result.current.analysisStatus).toBe('idle');
+  });
+
+  it('keeps B3 selected when analysis fails by exposing and rethrowing the backend error', async () => {
+    analyzeWork.mockRejectedValueOnce(new Error('El análisis no pudo completarse.'));
+    const hook = renderHook(() => usePortfolioBootstrap('cont-1'));
+    await waitFor(() => expect(hook.result.current.status).toBe('ready'));
+
+    await act(async () => {
+      await expect(hook.result.current.analyzeWorkItems()).rejects.toThrow('El análisis no pudo completarse.');
+    });
+
+    expect(hook.result.current.analysisStatus).toBe('error');
+    expect(hook.result.current.analysisError).toBe('No pudimos analizar el trabajo detectado.');
+    expect(getSession).not.toHaveBeenCalled();
   });
 
   it('reviews proposed mutations through explicit B4 actions and reloads', async () => {

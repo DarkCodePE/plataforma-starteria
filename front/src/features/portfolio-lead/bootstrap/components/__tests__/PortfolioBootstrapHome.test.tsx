@@ -196,6 +196,126 @@ describe('PortfolioBootstrapHome — frozen Copilot-first composition', () => {
     expect(input.onConfirmAnchor).not.toHaveBeenCalled();
   });
 
+  it('G2-A CA-01 keeps incorporated work in E3 and blocks lateral stages until persisted B4', () => {
+    const data = makeBootstrapWithWorkItems();
+    render(<PortfolioBootstrapHome {...props({ data })} />);
+
+    expect(screen.getByText('Configurar con Copilot · 3 de 7')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: '¿Qué está haciendo hoy tu organización?' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Analizar 1 iniciativas' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: /4 Análisis/i })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /5 Organización/i })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /6 Briefs/i })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /7 Asignación/i })).toBeDisabled();
+  });
+
+  it('G2-A CA-02 opens E4 only after analysis returns persisted B4', async () => {
+    const user = userEvent.setup();
+    const onAnalyzeWorkItems = vi.fn().mockResolvedValue(undefined);
+    const input = props({ data: makeBootstrapWithWorkItems(), onAnalyzeWorkItems });
+    const { rerender } = render(<PortfolioBootstrapHome {...input} />);
+
+    await user.click(screen.getByRole('button', { name: 'Analizar 1 iniciativas' }));
+    await waitFor(() => expect(onAnalyzeWorkItems).toHaveBeenCalledTimes(1));
+    expect(screen.getByRole('heading', { name: '¿Qué está haciendo hoy tu organización?' })).toBeInTheDocument();
+
+    rerender(<PortfolioBootstrapHome {...input} data={makeBootstrapWithProposedMutations()} />);
+    expect(screen.getByRole('heading', { name: 'Analizar evidencias y relaciones' })).toBeInTheDocument();
+    expect(screen.getByTestId('portfolio-bootstrap-material-review')).toBeInTheDocument();
+  });
+
+  it('G2-A CA-03 requires an explicit no-work CTA for E5 and never runs analysis', async () => {
+    const user = userEvent.setup();
+    const data = makeBootstrap('anchor_confirmed');
+    data.bootstrapSession.status = 'awaiting_structuring';
+    data.bootstrapSession.bootstrapPhase = 'B3_PROVISIONAL_STRUCTURING';
+    data.bootstrapSession.existingWorkStatus = 'no_existing_work';
+    const input = props({ data });
+    render(<PortfolioBootstrapHome {...input} />);
+
+    expect(screen.getByRole('heading', { name: '¿Qué está haciendo hoy tu organización?' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Analizar 0 iniciativas/i })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Continuar sin iniciativas' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: /4 Análisis/i })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /5 Organización/i })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /7 Asignación/i })).toBeDisabled();
+
+    await user.click(screen.getByRole('button', { name: 'Continuar sin iniciativas' }));
+    expect(screen.getByTestId('portfolio-organization-proposal')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /6 Briefs/i })).toBeDisabled();
+    expect(input.onAnalyzeWorkItems).not.toHaveBeenCalled();
+  });
+
+  it('G2-A CA-03 shows the explicit no-work continuation again after reentry', () => {
+    const data = makeBootstrap('anchor_confirmed');
+    data.bootstrapSession.status = 'awaiting_structuring';
+    data.bootstrapSession.bootstrapPhase = 'B3_PROVISIONAL_STRUCTURING';
+    data.bootstrapSession.existingWorkStatus = 'no_existing_work';
+    const input = props({ data });
+    const first = render(<PortfolioBootstrapHome {...input} />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Continuar sin iniciativas' }));
+    expect(screen.getByTestId('portfolio-organization-proposal')).toBeInTheDocument();
+    first.unmount();
+    render(<PortfolioBootstrapHome {...input} />);
+
+    expect(screen.getByRole('heading', { name: '¿Qué está haciendo hoy tu organización?' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Continuar sin iniciativas' })).toBeEnabled();
+  });
+
+  it('G2-A CA-04 preserves pasted input, exposes an actionable error, and permits an idempotent retry', async () => {
+    const user = userEvent.setup();
+    const onPasteWorkItems = vi.fn()
+      .mockRejectedValueOnce(new Error('No pudimos guardar las iniciativas.'))
+      .mockResolvedValueOnce(undefined);
+    render(<PortfolioBootstrapHome {...props({ data: makeBootstrap('anchor_confirmed'), onPasteWorkItems })} />);
+
+    const pastedWork = screen.getByRole('textbox');
+    await user.type(pastedWork, 'Onboarding digital');
+    await user.click(screen.getByRole('button', { name: 'Agregar trabajo' }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('No pudimos guardar las iniciativas.');
+    expect(screen.getByRole('alert')).toHaveTextContent('Inténtalo de nuevo');
+    expect(pastedWork).toHaveValue('Onboarding digital');
+    expect(screen.getByRole('button', { name: 'Agregar trabajo' })).toBeEnabled();
+
+    await user.click(screen.getByRole('button', { name: 'Agregar trabajo' }));
+    await waitFor(() => expect(onPasteWorkItems).toHaveBeenCalledTimes(2));
+    expect(pastedWork).toHaveValue('');
+  });
+
+  it('G2-A CA-04 restores manual and no-work actions after failures without losing user input', async () => {
+    const user = userEvent.setup();
+    const onAddManualWorkItem = vi.fn().mockRejectedValue(new Error('No pudimos guardar el alta manual.'));
+    const onDeclareNoExistingWork = vi.fn().mockRejectedValue(new Error('No pudimos guardar la ausencia de iniciativas.'));
+    render(<PortfolioBootstrapHome {...props({ data: makeBootstrap('anchor_confirmed'), onAddManualWorkItem, onDeclareNoExistingWork })} />);
+
+    await user.click(screen.getByRole('button', { name: 'Anadir manualmente' }));
+    await user.type(screen.getByLabelText('Nombre o descripcion breve'), 'Portal de clientes');
+    await user.type(screen.getByLabelText('Que intenta conseguir'), 'Reducir consultas repetidas');
+    await user.click(screen.getByRole('button', { name: 'Agregar trabajo' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('No pudimos guardar el alta manual.');
+    expect(screen.getByLabelText('Nombre o descripcion breve')).toHaveValue('Portal de clientes');
+    expect(screen.getByRole('button', { name: 'Agregar trabajo' })).toBeEnabled();
+
+    await user.click(screen.getByRole('button', { name: 'Todavia no tenemos iniciativas' }));
+    await user.click(screen.getByRole('button', { name: 'Todavia no tenemos iniciativas activas' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('No pudimos guardar la ausencia de iniciativas.');
+    expect(screen.getByRole('button', { name: 'Todavia no tenemos iniciativas activas' })).toBeEnabled();
+  });
+
+  it('G2-A CA-09 explains the PDF limitation and offers structured alternatives', async () => {
+    const user = userEvent.setup();
+    render(<PortfolioBootstrapHome {...props({ data: makeBootstrap('anchor_confirmed') })} />);
+
+    await user.click(screen.getByRole('button', { name: /Subir PDF, Excel o CSV/i }));
+
+    expect(screen.getByTestId('portfolio-import-panel')).toHaveTextContent('referencia y metadatos');
+    expect(screen.getByTestId('portfolio-import-panel')).toHaveTextContent('no extrae iniciativas de forma estructurada');
+    expect(screen.getByTestId('portfolio-import-panel')).toHaveTextContent('no custodia el archivo binario');
+    expect(screen.getByTestId('portfolio-import-panel')).toHaveTextContent('pega una lista o añade iniciativas manualmente');
+  });
+
   it('persists PL-00 external context as a declared provisional source', async () => {
     const save = vi.fn().mockResolvedValue(undefined);
     render(<PortfolioBootstrapHome {...props({ onUpdateAnchor: save })} />);
@@ -239,12 +359,12 @@ describe('PortfolioBootstrapHome — frozen Copilot-first composition', () => {
     })));
   });
 
-  it('keeps Briefs as the next boundary and does not advance to Assignment', () => {
+  it('keeps Briefs and Assignment blocked before the explicit Organization transition', () => {
     const navigate = vi.fn();
     render(<PortfolioBootstrapHome {...props({ data: makeBootstrapWithProposedMutations(), onNavigate: navigate })} />);
 
-    fireEvent.click(screen.getByRole('button', { name: /Briefs/i }));
-    expect(screen.getByText('Confirma primero la estructura estratégica')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /5 Organización/i })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /6 Briefs/i })).toBeDisabled();
     expect(screen.getByRole('button', { name: /7 Asignación/i })).toBeDisabled();
     expect(navigate).not.toHaveBeenCalled();
   });
@@ -351,6 +471,18 @@ describe('PortfolioBootstrapHome — frozen Copilot-first composition', () => {
     expect(screen.getByRole('button', { name: 'Analizar 1 iniciativas' })).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Agregar más información' }));
     expect(screen.getByText('Pegar una lista')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Todavia no tenemos iniciativas' })).not.toBeInTheDocument();
+  });
+
+  it('G2-A CA-03 blocks an inconsistent no-work projection that still contains persisted items', () => {
+    const data = makeBootstrapWithWorkItems();
+    data.bootstrapSession.existingWorkStatus = 'no_existing_work';
+    render(<PortfolioBootstrapHome {...props({ data })} />);
+
+    expect(screen.getByRole('alert')).toHaveTextContent('existen elementos persistidos');
+    expect(screen.queryByRole('button', { name: 'Continuar sin iniciativas' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Analizar 1 iniciativas' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /5 Organización/i })).toBeDisabled();
   });
 
   it('shows a mapped source status instead of claiming it was undeclared when normalization is unavailable', () => {
@@ -424,7 +556,7 @@ describe('PortfolioBootstrapHome — frozen Copilot-first composition', () => {
     expect(screen.getByTestId('portfolio-analysis-completion-gate')).toHaveTextContent('Lectura suficiente para continuar');
     const continueButton = screen.getByRole('button', { name: 'Continuar a organización' });
     expect(continueButton).toBeEnabled();
-    expect(screen.getByRole('button', { name: /5 Organización/i })).toBeEnabled();
+    expect(screen.getByRole('button', { name: /5 Organización/i })).toBeDisabled();
     fireEvent.click(continueButton);
     expect(screen.getByTestId('portfolio-organization-proposal')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: /4 Análisis/i }));
@@ -465,7 +597,6 @@ describe('PortfolioBootstrapHome — frozen Copilot-first composition', () => {
     }));
     render(<PortfolioBootstrapHome {...props({ data })} />);
 
-    fireEvent.click(screen.getByRole('button', { name: /Análisis Revisado/i }));
     expect(screen.getByTestId('portfolio-analysis-input-reference')).toBeInTheDocument();
     expect(screen.getByTestId('portfolio-bootstrap-material-review')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Ver análisis' }));
@@ -549,7 +680,7 @@ describe('PortfolioBootstrapHome — frozen Copilot-first composition', () => {
       onConfirmOrganizationProposal: confirmOrganizationProposal,
     }) as any} />);
 
-    fireEvent.click(screen.getByRole('button', { name: /5 Organización/i }));
+    fireEvent.click(screen.getByRole('button', { name: 'Continuar a organización' }));
     expect(screen.getByTestId('portfolio-organization-proposal')).toBeInTheDocument();
     expect(screen.getByText('Startería propone esta organización a partir de las 8 iniciativas revisadas.')).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'Define la estructura estratégica del objetivo' })).toBeInTheDocument();
@@ -785,7 +916,7 @@ describe('PortfolioBootstrapHome — frozen Copilot-first composition', () => {
     };
     render(<PortfolioBootstrapHome {...props({ data, organizationProposal, onSaveOrganizationProposal: vi.fn(), onConfirmOrganizationProposal: vi.fn() }) as any} />);
 
-    fireEvent.click(screen.getByRole('button', { name: /5 Organización/i }));
+    fireEvent.click(screen.getByRole('button', { name: 'Continuar a organización' }));
     expect(screen.queryByRole('heading', { name: 'Has decidido no organizar todavía' })).not.toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'Hipótesis por revisar' })).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Revisar propuesta: Hipótesis por revisar' }));
@@ -818,7 +949,7 @@ describe('PortfolioBootstrapHome — frozen Copilot-first composition', () => {
     };
     render(<PortfolioBootstrapHome {...props({ data, organizationProposal, onSaveOrganizationProposal: vi.fn(), onConfirmOrganizationProposal: confirmOrganizationProposal }) as any} />);
 
-    fireEvent.click(screen.getByRole('button', { name: /5 Organización/i }));
+    fireEvent.click(screen.getByRole('button', { name: 'Continuar a organización' }));
     fireEvent.click(screen.getByRole('button', { name: 'Revisar propuesta: Único reto' }));
     fireEvent.click(screen.getByRole('button', { name: 'Quitar este reto de la propuesta' }));
     expect(screen.getByText(/Es el único reto de la propuesta/i)).toBeInTheDocument();
@@ -854,7 +985,7 @@ describe('PortfolioBootstrapHome — frozen Copilot-first composition', () => {
     };
     render(<PortfolioBootstrapHome {...props({ data, organizationProposal, onSaveOrganizationProposal: saveOrganizationProposal, onConfirmOrganizationProposal: confirmOrganizationProposal }) as any} />);
 
-    fireEvent.click(screen.getByRole('button', { name: /5 Organización/i }));
+    fireEvent.click(screen.getByRole('button', { name: 'Continuar a organización' }));
     fireEvent.click(screen.getByText('Editar frente estratégico'));
     const nameInput = screen.getByLabelText('Nombre del frente estratégico');
     fireEvent.change(nameInput, { target: { value: 'Versión capturada' } });

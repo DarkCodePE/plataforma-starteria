@@ -1535,13 +1535,22 @@ test.describe('Portfolio Entry 114D Critical Handoff and explicit legacy compati
     await page.getByRole('button', { name: /Todavia no tenemos iniciativas activas/i }).click();
 
     const organizationStage = page.getByLabel('Tu avance').getByRole('button', { name: /Organización/i });
-    await expect(organizationStage).toBeEnabled();
-    await organizationStage.click();
+    await expect(organizationStage).toBeDisabled();
+    const continueWithoutWork = page.getByRole('button', { name: 'Continuar sin iniciativas', exact: true });
+    await expect(continueWithoutWork).toBeVisible();
+    await expect(continueWithoutWork).toBeEnabled();
+    await continueWithoutWork.click();
     await expect(page.getByTestId('portfolio-organization-cascade')).toBeVisible({ timeout: 15_000 });
     expect(await canonicalCounts()).toEqual(beforeNoWork);
 
     await page.reload();
-    await expect(page.getByTestId('portfolio-organization-cascade')).toBeVisible();
+    await expect(page.getByTestId('portfolio-bootstrap-work-intake')).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByRole('button', { name: 'Continuar sin iniciativas', exact: true })).toBeVisible();
+    await expect(page.getByTestId('portfolio-organization-cascade')).toHaveCount(0);
+    const persisted = await expectOneBootstrapSession(await page.evaluate(() => new URL(window.location.href).searchParams.get('portfolioEntryContinuationId')) as string);
+    expect(persisted.session.existingWorkStatus).toBe('no_existing_work');
+    expect(persisted.session.workItems).toHaveLength(0);
+    expect(persisted.session.analysisRuns).toHaveLength(0);
     await expect(page.getByText(/Crear frente estrategico|Crear reto|Step 0|HMW|Test Card|experiment|prototype/i)).toHaveCount(0);
     legacyNavigation.expectClean();
     legacyNavigation.dispose();

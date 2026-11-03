@@ -154,6 +154,66 @@ Handoff, Steps, Portfolio Home o IA.
 
 ---
 
+## Slice PORTFOLIO_LEAD_INTAKE_NAVIGATION_G2A (KAN-209 / KAN-212)
+
+**Registrado:** 2026-11-03 por HU KAN-209 y aprobación funcional KAN-210 `RESUELTO`; preparación técnica acotada en KAN-212.
+
+```text
+slice_id: PORTFOLIO_LEAD_INTAKE_NAVIGATION_G2A
+HU: KAN-209
+functional_authority: KAN-210 (RESUELTO; CA-01..CA-04 y copy "Continuar sin iniciativas")
+technical_task: KAN-212
+depends_on: PORTFOLIO_LEAD_SETUP_NAVIGATION_REENTRY_G1 (sin modificar su estado, alcance ni evidencia)
+logic_status: ACTIVE_V2_BASELINE (solo E3 Incorporación, transición explícita a E4 y camino sin iniciativas a E5)
+implementation_status: IMPLEMENTED_UNVERIFIED
+visual_status: V2_TARGET_DEFINED
+evidence_status: TESTING (unit/integration/build PASS; authenticated V2 E2E BLOCKED by unavailable Docker engine)
+implementation_commits: 8611bfd (frontend + unit tests); 2a528dd (V2 E2E + LEGACY_COMPAT regression); 43b7748 (independent-review fix for no-work integrity and lost-response reconciliation)
+independent_review: APPROVED after two rounds; first round found and second round verified the no_existing_work + WorkItems guard
+semantic_owner: V2 Portfolio Lead frontend setup navigation and intake recovery
+authority: Jira KAN-209 + KAN-210; docs/STARTERIA_AUTHORITY.md; docs/governance/STARTERIA_V2_MIGRATION_GUARDRAILS.md; doc/product-adr/ADR-009-canonicalizacion-gobernada-iniciativas-documentales.md; baseline Portfolio Lead congelada v1.0 dentro de CA-01..CA-04 aprobados
+current_state_evidence: STARTERIA_G2_E3_E4_AUDITORIA_Y_HANDOFF_v0.1.md (AUDIT_ONLY; evidencia, no autoridad autónoma)
+entry_boundary: /portfolio/inicio muestra E3 después del CTA explícito de G1 y consume PortfolioBootstrapSession persistida
+exit_boundary_has_work: E3 permanece visible en B3_PROVISIONAL_STRUCTURING; E4 se habilita solo después de analyze exitoso y recarga persistida en B4_MATERIAL_REVIEW
+exit_boundary_no_work: POST work-items/none persiste existingWorkStatus=no_existing_work y B3_PROVISIONAL_STRUCTURING; CTA explícito "Continuar sin iniciativas" permite E5 sin AnalysisRun, WorkItem, Project, Initiative o Step ficticio
+lateral_navigation_boundary: el máximo seleccionable se deriva de bootstrapPhase, existingWorkStatus y resultados backend; G2-A no autoriza saltar a E5/E6 para has_work ni a E6 para no_existing_work; E4→E5 con trabajo pertenece a G2-B
+backend_capabilities_reused: confirmAnchor persiste B2_WORK_INTAKE; paste/manual/import/none persisten B3 + existingWorkStatus; analyze rechaza no_existing_work y, con trabajo válido, persiste B4; operaciones usan portfolio:read/write, ownership, auditoría e idempotencia existentes
+backend_authority_gap: paste/manual/import/none no exigen anchor_confirmed ni bootstrapPhase=B2; analyze exige anchor presente + has_work + items, pero no exige anchor_confirmed ni fase B3. Una llamada API directa puede adelantar estado fuera del recorrido UI
+backend_gap_disposition: BLOCKED / OUT_OF_SCOPE_FOR_KAN-212. No modificar backend/API/Prisma; no afirmar enforcement secuencial server-side completo. Si KAN-212 necesita ese enforcement, STOP y volver a aprobación funcional con autoridad backend explícita
+current_surfaces: front/src/features/portfolio-lead/bootstrap/components/PortfolioBootstrapHome.tsx; front/src/features/portfolio-lead/bootstrap/state/usePortfolioBootstrap.ts; front/src/features/portfolio-lead/bootstrap/projection/bootstrapHomeProjection.ts; front/src/features/portfolio-lead/bootstrap/services/portfolioBootstrapClient.ts
+direct_consumer: front/src/app/pages/PortfolioLeadHomePage.tsx on /portfolio/inicio
+backend_providers_read_only: backend/modules/portfolio-bootstrap/portfolio-bootstrap.router.ts; portfolio-bootstrap.controller.ts; portfolio-bootstrap.service.ts; front/prisma/schema.prisma
+keep: persisted BootstrapSession states; provisional WorkItems; idempotency; scoped authority; audit events; explicit analyzer command; no canonical writes
+adapt: E3/E4 composition and selected/progress/available stage projection; explicit no-work CTA; intake error/retry/saving recovery; truthful PDF copy
+legacy_dependencies: LEGACY_COMPAT E2E only as regression evidence; it does not define G2-A semantics
+adapter_required: NO
+tests_v2_conformance_existing: PortfolioBootstrapHome.test.tsx (G1 persisted navigation baseline); usePortfolioBootstrap.test.tsx (server-response state/reload); bootstrapHomeProjection.test.ts (no-work/provisional projection); portfolio-bootstrap router/integration/scoped-authority tests (persistence, idempotency, permissions, no canonical writes)
+tests_legacy_compat: front/e2e/portfolio-entry-conversion.spec.ts scenarios tagged LEGACY_COMPAT for no-existing-work and CSV/XLSX analysis
+tests_unknown_or_missing: no backend test rejects intake before anchor confirmation/B2; no authenticated E2E classified as G2-A V2_CONFORMANCE yet
+tests_required: CA-01..CA-04 test-first frontend coverage; negative lateral-jump coverage; intake failure/retry coverage; reentry/reload; G1 regression; backend regression read-only; authenticated G2-A V2 E2E or explicit BLOCKED
+verification_local: focused frontend 57/57 PASS; complete frontend 1063/1063 PASS; backend router/scoped-authority 24/24 PASS; frontend typecheck PASS; lint PASS; build PASS; git diff --check PASS
+verification_limitations: authenticated G2-A V2_CONFORMANCE and LEGACY_COMPAT E2E BLOCKED because Docker Desktop Linux engine pipe is unavailable; backend integration tests requiring DATABASE_URL skipped; combined typecheck remains FAIL on unchanged baseline file critical-synthesis-reasoning.test.ts (identical blob at origin/main@e78241e)
+backend_enforcement_status: UNVERIFIED / NOT IMPLEMENTED by KAN-212; backend_authority_gap remains open and out of scope
+core_impact: NONE
+backend_impact: NONE AUTHORIZED (read-only provider; authority gap above remains blocked)
+api_impact: NONE
+prisma_impact: NONE
+step_impact: NONE
+handoff_impact: NONE
+portfolio_home_impact: NONE
+ai_impact: NONE
+excluded: Core; backend/API changes; Prisma/migrations; productive AI; Steps 0-4; Handoff; G1 modifications; Portfolio Home; G2-B review/gates; canonical Project/Initiative/Step writes; PDF extraction/custody; semantic deduplication; estimatedStep/maturity; merge/deploy
+implementation_gate_frontend: V2_CHANGE_GUARDRAIL_CHECK Proceed YES for KAN-212 frontend and authorized tests only
+implementation_gate_backend: Proceed NO; separate functional and backend authority required
+```
+
+Este registro no promociona el handoff de auditoría a contrato ni amplía KAN-212. La brecha de
+enforcement backend queda visible y bloqueada; el frontend reutiliza únicamente estados y respuestas
+persistidas existentes. `CURRENT_STATE.md` no cambia: la implementación permanece sin merge, el E2E
+autenticado está bloqueado y no existe despliegue G2-A.
+
+---
+
 ## Slice FIRST_VALUE_P3_RUNTIME_PROCESSOR (KAN-86)
 
 ```text
