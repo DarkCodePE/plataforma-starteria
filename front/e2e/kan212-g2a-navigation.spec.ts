@@ -1,5 +1,12 @@
 import { PrismaClient } from '@prisma/client';
-import { expect, request as pwRequest, test, type APIRequestContext, type Page } from '@playwright/test';
+import {
+  expect,
+  request as pwRequest,
+  test,
+  type APIRequestContext,
+  type APIResponse,
+  type Page,
+} from '@playwright/test';
 
 const prisma = new PrismaClient();
 const baseURL = process.env.E2E_BASE_URL ?? 'http://127.0.0.1:5176';
@@ -84,6 +91,35 @@ async function canonicalCounts() {
   return { fronts, challenges, projects, steps, decisions, initiativePortfolioMetas };
 }
 
+async function tenantSessionState(sessionId: string) {
+  const [session, anchor, anchorHistory, workItems, sources, analysisRuns, proposedMutations, connections, conditions, readings] = await Promise.all([
+    prisma.portfolioBootstrapSession.findUniqueOrThrow({ where: { id: sessionId } }),
+    prisma.portfolioAnchor.findUniqueOrThrow({ where: { bootstrapSessionId: sessionId } }),
+    prisma.portfolioAnchorHistory.findMany({ where: { bootstrapSessionId: sessionId }, orderBy: { id: 'asc' } }),
+    prisma.portfolioBootstrapWorkItem.findMany({
+      where: { bootstrapSessionId: sessionId },
+      orderBy: { id: 'asc' },
+    }),
+    prisma.portfolioBootstrapWorkIntakeSource.findMany({ where: { bootstrapSessionId: sessionId }, orderBy: { id: 'asc' } }),
+    prisma.portfolioBootstrapAnalysisRun.findMany({ where: { bootstrapSessionId: sessionId }, orderBy: { id: 'asc' } }),
+    prisma.portfolioBootstrapProposedMutation.findMany({ where: { bootstrapSessionId: sessionId }, orderBy: { id: 'asc' } }),
+    prisma.portfolioStrategicConnection.findMany({ where: { bootstrapSessionId: sessionId }, orderBy: { id: 'asc' } }),
+    prisma.portfolioAdvancementCondition.findMany({ where: { bootstrapSessionId: sessionId }, orderBy: { id: 'asc' } }),
+    prisma.portfolioReading.findMany({ where: { bootstrapSessionId: sessionId }, orderBy: { id: 'asc' } }),
+  ]);
+  return { session, anchor, anchorHistory, workItems, sources, analysisRuns, proposedMutations, connections, conditions, readings };
+}
+
+async function expectCrossTenantDenied(response: APIResponse, privateValues: string[]) {
+  const responseText = await response.text();
+  expect(response.status(), responseText).toBe(403);
+  expect(JSON.parse(responseText)).toMatchObject({
+    success: false,
+    error: { code: 'PORTFOLIO_BOOTSTRAP_FORBIDDEN' },
+  });
+  for (const privateValue of privateValues) expect(responseText).not.toContain(privateValue);
+}
+
 test.describe('KAN-212 G2-A V2_CONFORMANCE', () => {
   test.afterAll(async () => { await prisma.$disconnect(); });
 
@@ -151,6 +187,107 @@ test.describe('KAN-212 G2-A V2_CONFORMANCE', () => {
     expect(await prisma.portfolioBootstrapWorkItem.count({ where: { bootstrapSessionId: sessionId } })).toBe(1);
     expect(await prisma.portfolioBootstrapAnalysisRun.count({ where: { bootstrapSessionId: sessionId } })).toBe(1);
     expect(await canonicalCounts()).toEqual(before);
+    await api.dispose();
+  });
+
+  test('authenticated tenant B cannot read or mutate tenant A G2-A data, and A remains operational', async () => {
+    const api = await pwRequest.newContext({ baseURL });
+    const tenantA = await registerLead(api, 'tenant-a');
+    const tenantB = await registerLead(api, 'tenant-b');
+    const sessionA = await prepareConfirmedIntake(api, tenantA);
+    const sessionB = await prepareConfirmedIntake(api, tenantB);
+    const authA = bearer(tenantA.token);
+    const authB = bearer(tenantB.token);
+    const privateLabel = `Iniciativa privada A ${Date.now()}`;
+
+    expect(tenantA.organizationId).not.toBe(tenantB.organizationId);
+    expect(sessionA).not.toBe(sessionB);
+
+    const added = await api.post(`/api/v1/portfolio-bootstrap/sessions/${sessionA}/work-items/manual`, {
+      headers: { ...authA, 'Idempotency-Key': `kan218-a-work-${sessionA}` },
+      data: { label: privateLabel, purpose: 'Validar aislamiento real entre tenants.', currentStateHint: 'active' },
+      failOnStatusCode: false,
+    });
+    expect(added.status(), await added.text()).toBe(200);
+    const workItemA = ((await added.json()).data.items as Array<{ id: string; rawLabel: string }>)
+      .find((item) => item.rawLabel === privateLabel);
+    expect(workItemA).toBeTruthy();
+
+    const analyzed = await api.post(`/api/v1/portfolio-bootstrap/sessions/${sessionA}/analyze`, {
+      headers: { ...authA, 'Idempotency-Key': `kan218-a-analysis-${sessionA}` },
+      data: {},
+      failOnStatusCode: false,
+    });
+    expect(analyzed.status(), await analyzed.text()).toBe(200);
+    const proposedMutationA = ((await analyzed.json()).data.proposedMutations as Array<{ id: string }>)[0];
+    expect(proposedMutationA).toBeTruthy();
+
+    const beforeA = await tenantSessionState(sessionA);
+    const beforeB = await tenantSessionState(sessionB);
+    const beforeCanonical = await canonicalCounts();
+    const privateValues = [
+      sessionA,
+      tenantA.organizationId,
+      tenantA.userId,
+      tenantA.email,
+      workItemA!.id,
+      beforeA.workItems[0].sourceId,
+      proposedMutationA.id,
+      privateLabel,
+    ];
+
+    const attempts = [
+      await api.get(`/api/v1/portfolio-bootstrap/sessions/${sessionA}`, { headers: authB, failOnStatusCode: false }),
+      await api.get(`/api/v1/portfolio-bootstrap/sessions/${sessionA}/work-items`, { headers: authB, failOnStatusCode: false }),
+      await api.get(`/api/v1/portfolio-bootstrap/sessions/${sessionA}/proposed-mutations`, { headers: authB, failOnStatusCode: false }),
+      await api.get(`/api/v1/portfolio-bootstrap/sessions/${sessionA}/readings/latest`, { headers: authB, failOnStatusCode: false }),
+      await api.patch(`/api/v1/portfolio-bootstrap/sessions/${sessionA}/anchor`, {
+        headers: authB,
+        data: { contextSummary: 'Intento cross-tenant que no debe persistir.' },
+        failOnStatusCode: false,
+      }),
+      await api.post(`/api/v1/portfolio-bootstrap/sessions/${sessionA}/work-items/manual`, {
+        headers: { ...authB, 'Idempotency-Key': `kan218-b-foreign-work-${sessionA}` },
+        data: { label: 'Trabajo inyectado por tenant B' },
+        failOnStatusCode: false,
+      }),
+      await api.delete(`/api/v1/portfolio-bootstrap/sessions/${sessionA}/work-items/${workItemA!.id}`, {
+        headers: authB,
+        failOnStatusCode: false,
+      }),
+      await api.post(`/api/v1/portfolio-bootstrap/sessions/${sessionA}/analyze`, {
+        headers: { ...authB, 'Idempotency-Key': `kan218-b-foreign-analysis-${sessionA}` },
+        data: {},
+        failOnStatusCode: false,
+      }),
+      await api.post(`/api/v1/portfolio-bootstrap/sessions/${sessionA}/readings`, {
+        headers: { ...authB, 'Idempotency-Key': `kan218-b-foreign-reading-${sessionA}` },
+        data: {},
+        failOnStatusCode: false,
+      }),
+    ];
+    for (const attempt of attempts) await expectCrossTenantDenied(attempt, privateValues);
+
+    expect(await tenantSessionState(sessionA)).toEqual(beforeA);
+    expect(await tenantSessionState(sessionB)).toEqual(beforeB);
+    expect(await canonicalCounts()).toEqual(beforeCanonical);
+
+    const tenantBOwnSession = await api.get(`/api/v1/portfolio-bootstrap/sessions/${sessionB}`, {
+      headers: authB,
+      failOnStatusCode: false,
+    });
+    expect(tenantBOwnSession.status(), await tenantBOwnSession.text()).toBe(200);
+
+    const tenantAStillOperates = await api.post(`/api/v1/portfolio-bootstrap/sessions/${sessionA}/work-items/manual`, {
+      headers: { ...authA, 'Idempotency-Key': `kan218-a-recovery-${sessionA}` },
+      data: { label: 'OperaciÃ³n posterior autorizada de A' },
+      failOnStatusCode: false,
+    });
+    expect(tenantAStillOperates.status(), await tenantAStillOperates.text()).toBe(200);
+    expect(await prisma.portfolioBootstrapWorkItem.count({ where: { bootstrapSessionId: sessionA } }))
+      .toBe(beforeA.workItems.length + 1);
+    expect(await prisma.portfolioBootstrapWorkItem.count({ where: { bootstrapSessionId: sessionB } })).toBe(0);
+    expect(await canonicalCounts()).toEqual(beforeCanonical);
     await api.dispose();
   });
 });
