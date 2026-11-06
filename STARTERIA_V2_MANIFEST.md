@@ -168,16 +168,16 @@ technical_audit: KAN-220#10651, #10652, #10655, #10656, #10657 + revisión indep
 technical_task: KAN-221
 frontend_task: KAN-222
 frontend_authority: KAN-222#10667 (APPROVED; alcance limitado a frontend V2, tests focales y E2E autenticado)
-frontend_implementation_status: AUTHORIZED_NOT_IMPLEMENTED
+frontend_implementation_status: IMPLEMENTED_PENDING_INDEPENDENT_REVIEW
 logic_status: ACTIVE_V2_BASELINE (solo semántica funcional aprobada)
 implementation_status: IMPLEMENTED_UNVERIFIED
 visual_status: V2_TARGET_DEFINED
 evidence_status: TESTING
 runtime_verification: LOCAL_UNIT_REGRESSION_PRISMA_LINT_BUILD_PASS; KAN-221_POSTGRESQL_5_OF_5_PASS; CI_6_OF_6_PASS_PR_256
-implementation_commits: ace7855 (tests-first); 433eec1 (backend/API/Prisma); 6572118 + b944c01 (independent-review fixes)
+implementation_commits: ace7855 (KAN-221 tests-first); 433eec1 (KAN-221 backend/API/Prisma); 6572118 + b944c01 (KAN-221 independent-review fixes); e5393a7 (KAN-222 tests-first); c39327f (KAN-222 frontend)
 independent_review: R1 CHANGES_REQUIRED; R2 CHANGES_REQUIRED; R3 APPROVED
-implementation_surfaces: portfolio-bootstrap context schemas/router/controller/service; additive Prisma review/history/operation models and migration; focused/unit/HTTP/DB-integration tests
-test_evidence: focused 37/37 PASS; backend full regression PASS; frontend baseline regression PASS; lint/Prisma validate/front typecheck/build PASS; backend typecheck retains pre-existing TS2740 only
+implementation_surfaces: portfolio-bootstrap context schemas/router/controller/service; additive Prisma review/history/operation models and migration; KAN-222 frontend E1 client/hook/conversation wiring; focused/unit/HTTP/DB-integration/authenticated E2E tests
+test_evidence: KAN-221 focused 37/37 PASS; KAN-222 focused 13/13 + Bootstrap regression 59/59 PASS; frontend full regression/build/lint/front typecheck PASS; backend KAN-221 non-DB 17/17 PASS; backend typecheck retains pre-existing TS2740 only
 postgresql_evidence: 5/5 KAN-221 integration scenarios PASS, 0 skipped, under PORTFOLIO_BOOTSTRAP_DB_INTEGRATION=1 in CI run 42306134658 / PR #256
 semantic_owners: CompanyContextVersion PUBLISHED = fuente opcional; Bootstrap E1 = revisión/snapshot confirmado; PortfolioAnchor E2 = objetivo independiente
 preserves: PORTFOLIO_LEAD_SETUP_NAVIGATION_REENTRY_G1 KAN-205/207 sin cambios
@@ -197,9 +197,9 @@ CAS, receipts idempotentes, autorización dual y aislamiento tenant conforme al 
 en KAN-220#10655/#10656/#10657.
 
 KAN-221 implementa el contrato E1 de forma aditiva; PR #256 certificó sus cinco escenarios sobre
-PostgreSQL desechable. KAN-222#10667 autoriza el siguiente incremento frontend, todavía no
-implementado: conversación guiada determinista, síntesis editable y conexión al API E1 existente,
-sin modificar Core, backend, Prisma, Steps, Handoff, IA productiva o infraestructura. La
+PostgreSQL desechable. KAN-222#10667 autoriza e implementa el incremento frontend en revisión:
+conversación guiada determinista, síntesis editable y conexión al API E1 existente, sin modificar
+Core, backend, Prisma, Steps, Handoff, IA productiva o infraestructura. La
 concurrencia preexistente de creación de versiones de Company Context queda fuera de alcance; el
 bridge sólo fija, revalida y congela una versión ya publicada.
 
