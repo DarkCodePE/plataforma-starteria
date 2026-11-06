@@ -62,4 +62,12 @@ describe('portfolio bootstrap E1 context schemas', () => {
     expect(confirmPortfolioBootstrapContextBodySchema.parse({ expectedVersion: 1 })).toEqual({ expectedVersion: 1 });
     expect(() => confirmPortfolioBootstrapContextBodySchema.parse({ expectedVersion: 0 })).toThrow();
   });
+
+  it('keeps Copilot provenance even when its optional reference is absent', () => {
+    expect(savePortfolioBootstrapContextDraftBodySchema.parse({
+      expectedVersion: 0,
+      context: { ...context, situation: { value: 'Hypothesis', provenance: 'copilot_inferred' } },
+      sourceCompanyContext: null,
+    }).context?.situation?.provenance).toBe('copilot_inferred');
+  });
 });

@@ -3,11 +3,13 @@ import { AppError } from '../../shared/errors/AppError';
 import type { PortfolioBootstrapService } from './portfolio-bootstrap.service';
 import type { PortfolioOrganizationService } from './portfolio-organization.service';
 import type { PortfolioSetupCompletionService } from './portfolio-setup-completion.service';
+import type { PortfolioBootstrapContextService } from './portfolio-bootstrap-context.service';
 import {
   analyzeBodySchema,
   advancementConditionParamsSchema,
   bootstrapSessionParamsSchema,
   completePortfolioSetupBodySchema,
+  confirmPortfolioBootstrapContextBodySchema,
   confirmPortfolioOrganizationBodySchema,
   correctProposedMutationBodySchema,
   fromContinuationBodySchema,
@@ -19,6 +21,7 @@ import {
   proposedMutationsQuerySchema,
   reviewProposedMutationBodySchema,
   savePortfolioOrganizationProposalBodySchema,
+  savePortfolioBootstrapContextDraftBodySchema,
   updateAnchorBodySchema,
   updateAdvancementConditionDispositionBodySchema,
   updateImportMappingBodySchema,
@@ -32,7 +35,56 @@ export class PortfolioBootstrapController {
     private readonly service: PortfolioBootstrapService,
     private readonly organizationService: PortfolioOrganizationService,
     private readonly completionService: PortfolioSetupCompletionService,
+    private readonly contextService: PortfolioBootstrapContextService,
   ) {}
+
+  getContext = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      if (!req.user?.id) throw AppError.unauthorized('No autorizado.', 'PORTFOLIO_BOOTSTRAP_AUTH_REQUIRED');
+      const { sessionId } = bootstrapSessionParamsSchema.parse(req.params);
+      const data = await this.contextService.getContext({
+        sessionId, authenticatedUserId: req.user.id, permissions: req.user.permissions,
+      });
+      res.json({ success: true, data });
+    } catch (error) { next(error); }
+  };
+
+  saveContextDraft = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      if (!req.user?.id) throw AppError.unauthorized('No autorizado.', 'PORTFOLIO_BOOTSTRAP_AUTH_REQUIRED');
+      const idempotencyKey = req.get('Idempotency-Key') ?? '';
+      if (!idempotencyKey.trim()) throw AppError.badRequest('Falta Idempotency-Key.', 'PORTFOLIO_CONTEXT_IDEMPOTENCY_REQUIRED');
+      const { sessionId } = bootstrapSessionParamsSchema.parse(req.params);
+      const body = savePortfolioBootstrapContextDraftBodySchema.parse(req.body);
+      const data = await this.contextService.saveDraft({
+        sessionId, authenticatedUserId: req.user.id, permissions: req.user.permissions,
+        idempotencyKey,
+        expectedVersion: body.expectedVersion!,
+        context: body.context!,
+        sourceCompanyContext: body.sourceCompanyContext ? {
+          companyId: body.sourceCompanyContext.companyId!,
+          versionId: body.sourceCompanyContext.versionId!,
+          versionNumber: body.sourceCompanyContext.versionNumber!,
+        } : null,
+      });
+      res.json({ success: true, data });
+    } catch (error) { next(error); }
+  };
+
+  confirmContext = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      if (!req.user?.id) throw AppError.unauthorized('No autorizado.', 'PORTFOLIO_BOOTSTRAP_AUTH_REQUIRED');
+      const idempotencyKey = req.get('Idempotency-Key') ?? '';
+      if (!idempotencyKey.trim()) throw AppError.badRequest('Falta Idempotency-Key.', 'PORTFOLIO_CONTEXT_IDEMPOTENCY_REQUIRED');
+      const { sessionId } = bootstrapSessionParamsSchema.parse(req.params);
+      const body = confirmPortfolioBootstrapContextBodySchema.parse(req.body);
+      const data = await this.contextService.confirm({
+        sessionId, authenticatedUserId: req.user.id, permissions: req.user.permissions,
+        idempotencyKey, expectedVersion: body.expectedVersion,
+      });
+      res.json({ success: true, data });
+    } catch (error) { next(error); }
+  };
 
   getE5Eligibility = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {

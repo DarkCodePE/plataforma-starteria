@@ -676,6 +676,8 @@ model User {
     portfolioBootstrapImportBatches PortfolioBootstrapImportBatch[] @relation("PortfolioBootstrapImportBatchUploadedBy")
     confirmedPortfolioAnchors PortfolioAnchor[] @relation("PortfolioAnchorConfirmedBy")
     publishedPortfolioReadings PortfolioReading[]
+    confirmedPortfolioBootstrapContextReviews PortfolioBootstrapContextReview[] @relation("PortfolioBootstrapContextConfirmedBy")
+    portfolioBootstrapContextReviewVersions PortfolioBootstrapContextReviewVersion[] @relation("PortfolioBootstrapContextVersionActor")
 
   @@index([email])
   @@index([role])
@@ -2262,6 +2264,7 @@ model Company {
   sources       ContextSource[]
   snapshots     InitiativeContextSnapshot[]
   contributions CompanyContribution[]
+  bootstrapContextReviews PortfolioBootstrapContextReview[] @relation("PortfolioBootstrapContextSourceCompany")
 
   @@index([ownerUserId])
   @@index([organizationId])
@@ -2306,6 +2309,7 @@ model CompanyContextVersion {
 
   entries   CompanyContextEntry[]
   snapshots InitiativeContextSnapshot[]
+  bootstrapContextReviews PortfolioBootstrapContextReview[] @relation("PortfolioBootstrapContextSourceVersion")
 
   @@unique([companyId, versionNumber])
   @@index([companyId])
@@ -2828,6 +2832,21 @@ enum PortfolioBootstrapExistingWorkStatus {
   no_existing_work
 }
 
+enum PortfolioBootstrapContextReviewStatus {
+  draft
+  confirmed
+}
+
+enum PortfolioBootstrapContextReviewAction {
+  draft_saved
+  confirmed
+}
+
+enum PortfolioBootstrapContextOperationType {
+  save_draft
+  confirm
+}
+
 enum PortfolioOrganizationProposalStatus {
   reviewed
   superseded
@@ -3165,6 +3184,8 @@ model PortfolioBootstrapSession {
   readings             PortfolioReading[]
   organizationProposals PortfolioOrganizationProposal[]
   organizationMaterializations PortfolioOrganizationMaterialization[]
+  contextReview PortfolioBootstrapContextReview?
+  contextOperations PortfolioBootstrapContextOperation[]
 
   @@unique([userId, sourceContinuationId])
   @@index([userId])
@@ -3173,6 +3194,67 @@ model PortfolioBootstrapSession {
   @@index([bootstrapPhase])
   @@index([existingWorkStatus])
   @@index([organizationId, setupCompletedAt])
+}
+
+model PortfolioBootstrapContextReview {
+  id                                String                                @id @default(cuid())
+  bootstrapSessionId                String                                @unique
+  status                            PortfolioBootstrapContextReviewStatus @default(draft)
+  version                           Int                                   @default(1)
+  draftJson                         Json
+  confirmedSnapshotJson             Json?
+  sourceCompanyId                   String?
+  sourceCompanyContextVersionId     String?
+  sourceCompanyContextVersionNumber Int?
+  provenanceJson                    Json
+  confirmedBy                       String?
+  confirmedAt                       DateTime?
+  createdAt                         DateTime                              @default(now())
+  updatedAt                         DateTime                              @updatedAt
+
+  bootstrapSession            PortfolioBootstrapSession       @relation(fields: [bootstrapSessionId], references: [id], onDelete: Cascade)
+  sourceCompany               Company?                        @relation("PortfolioBootstrapContextSourceCompany", fields: [sourceCompanyId], references: [id], onDelete: Restrict)
+  sourceCompanyContextVersion CompanyContextVersion?          @relation("PortfolioBootstrapContextSourceVersion", fields: [sourceCompanyContextVersionId], references: [id], onDelete: Restrict)
+  confirmedByUser             User?                           @relation("PortfolioBootstrapContextConfirmedBy", fields: [confirmedBy], references: [id], onDelete: SetNull)
+  history                     PortfolioBootstrapContextReviewVersion[]
+
+  @@index([bootstrapSessionId, status])
+  @@index([sourceCompanyId])
+  @@index([sourceCompanyContextVersionId])
+  @@index([confirmedBy])
+}
+
+model PortfolioBootstrapContextReviewVersion {
+  id           String                                @id @default(cuid())
+  reviewId     String
+  version      Int
+  action       PortfolioBootstrapContextReviewAction
+  snapshotJson Json
+  actorUserId  String?
+  createdAt    DateTime                              @default(now())
+
+  review PortfolioBootstrapContextReview @relation(fields: [reviewId], references: [id], onDelete: Cascade)
+  actor  User?                           @relation("PortfolioBootstrapContextVersionActor", fields: [actorUserId], references: [id], onDelete: SetNull)
+
+  @@unique([reviewId, version])
+  @@index([actorUserId])
+  @@index([createdAt])
+}
+
+model PortfolioBootstrapContextOperation {
+  id                     String                                @id @default(cuid())
+  bootstrapSessionId     String
+  operation              PortfolioBootstrapContextOperationType
+  idempotencyKeyHash     String
+  payloadHash            String
+  responseJson           Json
+  resultingReviewVersion Int
+  createdAt              DateTime                              @default(now())
+
+  bootstrapSession PortfolioBootstrapSession @relation(fields: [bootstrapSessionId], references: [id], onDelete: Cascade)
+
+  @@unique([bootstrapSessionId, operation, idempotencyKeyHash])
+  @@index([bootstrapSessionId, createdAt])
 }
 
 // PL-04/KAN-154: immutable reviewed proposal versions. These rows are

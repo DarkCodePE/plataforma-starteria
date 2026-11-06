@@ -5,12 +5,14 @@ import { PortfolioBootstrapController } from './portfolio-bootstrap.controller';
 import { PortfolioBootstrapService } from './portfolio-bootstrap.service';
 import { PortfolioOrganizationService } from './portfolio-organization.service';
 import { PortfolioSetupCompletionService } from './portfolio-setup-completion.service';
+import { PortfolioBootstrapContextService } from './portfolio-bootstrap-context.service';
 
 export interface PortfolioBootstrapRouterDeps {
   authenticate?: RequestHandler;
   service?: PortfolioBootstrapService;
   organizationService?: PortfolioOrganizationService;
   completionService?: PortfolioSetupCompletionService;
+  contextService?: PortfolioBootstrapContextService;
 }
 
 export function buildPortfolioBootstrapRouter(deps: PortfolioBootstrapRouterDeps = {}): Router {
@@ -20,6 +22,7 @@ export function buildPortfolioBootstrapRouter(deps: PortfolioBootstrapRouterDeps
     deps.service ?? new PortfolioBootstrapService(prisma),
     deps.organizationService ?? new PortfolioOrganizationService(prisma),
     deps.completionService ?? new PortfolioSetupCompletionService(prisma),
+    deps.contextService ?? new PortfolioBootstrapContextService(prisma),
   );
 
   router.post('/sessions/direct', auth, controller.createOrReuseDirect);
@@ -28,6 +31,9 @@ export function buildPortfolioBootstrapRouter(deps: PortfolioBootstrapRouterDeps
   router.post('/sessions/from-continuation', auth, controller.createOrReuseFromContinuation);
   router.post('/sessions/from-portfolio-setup-continuity', auth, controller.createOrReuseFromPortfolioSetup);
   router.get('/sessions/:sessionId', auth, controller.getSession);
+  router.get('/sessions/:sessionId/context', auth, controller.getContext);
+  router.put('/sessions/:sessionId/context/draft', auth, controller.saveContextDraft);
+  router.post('/sessions/:sessionId/context/confirm', auth, controller.confirmContext);
   router.post('/sessions/:sessionId/complete-setup', auth, controller.completeSetup);
   router.patch('/sessions/:sessionId/anchor', auth, controller.updateAnchor);
   router.post('/sessions/:sessionId/anchor/confirm', auth, controller.confirmAnchor);
