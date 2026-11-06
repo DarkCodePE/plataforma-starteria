@@ -64,7 +64,11 @@ async function prepareAnalyzedSession(api: APIRequestContext, lead: Awaited<Retu
     failOnStatusCode: false,
   });
   expect(analyzed.status(), await analyzed.text()).toBe(200);
-  const mutation = ((await analyzed.json()).data.proposedMutations as Array<{ id: string; proposedValue: unknown }>)[0];
+  const mutation = ((await analyzed.json()).data.proposedMutations as Array<{
+    id: string;
+    targetType: string;
+    proposedValue: unknown;
+  }>).find((candidate) => candidate.targetType === 'advancement_condition');
   expect(mutation).toBeTruthy();
   return { sessionId, auth, mutation };
 }
@@ -90,7 +94,7 @@ test.describe('KAN-213 G2-B V2_CONFORMANCE', () => {
       : {};
     await prisma.portfolioBootstrapProposedMutation.update({
       where: { id: mutation.id },
-      data: { proposedValue: { ...proposedValue, severity: 'blocking' } },
+      data: { proposedValue: { ...proposedValue, severity: 'blocking', movementAffected: 'Organización' } },
     });
     const confirmed = await api.post(`/api/v1/portfolio-bootstrap/sessions/${sessionId}/proposed-mutations/${mutation.id}/confirm`, {
       headers: auth,
@@ -98,13 +102,18 @@ test.describe('KAN-213 G2-B V2_CONFORMANCE', () => {
       failOnStatusCode: false,
     });
     expect(confirmed.status(), await confirmed.text()).toBe(200);
-    const condition = (await confirmed.json()).data.advancementCondition as { id: string; dispositionVersion: number };
-    expect(condition).toBeTruthy();
 
     const blockedEligibility = await api.get(`/api/v1/portfolio-bootstrap/sessions/${sessionId}/e5-eligibility`, { headers: auth });
-    expect(await blockedEligibility.json()).toMatchObject({
+    const blockedEligibilityBody = await blockedEligibility.json();
+    expect(blockedEligibilityBody).toMatchObject({
       data: { allowed: false, reasonCodes: expect.arrayContaining(['HARD_BLOCKERS_ACTIVE']) },
     });
+    const condition = (blockedEligibilityBody.data.blockers as Array<{
+      id: string;
+      kind: string;
+      dispositionVersion: number;
+    }>).find((blocker) => blocker.kind === 'confirmed_condition');
+    expect(condition).toBeTruthy();
 
     await loginUi(page, lead);
     const continueToOrganization = page.getByRole('button', { name: 'Continuar a organización' });
@@ -132,9 +141,9 @@ test.describe('KAN-213 G2-B V2_CONFORMANCE', () => {
     expect(bypass.status(), await bypass.text()).toBe(409);
     expect(await bypass.json()).toMatchObject({ error: { code: 'PORTFOLIO_E5_INELIGIBLE' } });
 
-    const resolved = await api.patch(`/api/v1/portfolio-bootstrap/sessions/${sessionId}/advancement-conditions/${condition.id}/disposition`, {
-      headers: { ...auth, 'Idempotency-Key': `kan213-resolve-${condition.id}` },
-      data: { disposition: 'resolved', expectedVersion: condition.dispositionVersion, reason: 'Evidencia revisada por Portfolio Lead.', evidenceRefs: ['kan213-e2e-review'] },
+    const resolved = await api.patch(`/api/v1/portfolio-bootstrap/sessions/${sessionId}/advancement-conditions/${condition!.id}/disposition`, {
+      headers: { ...auth, 'Idempotency-Key': `kan213-resolve-${condition!.id}` },
+      data: { disposition: 'resolved', expectedVersion: condition!.dispositionVersion, reason: 'Evidencia revisada por Portfolio Lead.', evidenceRefs: ['kan213-e2e-review'] },
       failOnStatusCode: false,
     });
     expect(resolved.status(), await resolved.text()).toBe(200);
