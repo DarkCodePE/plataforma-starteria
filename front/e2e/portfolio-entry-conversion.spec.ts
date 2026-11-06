@@ -214,6 +214,18 @@ async function provisionScopedPortfolioAccess(userId: string) {
   return organization;
 }
 
+async function grantPortfolioLeadAuthority(userId: string, organizationId: string) {
+  // KAN-217 makes the E5 decision a Portfolio Lead command scoped to one tenant.
+  await prisma.user.update({
+    where: { id: userId },
+    data: {
+      role: 'portfolio_lead',
+      roles: ['portfolio_lead'],
+      organizationId,
+    },
+  });
+}
+
 async function expectScopedPortfolioAccess(
   page: Page,
   api: APIRequestContext,
@@ -1522,17 +1534,29 @@ test.describe('Portfolio Entry 114D Critical Handoff and explicit legacy compati
 
     await continueThroughAuthenticatedLegacyPortfolioEntry(page, user, organization, legacyFixture, { openPortfolioHomeForHomeCoverage: true });
     await expectScopedPortfolioAccess(page, api, user, organization.id);
+    await grantPortfolioLeadAuthority(user.userId, organization.id);
+    await page.reload();
 
     const confirmAnchor = page.getByRole('button', { name: /Confirmar este punto de partida y continuar/i });
+    const workIntake = page.getByTestId('portfolio-bootstrap-work-intake');
+    await expect(confirmAnchor.or(workIntake)).toBeVisible({ timeout: 15_000 });
     if (await confirmAnchor.isVisible().catch(() => false)) {
       await confirmAnchor.click();
       await continueToPortfolioWorkIntake(page);
     } else {
-      await expect(page.getByTestId('portfolio-bootstrap-work-intake')).toBeVisible({ timeout: 15_000 });
+      await expect(workIntake).toBeVisible({ timeout: 15_000 });
     }
     const beforeNoWork = await canonicalCounts();
     await page.getByRole('button', { name: /Todavia no tenemos iniciativas/i }).click();
+    const noWorkEligibilityResponse = page.waitForResponse((response) => response.request().method() === 'GET'
+      && /\/portfolio-bootstrap\/sessions\/[^/]+\/e5-eligibility$/.test(new URL(response.url()).pathname));
     await page.getByRole('button', { name: /Todavia no tenemos iniciativas activas/i }).click();
+    const noWorkEligibility = await noWorkEligibilityResponse;
+    expect(noWorkEligibility.status(), await noWorkEligibility.text()).toBe(200);
+    expect((await noWorkEligibility.json()).data).toMatchObject({
+      allowed: true,
+      reasonCodes: ['NO_EXISTING_WORK_ELIGIBLE'],
+    });
 
     const organizationStage = page.getByLabel('Tu avance').getByRole('button', { name: /Organización/i });
     await expect(organizationStage).toBeDisabled();
@@ -1643,6 +1667,7 @@ async function startPortfolioBootstrapFromLegacyEntry(page: Page) {
 
   const continuationId = await continueThroughAuthenticatedLegacyPortfolioEntry(page, user, organization, legacyFixture, { openPortfolioHomeForHomeCoverage: true });
   await expectScopedPortfolioAccess(page, api, user, organization.id);
+  await grantPortfolioLeadAuthority(user.userId, organization.id);
 
   let dbState = await expectOneBootstrapSession(continuationId);
   const bootstrapSessionId = dbState.session.id;

@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AlertTriangle, CheckCircle2, ChevronRight, Eye, FileText, FileUp, MessageSquareText, Pencil, Plus, RotateCw, Send, Sparkles, Trash2, Users } from 'lucide-react';
+import api from '../../../../app/services/api';
 import { projectBootstrapHome } from '../projection/bootstrapHomeProjection';
 import type {
   ManualPortfolioBootstrapWorkItemInput,
@@ -94,6 +95,16 @@ export function PortfolioBootstrapHome({
   onCompleteSetup?: () => Promise<void>;
 }) {
   const projection = useMemo(() => data ? projectBootstrapHome(data) : null, [data]);
+  const eligibilityRequired = Boolean(projection && (
+    projection.existingWorkStatus === 'no_existing_work'
+    || data?.bootstrapSession.bootstrapPhase === 'B4_MATERIAL_REVIEW'
+    || data?.bootstrapSession.bootstrapPhase === 'B5_FIRST_READING'
+  ));
+  const e5Eligibility = usePortfolioE5Eligibility(
+    data?.bootstrapSession.id ?? null,
+    eligibilityRequired,
+    data,
+  );
 
   if (status === 'loading' || status === 'idle') {
     return (
@@ -166,8 +177,90 @@ export function PortfolioBootstrapHome({
       initialAssignmentTarget={initialAssignmentTarget}
       onOpenAssignment={onOpenAssignment}
       onCompleteSetup={onCompleteSetup}
+      e5Eligibility={e5Eligibility}
     />
   );
+}
+
+type PortfolioE5EligibilityReasonCode =
+  | 'NO_EXISTING_WORK_ELIGIBLE'
+  | 'ANALYZED_WORK_ELIGIBLE'
+  | 'SESSION_INACTIVE'
+  | 'ANCHOR_NOT_CONFIRMED'
+  | 'EXISTING_WORK_STATUS_UNKNOWN'
+  | 'NO_WORK_ITEMS_CONFLICT'
+  | 'WORK_ITEMS_REQUIRED'
+  | 'ANALYSIS_NOT_COMPLETED'
+  | 'HARD_BLOCKERS_PENDING'
+  | 'HARD_BLOCKERS_ACTIVE';
+
+type PortfolioE5Eligibility = {
+  allowed: boolean;
+  reasonCodes: PortfolioE5EligibilityReasonCode[];
+  blockers: Array<{
+    kind: 'proposed_mutation' | 'confirmed_condition';
+    id: string;
+    status: string;
+    severity: 'blocking';
+    disposition?: string;
+    dispositionVersion?: number;
+  }>;
+  snapshotVersion: string;
+};
+
+type PortfolioE5EligibilityBlocker = PortfolioE5Eligibility['blockers'][number];
+
+type PortfolioE5EligibilityState = {
+  status: 'idle' | 'loading' | 'ready' | 'error';
+  data: PortfolioE5Eligibility | null;
+  error: string | null;
+  retry: () => void;
+};
+
+function usePortfolioE5Eligibility(
+  sessionId: string | null,
+  enabled: boolean,
+  refreshKey: unknown,
+): PortfolioE5EligibilityState {
+  const [attempt, setAttempt] = useState(0);
+  const [state, setState] = useState<Omit<PortfolioE5EligibilityState, 'retry'>>({
+    status: 'idle',
+    data: null,
+    error: null,
+  });
+
+  useEffect(() => {
+    if (!enabled || !sessionId) {
+      setState({ status: 'idle', data: null, error: null });
+      return;
+    }
+    const controller = new AbortController();
+    setState({ status: 'loading', data: null, error: null });
+    void api.get<{ success: true; data: PortfolioE5Eligibility }>(
+      `/portfolio-bootstrap/sessions/${encodeURIComponent(sessionId)}/e5-eligibility`,
+      { signal: controller.signal },
+    ).then(({ data: response }) => {
+      setState({ status: 'ready', data: response.data, error: null });
+    }).catch((error: unknown) => {
+      if (controller.signal.aborted) return;
+      setState({
+        status: 'error',
+        data: null,
+        error: apiFailureMessage(error, 'No pudimos comprobar si puedes continuar a Organización.'),
+      });
+    });
+    return () => controller.abort();
+  }, [attempt, enabled, refreshKey, sessionId]);
+
+  const retry = useCallback(() => setAttempt((current) => current + 1), []);
+  return { ...state, retry };
+}
+
+function apiFailureMessage(error: unknown, fallback: string): string {
+  const responseMessage = (error as { response?: { data?: { error?: { message?: unknown } } } })
+    ?.response?.data?.error?.message;
+  if (typeof responseMessage === 'string' && responseMessage.trim()) return responseMessage;
+  return error instanceof Error && error.message.trim() ? error.message : fallback;
 }
 
 const FROZEN_SETUP_STAGES = [
@@ -222,6 +315,7 @@ function PortfolioCopilotWorkspace({
   initialAssignmentTarget,
   onOpenAssignment,
   onCompleteSetup,
+  e5Eligibility,
 }: {
   projection: BootstrapProjection;
   bootstrapPhase: PortfolioBootstrapResponse['bootstrapSession']['bootstrapPhase'];
@@ -257,6 +351,7 @@ function PortfolioCopilotWorkspace({
   initialAssignmentTarget: ChallengeAssignmentTarget | null;
   onOpenAssignment?: (target: ChallengeAssignmentTarget) => void;
   onCompleteSetup?: () => Promise<void>;
+  e5Eligibility: PortfolioE5EligibilityState;
 }) {
   const [selectedStage, setSelectedStage] = useState<number | null>(initialAssignmentTarget ? 6 : null);
   const [assignmentTarget, setAssignmentTarget] = useState<ChallengeAssignmentTarget | null>(initialAssignmentTarget);
@@ -275,7 +370,7 @@ function PortfolioCopilotWorkspace({
   }, []);
   const inferredStage = frozenStageFrom(projection, bootstrapPhase);
   const organizationIsMaterialized = Boolean(confirmedOrganization?.materialization ?? organizationProposal?.materialization);
-  const hasAnalysisHardBlocker = projection.analysisSummary.hardBlockingNow > 0 && !organizationIsMaterialized;
+  const backendAllowsOrganization = e5Eligibility.status === 'ready' && e5Eligibility.data?.allowed === true;
   const progressStage = assignmentTarget ? 6 : organizationIsMaterialized ? 5 : inferredStage;
   const explicitOrganizationContinuation = organizationContinuationSessionId === projection.bootstrapSessionId;
   const persistedNoWorkPath = projection.existingWorkStatus === 'no_existing_work' && projection.workItems.length === 0;
@@ -284,11 +379,11 @@ function PortfolioCopilotWorkspace({
     : organizationIsMaterialized
       ? 5
       : persistedNoWorkPath
-        ? explicitOrganizationContinuation ? 4 : 2
+        ? explicitOrganizationContinuation && backendAllowsOrganization ? 4 : 2
         : bootstrapPhase === 'B3_PROVISIONAL_STRUCTURING'
           ? 2
-          : bootstrapPhase === 'B4_MATERIAL_REVIEW'
-            ? hasAnalysisHardBlocker ? 3 : explicitOrganizationContinuation ? 4 : 3
+          : bootstrapPhase === 'B4_MATERIAL_REVIEW' || bootstrapPhase === 'B5_FIRST_READING'
+            ? explicitOrganizationContinuation && backendAllowsOrganization ? 4 : 3
             : bootstrapPhase === 'B1_ANCHOR' || bootstrapPhase === 'B2_WORK_INTAKE'
               ? progressStage
               : 5;
@@ -311,9 +406,10 @@ function PortfolioCopilotWorkspace({
     }
   }, [onAnalyzeWorkItems]);
   const continueToOrganization = useCallback(() => {
+    if (!backendAllowsOrganization) return;
     setOrganizationContinuationSessionId(projection.bootstrapSessionId);
     setSelectedStage(4);
-  }, [projection.bootstrapSessionId]);
+  }, [backendAllowsOrganization, projection.bootstrapSessionId]);
   const reviewingConfirmedObjective = progressStage === 2 && lastAvailableStage >= 2 && stage < progressStage;
   useEffect(() => {
     if (organizationProposal?.materialization) {
@@ -326,6 +422,10 @@ function PortfolioCopilotWorkspace({
     setAssignmentTarget(initialAssignmentTarget);
     setSelectedStage(6);
   }, [initialAssignmentTarget?.briefVersionId]);
+  useEffect(() => {
+    if (backendAllowsOrganization) return;
+    setOrganizationContinuationSessionId(null);
+  }, [backendAllowsOrganization]);
   const openAssignment = useCallback((target: ChallengeAssignmentTarget) => {
     setAssignmentTarget(target);
     setSelectedStage(6);
@@ -363,6 +463,7 @@ function PortfolioCopilotWorkspace({
       activeImport={activeImport}
       onContinueWithoutWork={continueToOrganization}
       onContinueToOrganization={continueToOrganization}
+      e5Eligibility={e5Eligibility}
     />
   );
 
@@ -1720,6 +1821,7 @@ function PortfolioBootstrapWorkIntake({
   activeImport,
   onContinueWithoutWork,
   onContinueToOrganization,
+  e5Eligibility,
 }: {
   projection: NonNullable<ReturnType<typeof projectBootstrapHome>>;
   onPasteWorkItems: (text: string) => Promise<void>;
@@ -1745,6 +1847,7 @@ function PortfolioBootstrapWorkIntake({
   activeImport: PortfolioBootstrapImportBatch | null;
   onContinueWithoutWork: () => void;
   onContinueToOrganization: () => void;
+  e5Eligibility: PortfolioE5EligibilityState;
 }) {
   const [mode, setMode] = useState<'paste' | 'manual' | 'upload' | 'none'>('paste');
   const [pasteText, setPasteText] = useState('');
@@ -1983,12 +2086,16 @@ function PortfolioBootstrapWorkIntake({
         />
       ) : null}
 
-      {analysisSurface ? <AnalysisCompletionGate projection={projection} onContinue={onContinueToOrganization} /> : noWork ? (
-        <PrimaryAction
-          label="Continuar sin iniciativas"
-          description="La ausencia ya está persistida. Continuarás a Organización sin ejecutar un análisis ficticio."
-          onClick={onContinueWithoutWork}
-        />
+      {analysisSurface ? <AnalysisCompletionGate projection={projection} eligibility={e5Eligibility} onContinue={onContinueToOrganization} /> : noWork ? (
+        <>
+          <E5EligibilityStatus eligibility={e5Eligibility} />
+          <PrimaryAction
+            label="Continuar sin iniciativas"
+            description="La ausencia ya está persistida. Continuarás a Organización sin ejecutar un análisis ficticio."
+            disabled={e5Eligibility.status !== 'ready' || e5Eligibility.data?.allowed !== true}
+            onClick={onContinueWithoutWork}
+          />
+        </>
       ) : hasItems && !inconsistentNoWork ? (
         <PrimaryAction
           label={hasProposals ? 'Revisar análisis y propuestas' : `Analizar ${projection.workItems.length} iniciativas`}
@@ -2434,22 +2541,202 @@ function AnalysisInputReference({
 
 function AnalysisCompletionGate({
   projection,
+  eligibility,
   onContinue,
 }: {
   projection: NonNullable<ReturnType<typeof projectBootstrapHome>>;
+  eligibility: PortfolioE5EligibilityState;
   onContinue: () => void;
 }) {
   const summary = projection.analysisSummary;
   const comparisonRequired = duplicateInitiativeCount(projection.workItems);
   const remaining = summary.reviewLater + summary.carryToBrief + summary.contextual;
-  const hasHardBlocker = summary.hardBlockingNow > 0;
-  const hardBlockers = projection.proposedMutations.filter((mutation) => (
-    (mutation.status === 'proposed' || mutation.status === 'reviewed')
-    && conditionSeverity(mutation) === 'blocking'
-  ));
-  const workItemsById = new Map(projection.workItems.map((item) => [item.id, item]));
+  const backendDecision = eligibility.status === 'ready' ? eligibility.data : null;
+  const hardBlockers = backendDecision?.blockers ?? [];
+  const hasHardBlocker = hardBlockers.length > 0;
+  const canContinue = backendDecision?.allowed === true;
   const reviewPending = () => document.getElementById('portfolio-analysis-review')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-  return <section className={`rounded-xl border p-4 ${hasHardBlocker ? 'border-amber-300 bg-amber-50' : 'border-emerald-200 bg-emerald-50'}`} data-testid="portfolio-analysis-completion-gate"><p className="text-xs font-bold uppercase tracking-wide text-slate-600">Cierre de la lectura</p><h2 className="mt-1 text-base font-semibold text-slate-950">{hasHardBlocker ? 'Hay un bloqueo real antes de organizar' : 'Lectura suficiente para continuar'}</h2><div className="mt-3 grid gap-2 text-sm text-slate-700 sm:grid-cols-2"><p><b>{summary.confirmed}</b> confirmadas</p><p><b>{summary.reviewLater + summary.carryToBrief + summary.contextual}</b> por revisar</p><p><b>{comparisonRequired}</b> comparación requerida</p><p><b>{summary.hardBlockingNow}</b> {summary.hardBlockingNow === 1 ? 'bloqueo real' : 'bloqueos reales'}</p></div>{hasHardBlocker ? <div className="mt-3 text-sm text-amber-950"><p>Estos puntos están marcados como <b>HARD_BLOCKING_NOW</b> y requieren una disposición antes de continuar:</p><ul className="mt-2 space-y-2">{hardBlockers.map((blocker) => { const item = blocker.targetId ? workItemsById.get(blocker.targetId) : null; return <li key={blocker.id} className="rounded-lg border border-amber-200 bg-white/70 p-3"><p className="font-semibold text-slate-950">{item ? `${item.proposedName ?? item.rawLabel} · ` : ''}{dimensionTitle(blocker)}</p><p className="mt-1">{proposalText(blocker)}</p><p className="mt-1 text-xs font-medium">Bloquea porque afecta la decisión de organización actual.</p>{blocker.rationale && blocker.rationale !== proposalText(blocker) ? <p className="mt-1 text-xs">Motivo registrado: {blocker.rationale}</p> : null}</li>; })}</ul></div> : <p className="mt-3 text-sm text-emerald-950">Quedan {remaining} aspectos pendientes. Puedes continuar; se conservarán con trazabilidad y volverán a aparecer cuando sean relevantes.</p>}<div className="mt-4 flex flex-wrap gap-2"><button type="button" disabled={hasHardBlocker} onClick={onContinue} className="rounded-lg bg-slate-950 px-4 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:bg-slate-400">Continuar a organización</button><button type="button" onClick={reviewPending} className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-800">Revisar pendientes</button></div></section>;
+  const blockedForOtherReason = backendDecision && !backendDecision.allowed && !hasHardBlocker;
+  return (
+    <section
+      className={`rounded-xl border p-4 ${canContinue ? 'border-emerald-200 bg-emerald-50' : 'border-amber-300 bg-amber-50'}`}
+      data-testid="portfolio-analysis-completion-gate"
+    >
+      <p className="text-xs font-bold uppercase tracking-wide text-slate-600">Cierre de la lectura</p>
+      <h2 className="mt-1 text-base font-semibold text-slate-950">
+        {hasHardBlocker
+          ? 'Hay un bloqueo real antes de organizar'
+          : canContinue
+            ? 'Lectura suficiente para continuar'
+            : blockedForOtherReason
+              ? 'La sesión todavía no es elegible para Organización'
+              : 'Comprobando elegibilidad con el servidor'}
+      </h2>
+      <div className="mt-3 grid gap-2 text-sm text-slate-700 sm:grid-cols-2">
+        <p><b>{summary.confirmed}</b> confirmadas</p>
+        <p><b>{remaining}</b> por revisar</p>
+        <p><b>{comparisonRequired}</b> comparación requerida</p>
+        <p><b>{hardBlockers.length}</b> {hardBlockers.length === 1 ? 'bloqueo real' : 'bloqueos reales'}</p>
+      </div>
+      <E5EligibilityStatus eligibility={eligibility} />
+      {hasHardBlocker ? (
+        <div className="mt-3 text-sm text-amber-950">
+          <p>La autoridad backend exige resolver estos bloqueos antes de continuar:</p>
+          <ul className="mt-2 space-y-2">
+            {hardBlockers.map((blocker) => (
+              <li key={`${blocker.kind}:${blocker.id}`} className="rounded-lg border border-amber-200 bg-white/70 p-3">
+                <p className="font-semibold text-slate-950">
+                  {blocker.kind === 'confirmed_condition' ? 'Bloqueo confirmado activo' : 'Propuesta dura pendiente'}
+                </p>
+                <p className="mt-1 text-xs">Referencia auditable: {blocker.id}</p>
+                {blocker.kind === 'confirmed_condition' ? (
+                  <ConfirmedConditionDisposition
+                    sessionId={projection.bootstrapSessionId}
+                    blocker={blocker}
+                    onUpdated={eligibility.retry}
+                  />
+                ) : null}
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : canContinue ? (
+        <p className="mt-3 text-sm text-emerald-950">
+          Quedan {remaining} aspectos pendientes blandos. Puedes continuar; se conservarán con trazabilidad y volverán a aparecer cuando sean relevantes.
+        </p>
+      ) : null}
+      <div className="mt-4 flex flex-wrap gap-2">
+        <button
+          type="button"
+          disabled={!canContinue}
+          onClick={onContinue}
+          className="rounded-lg bg-slate-950 px-4 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:bg-slate-400"
+        >
+          Continuar a organización
+        </button>
+        <button type="button" onClick={reviewPending} className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-800">
+          Revisar pendientes
+        </button>
+      </div>
+    </section>
+  );
+}
+
+function ConfirmedConditionDisposition({
+  sessionId,
+  blocker,
+  onUpdated,
+}: {
+  sessionId: string;
+  blocker: PortfolioE5EligibilityBlocker;
+  onUpdated: () => void;
+}) {
+  const [reason, setReason] = useState('');
+  const [evidenceRef, setEvidenceRef] = useState('');
+  const [saving, setSaving] = useState<'resolved' | 'dismissed' | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const canSubmit = reason.trim().length >= 3 && evidenceRef.trim().length > 0 && !saving;
+
+  async function submit(disposition: 'resolved' | 'dismissed') {
+    if (!canSubmit || blocker.dispositionVersion === undefined) return;
+    setSaving(disposition);
+    setError(null);
+    try {
+      await api.patch(
+        `/portfolio-bootstrap/sessions/${encodeURIComponent(sessionId)}/advancement-conditions/${encodeURIComponent(blocker.id)}/disposition`,
+        {
+          disposition,
+          expectedVersion: blocker.dispositionVersion,
+          reason: reason.trim(),
+          evidenceRefs: [evidenceRef.trim()],
+        },
+        {
+          headers: {
+            'Idempotency-Key': `kan213-disposition-${sessionId}-${blocker.id}-${blocker.dispositionVersion}-${disposition}`,
+          },
+        },
+      );
+      onUpdated();
+    } catch (submitError) {
+      setError(apiFailureMessage(submitError, 'No pudimos guardar la disposición. Conservamos tus datos para reintentar.'));
+    } finally {
+      setSaving(null);
+    }
+  }
+
+  return (
+    <div className="mt-3 space-y-3 border-t border-amber-200 pt-3">
+      <p className="text-xs leading-5">Registra una disposición humana con motivo y evidencia. Resolver o descartar conserva el historial y vuelve a comprobar E5.</p>
+      <label className="block text-xs font-semibold text-slate-700">
+        Motivo de la disposición
+        <textarea
+          value={reason}
+          onChange={(event) => setReason(event.target.value)}
+          rows={2}
+          className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-normal text-slate-950"
+        />
+      </label>
+      <label className="block text-xs font-semibold text-slate-700">
+        Referencia de evidencia
+        <input
+          value={evidenceRef}
+          onChange={(event) => setEvidenceRef(event.target.value)}
+          placeholder="URL, documento o referencia interna"
+          className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-normal text-slate-950"
+        />
+      </label>
+      {error ? <p role="alert" className="rounded-lg border border-rose-200 bg-rose-50 p-2 text-xs text-rose-950">{error}</p> : null}
+      <div className="flex flex-wrap gap-2">
+        <button type="button" disabled={!canSubmit} onClick={() => void submit('resolved')} className="rounded-lg bg-slate-950 px-3 py-2 text-xs font-semibold text-white disabled:cursor-not-allowed disabled:bg-slate-400">
+          {saving === 'resolved' ? 'Guardando…' : 'Marcar bloqueo como resuelto'}
+        </button>
+        <button type="button" disabled={!canSubmit} onClick={() => void submit('dismissed')} className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-800 disabled:cursor-not-allowed disabled:text-slate-400">
+          {saving === 'dismissed' ? 'Guardando…' : 'Descartar bloqueo con evidencia'}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function E5EligibilityStatus({ eligibility }: { eligibility: PortfolioE5EligibilityState }) {
+  if (eligibility.status === 'idle') return null;
+  if (eligibility.status === 'loading') {
+    return <p className="mt-3 text-sm text-slate-600" aria-live="polite">Comprobando la elegibilidad persistida para Organización…</p>;
+  }
+  if (eligibility.status === 'error') {
+    return (
+      <div role="alert" aria-label="Elegibilidad de Organización" className="mt-3 rounded-lg border border-amber-300 bg-white p-3 text-sm text-amber-950">
+        <p>{eligibility.error}</p>
+        <button type="button" onClick={eligibility.retry} className="mt-2 inline-flex items-center gap-2 rounded-lg border border-amber-300 px-3 py-2 font-semibold">
+          <RotateCw size={15} aria-hidden="true" />
+          Reintentar elegibilidad
+        </button>
+      </div>
+    );
+  }
+  if (eligibility.data?.allowed) return null;
+  if ((eligibility.data?.blockers.length ?? 0) > 0) return null;
+  return (
+    <p className="mt-3 text-sm text-amber-950">
+      El servidor mantiene el paso bloqueado: {eligibilityReasonLabels(eligibility.data?.reasonCodes ?? []).join(' · ')}.
+    </p>
+  );
+}
+
+function eligibilityReasonLabels(reasonCodes: PortfolioE5EligibilityReasonCode[]): string[] {
+  const labels: Record<PortfolioE5EligibilityReasonCode, string> = {
+    NO_EXISTING_WORK_ELIGIBLE: 'sin iniciativas, elegible',
+    ANALYZED_WORK_ELIGIBLE: 'análisis elegible',
+    SESSION_INACTIVE: 'sesión inactiva',
+    ANCHOR_NOT_CONFIRMED: 'objetivo sin confirmar',
+    EXISTING_WORK_STATUS_UNKNOWN: 'estado del trabajo desconocido',
+    NO_WORK_ITEMS_CONFLICT: 'la ausencia declarada contradice los registros persistidos',
+    WORK_ITEMS_REQUIRED: 'faltan iniciativas persistidas',
+    ANALYSIS_NOT_COMPLETED: 'el análisis todavía no está completado',
+    HARD_BLOCKERS_PENDING: 'hay bloqueos duros pendientes',
+    HARD_BLOCKERS_ACTIVE: 'hay bloqueos duros confirmados activos',
+  };
+  return reasonCodes.map((reason) => labels[reason]);
 }
 
 function duplicateInitiativeCount(items: NonNullable<ReturnType<typeof projectBootstrapHome>>['workItems']): number {
@@ -2508,6 +2795,7 @@ function MaterialReviewPanel({
   const [correctionNote, setCorrectionNote] = useState('');
   const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null);
   const [activeCategory, setActiveCategory] = useState<AnalysisCategory>('all');
+  const [reviewError, setReviewError] = useState<string | null>(null);
   const groups = groupMutationsByWorkItem(projection);
   const workItemsById = new Map(projection.workItems.map((item) => [item.id, item]));
   const missingOwnerIds = new Set(projection.workItems.filter((item) => !item.ownerCandidate).map((item) => item.id));
@@ -2531,10 +2819,13 @@ function MaterialReviewPanel({
 
   async function act(mutationId: string, action: () => Promise<void>) {
     setBusyId(mutationId);
+    setReviewError(null);
     try {
       await action();
       setCorrectingId(null);
       setCorrectionNote('');
+    } catch (error) {
+      setReviewError(intakeFailureMessage(error, 'No pudimos guardar la revisión. Inténtalo de nuevo.'));
     } finally {
       setBusyId(null);
     }
@@ -2547,7 +2838,10 @@ function MaterialReviewPanel({
           <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Análisis revisable</p>
           <h2 className="text-base font-semibold text-slate-950">Startería encontró…</h2>
           <p className="mt-1 text-sm text-slate-600">
-            Una primera lectura de tus iniciativas. La IA propone; tú confirmas, corriges o dejas cada vínculo pendiente.
+            Una primera lectura de tus iniciativas. El análisis propone; tú confirmas, corriges o dejas cada vínculo pendiente.
+          </p>
+          <p className="mt-2 text-xs font-semibold text-violet-800">
+            {projection.latestAnalysisRun?.analyzerMode === 'real_ai' ? 'Análisis asistido por IA' : 'Análisis determinístico'}
           </p>
         </div>
         <span className="rounded-full border border-slate-200 px-3 py-1 text-xs font-semibold text-slate-700">
@@ -2555,11 +2849,17 @@ function MaterialReviewPanel({
         </span>
       </div>
 
+      {reviewError ? (
+        <div role="alert" aria-label="Error de revisión" className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-950">
+          {reviewError}
+        </div>
+      ) : null}
+
       <div className="grid gap-3 md:grid-cols-3" data-testid="portfolio-analysis-summary">
         <AnalysisSignal label="Iniciativas detectadas" value={String(projection.workItems.length)} detail="Importadas o escritas; cada una conserva fuente." />
         <AnalysisCategoryButton category="evidence" active={activeCategory} count={evidenceIds.size} label="Evidencia por validar" detail="No hay señal o contexto suficiente para sostener una conclusión." onClick={setActiveCategory} />
         <AnalysisCategoryButton category="owner" active={activeCategory} count={missingOwnerIds.size} label="Responsable pendiente" detail="La fuente no identifica una persona responsable." onClick={setActiveCategory} />
-        <AnalysisCategoryButton category="relation" active={activeCategory} count={relationIds.size} label="Relación estratégica por revisar" detail="La IA propuso un vínculo; aún no es una decisión." onClick={setActiveCategory} />
+        <AnalysisCategoryButton category="relation" active={activeCategory} count={relationIds.size} label="Relación estratégica por revisar" detail="El análisis propuso un vínculo; aún no es una decisión." onClick={setActiveCategory} />
         <AnalysisCategoryButton category="overlap" active={activeCategory} count={overlapIds.size} label="Posible solapamiento / comparación" detail="Nombres repetidos o similares: comparar antes de agrupar." onClick={setActiveCategory} />
         <AnalysisCategoryButton category="outside" active={activeCategory} count={outOfObjectiveIds.size} label="Fuera del objetivo" detail="Solo aparece cuando la lectura lo propone explícitamente." onClick={setActiveCategory} />
         <AnalysisCategoryButton category="blocker" active={activeCategory} count={blockingIds.size} label="Bloqueo real" detail="Solo dependencias marcadas como bloqueo del siguiente movimiento." onClick={setActiveCategory} />
