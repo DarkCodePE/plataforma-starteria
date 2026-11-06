@@ -253,13 +253,17 @@ export class PortfolioBootstrapContextService {
     for (const field of extracted) {
       const ref = field.sourceRef;
       const snapshotEntries = Array.isArray(version.snapshotJson?.entries) ? version.snapshotJson.entries : [];
-      const entry = snapshotEntries.find((candidate: any) => (
-        (!ref.entryId || candidate.id === ref.entryId)
-        && candidate.dimension === ref.dimension
+      const tupleCandidates = snapshotEntries.filter((candidate: any) => (
+        candidate.dimension === ref.dimension
         && candidate.fieldKey === ref.fieldKey
         && (candidate.sourceId ?? null) === (ref.sourceId ?? null)
       ));
-      if (!entry || companyEntryFingerprint(entry) !== ref.entryFingerprint) {
+      const snapshotCarriesEntryIds = tupleCandidates.some((candidate: any) => typeof candidate.id === 'string');
+      const entry = tupleCandidates.find((candidate: any) => (
+        (!ref.entryId || !snapshotCarriesEntryIds || candidate.id === ref.entryId)
+        && companyEntryFingerprint(candidate) === ref.entryFingerprint
+      ));
+      if (!entry) {
         throw new AppError(422, 'La fuente Company no coincide con el snapshot publicado.', 'COMPANY_CONTEXT_ENTRY_FINGERPRINT_MISMATCH');
       }
     }

@@ -53,17 +53,19 @@ describe('PortfolioBootstrapContextService', () => {
       dimension: 'IDENTITY', fieldKey: 'purpose', value: { value: 'Grow' }, updatedAt: '2026-11-06T00:00:00.000Z',
       sourceType: 'USER_INPUT', sourceId: null, confidence: 1, verificationStatus: 'USER_CONFIRMED',
     };
+    const olderDuplicate = { ...entry, value: { value: 'Old' }, updatedAt: '2026-11-05T00:00:00.000Z' };
     const db = {
       user: { findUnique: vi.fn().mockResolvedValue({ organizationId: 'org-1' }) },
       company: { findUnique: vi.fn().mockResolvedValue({ id: 'company-1', scope: 'ORGANIZATION', organizationId: 'org-1', status: 'ACTIVE', deletedAt: null }) },
       companyMembership: { findFirst: vi.fn().mockResolvedValue({ status: 'APPROVED' }) },
       companyContextVersion: { findFirst: vi.fn()
-        .mockResolvedValueOnce({ id: 'version-1', companyId: 'company-1', versionNumber: 1, status: 'PUBLISHED', snapshotJson: { entries: [entry] } })
+        .mockResolvedValueOnce({ id: 'version-1', companyId: 'company-1', versionNumber: 1, status: 'PUBLISHED', snapshotJson: { entries: [olderDuplicate, entry] } })
         .mockResolvedValueOnce({ id: 'version-1' }) },
     };
     const context = {
       situation: { value: 'Grow', provenance: 'source_extracted', sourceRef: {
         kind: 'company_context_entry', dimension: 'IDENTITY', fieldKey: 'purpose', sourceId: null,
+        entryId: 'live-entry-id-not-carried-by-snapshot',
         entryFingerprint: companyEntryFingerprint(entry),
       } },
       area: { value: null, provenance: 'unknown' }, stakeholder: { value: null, provenance: 'unknown' },
