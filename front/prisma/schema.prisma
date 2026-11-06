@@ -2265,6 +2265,7 @@ model Company {
   snapshots     InitiativeContextSnapshot[]
   contributions CompanyContribution[]
   bootstrapContextReviews PortfolioBootstrapContextReview[] @relation("PortfolioBootstrapContextSourceCompany")
+  confirmedBootstrapContextReviews PortfolioBootstrapContextReview[] @relation("PortfolioBootstrapContextConfirmedSourceCompany")
 
   @@index([ownerUserId])
   @@index([organizationId])
@@ -2310,6 +2311,7 @@ model CompanyContextVersion {
   entries   CompanyContextEntry[]
   snapshots InitiativeContextSnapshot[]
   bootstrapContextReviews PortfolioBootstrapContextReview[] @relation("PortfolioBootstrapContextSourceVersion")
+  confirmedBootstrapContextReviews PortfolioBootstrapContextReview[] @relation("PortfolioBootstrapContextConfirmedSourceVersion")
 
   @@unique([companyId, versionNumber])
   @@index([companyId])
@@ -3207,6 +3209,10 @@ model PortfolioBootstrapContextReview {
   sourceCompanyContextVersionId     String?
   sourceCompanyContextVersionNumber Int?
   provenanceJson                    Json
+  confirmedSourceCompanyId                   String?
+  confirmedSourceCompanyContextVersionId     String?
+  confirmedSourceCompanyContextVersionNumber Int?
+  confirmedProvenanceJson                    Json?
   confirmedBy                       String?
   confirmedAt                       DateTime?
   createdAt                         DateTime                              @default(now())
@@ -3215,12 +3221,16 @@ model PortfolioBootstrapContextReview {
   bootstrapSession            PortfolioBootstrapSession       @relation(fields: [bootstrapSessionId], references: [id], onDelete: Cascade)
   sourceCompany               Company?                        @relation("PortfolioBootstrapContextSourceCompany", fields: [sourceCompanyId], references: [id], onDelete: Restrict)
   sourceCompanyContextVersion CompanyContextVersion?          @relation("PortfolioBootstrapContextSourceVersion", fields: [sourceCompanyContextVersionId], references: [id], onDelete: Restrict)
+  confirmedSourceCompany               Company?                @relation("PortfolioBootstrapContextConfirmedSourceCompany", fields: [confirmedSourceCompanyId], references: [id], onDelete: Restrict)
+  confirmedSourceCompanyContextVersion CompanyContextVersion?  @relation("PortfolioBootstrapContextConfirmedSourceVersion", fields: [confirmedSourceCompanyContextVersionId], references: [id], onDelete: Restrict)
   confirmedByUser             User?                           @relation("PortfolioBootstrapContextConfirmedBy", fields: [confirmedBy], references: [id], onDelete: SetNull)
   history                     PortfolioBootstrapContextReviewVersion[]
 
   @@index([bootstrapSessionId, status])
   @@index([sourceCompanyId])
   @@index([sourceCompanyContextVersionId])
+  @@index([confirmedSourceCompanyId])
+  @@index([confirmedSourceCompanyContextVersionId])
   @@index([confirmedBy])
 }
 
@@ -3230,11 +3240,11 @@ model PortfolioBootstrapContextReviewVersion {
   version      Int
   action       PortfolioBootstrapContextReviewAction
   snapshotJson Json
-  actorUserId  String?
+  actorUserId  String
   createdAt    DateTime                              @default(now())
 
   review PortfolioBootstrapContextReview @relation(fields: [reviewId], references: [id], onDelete: Cascade)
-  actor  User?                           @relation("PortfolioBootstrapContextVersionActor", fields: [actorUserId], references: [id], onDelete: SetNull)
+  actor  User                            @relation("PortfolioBootstrapContextVersionActor", fields: [actorUserId], references: [id], onDelete: Restrict)
 
   @@unique([reviewId, version])
   @@index([actorUserId])

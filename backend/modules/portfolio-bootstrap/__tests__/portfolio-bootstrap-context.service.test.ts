@@ -23,11 +23,12 @@ describe('PortfolioBootstrapContextService', () => {
     expect(canonicalContextHash({ b: 2, a: { d: 4, c: 3 } }))
       .toBe(canonicalContextHash({ a: { c: 3, d: 4 }, b: 2 }));
     expect(companyEntryFingerprint({
-      dimension: 'IDENTITY', fieldKey: 'purpose', valueJson: { b: 2, a: 1 },
+      dimension: 'IDENTITY', fieldKey: 'purpose', value: { b: 2, a: 1 }, updatedAt: '2026-11-06T00:00:00.000Z',
       sourceType: 'USER_INPUT', sourceId: null, confidence: null, verificationStatus: 'USER_CONFIRMED',
     })).toBe(companyEntryFingerprint({
       verificationStatus: 'USER_CONFIRMED', confidence: null, sourceId: null,
-      sourceType: 'USER_INPUT', valueJson: { a: 1, b: 2 }, fieldKey: 'purpose', dimension: 'IDENTITY',
+      sourceType: 'USER_INPUT', value: { a: 1, b: 2 }, fieldKey: 'purpose', dimension: 'IDENTITY',
+      updatedAt: '2026-11-06T00:00:00.000Z',
     }));
   });
 
@@ -49,7 +50,7 @@ describe('PortfolioBootstrapContextService', () => {
 
   it('enforces dual Company scope, approved membership, latest published version and fingerprint', async () => {
     const entry = {
-      id: 'entry-1', dimension: 'IDENTITY', fieldKey: 'purpose', valueJson: { value: 'Grow' },
+      dimension: 'IDENTITY', fieldKey: 'purpose', value: { value: 'Grow' }, updatedAt: '2026-11-06T00:00:00.000Z',
       sourceType: 'USER_INPUT', sourceId: null, confidence: 1, verificationStatus: 'USER_CONFIRMED',
     };
     const db = {
@@ -57,9 +58,8 @@ describe('PortfolioBootstrapContextService', () => {
       company: { findUnique: vi.fn().mockResolvedValue({ id: 'company-1', scope: 'ORGANIZATION', organizationId: 'org-1', status: 'ACTIVE', deletedAt: null }) },
       companyMembership: { findFirst: vi.fn().mockResolvedValue({ status: 'APPROVED' }) },
       companyContextVersion: { findFirst: vi.fn()
-        .mockResolvedValueOnce({ id: 'version-1', companyId: 'company-1', versionNumber: 1, status: 'PUBLISHED' })
+        .mockResolvedValueOnce({ id: 'version-1', companyId: 'company-1', versionNumber: 1, status: 'PUBLISHED', snapshotJson: { entries: [entry] } })
         .mockResolvedValueOnce({ id: 'version-1' }) },
-      companyContextEntry: { findFirst: vi.fn().mockResolvedValue(entry) },
     };
     const context = {
       situation: { value: 'Grow', provenance: 'source_extracted', sourceRef: {
@@ -73,7 +73,7 @@ describe('PortfolioBootstrapContextService', () => {
     await expect((service as any).validateSource(db, { organizationId: 'org-1' }, 'actor', {
       companyId: 'company-1', versionId: 'version-1', versionNumber: 1,
     }, context, true)).resolves.toEqual({ companyId: 'company-1', versionId: 'version-1', versionNumber: 1 });
-    expect(db.companyContextEntry.findFirst).toHaveBeenCalledWith(expect.objectContaining({ where: expect.objectContaining({ versionId: 'version-1' }) }));
+    expect(db.companyContextVersion.findFirst).toHaveBeenCalledTimes(2);
   });
 
   it('hides cross-tenant Company sources and distinguishes same-tenant missing read access', async () => {
@@ -92,6 +92,14 @@ describe('PortfolioBootstrapContextService', () => {
     await expect((service as any).validateSource(db, { organizationId: 'org-1' }, 'actor', {
       companyId: 'company-1', versionId: 'version-1', versionNumber: 1,
     }, { situation: { provenance: 'unknown' } }, true)).rejects.toMatchObject({ statusCode: 403, code: 'COMPANY_ACCESS_DENIED' });
+  });
+
+  it('returns 422 for visible but semantically invalid Company provenance', async () => {
+    const service = new PortfolioBootstrapContextService({} as any);
+    await expect((service as any).validateSource({}, { organizationId: 'org-1' }, 'actor', null, {
+      situation: { value: 'Claim', provenance: 'source_extracted', sourceRef: { kind: 'company_context_entry' } },
+      constraints: [], assumptions: [],
+    }, true)).rejects.toMatchObject({ statusCode: 422, code: 'COMPANY_CONTEXT_SOURCE_REQUIRED' });
   });
 
   it('returns the persisted response for an authorized replay and rejects key reuse with another payload', async () => {
@@ -113,10 +121,43 @@ describe('PortfolioBootstrapContextService', () => {
       id: 'review-1', bootstrapSessionId: 'session-1', status: 'confirmed', version: 2,
       draftJson: snapshot, confirmedSnapshotJson: snapshot,
       sourceCompanyId: 'company-1', sourceCompanyContextVersionId: 'old-version', sourceCompanyContextVersionNumber: 1,
+      confirmedSourceCompanyId: 'company-1', confirmedSourceCompanyContextVersionId: 'old-version', confirmedSourceCompanyContextVersionNumber: 1,
+      provenanceJson: [], confirmedProvenanceJson: [],
       confirmedBy: 'actor', confirmedAt: new Date('2026-11-06T00:00:00.000Z'),
       createdAt: new Date('2026-11-06T00:00:00.000Z'), updatedAt: new Date('2026-11-06T00:00:00.000Z'),
     });
     expect(dto.sourceOutdated).toBe(true);
     expect(dto.effectiveContext).toEqual(snapshot);
+  });
+
+  it('keeps confirmed source/provenance effective while a correction points to another source', async () => {
+    const service = new PortfolioBootstrapContextService({} as any);
+    const dto = await (service as any).toDto({}, {
+      id: 'review-1', bootstrapSessionId: 'session-1', status: 'draft', version: 3,
+      draftJson: { situation: { value: 'Correction' } }, confirmedSnapshotJson: { situation: { value: 'Frozen' } },
+      sourceCompanyId: 'company-b', sourceCompanyContextVersionId: 'version-b', sourceCompanyContextVersionNumber: 2,
+      confirmedSourceCompanyId: 'company-a', confirmedSourceCompanyContextVersionId: 'version-a', confirmedSourceCompanyContextVersionNumber: 1,
+      provenanceJson: [{ provenance: 'user_declared' }], confirmedProvenanceJson: [{ provenance: 'source_extracted' }],
+      confirmedBy: 'actor', confirmedAt: new Date('2026-11-06T00:00:00.000Z'),
+      createdAt: new Date('2026-11-06T00:00:00.000Z'), updatedAt: new Date('2026-11-06T00:00:00.000Z'),
+    }, false);
+    expect(dto.draftSourceCompanyContext.companyId).toBe('company-b');
+    expect(dto.effectiveSourceCompanyContext.companyId).toBe('company-a');
+    expect(dto.effectiveProvenance).toEqual([{ provenance: 'source_extracted' }]);
+    expect(dto.effectiveContext.situation.value).toBe('Frozen');
+  });
+
+  it('reconciles a same-key race only after owner authorization and returns the durable receipt', async () => {
+    const stored = { id: 'review-1', sessionId: 'session-1', status: 'draft', version: 1 };
+    const db = {
+      portfolioBootstrapSession: { findFirst: vi.fn().mockResolvedValue({ id: 'session-1', userId: 'actor', organizationId: null }) },
+      portfolioBootstrapContextOperation: { findUnique: vi.fn().mockResolvedValue({ payloadHash: 'payload-1', responseJson: stored }) },
+    };
+    const prisma = { $transaction: vi.fn(async (callback: any) => callback(db)) };
+    const service = new PortfolioBootstrapContextService(prisma as any);
+    await expect((service as any).reconcileWriteConflict({
+      sessionId: 'session-1', authenticatedUserId: 'actor', permissions, idempotencyKey: 'same-key',
+    }, 'save_draft', 'payload-1', { code: 'P2002' })).resolves.toBe(stored);
+    expect(db.portfolioBootstrapSession.findFirst).toHaveBeenCalledWith(expect.objectContaining({ where: { id: 'session-1', userId: 'actor' } }));
   });
 });

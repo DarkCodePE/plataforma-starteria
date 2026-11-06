@@ -14,6 +14,10 @@ CREATE TABLE "PortfolioBootstrapContextReview" (
   "sourceCompanyContextVersionId" TEXT,
   "sourceCompanyContextVersionNumber" INTEGER,
   "provenanceJson" JSONB NOT NULL,
+  "confirmedSourceCompanyId" TEXT,
+  "confirmedSourceCompanyContextVersionId" TEXT,
+  "confirmedSourceCompanyContextVersionNumber" INTEGER,
+  "confirmedProvenanceJson" JSONB,
   "confirmedBy" TEXT,
   "confirmedAt" TIMESTAMP(3),
   "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -27,7 +31,7 @@ CREATE TABLE "PortfolioBootstrapContextReviewVersion" (
   "version" INTEGER NOT NULL,
   "action" "PortfolioBootstrapContextReviewAction" NOT NULL,
   "snapshotJson" JSONB NOT NULL,
-  "actorUserId" TEXT,
+  "actorUserId" TEXT NOT NULL,
   "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
   CONSTRAINT "PortfolioBootstrapContextReviewVersion_pkey" PRIMARY KEY ("id")
 );
@@ -48,6 +52,8 @@ CREATE UNIQUE INDEX "PortfolioBootstrapContextReview_bootstrapSessionId_key" ON 
 CREATE INDEX "PortfolioBootstrapContextReview_bootstrapSessionId_status_idx" ON "PortfolioBootstrapContextReview"("bootstrapSessionId", "status");
 CREATE INDEX "PortfolioBootstrapContextReview_sourceCompanyId_idx" ON "PortfolioBootstrapContextReview"("sourceCompanyId");
 CREATE INDEX "PortfolioBootstrapContextReview_sourceCompanyContextVersion_idx" ON "PortfolioBootstrapContextReview"("sourceCompanyContextVersionId");
+CREATE INDEX "PortfolioBootstrapContextReview_confirmedSourceCompanyId_idx" ON "PortfolioBootstrapContextReview"("confirmedSourceCompanyId");
+CREATE INDEX "PortfolioBootstrapContextReview_confirmedSourceCompanyConte_idx" ON "PortfolioBootstrapContextReview"("confirmedSourceCompanyContextVersionId");
 CREATE INDEX "PortfolioBootstrapContextReview_confirmedBy_idx" ON "PortfolioBootstrapContextReview"("confirmedBy");
 CREATE UNIQUE INDEX "PortfolioBootstrapContextReviewVersion_reviewId_version_key" ON "PortfolioBootstrapContextReviewVersion"("reviewId", "version");
 CREATE INDEX "PortfolioBootstrapContextReviewVersion_actorUserId_idx" ON "PortfolioBootstrapContextReviewVersion"("actorUserId");
@@ -58,7 +64,9 @@ CREATE INDEX "PortfolioBootstrapContextOperation_bootstrapSessionId_creat_idx" O
 ALTER TABLE "PortfolioBootstrapContextReview" ADD CONSTRAINT "PortfolioBootstrapContextReview_bootstrapSessionId_fkey" FOREIGN KEY ("bootstrapSessionId") REFERENCES "PortfolioBootstrapSession"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 ALTER TABLE "PortfolioBootstrapContextReview" ADD CONSTRAINT "PortfolioBootstrapContextReview_sourceCompanyId_fkey" FOREIGN KEY ("sourceCompanyId") REFERENCES "Company"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 ALTER TABLE "PortfolioBootstrapContextReview" ADD CONSTRAINT "PortfolioBootstrapContextReview_sourceCompanyContextVersio_fkey" FOREIGN KEY ("sourceCompanyContextVersionId") REFERENCES "CompanyContextVersion"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+ALTER TABLE "PortfolioBootstrapContextReview" ADD CONSTRAINT "PortfolioBootstrapContextReview_confirmedSourceCompanyId_fkey" FOREIGN KEY ("confirmedSourceCompanyId") REFERENCES "Company"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+ALTER TABLE "PortfolioBootstrapContextReview" ADD CONSTRAINT "PortfolioBootstrapContextReview_confirmedSourceCompanyCont_fkey" FOREIGN KEY ("confirmedSourceCompanyContextVersionId") REFERENCES "CompanyContextVersion"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 ALTER TABLE "PortfolioBootstrapContextReview" ADD CONSTRAINT "PortfolioBootstrapContextReview_confirmedBy_fkey" FOREIGN KEY ("confirmedBy") REFERENCES "User"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 ALTER TABLE "PortfolioBootstrapContextReviewVersion" ADD CONSTRAINT "PortfolioBootstrapContextReviewVersion_reviewId_fkey" FOREIGN KEY ("reviewId") REFERENCES "PortfolioBootstrapContextReview"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-ALTER TABLE "PortfolioBootstrapContextReviewVersion" ADD CONSTRAINT "PortfolioBootstrapContextReviewVersion_actorUserId_fkey" FOREIGN KEY ("actorUserId") REFERENCES "User"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+ALTER TABLE "PortfolioBootstrapContextReviewVersion" ADD CONSTRAINT "PortfolioBootstrapContextReviewVersion_actorUserId_fkey" FOREIGN KEY ("actorUserId") REFERENCES "User"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 ALTER TABLE "PortfolioBootstrapContextOperation" ADD CONSTRAINT "PortfolioBootstrapContextOperation_bootstrapSessionId_fkey" FOREIGN KEY ("bootstrapSessionId") REFERENCES "PortfolioBootstrapSession"("id") ON DELETE CASCADE ON UPDATE CASCADE;

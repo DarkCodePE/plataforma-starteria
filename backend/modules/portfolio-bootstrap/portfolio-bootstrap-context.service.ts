@@ -23,17 +23,18 @@ export function canonicalContextHash(value: unknown): string {
 }
 
 export function companyEntryFingerprint(entry: {
-  dimension: unknown; fieldKey: unknown; valueJson: unknown; sourceType: unknown;
-  sourceId: unknown; confidence: unknown; verificationStatus: unknown;
+  dimension: unknown; fieldKey: unknown; value: unknown; sourceType: unknown;
+  sourceId: unknown; confidence: unknown; verificationStatus: unknown; updatedAt: unknown;
 }): string {
   return canonicalContextHash({
     dimension: entry.dimension,
     fieldKey: entry.fieldKey,
-    valueJson: entry.valueJson,
+    value: entry.value,
     sourceType: entry.sourceType,
     sourceId: entry.sourceId ?? null,
     confidence: entry.confidence ?? null,
     verificationStatus: entry.verificationStatus,
+    updatedAt: entry.updatedAt instanceof Date ? entry.updatedAt.toISOString() : entry.updatedAt,
   });
 }
 
@@ -52,6 +53,12 @@ export interface ContextReviewDto {
   effectiveContext: PortfolioBootstrapContextPayload | null;
   hasPendingCorrection: boolean;
   sourceCompanyContext: SourceCompanyContext;
+  draftSourceCompanyContext: SourceCompanyContext;
+  confirmedSourceCompanyContext: SourceCompanyContext;
+  effectiveSourceCompanyContext: SourceCompanyContext;
+  draftProvenance: unknown;
+  confirmedProvenance: unknown | null;
+  effectiveProvenance: unknown | null;
   sourceOutdated: boolean;
   confirmedBy: string | null;
   confirmedAt: string | null;
@@ -89,7 +96,7 @@ export class PortfolioBootstrapContextService {
       context: input.context,
       sourceCompanyContext: input.sourceCompanyContext ?? null,
     });
-    return this.withSerializableRetry(() => this.prisma.$transaction(async (tx) => {
+    const write = () => this.prisma.$transaction(async (tx) => {
       const db = tx as any;
       const session = await this.requireOwnedSession(db, input.sessionId, input.authenticatedUserId);
       await this.authorize(db, session, input.authenticatedUserId, input.permissions, 'portfolio:write');
@@ -101,20 +108,15 @@ export class PortfolioBootstrapContextService {
       let review: any;
       if (!current) {
         if (input.expectedVersion !== 0) throw this.versionConflict();
-        try {
-          review = await db.portfolioBootstrapContextReview.create({ data: {
-            bootstrapSessionId: session.id,
-            status: 'draft', version: 1,
-            draftJson: input.context,
-            sourceCompanyId: source?.companyId ?? null,
-            sourceCompanyContextVersionId: source?.versionId ?? null,
-            sourceCompanyContextVersionNumber: source?.versionNumber ?? null,
-            provenanceJson: this.provenance(input.context),
-          } });
-        } catch (error) {
-          if ((error as { code?: string }).code === 'P2002') throw this.versionConflict();
-          throw error;
-        }
+        review = await db.portfolioBootstrapContextReview.create({ data: {
+          bootstrapSessionId: session.id,
+          status: 'draft', version: 1,
+          draftJson: input.context,
+          sourceCompanyId: source?.companyId ?? null,
+          sourceCompanyContextVersionId: source?.versionId ?? null,
+          sourceCompanyContextVersionNumber: source?.versionNumber ?? null,
+          provenanceJson: this.provenance(input.context),
+        } });
       } else {
         if (current.version !== input.expectedVersion) throw this.versionConflict();
         const nextVersion = current.version + 1;
@@ -132,14 +134,18 @@ export class PortfolioBootstrapContextService {
         review = await db.portfolioBootstrapContextReview.findUnique({ where: { id: current.id } });
       }
       await db.portfolioBootstrapContextReviewVersion.create({ data: {
-        reviewId: review.id, version: review.version, action: 'draft_saved', snapshotJson: input.context,
+        reviewId: review.id, version: review.version, action: 'draft_saved',
+        snapshotJson: this.historySnapshot({ context: input.context, source, provenance: this.provenance(input.context), status: 'draft' }),
         actorUserId: input.authenticatedUserId,
       } });
       await this.audit(db, input.authenticatedUserId, 'portfolio_bootstrap_context_draft_saved', review.id, session.id, review.version);
       const response = await this.toDto(db, review, false);
       await this.persistReceipt(db, session.id, 'save_draft', input.idempotencyKey, payloadHash, response, review.version);
       return response;
-    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable, timeout: 10_000 }));
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable, timeout: 10_000 });
+    try { return await this.withSerializableRetry(write); } catch (error) {
+      return this.reconcileWriteConflict(input, 'save_draft', payloadHash, error);
+    }
   }
 
   async confirm(input: {
@@ -151,7 +157,7 @@ export class PortfolioBootstrapContextService {
   }): Promise<ContextReviewDto> {
     this.requireIdempotencyKey(input.idempotencyKey);
     const payloadHash = canonicalContextHash({ expectedVersion: input.expectedVersion });
-    return this.withSerializableRetry(() => this.prisma.$transaction(async (tx) => {
+    const write = () => this.prisma.$transaction(async (tx) => {
       const db = tx as any;
       const session = await this.requireOwnedSession(db, input.sessionId, input.authenticatedUserId);
       await this.authorize(db, session, input.authenticatedUserId, input.permissions, 'portfolio:write');
@@ -172,6 +178,10 @@ export class PortfolioBootstrapContextService {
         data: {
           status: 'confirmed', version: nextVersion,
           confirmedSnapshotJson: current.draftJson,
+          confirmedSourceCompanyId: current.sourceCompanyId,
+          confirmedSourceCompanyContextVersionId: current.sourceCompanyContextVersionId,
+          confirmedSourceCompanyContextVersionNumber: current.sourceCompanyContextVersionNumber,
+          confirmedProvenanceJson: current.provenanceJson,
           confirmedBy: input.authenticatedUserId,
           confirmedAt,
         },
@@ -179,14 +189,21 @@ export class PortfolioBootstrapContextService {
       if (changed.count !== 1) throw this.versionConflict();
       const review = await db.portfolioBootstrapContextReview.findUnique({ where: { id: current.id } });
       await db.portfolioBootstrapContextReviewVersion.create({ data: {
-        reviewId: review.id, version: review.version, action: 'confirmed', snapshotJson: current.draftJson,
+        reviewId: review.id, version: review.version, action: 'confirmed',
+        snapshotJson: this.historySnapshot({
+          context: current.draftJson, source, provenance: current.provenanceJson, status: 'confirmed',
+          confirmedBy: input.authenticatedUserId, confirmedAt,
+        }),
         actorUserId: input.authenticatedUserId,
       } });
       await this.audit(db, input.authenticatedUserId, 'portfolio_bootstrap_context_confirmed', review.id, session.id, review.version);
       const response = await this.toDto(db, review, false);
       await this.persistReceipt(db, session.id, 'confirm', input.idempotencyKey, payloadHash, response, review.version);
       return response;
-    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable, timeout: 10_000 }));
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable, timeout: 10_000 });
+    try { return await this.withSerializableRetry(write); } catch (error) {
+      return this.reconcileWriteConflict(input, 'confirm', payloadHash, error);
+    }
   }
 
   private async requireOwnedSession(db: any, sessionId: string, userId: string): Promise<any> {
@@ -210,7 +227,7 @@ export class PortfolioBootstrapContextService {
   private async validateSource(db: any, session: any, actorId: string, source: SourceCompanyContext, context: any, requireLatest: boolean): Promise<SourceCompanyContext> {
     const extracted = this.fields(context).filter((field) => field.provenance === 'source_extracted');
     if (!source) {
-      if (extracted.length) throw AppError.badRequest('La procedencia Company requiere una versión fuente.', 'COMPANY_CONTEXT_SOURCE_REQUIRED');
+      if (extracted.length) throw new AppError(422, 'La procedencia Company requiere una versión fuente.', 'COMPANY_CONTEXT_SOURCE_REQUIRED');
       return null;
     }
     if (!session.organizationId) throw AppError.notFound('Empresa', 'COMPANY_NOT_FOUND');
@@ -235,13 +252,15 @@ export class PortfolioBootstrapContextService {
     }
     for (const field of extracted) {
       const ref = field.sourceRef;
-      const entry = await db.companyContextEntry.findFirst({ where: {
-        ...(ref.entryId ? { id: ref.entryId } : {}),
-        companyId: company.id, versionId: version.id, dimension: ref.dimension, fieldKey: ref.fieldKey,
-        sourceId: ref.sourceId ?? null,
-      } });
+      const snapshotEntries = Array.isArray(version.snapshotJson?.entries) ? version.snapshotJson.entries : [];
+      const entry = snapshotEntries.find((candidate: any) => (
+        (!ref.entryId || candidate.id === ref.entryId)
+        && candidate.dimension === ref.dimension
+        && candidate.fieldKey === ref.fieldKey
+        && (candidate.sourceId ?? null) === (ref.sourceId ?? null)
+      ));
       if (!entry || companyEntryFingerprint(entry) !== ref.entryFingerprint) {
-        throw AppError.conflict('La fuente Company no coincide con el snapshot publicado.', 'COMPANY_CONTEXT_ENTRY_FINGERPRINT_MISMATCH');
+        throw new AppError(422, 'La fuente Company no coincide con el snapshot publicado.', 'COMPANY_CONTEXT_ENTRY_FINGERPRINT_MISMATCH');
       }
     }
     return source;
@@ -254,6 +273,20 @@ export class PortfolioBootstrapContextService {
 
   private provenance(context: any): unknown {
     return this.fields(context).map(({ provenance, sourceRef }) => ({ provenance, sourceRef: sourceRef ?? null }));
+  }
+
+  private historySnapshot(input: {
+    context: unknown; source: SourceCompanyContext; provenance: unknown; status: 'draft' | 'confirmed';
+    confirmedBy?: string; confirmedAt?: Date;
+  }): unknown {
+    return {
+      context: input.context,
+      sourceCompanyContext: input.source,
+      provenance: input.provenance,
+      status: input.status,
+      confirmedBy: input.confirmedBy ?? null,
+      confirmedAt: input.confirmedAt?.toISOString() ?? null,
+    };
   }
 
   private async replay(db: any, sessionId: string, operation: string, key: string, payloadHash: string): Promise<ContextReviewDto | null> {
@@ -275,26 +308,56 @@ export class PortfolioBootstrapContextService {
     } });
   }
 
+  private async reconcileWriteConflict(input: {
+    sessionId: string; authenticatedUserId: string; permissions: ReadonlySet<Permission>; idempotencyKey: string;
+  }, operation: 'save_draft' | 'confirm', payloadHash: string, error: unknown): Promise<ContextReviewDto> {
+    const code = (error as { code?: string }).code;
+    const reconcilable = code === 'P2002' || code === 'PORTFOLIO_CONTEXT_VERSION_CONFLICT'
+      || isRetryableContextWriteConflict(error);
+    if (!reconcilable) throw error;
+    return this.prisma.$transaction(async (tx) => {
+      const db = tx as any;
+      const session = await this.requireOwnedSession(db, input.sessionId, input.authenticatedUserId);
+      await this.authorize(db, session, input.authenticatedUserId, input.permissions, 'portfolio:write');
+      const replay = await this.replay(db, session.id, operation, input.idempotencyKey, payloadHash);
+      if (replay) return replay;
+      throw this.versionConflict();
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead, timeout: 10_000 });
+  }
+
   private async toDto(db: any, review: any, inspectDrift = true): Promise<ContextReviewDto> {
+    const draftSource: SourceCompanyContext = review.sourceCompanyId ? {
+      companyId: review.sourceCompanyId,
+      versionId: review.sourceCompanyContextVersionId,
+      versionNumber: review.sourceCompanyContextVersionNumber,
+    } : null;
+    const confirmedSource: SourceCompanyContext = review.confirmedSourceCompanyId ? {
+      companyId: review.confirmedSourceCompanyId,
+      versionId: review.confirmedSourceCompanyContextVersionId,
+      versionNumber: review.confirmedSourceCompanyContextVersionNumber,
+    } : null;
+    const confirmed = (review.confirmedSnapshotJson ?? null) as PortfolioBootstrapContextPayload | null;
+    const driftSource = confirmed ? confirmedSource : draftSource;
     let sourceOutdated = false;
-    if (inspectDrift && review.sourceCompanyId) {
+    if (inspectDrift && driftSource) {
       const [company, latest] = await Promise.all([
-        db.company.findUnique({ where: { id: review.sourceCompanyId }, select: { status: true, deletedAt: true } }),
-        db.companyContextVersion.findFirst({ where: { companyId: review.sourceCompanyId, status: 'PUBLISHED' }, orderBy: { versionNumber: 'desc' }, select: { id: true } }),
+        db.company.findUnique({ where: { id: driftSource.companyId }, select: { status: true, deletedAt: true } }),
+        db.companyContextVersion.findFirst({ where: { companyId: driftSource.companyId, status: 'PUBLISHED' }, orderBy: { versionNumber: 'desc' }, select: { id: true } }),
       ]);
-      sourceOutdated = !company || Boolean(company.deletedAt) || company.status !== 'ACTIVE' || latest?.id !== review.sourceCompanyContextVersionId;
+      sourceOutdated = !company || Boolean(company.deletedAt) || company.status !== 'ACTIVE' || latest?.id !== driftSource.versionId;
     }
     const draft = review.draftJson as PortfolioBootstrapContextPayload;
-    const confirmed = (review.confirmedSnapshotJson ?? null) as PortfolioBootstrapContextPayload | null;
     return {
       id: review.id, sessionId: review.bootstrapSessionId, status: review.status, version: review.version,
       draft, confirmedSnapshot: confirmed, effectiveContext: confirmed,
       hasPendingCorrection: Boolean(confirmed && review.status === 'draft'),
-      sourceCompanyContext: review.sourceCompanyId ? {
-        companyId: review.sourceCompanyId,
-        versionId: review.sourceCompanyContextVersionId,
-        versionNumber: review.sourceCompanyContextVersionNumber,
-      } : null,
+      sourceCompanyContext: confirmed ? confirmedSource : draftSource,
+      draftSourceCompanyContext: draftSource,
+      confirmedSourceCompanyContext: confirmedSource,
+      effectiveSourceCompanyContext: confirmed ? confirmedSource : null,
+      draftProvenance: review.provenanceJson,
+      confirmedProvenance: review.confirmedProvenanceJson ?? null,
+      effectiveProvenance: confirmed ? (review.confirmedProvenanceJson ?? null) : null,
       sourceOutdated, confirmedBy: review.confirmedBy ?? null,
       confirmedAt: review.confirmedAt ? new Date(review.confirmedAt).toISOString() : null,
       createdAt: new Date(review.createdAt).toISOString(), updatedAt: new Date(review.updatedAt).toISOString(),

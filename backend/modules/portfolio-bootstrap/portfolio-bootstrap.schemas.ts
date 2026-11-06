@@ -16,10 +16,10 @@ export const completePortfolioSetupBodySchema = z.object({
 
 const companyContextEntryRefSchema = z.object({
   kind: z.literal('company_context_entry'),
-  dimension: z.string().min(1).max(80),
-  fieldKey: z.string().min(1).max(240),
-  sourceId: z.string().min(1).nullable(),
-  entryId: z.string().min(1).optional(),
+  dimension: z.string().trim().min(1).max(80),
+  fieldKey: z.string().trim().min(1).max(240),
+  sourceId: z.string().trim().min(1).nullable(),
+  entryId: z.string().trim().min(1).optional(),
   entryFingerprint: z.string().regex(/^[a-f0-9]{64}$/),
 }).strict();
 
@@ -29,11 +29,11 @@ const declaredContextRefSchema = z.object({
 
 const copilotContextRefSchema = z.object({
   kind: z.enum(['copilot_inference', 'copilot_suggestion']),
-  reference: z.string().min(1).max(500).optional(),
+  reference: z.string().trim().min(1).max(500).optional(),
 }).strict();
 
 export const portfolioBootstrapContextFieldSchema = z.object({
-  value: z.string().max(2_000).nullable(),
+  value: z.string().trim().min(1).max(2_000).nullable(),
   provenance: z.enum(['user_declared', 'source_extracted', 'copilot_inferred', 'copilot_suggested', 'unknown']),
   sourceRef: z.union([companyContextEntryRefSchema, declaredContextRefSchema, copilotContextRefSchema]).optional(),
 }).strict().superRefine((field, context) => {
@@ -61,12 +61,12 @@ export const portfolioBootstrapContextPayloadSchema = z.object({
   pilotExperience: portfolioBootstrapContextFieldSchema,
   constraints: z.array(portfolioBootstrapContextFieldSchema).max(50),
   assumptions: z.array(portfolioBootstrapContextFieldSchema).max(50),
-  gaps: z.array(z.string().max(2_000)).max(50),
+  gaps: z.array(z.string().trim().min(1).max(2_000)).max(50),
 }).strict();
 
 export const sourceCompanyContextSchema = z.object({
-  companyId: z.string().min(1),
-  versionId: z.string().min(1),
+  companyId: z.string().trim().min(1),
+  versionId: z.string().trim().min(1),
   versionNumber: z.number().int().min(1),
 }).strict();
 

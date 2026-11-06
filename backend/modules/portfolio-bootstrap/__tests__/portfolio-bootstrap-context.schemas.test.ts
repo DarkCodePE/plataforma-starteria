@@ -70,4 +70,17 @@ describe('portfolio bootstrap E1 context schemas', () => {
       sourceCompanyContext: null,
     }).context?.situation?.provenance).toBe('copilot_inferred');
   });
+
+  it('normalizes every non-null content string and rejects blank values', () => {
+    const parsed = savePortfolioBootstrapContextDraftBodySchema.parse({
+      expectedVersion: 0,
+      context: { ...context, situation: field('  Situation  '), gaps: ['  Missing metric  '] },
+      sourceCompanyContext: null,
+    });
+    expect(parsed.context?.situation?.value).toBe('Situation');
+    expect(parsed.context?.gaps).toEqual(['Missing metric']);
+    expect(() => savePortfolioBootstrapContextDraftBodySchema.parse({
+      expectedVersion: 0, context: { ...context, situation: field('   ') }, sourceCompanyContext: null,
+    })).toThrow();
+  });
 });
