@@ -154,6 +154,48 @@ Handoff, Steps, Portfolio Home o IA.
 
 ---
 
+## Slice PORTFOLIO_LEAD_G1_ADAPTIVE_CONTEXT_BRIDGE (KAN-219 / KAN-220 / KAN-221)
+
+**Registrado:** 2026-11-06 por aprobación funcional KAN-219, autorización técnica acotada para
+KAN-221 y revisión independiente de KAN-220 en tres rondas.
+
+```text
+slice_id: PORTFOLIO_LEAD_G1_ADAPTIVE_CONTEXT_BRIDGE
+functional_hu: KAN-219
+functional_authority: KAN-219#10650
+technical_scope_authority: KAN-219#10653 + KAN-221#10654
+technical_audit: KAN-220#10651, #10652, #10655, #10656, #10657 + revisión independiente R1/R2/R3 APPROVED
+technical_task: KAN-221
+future_frontend_task: KAN-222 (authority pending)
+logic_status: ACTIVE_V2_BASELINE (solo semántica funcional aprobada)
+implementation_status: NOT_IMPLEMENTED
+visual_status: V2_TARGET_DEFINED
+evidence_status: SUPPORTED
+runtime_verification: NOT_RUN
+semantic_owners: CompanyContextVersion PUBLISHED = fuente opcional; Bootstrap E1 = revisión/snapshot confirmado; PortfolioAnchor E2 = objetivo independiente
+preserves: PORTFOLIO_LEAD_SETUP_NAVIGATION_REENTRY_G1 KAN-205/207 sin cambios
+allowed: backend/API/Prisma aditivos y tests KAN-221 exclusivamente
+excluded: Core; Steps; Handoff; canonicalización; Company obligatoria; cambio de bootstrapPhase/existingWorkStatus/E5; IA/model/provider; frontend KAN-222; infra; merge/deploy
+adr_required: NO — mientras la relación sea opcional, provisional y de procedencia; STOP y ADR si se vuelve canónica/obligatoria o cambia autoridad/cardinalidad Core
+guardrail: Proceed YES para KAN-221 backend/API/Prisma aditivos y tests exclusivamente; KAN-222/frontend permanece Proceed NO
+baseline_evidence: front 1065/1065 PASS; backend 1872/1872 PASS + 180 environment-gated SKIPPED; lint/typecheck front/Prisma validate PASS; typecheck backend conserva TS2740 preexistente en blob origin/main 93bee03d5133bed32ea7ce949e168e621d5a4476
+```
+
+El bridge autorizado fija una versión `PUBLISHED` de Company Context como fuente opcional y
+congela su evidencia/procedencia dentro del checkpoint E1 de Bootstrap. E1 puede existir sin
+Company y no reutiliza la confirmación E2 de `PortfolioAnchor`. Guardar, corregir o confirmar E1
+no modifica `bootstrapPhase`, `status`, `existingWorkStatus`, WorkItems, análisis, mutaciones,
+elegibilidad E5 ni entidades canónicas. La persistencia futura debe ser aditiva, sin backfill, con
+CAS, receipts idempotentes, autorización dual y aislamiento tenant conforme al Tech Spec aprobado
+en KAN-220#10655/#10656/#10657.
+
+Este registro no implementa KAN-221 ni KAN-222, no ejecuta una migración y no autoriza cambios en
+Core, Steps, Handoff, IA productiva o infraestructura. La concurrencia preexistente de creación de
+versiones de Company Context queda fuera de alcance; el bridge sólo puede fijar y revalidar una
+versión ya publicada.
+
+---
+
 ## Slice PORTFOLIO_LEAD_INTAKE_NAVIGATION_G2A (KAN-209 / KAN-212)
 
 **Registrado:** 2026-11-03 por HU KAN-209 y aprobación funcional KAN-210 `RESUELTO`; preparación técnica acotada en KAN-212.
