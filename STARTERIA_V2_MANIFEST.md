@@ -154,6 +154,55 @@ Handoff, Steps, Portfolio Home o IA.
 
 ---
 
+## Slice PORTFOLIO_LEAD_G1_ADAPTIVE_CONTEXT_BRIDGE (KAN-219 / KAN-220 / KAN-221)
+
+**Registrado:** 2026-11-06 por aprobación funcional KAN-219, autorización técnica acotada para
+KAN-221 y revisión independiente de KAN-220 en tres rondas.
+
+```text
+slice_id: PORTFOLIO_LEAD_G1_ADAPTIVE_CONTEXT_BRIDGE
+functional_hu: KAN-219
+functional_authority: KAN-219#10650
+technical_scope_authority: KAN-219#10653 + KAN-221#10654
+technical_audit: KAN-220#10651, #10652, #10655, #10656, #10657 + revisión independiente R1/R2/R3 APPROVED
+technical_task: KAN-221
+future_frontend_task: KAN-222 (authority pending)
+logic_status: ACTIVE_V2_BASELINE (solo semántica funcional aprobada)
+implementation_status: IMPLEMENTED_UNVERIFIED
+visual_status: V2_TARGET_DEFINED
+evidence_status: TESTING
+runtime_verification: LOCAL_UNIT_REGRESSION_PRISMA_LINT_BUILD_PASS; POSTGRESQL_INTEGRATION_NOT_RUN_NO_DATABASE_URL; CI_PENDING
+implementation_commits: ace7855 (tests-first); 433eec1 (backend/API/Prisma); 6572118 + b944c01 (independent-review fixes)
+independent_review: R1 CHANGES_REQUIRED; R2 CHANGES_REQUIRED; R3 APPROVED
+implementation_surfaces: portfolio-bootstrap context schemas/router/controller/service; additive Prisma review/history/operation models and migration; focused/unit/HTTP/DB-integration tests
+test_evidence: focused 37/37 PASS; backend full regression PASS; frontend baseline regression PASS; lint/Prisma validate/front typecheck/build PASS; backend typecheck retains pre-existing TS2740 only
+postgresql_evidence: 5 KAN-221 integration scenarios authored but environment-gated locally because DATABASE_URL is absent; concurrency/migration execution required in CI before merge
+semantic_owners: CompanyContextVersion PUBLISHED = fuente opcional; Bootstrap E1 = revisión/snapshot confirmado; PortfolioAnchor E2 = objetivo independiente
+preserves: PORTFOLIO_LEAD_SETUP_NAVIGATION_REENTRY_G1 KAN-205/207 sin cambios
+allowed: backend/API/Prisma aditivos y tests KAN-221 exclusivamente
+excluded: Core; Steps; Handoff; canonicalización; Company obligatoria; cambio de bootstrapPhase/existingWorkStatus/E5; IA/model/provider; frontend KAN-222; infra; merge/deploy
+adr_required: NO — mientras la relación sea opcional, provisional y de procedencia; STOP y ADR si se vuelve canónica/obligatoria o cambia autoridad/cardinalidad Core
+guardrail: V2_CHANGE_GUARDRAIL_CHECK reemitido — Proceed YES para KAN-221 backend/API/Prisma aditivos, Manifest y tests exclusivamente; KAN-222/frontend permanece Proceed NO
+baseline_evidence: front 1065/1065 PASS; backend 1872/1872 PASS + 180 environment-gated SKIPPED; lint/typecheck front/Prisma validate PASS; typecheck backend conserva TS2740 preexistente en blob origin/main 93bee03d5133bed32ea7ce949e168e621d5a4476
+```
+
+El bridge autorizado fija una versión `PUBLISHED` de Company Context como fuente opcional y
+congela su evidencia/procedencia dentro del checkpoint E1 de Bootstrap. E1 puede existir sin
+Company y no reutiliza la confirmación E2 de `PortfolioAnchor`. Guardar, corregir o confirmar E1
+no modifica `bootstrapPhase`, `status`, `existingWorkStatus`, WorkItems, análisis, mutaciones,
+elegibilidad E5 ni entidades canónicas. La persistencia futura debe ser aditiva, sin backfill, con
+CAS, receipts idempotentes, autorización dual y aislamiento tenant conforme al Tech Spec aprobado
+en KAN-220#10655/#10656/#10657.
+
+KAN-221 implementa el contrato E1 de forma aditiva y deja la migración preparada, pero no aplicada
+localmente por ausencia de PostgreSQL. No implementa KAN-222 ni autoriza cambios en Core, Steps,
+Handoff, IA productiva o infraestructura. La concurrencia preexistente de creación de versiones de
+Company Context queda fuera de alcance; el bridge sólo fija, revalida y congela una versión ya
+publicada. El estado permanece `IMPLEMENTED_UNVERIFIED` hasta que CI ejecute las integraciones y la
+migración en PostgreSQL.
+
+---
+
 ## Slice PORTFOLIO_LEAD_INTAKE_NAVIGATION_G2A (KAN-209 / KAN-212)
 
 **Registrado:** 2026-11-03 por HU KAN-209 y aprobación funcional KAN-210 `RESUELTO`; preparación técnica acotada en KAN-212.

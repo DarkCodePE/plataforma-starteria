@@ -42,6 +42,12 @@ const completionService = {
   openAdditionalFront: vi.fn(),
 };
 
+const contextService = {
+  getContext: vi.fn(),
+  saveDraft: vi.fn(),
+  confirm: vi.fn(),
+};
+
 let currentUser: any;
 
 const fakeAuthenticate: RequestHandler = (req: any, _res, next) => {
@@ -57,6 +63,7 @@ function makeApp() {
     service: service as any,
     organizationService: organizationService as any,
     completionService: completionService as any,
+    contextService: contextService as any,
   }));
   app.use(errorHandler);
   return app;
@@ -117,6 +124,37 @@ describe('portfolio-bootstrap router', () => {
     });
     completionService.complete.mockResolvedValue({ completed: true, summary: { sent: 2, unsent: 2, failed: 0 } });
     completionService.openAdditionalFront.mockResolvedValue({ bootstrapSession: { id: 'bs-front-2' }, anchor: { id: 'anchor-front-2' } });
+    contextService.getContext.mockResolvedValue(null);
+    contextService.saveDraft.mockResolvedValue({ id: 'context-1', status: 'draft', version: 1 });
+    contextService.confirm.mockResolvedValue({ id: 'context-1', status: 'confirmed', version: 2 });
+  });
+
+  it('reads, drafts and confirms E1 context through the authenticated additive API', async () => {
+    const context = {
+      situation: { value: 'Situation', provenance: 'user_declared', sourceRef: { kind: 'user_input' } },
+      area: { value: null, provenance: 'unknown' },
+      stakeholder: { value: 'Operations', provenance: 'user_declared', sourceRef: { kind: 'user_input' } },
+      pilotExperience: { value: 'Pilot', provenance: 'user_declared', sourceRef: { kind: 'user_input' } },
+      constraints: [], assumptions: [], gaps: [],
+    };
+    await request(makeApp()).get('/api/v1/portfolio-bootstrap/sessions/bs-1/context').expect(200);
+    await request(makeApp()).put('/api/v1/portfolio-bootstrap/sessions/bs-1/context/draft')
+      .set('Idempotency-Key', 'draft-1').send({ expectedVersion: 0, context, sourceCompanyContext: null }).expect(200);
+    await request(makeApp()).post('/api/v1/portfolio-bootstrap/sessions/bs-1/context/confirm')
+      .set('Idempotency-Key', 'confirm-1').send({ expectedVersion: 1 }).expect(200);
+
+    expect(contextService.getContext).toHaveBeenCalledWith(expect.objectContaining({ sessionId: 'bs-1', authenticatedUserId: 'portfolio-lead-1' }));
+    expect(contextService.saveDraft).toHaveBeenCalledWith(expect.objectContaining({ sessionId: 'bs-1', idempotencyKey: 'draft-1', expectedVersion: 0 }));
+    expect(contextService.confirm).toHaveBeenCalledWith(expect.objectContaining({ sessionId: 'bs-1', idempotencyKey: 'confirm-1', expectedVersion: 1 }));
+  });
+
+  it('requires Idempotency-Key for E1 writes before invoking the service', async () => {
+    await request(makeApp()).put('/api/v1/portfolio-bootstrap/sessions/bs-1/context/draft')
+      .send({ expectedVersion: 0, context: {} }).expect(400);
+    await request(makeApp()).post('/api/v1/portfolio-bootstrap/sessions/bs-1/context/confirm')
+      .send({ expectedVersion: 1 }).expect(400);
+    expect(contextService.saveDraft).not.toHaveBeenCalled();
+    expect(contextService.confirm).not.toHaveBeenCalled();
   });
 
   it('requires an explicit human confirmation to close the contextual setup', async () => {

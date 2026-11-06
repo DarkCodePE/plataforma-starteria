@@ -14,6 +14,72 @@ export const completePortfolioSetupBodySchema = z.object({
   confirmed: z.literal(true),
 }).strict();
 
+const companyContextEntryRefSchema = z.object({
+  kind: z.literal('company_context_entry'),
+  dimension: z.string().trim().min(1).max(80),
+  fieldKey: z.string().trim().min(1).max(240),
+  sourceId: z.string().trim().min(1).nullable(),
+  entryId: z.string().trim().min(1).optional(),
+  entryFingerprint: z.string().regex(/^[a-f0-9]{64}$/),
+}).strict();
+
+const declaredContextRefSchema = z.object({
+  kind: z.enum(['user_input', 'decision_brief']),
+}).strict();
+
+const copilotContextRefSchema = z.object({
+  kind: z.enum(['copilot_inference', 'copilot_suggestion']),
+  reference: z.string().trim().min(1).max(500).optional(),
+}).strict();
+
+export const portfolioBootstrapContextFieldSchema = z.object({
+  value: z.string().trim().min(1).max(2_000).nullable(),
+  provenance: z.enum(['user_declared', 'source_extracted', 'copilot_inferred', 'copilot_suggested', 'unknown']),
+  sourceRef: z.union([companyContextEntryRefSchema, declaredContextRefSchema, copilotContextRefSchema]).optional(),
+}).strict().superRefine((field, context) => {
+  if (field.provenance === 'unknown' && (field.value !== null || field.sourceRef !== undefined)) {
+    context.addIssue({ code: 'custom', message: 'Un campo desconocido debe ser null y no tener fuente.' });
+  }
+  if (field.provenance === 'source_extracted' && field.sourceRef?.kind !== 'company_context_entry') {
+    context.addIssue({ code: 'custom', message: 'La procedencia extraída requiere una entrada Company verificable.' });
+  }
+  if (field.provenance === 'user_declared' && !['user_input', 'decision_brief'].includes(field.sourceRef?.kind ?? '')) {
+    context.addIssue({ code: 'custom', message: 'La declaración humana requiere user_input o decision_brief.' });
+  }
+  if (field.provenance === 'copilot_inferred' && field.sourceRef && field.sourceRef.kind !== 'copilot_inference') {
+    context.addIssue({ code: 'custom', message: 'La inferencia Copilot debe conservar su procedencia.' });
+  }
+  if (field.provenance === 'copilot_suggested' && field.sourceRef && field.sourceRef.kind !== 'copilot_suggestion') {
+    context.addIssue({ code: 'custom', message: 'La sugerencia Copilot debe conservar su procedencia.' });
+  }
+});
+
+export const portfolioBootstrapContextPayloadSchema = z.object({
+  situation: portfolioBootstrapContextFieldSchema,
+  area: portfolioBootstrapContextFieldSchema,
+  stakeholder: portfolioBootstrapContextFieldSchema,
+  pilotExperience: portfolioBootstrapContextFieldSchema,
+  constraints: z.array(portfolioBootstrapContextFieldSchema).max(50),
+  assumptions: z.array(portfolioBootstrapContextFieldSchema).max(50),
+  gaps: z.array(z.string().trim().min(1).max(2_000)).max(50),
+}).strict();
+
+export const sourceCompanyContextSchema = z.object({
+  companyId: z.string().trim().min(1),
+  versionId: z.string().trim().min(1),
+  versionNumber: z.number().int().min(1),
+}).strict();
+
+export const savePortfolioBootstrapContextDraftBodySchema = z.object({
+  expectedVersion: z.number().int().min(0),
+  context: portfolioBootstrapContextPayloadSchema,
+  sourceCompanyContext: sourceCompanyContextSchema.nullable().optional(),
+}).strict();
+
+export const confirmPortfolioBootstrapContextBodySchema = z.object({
+  expectedVersion: z.number().int().min(1),
+}).strict();
+
 export const updateAnchorBodySchema = z.object({
   outcomeStatement: z.string().min(1).optional(),
   contextSummary: z.string().min(1).nullable().optional(),
@@ -166,3 +232,5 @@ export type ReviewProposedMutationBody = z.infer<typeof reviewProposedMutationBo
 export type PortfolioOrganizationPayload = z.infer<typeof portfolioOrganizationPayloadSchema>;
 export type SavePortfolioOrganizationProposalBody = z.infer<typeof savePortfolioOrganizationProposalBodySchema>;
 export type UpdateAdvancementConditionDispositionBody = z.infer<typeof updateAdvancementConditionDispositionBodySchema>;
+export type PortfolioBootstrapContextPayload = z.infer<typeof portfolioBootstrapContextPayloadSchema>;
+export type SavePortfolioBootstrapContextDraftBody = z.infer<typeof savePortfolioBootstrapContextDraftBodySchema>;
