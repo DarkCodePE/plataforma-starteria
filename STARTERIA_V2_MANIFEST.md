@@ -163,26 +163,28 @@ KAN-221 y revisión independiente de KAN-220 en tres rondas.
 slice_id: PORTFOLIO_LEAD_G1_ADAPTIVE_CONTEXT_BRIDGE
 functional_hu: KAN-219
 functional_authority: KAN-219#10650
-technical_scope_authority: KAN-219#10653 + KAN-221#10654
+technical_scope_authority: KAN-219#10653 + KAN-221#10654 + KAN-222#10667 (frontend V2 + tests/E2E)
 technical_audit: KAN-220#10651, #10652, #10655, #10656, #10657 + revisión independiente R1/R2/R3 APPROVED
 technical_task: KAN-221
-future_frontend_task: KAN-222 (authority pending)
+frontend_task: KAN-222
+frontend_authority: KAN-222#10667 (APPROVED; alcance limitado a frontend V2, tests focales y E2E autenticado)
+frontend_implementation_status: AUTHORIZED_NOT_IMPLEMENTED
 logic_status: ACTIVE_V2_BASELINE (solo semántica funcional aprobada)
 implementation_status: IMPLEMENTED_UNVERIFIED
 visual_status: V2_TARGET_DEFINED
 evidence_status: TESTING
-runtime_verification: LOCAL_UNIT_REGRESSION_PRISMA_LINT_BUILD_PASS; POSTGRESQL_INTEGRATION_NOT_RUN_NO_DATABASE_URL; CI_PENDING
+runtime_verification: LOCAL_UNIT_REGRESSION_PRISMA_LINT_BUILD_PASS; KAN-221_POSTGRESQL_5_OF_5_PASS; CI_6_OF_6_PASS_PR_256
 implementation_commits: ace7855 (tests-first); 433eec1 (backend/API/Prisma); 6572118 + b944c01 (independent-review fixes)
 independent_review: R1 CHANGES_REQUIRED; R2 CHANGES_REQUIRED; R3 APPROVED
 implementation_surfaces: portfolio-bootstrap context schemas/router/controller/service; additive Prisma review/history/operation models and migration; focused/unit/HTTP/DB-integration tests
 test_evidence: focused 37/37 PASS; backend full regression PASS; frontend baseline regression PASS; lint/Prisma validate/front typecheck/build PASS; backend typecheck retains pre-existing TS2740 only
-postgresql_evidence: 5 KAN-221 integration scenarios authored but environment-gated locally because DATABASE_URL is absent; concurrency/migration execution required in CI before merge
+postgresql_evidence: 5/5 KAN-221 integration scenarios PASS, 0 skipped, under PORTFOLIO_BOOTSTRAP_DB_INTEGRATION=1 in CI run 42306134658 / PR #256
 semantic_owners: CompanyContextVersion PUBLISHED = fuente opcional; Bootstrap E1 = revisión/snapshot confirmado; PortfolioAnchor E2 = objetivo independiente
 preserves: PORTFOLIO_LEAD_SETUP_NAVIGATION_REENTRY_G1 KAN-205/207 sin cambios
-allowed: backend/API/Prisma aditivos y tests KAN-221 exclusivamente
-excluded: Core; Steps; Handoff; canonicalización; Company obligatoria; cambio de bootstrapPhase/existingWorkStatus/E5; IA/model/provider; frontend KAN-222; infra; merge/deploy
+allowed: backend/API/Prisma aditivos y tests KAN-221 ya fusionados; frontend V2, tests focales y E2E autenticado KAN-222; ajuste documental mínimo del Manifest
+excluded: Core; backend/API/Prisma adicionales; Steps; Handoff; canonicalización; Company obligatoria; cambio de bootstrapPhase/existingWorkStatus/E5; IA/model/provider/prompt/runtime; infra; secretos; merge/deploy
 adr_required: NO — mientras la relación sea opcional, provisional y de procedencia; STOP y ADR si se vuelve canónica/obligatoria o cambia autoridad/cardinalidad Core
-guardrail: V2_CHANGE_GUARDRAIL_CHECK reemitido — Proceed YES para KAN-221 backend/API/Prisma aditivos, Manifest y tests exclusivamente; KAN-222/frontend permanece Proceed NO
+guardrail: KAN-221 cerrado por PR #255 y certificado por PR #256; KAN-222 requiere V2_CHANGE_GUARDRAIL_CHECK Proceed YES antes de editar código frontend productivo
 baseline_evidence: front 1065/1065 PASS; backend 1872/1872 PASS + 180 environment-gated SKIPPED; lint/typecheck front/Prisma validate PASS; typecheck backend conserva TS2740 preexistente en blob origin/main 93bee03d5133bed32ea7ce949e168e621d5a4476
 ```
 
@@ -194,12 +196,12 @@ elegibilidad E5 ni entidades canónicas. La persistencia futura debe ser aditiva
 CAS, receipts idempotentes, autorización dual y aislamiento tenant conforme al Tech Spec aprobado
 en KAN-220#10655/#10656/#10657.
 
-KAN-221 implementa el contrato E1 de forma aditiva y deja la migración preparada, pero no aplicada
-localmente por ausencia de PostgreSQL. No implementa KAN-222 ni autoriza cambios en Core, Steps,
-Handoff, IA productiva o infraestructura. La concurrencia preexistente de creación de versiones de
-Company Context queda fuera de alcance; el bridge sólo fija, revalida y congela una versión ya
-publicada. El estado permanece `IMPLEMENTED_UNVERIFIED` hasta que CI ejecute las integraciones y la
-migración en PostgreSQL.
+KAN-221 implementa el contrato E1 de forma aditiva; PR #256 certificó sus cinco escenarios sobre
+PostgreSQL desechable. KAN-222#10667 autoriza el siguiente incremento frontend, todavía no
+implementado: conversación guiada determinista, síntesis editable y conexión al API E1 existente,
+sin modificar Core, backend, Prisma, Steps, Handoff, IA productiva o infraestructura. La
+concurrencia preexistente de creación de versiones de Company Context queda fuera de alcance; el
+bridge sólo fija, revalida y congela una versión ya publicada.
 
 ---
 
