@@ -516,6 +516,7 @@ describe('PortfolioBootstrapHome — frozen Copilot-first composition', () => {
 
     expect(await screen.findByTestId('portfolio-bootstrap-material-review')).toBeInTheDocument();
     expect(screen.getByText('Análisis determinístico')).toBeInTheDocument();
+    expect(screen.queryByText(/La IA propone|La IA propuso/i)).not.toBeInTheDocument();
     expect(screen.getByTestId('portfolio-analysis-summary')).toHaveTextContent('Iniciativas detectadas');
     expect(screen.getByText('Startería encontró…')).toBeInTheDocument();
     expect(screen.queryByText(/Gaps e incógnitas/i)).not.toBeInTheDocument();
@@ -580,15 +581,29 @@ describe('PortfolioBootstrapHome — frozen Copilot-first composition', () => {
 
   it('KAN-213 CA-07 blocks CTA and sidebar from backend hard eligibility even when the local analysis summary has no hard blocker', async () => {
     const data = makeBootstrapWithProposedMutations();
-    server.use(http.get('/api/v1/portfolio-bootstrap/sessions/:sessionId/e5-eligibility', () => HttpResponse.json({
-      success: true,
-      data: {
-        allowed: false,
-        reasonCodes: ['HARD_BLOCKERS_ACTIVE'],
-        blockers: [{ kind: 'confirmed_condition', id: 'condition-hard-1', status: 'confirmed', severity: 'blocking', disposition: 'active', dispositionVersion: 1 }],
-        snapshotVersion: 'eligibility-hard-v1',
-      },
-    })));
+    let blockerResolved = false;
+    let dispositionRequest: { body: unknown; idempotencyKey: string | null } | null = null;
+    server.use(
+      http.get('/api/v1/portfolio-bootstrap/sessions/:sessionId/e5-eligibility', () => HttpResponse.json({
+        success: true,
+        data: blockerResolved ? {
+          allowed: true,
+          reasonCodes: ['ANALYZED_WORK_ELIGIBLE'],
+          blockers: [],
+          snapshotVersion: 'eligibility-hard-v2',
+        } : {
+          allowed: false,
+          reasonCodes: ['HARD_BLOCKERS_ACTIVE'],
+          blockers: [{ kind: 'confirmed_condition', id: 'condition-hard-1', status: 'confirmed', severity: 'blocking', disposition: 'active', dispositionVersion: 1 }],
+          snapshotVersion: 'eligibility-hard-v1',
+        },
+      })),
+      http.patch('/api/v1/portfolio-bootstrap/sessions/:sessionId/advancement-conditions/:conditionId/disposition', async ({ request }) => {
+        dispositionRequest = { body: await request.json(), idempotencyKey: request.headers.get('Idempotency-Key') };
+        blockerResolved = true;
+        return HttpResponse.json({ success: true, data: { condition: { id: 'condition-hard-1', disposition: 'resolved', dispositionVersion: 2 } } });
+      }),
+    );
     render(<PortfolioBootstrapHome {...props({ data })} />);
 
     const gate = screen.getByTestId('portfolio-analysis-completion-gate');
@@ -604,6 +619,20 @@ describe('PortfolioBootstrapHome — frozen Copilot-first composition', () => {
     fireEvent.click(organizationStage);
     expect(screen.queryByTestId('portfolio-organization-proposal')).not.toBeInTheDocument();
     expect(screen.getByTestId('portfolio-bootstrap-material-review')).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText('Motivo de la disposición'), { target: { value: 'La dependencia fue verificada por el Portfolio Lead.' } });
+    fireEvent.change(screen.getByLabelText('Referencia de evidencia'), { target: { value: 'evidence://kan213/review-1' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Marcar bloqueo como resuelto' }));
+    await waitFor(() => expect(continueButton).toBeEnabled());
+    expect(dispositionRequest).toEqual({
+      body: {
+        disposition: 'resolved',
+        expectedVersion: 1,
+        reason: 'La dependencia fue verificada por el Portfolio Lead.',
+        evidenceRefs: ['evidence://kan213/review-1'],
+      },
+      idempotencyKey: 'kan213-disposition-bs-1-condition-hard-1-1-resolved',
+    });
   });
 
   it('KAN-213 CA-08 fails closed on eligibility errors, exposes retry, and creates no false progress', async () => {
