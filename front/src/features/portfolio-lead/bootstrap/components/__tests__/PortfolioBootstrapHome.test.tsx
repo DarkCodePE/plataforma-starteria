@@ -244,7 +244,7 @@ describe('PortfolioBootstrapHome — frozen Copilot-first composition', () => {
 
     expect(screen.getByRole('heading', { name: '¿Qué está haciendo hoy tu organización?' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /Analizar 0 iniciativas/i })).not.toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Continuar sin iniciativas' })).toBeEnabled();
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Continuar sin iniciativas' })).toBeEnabled());
     expect(screen.getByRole('button', { name: /4 Análisis/i })).toBeDisabled();
     expect(screen.getByRole('button', { name: /5 Organización/i })).toBeDisabled();
     expect(screen.getByRole('button', { name: /7 Asignación/i })).toBeDisabled();
@@ -255,7 +255,7 @@ describe('PortfolioBootstrapHome — frozen Copilot-first composition', () => {
     expect(input.onAnalyzeWorkItems).not.toHaveBeenCalled();
   });
 
-  it('G2-A CA-03 shows the explicit no-work continuation again after reentry', () => {
+  it('G2-A CA-03 shows the explicit no-work continuation again after reentry', async () => {
     const data = makeBootstrap('anchor_confirmed');
     data.bootstrapSession.status = 'awaiting_structuring';
     data.bootstrapSession.bootstrapPhase = 'B3_PROVISIONAL_STRUCTURING';
@@ -263,13 +263,14 @@ describe('PortfolioBootstrapHome — frozen Copilot-first composition', () => {
     const input = props({ data });
     const first = render(<PortfolioBootstrapHome {...input} />);
 
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Continuar sin iniciativas' })).toBeEnabled());
     fireEvent.click(screen.getByRole('button', { name: 'Continuar sin iniciativas' }));
     expect(screen.getByTestId('portfolio-organization-proposal')).toBeInTheDocument();
     first.unmount();
     render(<PortfolioBootstrapHome {...input} />);
 
     expect(screen.getByRole('heading', { name: '¿Qué está haciendo hoy tu organización?' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Continuar sin iniciativas' })).toBeEnabled();
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Continuar sin iniciativas' })).toBeEnabled());
   });
 
   it('G2-A CA-04 preserves pasted input, exposes an actionable error, and permits an idempotent retry', async () => {
@@ -564,10 +565,10 @@ describe('PortfolioBootstrapHome — frozen Copilot-first composition', () => {
   it('KAN-213 CA-07 allows soft pending reviews only after backend E5 eligibility and keeps E6/E7 blocked', async () => {
     render(<PortfolioBootstrapHome {...props({ data: makeBootstrapWithProposedMutations() })} />);
 
-    expect(screen.getByTestId('portfolio-analysis-completion-gate')).toHaveTextContent('Lectura suficiente para continuar');
     const continueButton = screen.getByRole('button', { name: 'Continuar a organización' });
     expect(continueButton).toBeDisabled();
     await waitFor(() => expect(continueButton).toBeEnabled());
+    expect(screen.getByTestId('portfolio-analysis-completion-gate')).toHaveTextContent('Lectura suficiente para continuar');
     expect(screen.getByRole('button', { name: /5 Organización/i })).toBeDisabled();
     expect(screen.getByRole('button', { name: /6 Briefs/i })).toBeDisabled();
     expect(screen.getByRole('button', { name: /7 Asignación/i })).toBeDisabled();
@@ -661,6 +662,7 @@ describe('PortfolioBootstrapHome — frozen Copilot-first composition', () => {
     expect(await screen.findByRole('dialog')).toHaveTextContent('Vínculo confirmado');
     expect(screen.getByRole('button', { name: 'Revisar vínculo' })).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Cerrar' }));
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Continuar a organización' })).toBeEnabled());
     fireEvent.click(screen.getByRole('button', { name: 'Continuar a organización' }));
     expect(screen.getByTestId('portfolio-organization-proposal')).toBeInTheDocument();
   });
@@ -738,6 +740,7 @@ describe('PortfolioBootstrapHome — frozen Copilot-first composition', () => {
       onConfirmOrganizationProposal: confirmOrganizationProposal,
     }) as any} />);
 
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Continuar a organización' })).toBeEnabled());
     fireEvent.click(screen.getByRole('button', { name: 'Continuar a organización' }));
     expect(screen.getByTestId('portfolio-organization-proposal')).toBeInTheDocument();
     expect(screen.getByText('Startería propone esta organización a partir de las 8 iniciativas revisadas.')).toBeInTheDocument();
@@ -958,7 +961,7 @@ describe('PortfolioBootstrapHome — frozen Copilot-first composition', () => {
     expect(navigate).not.toHaveBeenCalled();
   });
 
-  it('keeps all-ungrouped work distinct from an explicit opt-out and allows an empty manual challenge', () => {
+  it('keeps all-ungrouped work distinct from an explicit opt-out and allows an empty manual challenge', async () => {
     const data = makeBootstrapWithProposedMutations();
     const workItemIds = data.workItems.map((item) => item.id);
     const organizationProposal = {
@@ -974,6 +977,7 @@ describe('PortfolioBootstrapHome — frozen Copilot-first composition', () => {
     };
     render(<PortfolioBootstrapHome {...props({ data, organizationProposal, onSaveOrganizationProposal: vi.fn(), onConfirmOrganizationProposal: vi.fn() }) as any} />);
 
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Continuar a organización' })).toBeEnabled());
     fireEvent.click(screen.getByRole('button', { name: 'Continuar a organización' }));
     expect(screen.queryByRole('heading', { name: 'Has decidido no organizar todavía' })).not.toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'Hipótesis por revisar' })).toBeInTheDocument();
@@ -990,7 +994,7 @@ describe('PortfolioBootstrapHome — frozen Copilot-first composition', () => {
     expect(screen.queryByRole('heading', { name: 'Has decidido no organizar todavía' })).not.toBeInTheDocument();
   });
 
-  it('explains that removing the only challenge pauses organization before applying it', () => {
+  it('explains that removing the only challenge pauses organization before applying it', async () => {
     const data = makeBootstrapWithProposedMutations();
     const workItemIds = data.workItems.map((item) => item.id);
     const confirmOrganizationProposal = vi.fn();
@@ -1007,6 +1011,7 @@ describe('PortfolioBootstrapHome — frozen Copilot-first composition', () => {
     };
     render(<PortfolioBootstrapHome {...props({ data, organizationProposal, onSaveOrganizationProposal: vi.fn(), onConfirmOrganizationProposal: confirmOrganizationProposal }) as any} />);
 
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Continuar a organización' })).toBeEnabled());
     fireEvent.click(screen.getByRole('button', { name: 'Continuar a organización' }));
     fireEvent.click(screen.getByRole('button', { name: 'Revisar propuesta: Único reto' }));
     fireEvent.click(screen.getByRole('button', { name: 'Quitar este reto de la propuesta' }));
@@ -1043,6 +1048,7 @@ describe('PortfolioBootstrapHome — frozen Copilot-first composition', () => {
     };
     render(<PortfolioBootstrapHome {...props({ data, organizationProposal, onSaveOrganizationProposal: saveOrganizationProposal, onConfirmOrganizationProposal: confirmOrganizationProposal }) as any} />);
 
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Continuar a organización' })).toBeEnabled());
     fireEvent.click(screen.getByRole('button', { name: 'Continuar a organización' }));
     fireEvent.click(screen.getByText('Editar frente estratégico'));
     const nameInput = screen.getByLabelText('Nombre del frente estratégico');
