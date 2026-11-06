@@ -98,7 +98,9 @@ describe('PortfolioBootstrapContextConversation', () => {
     const user = userEvent.setup();
     const onConfirm = vi.fn().mockResolvedValue(undefined);
     const onContinue = vi.fn();
-    render(<PortfolioBootstrapContextConversation {...props({ review: review(), onConfirm, onContinue })} />);
+    render(<PortfolioBootstrapContextConversation {...props({
+      review: review({ status: 'draft', version: 3, hasPendingCorrection: true }), onConfirm, onContinue,
+    })} />);
 
     await user.click(screen.getByRole('button', { name: 'Confirmar contexto' }));
     expect(onConfirm).toHaveBeenCalledOnce();
@@ -106,6 +108,23 @@ describe('PortfolioBootstrapContextConversation', () => {
 
     await user.click(screen.getByRole('button', { name: 'Continuar al objetivo' }));
     expect(onContinue).toHaveBeenCalledOnce();
+  });
+
+  it('CA06 does not offer a second confirmation after E1 is confirmed', () => {
+    render(<PortfolioBootstrapContextConversation {...props({ review: review() })} />);
+
+    expect(screen.queryByRole('button', { name: 'Confirmar contexto' })).not.toBeInTheDocument();
+    expect(screen.getByRole('status')).toHaveTextContent('Contexto confirmado');
+    expect(screen.getByRole('button', { name: 'Continuar al objetivo' })).toBeEnabled();
+  });
+
+  it('CA06 makes loading inert and announces it without exposing prior navigation', () => {
+    render(<PortfolioBootstrapContextConversation {...props({ review: null, status: 'loading' })} />);
+
+    expect(screen.getByTestId('portfolio-context-conversation')).toHaveAttribute('aria-busy', 'true');
+    expect(screen.getByRole('status')).toHaveTextContent('Actualizando el contexto empresarial');
+    expect(screen.getByLabelText('Situación actual')).toBeDisabled();
+    expect(screen.queryByRole('button', { name: 'Continuar al objetivo' })).not.toBeInTheDocument();
   });
 
   it('CA05 presents optional Company provenance and sourceOutdated without replacing the snapshot', () => {

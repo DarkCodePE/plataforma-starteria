@@ -59,6 +59,12 @@ test.describe('KAN-222 G1 contextual Copilot V2_CONFORMANCE', () => {
     const session = await prisma.portfolioBootstrapSession.findFirstOrThrow({ where: { userId: lead.userId } });
     const anchorBefore = await prisma.portfolioAnchor.findUnique({ where: { bootstrapSessionId: session.id } });
 
+    await expect(page.getByText('Cuéntame qué está ocurriendo')).toBeVisible();
+    await page.getByRole('button', { name: 'No lo sé aún' }).click();
+    await expect(page.getByLabel('Situación actual')).toHaveValue('');
+    await page.getByLabel('Tu respuesta').fill('Mejorar todo');
+    await page.getByRole('button', { name: 'Incorporar respuesta' }).click();
+    await expect(page.getByText(/resultado concreto/i)).toBeVisible();
     await page.getByLabel('Situación actual').fill('El abandono aumentó durante la activación de clientes nuevos.');
     await page.getByLabel('Área o proceso').fill('Operaciones');
     const saveResponse = page.waitForResponse((response) => response.request().method() === 'PUT'
@@ -109,11 +115,26 @@ test.describe('KAN-222 G1 contextual Copilot V2_CONFORMANCE', () => {
     await page.getByRole('button', { name: 'Guardar síntesis' }).click();
     await expect(page.getByText('Corrección pendiente de reconfirmación')).toBeVisible();
     await page.reload();
+    await page.getByRole('button', { name: /1 Contexto/i }).click();
     await expect(page.getByText('Corrección pendiente de reconfirmación')).toBeVisible();
     const review = await prisma.portfolioBootstrapContextReview.findUniqueOrThrow({ where: { bootstrapSessionId: session.id } });
     expect(review.draftJson.situation.value).toBe('Corrección pendiente del contexto');
     expect(review.confirmedSnapshotJson.situation.value).toBe('El abandono aumentó durante la activación de clientes nuevos.');
     expect(review.version).toBe(3);
+
+    const reconfirmResponse = page.waitForResponse((response) => response.request().method() === 'POST'
+      && new URL(response.url()).pathname.endsWith(`/sessions/${session.id}/context/confirm`));
+    await page.getByRole('button', { name: 'Confirmar contexto' }).click();
+    const reconfirmed = await reconfirmResponse;
+    expect(reconfirmed.status(), await reconfirmed.text()).toBe(200);
+    expect(reconfirmed.request().postDataJSON()).toEqual({ expectedVersion: 3 });
+    await page.reload();
+    await page.getByRole('button', { name: /1 Contexto/i }).click();
+    await expect(page.getByLabel('Situación actual')).toHaveValue('Corrección pendiente del contexto');
+    await expect(page.getByText('Contexto confirmado')).toBeVisible();
+    const finalReview = await prisma.portfolioBootstrapContextReview.findUniqueOrThrow({ where: { bootstrapSessionId: session.id } });
+    expect(finalReview.confirmedSnapshotJson).toMatchObject({ situation: { value: 'Corrección pendiente del contexto' } });
+    expect(finalReview.version).toBe(4);
     await api.dispose();
   });
 
@@ -138,7 +159,7 @@ test.describe('KAN-222 G1 contextual Copilot V2_CONFORMANCE', () => {
             provenance: 'source_extracted',
             sourceRef: {
               kind: 'company_context_entry', dimension: 'IDENTITY', fieldKey: 'purpose', sourceId: null,
-              entryFingerprint: 'untrusted-fingerprint',
+              entryFingerprint: 'a'.repeat(64),
             },
           },
         },

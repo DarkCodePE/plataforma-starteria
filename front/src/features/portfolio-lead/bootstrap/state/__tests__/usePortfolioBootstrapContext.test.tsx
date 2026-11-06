@@ -60,15 +60,20 @@ describe('usePortfolioBootstrapContext', () => {
 
   it('CA03 ignores an older session response after navigation changes the active session', async () => {
     let resolveOld: ((value: PortfolioBootstrapContextReview) => void) | undefined;
+    let resolveNew: ((value: PortfolioBootstrapContextReview) => void) | undefined;
     const newer = { ...initial, situation: { value: 'Contexto de la sesión nueva', provenance: 'user_declared' as const } };
     getContext.mockImplementation((sessionId: string) => sessionId === 'session-old'
       ? new Promise<PortfolioBootstrapContextReview>((resolve) => { resolveOld = resolve; })
-      : Promise.resolve(review({ sessionId: 'session-new', draft: newer, confirmedSnapshot: newer, effectiveContext: newer })));
+      : new Promise<PortfolioBootstrapContextReview>((resolve) => { resolveNew = resolve; }));
     const hook = renderHook(({ sessionId }) => usePortfolioBootstrapContext(sessionId), {
       initialProps: { sessionId: 'session-old' as string | null },
     });
 
     hook.rerender({ sessionId: 'session-new' });
+    expect(hook.result.current.review).toBeNull();
+    expect(hook.result.current.status).toBe('loading');
+    await expect(hook.result.current.confirm()).rejects.toThrow('Guarda primero');
+    await act(async () => { resolveNew?.(review({ sessionId: 'session-new', draft: newer, confirmedSnapshot: newer, effectiveContext: newer })); });
     await waitFor(() => expect(hook.result.current.review?.sessionId).toBe('session-new'));
     await act(async () => { resolveOld?.(review({ sessionId: 'session-old' })); });
 
@@ -119,6 +124,16 @@ describe('usePortfolioBootstrapContext', () => {
     await act(async () => { await hook.result.current.confirm(); });
 
     expect(confirmContext).toHaveBeenCalledWith('session-1', 3, expect.stringMatching(/^portfolio-context-confirm:/));
+    expect(hook.result.current.review?.status).toBe('confirmed');
+  });
+
+  it('CA06 treats confirm as a no-op when the review is already confirmed', async () => {
+    const hook = renderHook(() => usePortfolioBootstrapContext('session-1'));
+    await waitFor(() => expect(hook.result.current.status).toBe('ready'));
+
+    await act(async () => { await hook.result.current.confirm(); });
+
+    expect(confirmContext).not.toHaveBeenCalled();
     expect(hook.result.current.review?.status).toBe('confirmed');
   });
 });

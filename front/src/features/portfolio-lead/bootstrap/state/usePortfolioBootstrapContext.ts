@@ -28,8 +28,11 @@ export function usePortfolioBootstrapContext(sessionId: string | null) {
   const [review, setReview] = useState<PortfolioBootstrapContextReview | null>(null);
   const [status, setStatus] = useState<PortfolioBootstrapContextStatus>('idle');
   const [error, setError] = useState<string | null>(null);
+  const [stateSessionId, setStateSessionId] = useState<string | null>(null);
   const pendingOperation = useRef<(() => Promise<PortfolioBootstrapContextReview | null>) | null>(null);
   const sessionEpoch = useRef(0);
+  const activeReview = stateSessionId === sessionId && review?.sessionId === sessionId ? review : null;
+  const activeStatus: PortfolioBootstrapContextStatus = sessionId && stateSessionId !== sessionId ? 'loading' : status;
 
   const complete = useCallback(async (
     operation: () => Promise<PortfolioBootstrapContextReview | null>,
@@ -56,6 +59,7 @@ export function usePortfolioBootstrapContext(sessionId: string | null) {
   }, []);
 
   const load = useCallback(async () => {
+    setStateSessionId(sessionId);
     if (!sessionId) {
       setReview(null);
       setStatus('idle');
@@ -74,10 +78,10 @@ export function usePortfolioBootstrapContext(sessionId: string | null) {
 
   const saveDraft = useCallback(async (
     context: PortfolioBootstrapContextPayload,
-    sourceCompanyContext: PortfolioBootstrapCompanyContextSource | null = review?.draftSourceCompanyContext ?? null,
+    sourceCompanyContext: PortfolioBootstrapCompanyContextSource | null = activeReview?.draftSourceCompanyContext ?? null,
   ) => {
     if (!sessionId) throw new Error('Bootstrap session unavailable');
-    const expectedVersion = review?.version ?? 0;
+    const expectedVersion = activeReview?.version ?? 0;
     const idempotencyKey = operationKey('draft', sessionId);
     const operation = () => savePortfolioBootstrapContextDraft(sessionId, {
       expectedVersion,
@@ -86,22 +90,23 @@ export function usePortfolioBootstrapContext(sessionId: string | null) {
     }, idempotencyKey);
     pendingOperation.current = () => complete(operation, 'saving', true);
     return complete(operation, 'saving', true);
-  }, [complete, review?.draftSourceCompanyContext, review?.version, sessionId]);
+  }, [activeReview?.draftSourceCompanyContext, activeReview?.version, complete, sessionId]);
 
   const confirm = useCallback(async () => {
     if (!sessionId) throw new Error('Bootstrap session unavailable');
-    if (!review) throw new Error('Guarda primero una síntesis de contexto.');
-    const expectedVersion = review.version;
+    if (!activeReview) throw new Error('Guarda primero una síntesis de contexto.');
+    if (activeReview.status === 'confirmed' && !activeReview.hasPendingCorrection) return activeReview;
+    const expectedVersion = activeReview.version;
     const idempotencyKey = operationKey('confirm', sessionId);
     const operation = () => confirmPortfolioBootstrapContext(sessionId, expectedVersion, idempotencyKey);
     pendingOperation.current = () => complete(operation, 'confirming', true);
     return complete(operation, 'confirming', true);
-  }, [complete, review, sessionId]);
+  }, [activeReview, complete, sessionId]);
 
   const retry = useCallback(async () => {
     if (pendingOperation.current) return pendingOperation.current();
     return load();
   }, [load]);
 
-  return { review, status, error, load, retry, saveDraft, confirm };
+  return { review: activeReview, status: activeStatus, error, load, retry, saveDraft, confirm };
 }

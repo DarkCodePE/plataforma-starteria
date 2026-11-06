@@ -106,18 +106,19 @@ export function PortfolioBootstrapContextConversation({
   };
 
   return (
-    <div className="space-y-5" data-testid="portfolio-context-conversation">
+    <div className="space-y-5" data-testid="portfolio-context-conversation" aria-busy={busy}>
+      {busy ? <p role="status" className="sr-only">Actualizando el contexto empresarial</p> : null}
       <section className="rounded-xl border border-violet-200 bg-violet-50 p-4">
         <p className="text-xs font-bold uppercase tracking-[0.14em] text-violet-700">Contexto empresarial</p>
         <h3 className="mt-2 text-lg font-semibold text-violet-950">{question.title}</h3>
         <p className="mt-1 text-sm text-violet-900">{question.help}</p>
         <label className="mt-4 block text-sm font-semibold text-slate-800">
           Tu respuesta
-          <textarea value={answer} onChange={(event) => setAnswer(event.target.value)} rows={3} className="mt-2 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 font-normal text-slate-950" />
+          <textarea disabled={busy} value={answer} onChange={(event) => setAnswer(event.target.value)} rows={3} className="mt-2 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 font-normal text-slate-950 disabled:opacity-60" />
         </label>
         <div className="mt-3 flex flex-wrap gap-2">
-          <button type="button" disabled={!answer.trim()} onClick={() => { updateField(question.field, answer); setAnswer(''); }} className="rounded-lg bg-violet-700 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">Incorporar respuesta</button>
-          <button type="button" onClick={() => { updateField(question.field, ''); setAnswer(''); }} className="rounded-lg border border-violet-300 bg-white px-4 py-2 text-sm font-semibold text-violet-900">No lo sé aún</button>
+          <button type="button" disabled={busy || !answer.trim()} onClick={() => { updateField(question.field, answer); setAnswer(''); }} className="rounded-lg bg-violet-700 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">Incorporar respuesta</button>
+          <button type="button" disabled={busy} onClick={() => { updateField(question.field, ''); setAnswer(''); }} className="rounded-lg border border-violet-300 bg-white px-4 py-2 text-sm font-semibold text-violet-900 disabled:opacity-50">No lo sé aún</button>
         </div>
       </section>
 
@@ -139,13 +140,13 @@ export function PortfolioBootstrapContextConversation({
           {(['situation', 'area', 'stakeholder', 'pilotExperience'] as const).map((field) => (
             <div key={field}>
               <label htmlFor={`portfolio-context-${field}`} className="text-sm font-semibold text-slate-800">{FIELD_LABELS[field]}</label>
-              <textarea id={`portfolio-context-${field}`} value={fieldValue(draft[field])} onChange={(event) => updateField(field, event.target.value)} rows={field === 'situation' ? 3 : 2} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-950" />
+              <textarea disabled={busy} id={`portfolio-context-${field}`} value={fieldValue(draft[field])} onChange={(event) => updateField(field, event.target.value)} rows={field === 'situation' ? 3 : 2} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-950 disabled:opacity-60" />
               <span className="mt-1 block text-xs font-medium text-slate-500">{provenanceLabel(draft[field])}</span>
             </div>
           ))}
           <label className="text-sm font-semibold text-slate-800 md:col-span-2">
             Vacíos por resolver
-            <textarea value={draft.gaps.join('\n')} onChange={(event) => setDraft((current) => ({ ...current, gaps: event.target.value.split('\n').filter((value) => value.trim()) }))} rows={3} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 font-normal text-slate-950" />
+            <textarea disabled={busy} value={draft.gaps.join('\n')} onChange={(event) => setDraft((current) => ({ ...current, gaps: event.target.value.split('\n').filter((value) => value.trim()) }))} rows={3} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 font-normal text-slate-950 disabled:opacity-60" />
           </label>
           {(['constraints', 'assumptions'] as const).map((field) => (
             <div key={field}>
@@ -154,6 +155,7 @@ export function PortfolioBootstrapContextConversation({
               </label>
               <textarea
                 id={`portfolio-context-${field}`}
+                disabled={busy}
                 value={draft[field].map((item) => item.value ?? '').join('\n')}
                 onChange={(event) => updateListField(field, event.target.value)}
                 rows={3}
@@ -175,8 +177,9 @@ export function PortfolioBootstrapContextConversation({
 
         <div className="mt-4 flex flex-wrap gap-2">
           <button type="button" disabled={busy} onClick={() => void run(() => onSaveDraft(draft, sourceCompany))} className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-800 disabled:opacity-50">Guardar síntesis</button>
-          {review ? <button type="button" disabled={busy} onClick={() => void run(onConfirm)} className="rounded-lg bg-slate-950 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">Confirmar contexto</button> : null}
-          {review?.effectiveContext ? <button type="button" onClick={onContinue} className="rounded-lg bg-violet-700 px-4 py-2 text-sm font-semibold text-white">Continuar al objetivo</button> : null}
+          {review?.status === 'draft' ? <button type="button" disabled={busy} onClick={() => void run(onConfirm)} className="rounded-lg bg-slate-950 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">Confirmar contexto</button> : null}
+          {review?.status === 'confirmed' ? <p role="status" className="self-center text-sm font-semibold text-emerald-800">Contexto confirmado</p> : null}
+          {review?.effectiveContext ? <button type="button" disabled={busy} onClick={onContinue} className="rounded-lg bg-violet-700 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">Continuar al objetivo</button> : null}
         </div>
       </section>
     </div>
