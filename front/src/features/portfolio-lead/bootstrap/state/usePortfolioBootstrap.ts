@@ -35,6 +35,7 @@ import {
   uploadPortfolioBootstrapImport,
   savePortfolioOrganizationProposal,
 } from '../services/portfolioBootstrapClient';
+import { usePortfolioBootstrapContext } from './usePortfolioBootstrapContext';
 
 export type PortfolioBootstrapLoadStatus = 'idle' | 'loading' | 'ready' | 'error';
 export type PortfolioBootstrapAnalysisStatus = 'idle' | 'processing' | 'error';
@@ -59,6 +60,7 @@ export function usePortfolioBootstrap(
   const [organizationProposal, setOrganizationProposal] = useState<PortfolioOrganizationProposal | null>(null);
   const [organizationStatus, setOrganizationStatus] = useState<'idle' | 'loading' | 'saving' | 'confirming' | 'error'>('idle');
   const [organizationError, setOrganizationError] = useState<string | null>(null);
+  const context = usePortfolioBootstrapContext(data?.bootstrapSession.id ?? null);
 
   const load = useCallback(async () => {
     if (entryMode === 'disabled' || (!portfolioEntryContinuationId && entryMode !== 'direct' && entryMode !== 'resume')) {
@@ -425,6 +427,12 @@ export function usePortfolioBootstrap(
     organizationError,
     saveOrganizationProposal,
     confirmOrganizationProposal,
+    contextReview: context.review,
+    contextStatus: context.status,
+    contextError: context.error,
+    saveContextDraft: context.saveDraft,
+    confirmContext: context.confirm,
+    retryContext: context.retry,
   }), [
     addManualWorkItem,
     analysisError,
@@ -454,6 +462,12 @@ export function usePortfolioBootstrap(
     organizationError,
     saveOrganizationProposal,
     confirmOrganizationProposal,
+    context.confirm,
+    context.error,
+    context.retry,
+    context.review,
+    context.saveDraft,
+    context.status,
     status,
     updateAnchor,
     updateWorkItem,

@@ -1,4 +1,5 @@
 import { PrismaClient } from '@prisma/client';
+import './kan222-g1-context-copilot.spec';
 import {
   expect,
   request as pwRequest,

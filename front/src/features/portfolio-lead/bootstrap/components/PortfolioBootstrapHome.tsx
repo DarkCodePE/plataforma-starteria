@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { AlertTriangle, CheckCircle2, ChevronRight, Eye, FileText, FileUp, MessageSquareText, Pencil, Plus, RotateCw, Send, Sparkles, Trash2, Users } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, ChevronRight, Eye, FileText, FileUp, MessageSquareText, Pencil, Plus, RotateCw, Sparkles, Trash2, Users } from 'lucide-react';
 import api from '../../../../app/services/api';
 import { projectBootstrapHome } from '../projection/bootstrapHomeProjection';
 import type {
@@ -17,6 +17,13 @@ import { suggestPortfolioObjective } from '../services/portfolioObjectiveCopilot
 import { ChallengeActivationBriefPanel, type ChallengeAssignmentTarget, type ChallengeBriefInheritedContext } from '../../challenge-activation-brief/ChallengeActivationBriefPanel';
 import { ChallengeAssignmentPreparationPanel } from '../../challenge-activation-brief/ChallengeAssignmentPreparationPanel';
 import { listActivationBriefs, type ActivationBrief } from '../../challenge-activation-brief/challengeActivationBriefClient';
+import { PortfolioBootstrapContextConversation } from './PortfolioBootstrapContextConversation';
+import type {
+  PortfolioBootstrapCompanyContextSource,
+  PortfolioBootstrapContextPayload,
+  PortfolioBootstrapContextReview,
+} from '../services/portfolioBootstrapContextClient';
+import type { PortfolioBootstrapContextStatus } from '../state/usePortfolioBootstrapContext';
 
 export function PortfolioBootstrapHome({
   data,
@@ -55,6 +62,12 @@ export function PortfolioBootstrapHome({
   initialAssignmentTarget = null,
   onOpenAssignment,
   onCompleteSetup,
+  contextReview = null,
+  contextStatus = 'idle',
+  contextError = null,
+  onSaveContextDraft = async () => undefined,
+  onConfirmContext = async () => undefined,
+  onRetryContext = async () => undefined,
 }: {
   data: PortfolioBootstrapResponse | null;
   status: 'idle' | 'loading' | 'ready' | 'error';
@@ -93,6 +106,12 @@ export function PortfolioBootstrapHome({
   initialAssignmentTarget?: ChallengeAssignmentTarget | null;
   onOpenAssignment?: (target: ChallengeAssignmentTarget) => void;
   onCompleteSetup?: () => Promise<void>;
+  contextReview?: PortfolioBootstrapContextReview | null;
+  contextStatus?: PortfolioBootstrapContextStatus;
+  contextError?: string | null;
+  onSaveContextDraft?: (context: PortfolioBootstrapContextPayload, sourceCompanyContext: PortfolioBootstrapCompanyContextSource | null) => Promise<unknown>;
+  onConfirmContext?: () => Promise<unknown>;
+  onRetryContext?: () => Promise<unknown>;
 }) {
   const projection = useMemo(() => data ? projectBootstrapHome(data) : null, [data]);
   const eligibilityRequired = Boolean(projection && (
@@ -178,6 +197,12 @@ export function PortfolioBootstrapHome({
       onOpenAssignment={onOpenAssignment}
       onCompleteSetup={onCompleteSetup}
       e5Eligibility={e5Eligibility}
+      contextReview={contextReview}
+      contextStatus={contextStatus}
+      contextError={contextError}
+      onSaveContextDraft={onSaveContextDraft}
+      onConfirmContext={onConfirmContext}
+      onRetryContext={onRetryContext}
     />
   );
 }
@@ -316,6 +341,12 @@ function PortfolioCopilotWorkspace({
   onOpenAssignment,
   onCompleteSetup,
   e5Eligibility,
+  contextReview,
+  contextStatus,
+  contextError,
+  onSaveContextDraft,
+  onConfirmContext,
+  onRetryContext,
 }: {
   projection: BootstrapProjection;
   bootstrapPhase: PortfolioBootstrapResponse['bootstrapSession']['bootstrapPhase'];
@@ -352,6 +383,12 @@ function PortfolioCopilotWorkspace({
   onOpenAssignment?: (target: ChallengeAssignmentTarget) => void;
   onCompleteSetup?: () => Promise<void>;
   e5Eligibility: PortfolioE5EligibilityState;
+  contextReview: PortfolioBootstrapContextReview | null;
+  contextStatus: PortfolioBootstrapContextStatus;
+  contextError: string | null;
+  onSaveContextDraft: (context: PortfolioBootstrapContextPayload, sourceCompanyContext: PortfolioBootstrapCompanyContextSource | null) => Promise<unknown>;
+  onConfirmContext: () => Promise<unknown>;
+  onRetryContext: () => Promise<unknown>;
 }) {
   const [selectedStage, setSelectedStage] = useState<number | null>(initialAssignmentTarget ? 6 : null);
   const [assignmentTarget, setAssignmentTarget] = useState<ChallengeAssignmentTarget | null>(initialAssignmentTarget);
@@ -374,7 +411,7 @@ function PortfolioCopilotWorkspace({
   const progressStage = assignmentTarget ? 6 : organizationIsMaterialized ? 5 : inferredStage;
   const explicitOrganizationContinuation = organizationContinuationSessionId === projection.bootstrapSessionId;
   const persistedNoWorkPath = projection.existingWorkStatus === 'no_existing_work' && projection.workItems.length === 0;
-  const lastAvailableStage = assignmentTarget
+  const backendLastAvailableStage = assignmentTarget
     ? 6
     : organizationIsMaterialized
       ? 5
@@ -387,6 +424,7 @@ function PortfolioCopilotWorkspace({
             : bootstrapPhase === 'B1_ANCHOR' || bootstrapPhase === 'B2_WORK_INTAKE'
               ? progressStage
               : 5;
+  const lastAvailableStage = Math.max(backendLastAvailableStage, contextReview?.effectiveContext ? 1 : 0);
   const requestedStage = selectedStage ?? progressStage;
   const stage = Math.min(requestedStage, lastAvailableStage);
   const selectStage = (nextStage: number) => {
@@ -485,7 +523,17 @@ function PortfolioCopilotWorkspace({
             <span className="rounded-full border border-violet-200 bg-violet-50 px-2.5 py-1 text-xs font-semibold text-violet-800">Guía interactiva</span>
           </div>
           <div className="space-y-5 bg-slate-50/60 px-5 py-6 md:px-7">
-            {stage === 0 ? <FrozenContextConversation anchor={projection.anchor} onSave={onUpdateAnchor} /> : null}
+            {stage === 0 ? (
+              <FrozenContextConversation
+                review={contextReview}
+                status={contextStatus}
+                error={contextError}
+                onSaveDraft={onSaveContextDraft}
+                onConfirm={onConfirmContext}
+                onRetry={onRetryContext}
+                onContinue={() => setSelectedStage(1)}
+              />
+            ) : null}
             {stage === 1 ? <FrozenObjectiveConversation projection={projection} onSave={onUpdateAnchor} onConfirm={confirmObjective} /> : null}
             {stage === 2 ? <FrozenChatStage eyebrow="Incorporar iniciativas" title="¿Qué iniciativas existentes quieres que revisemos?" help="Puedes subir un archivo, pegar una lista o continuar sin iniciativas. No hay una respuesta obligatoria.">{runtimePanel}</FrozenChatStage> : null}
             {stage === 3 ? <FrozenChatStage eyebrow="Análisis explicable" title="¿Qué está contribuyendo, qué se solapa y qué requiere revisión?" help="Cada lectura conserva su fuente, evidencia, vacíos y estado de revisión humana.">{runtimePanel}</FrozenChatStage> : null}
@@ -509,38 +557,8 @@ function PortfolioCopilotWorkspace({
   );
 }
 
-function FrozenContextConversation({ anchor, onSave }: { anchor: PortfolioBootstrapAnchor; onSave: (input: UpdatePortfolioBootstrapAnchorInput) => Promise<void> }) {
-  const [answer, setAnswer] = useState('');
-  const [saving, setSaving] = useState(false);
-  const hasContext = Boolean(anchor.contextSummary?.trim());
-  const organizationReference = getOrganizationalContextReference(anchor.sourceRefs);
-  return <>
-    {organizationReference?.contextSummary ? <section className="rounded-xl border border-slate-200 bg-slate-50 p-4" data-testid="organizational-context-reference">
-      <p className="text-xs font-bold uppercase tracking-[0.14em] text-slate-600">Contexto organizacional de referencia</p>
-      <p className="mt-2 text-sm leading-6 text-slate-800">{organizationReference.contextSummary}</p>
-      <p className="mt-2 text-xs leading-5 text-slate-600">Este contexto confirmado de la organización puede reutilizarse como punto de partida, pero aún no está confirmado para este frente.</p>
-    </section> : null}
-    <AssistantBubble>Si ya acordaron trabajar el objetivo con <b>Portfolio Lead</b>, pega el prompt elaborado a partir del Decision Brief externo. <b>Ese diagnóstico no se repite aquí.</b> Lo usaremos como contexto inicial y podrás corregir cualquier interpretación.</AssistantBubble>
-    {hasContext ? <UserBubble>{anchor.contextSummary}</UserBubble> : null}
-    <FocusedQuestion eyebrow="Punto de partida" title="¿Qué quieres lograr con Startería?" help="Pega el texto de referencia. No necesitas conocer qué son frentes, retos o Steps." />
-    <form className="rounded-xl border border-slate-200 bg-white p-4" onSubmit={async (event) => {
-      event.preventDefault(); const text = answer.trim(); if (!text) return; setSaving(true);
-      const prior = anchor.sourceRefs && typeof anchor.sourceRefs === 'object' && !Array.isArray(anchor.sourceRefs) ? anchor.sourceRefs as Record<string, unknown> : { priorSourceRefs: anchor.sourceRefs };
-      try { await onSave({ contextSummary: anchor.contextSummary?.trim() || text, sourceRefs: { ...prior, externalContext: { kind: 'external_decision_brief_prompt', disposition: 'user_declared_source', text, recordedAt: new Date().toISOString(), reviewStatus: 'provisional' } } }); setAnswer(''); } finally { setSaving(false); }
-    }}>
-      <label className="text-sm font-semibold text-slate-800">Tu respuesta al Copilot<textarea value={answer} onChange={(event) => setAnswer(event.target.value)} rows={5} placeholder="Pega aquí el prompt elaborado fuera de Startería…" className="mt-2 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm font-normal text-slate-950" /></label>
-      <div className="mt-3 flex flex-wrap gap-2"><button type="button" onClick={() => setAnswer('Quiero recuperar el contexto acordado y preparar decisiones de continuidad sin repetir el diagnóstico externo.')} className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700">Usar una guía de redacción</button><button type="submit" disabled={saving || !answer.trim()} className="inline-flex items-center gap-2 rounded-lg bg-slate-950 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"><Send size={15} />{saving ? 'Guardando…' : 'Continuar la conversación'}</button></div>
-      <p className="mt-3 text-xs text-slate-500">El contexto queda como fuente declarada y provisional; no es una decisión ni un diagnóstico revalidado.</p>
-    </form>
-  </>;
-}
-
-function getOrganizationalContextReference(sourceRefs: unknown): { contextSummary: string | null } | null {
-  if (!sourceRefs || typeof sourceRefs !== 'object' || Array.isArray(sourceRefs)) return null;
-  const candidate = (sourceRefs as Record<string, unknown>).organizationalContextReference;
-  if (!candidate || typeof candidate !== 'object' || Array.isArray(candidate)) return null;
-  const contextSummary = (candidate as Record<string, unknown>).contextSummary;
-  return { contextSummary: typeof contextSummary === 'string' && contextSummary.trim() ? contextSummary : null };
+function FrozenContextConversation(props: React.ComponentProps<typeof PortfolioBootstrapContextConversation>) {
+  return <PortfolioBootstrapContextConversation {...props} />;
 }
 
 function FrozenObjectiveConversation({ projection, onSave, onConfirm }: { projection: BootstrapProjection; onSave: (input: UpdatePortfolioBootstrapAnchorInput) => Promise<void>; onConfirm: () => Promise<void> }) {

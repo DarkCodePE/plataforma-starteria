@@ -80,7 +80,7 @@ test.describe('KAN-222 G1 contextual Copilot V2_CONFORMANCE', () => {
     expect(await prisma.portfolioAnchor.findUnique({ where: { bootstrapSessionId: session.id } })).toEqual(anchorBefore);
 
     await page.reload();
-    await expect(page.getByText('El abandono aumentó durante la activación de clientes nuevos.').first()).toBeVisible();
+    await expect(page.getByLabel('Situación actual')).toHaveValue('El abandono aumentó durante la activación de clientes nuevos.');
     await page.getByRole('button', { name: 'Continuar al objetivo' }).click();
     await expect(page.getByTestId('portfolio-objective-conversation')).toBeVisible();
     await expect(page.getByRole('button', { name: /3 Incorporación/i })).toBeDisabled();
@@ -110,7 +110,7 @@ test.describe('KAN-222 G1 contextual Copilot V2_CONFORMANCE', () => {
     await expect(page.getByText('Corrección pendiente de reconfirmación')).toBeVisible();
     await page.reload();
     await expect(page.getByText('Corrección pendiente de reconfirmación')).toBeVisible();
-    const review = await (prisma as any).portfolioBootstrapContextReview.findUniqueOrThrow({ where: { bootstrapSessionId: session.id } });
+    const review = await prisma.portfolioBootstrapContextReview.findUniqueOrThrow({ where: { bootstrapSessionId: session.id } });
     expect(review.draftJson.situation.value).toBe('Corrección pendiente del contexto');
     expect(review.confirmedSnapshotJson.situation.value).toBe('El abandono aumentó durante la activación de clientes nuevos.');
     expect(review.version).toBe(3);
@@ -134,8 +134,9 @@ test.describe('KAN-222 G1 contextual Copilot V2_CONFORMANCE', () => {
     });
     expect(first.status(), await first.text()).toBe(200);
     const foreign = await api.get(`/api/v1/portfolio-bootstrap/sessions/${sessionId}/context`, { headers: authB, failOnStatusCode: false });
-    expect(foreign.status(), await foreign.text()).toBe(404);
-    expect(await foreign.text()).not.toContain('Contexto privado tenant A');
+    const foreignBody = await foreign.text();
+    expect(foreign.status(), foreignBody).toBe(404);
+    expect(foreignBody).not.toContain('Contexto privado tenant A');
     const stale = await api.put(`/api/v1/portfolio-bootstrap/sessions/${sessionId}/context/draft`, {
       headers: { ...authA, 'Idempotency-Key': `kan222-stale-${sessionId}` },
       data: { expectedVersion: 0, context: apiContext('Intento stale'), sourceCompanyContext: null },

@@ -67,15 +67,15 @@ describe('PortfolioBootstrapHome — frozen Copilot-first composition', () => {
     expect(screen.getByText('Configurar con Copilot · 1 de 7')).toBeInTheDocument();
     expect(screen.getByRole('main', { name: 'Conversación con Copilot' })).toBeInTheDocument();
     expect(screen.getByRole('complementary', { name: 'Tu avance' })).toBeInTheDocument();
-    expect(screen.getByText('¿Qué quieres lograr con Startería?')).toBeInTheDocument();
-    expect(screen.getByLabelText('Tu respuesta al Copilot')).toBeInTheDocument();
+    expect(screen.getByText('Cuéntame qué está ocurriendo')).toBeInTheDocument();
+    expect(screen.getByLabelText('Tu respuesta')).toBeInTheDocument();
     expect(screen.queryByText('Resultado de negocio por definir')).not.toBeInTheDocument();
     for (const stage of ['Contexto', 'Objetivo', 'Incorporación', 'Análisis', 'Organización', 'Briefs', 'Asignación']) {
       expect(screen.getByText(stage, { exact: true })).toBeInTheDocument();
     }
   });
 
-  it('starts a newly created front at 1 of 7 with shared organization context as an unconfirmed reference', () => {
+  it('starts a newly created front at E1 without treating an Anchor reference as confirmed context', () => {
     const data = makeBootstrap('anchor_insufficient');
     data.bootstrapSession.id = 'new-front-session';
     data.bootstrapSession.bootstrapPhase = 'B1_ANCHOR';
@@ -95,9 +95,9 @@ describe('PortfolioBootstrapHome — frozen Copilot-first composition', () => {
     render(<PortfolioBootstrapHome {...props({ data })} />);
 
     expect(screen.getByText('Configurar con Copilot · 1 de 7')).toBeInTheDocument();
-    expect(screen.getByText('Contexto organizacional de referencia')).toBeInTheDocument();
-    expect(screen.getByText('Customer success y producto comparten el contexto confirmado.')).toBeInTheDocument();
-    expect(screen.getByText(/aún no está confirmado para este frente/i)).toBeInTheDocument();
+    expect(screen.queryByText('Contexto organizacional de referencia')).not.toBeInTheDocument();
+    expect(screen.queryByText('Customer success y producto comparten el contexto confirmado.')).not.toBeInTheDocument();
+    expect(screen.getByText('Cuéntame qué está ocurriendo')).toBeInTheDocument();
     expect(screen.queryByText('Revisado o completado')).not.toBeInTheDocument();
   });
 
@@ -326,23 +326,22 @@ describe('PortfolioBootstrapHome — frozen Copilot-first composition', () => {
     expect(screen.getByTestId('portfolio-import-panel')).toHaveTextContent('pega una lista o añade iniciativas manualmente');
   });
 
-  it('persists PL-00 external context as a declared provisional source', async () => {
+  it('persists E1 through the dedicated context draft command without mutating Anchor', async () => {
     const save = vi.fn().mockResolvedValue(undefined);
-    render(<PortfolioBootstrapHome {...props({ onUpdateAnchor: save })} />);
+    const updateAnchor = vi.fn().mockResolvedValue(undefined);
+    render(<PortfolioBootstrapHome {...props({ onUpdateAnchor: updateAnchor, onSaveContextDraft: save })} />);
 
-    fireEvent.change(screen.getByLabelText('Tu respuesta al Copilot'), { target: { value: 'Decisión previa: revisar abandono en clientes nuevos.' } });
-    fireEvent.click(screen.getByRole('button', { name: /Continuar la conversación/i }));
+    fireEvent.change(screen.getByLabelText('Situación actual'), { target: { value: 'Decisión previa: revisar abandono en clientes nuevos.' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Guardar síntesis' }));
 
     await waitFor(() => expect(save).toHaveBeenCalledWith(expect.objectContaining({
-      contextSummary: 'Decisión previa: revisar abandono en clientes nuevos.',
-      sourceRefs: expect.objectContaining({
-        externalContext: expect.objectContaining({
-          kind: 'external_decision_brief_prompt',
-          disposition: 'user_declared_source',
-          reviewStatus: 'provisional',
-        }),
-      }),
-    })));
+      situation: {
+        value: 'Decisión previa: revisar abandono en clientes nuevos.',
+        provenance: 'user_declared',
+        sourceRef: { kind: 'user_input' },
+      },
+    }), null));
+    expect(updateAnchor).not.toHaveBeenCalled();
   });
 
   it('keeps the objective in multi-turn chat and records AI provenance only after incorporation', async () => {

@@ -1,10 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const http = {
-  get: vi.fn(),
-  put: vi.fn(),
-  post: vi.fn(),
-};
+const { http } = vi.hoisted(() => ({
+  http: {
+    get: vi.fn(),
+    put: vi.fn(),
+    post: vi.fn(),
+  },
+}));
 
 vi.mock('../../../../../app/services/api', () => ({
   default: http,

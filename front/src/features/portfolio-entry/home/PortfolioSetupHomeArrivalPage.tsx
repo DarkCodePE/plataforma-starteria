@@ -68,6 +68,8 @@ export function PortfolioSetupHomeArrivalPage() {
         analysisStatus={bootstrap.analysisStatus} analysisError={bootstrap.analysisError}
         publishStatus={bootstrap.publishStatus} publishError={bootstrap.publishError}
         importStatus={bootstrap.importStatus} importError={bootstrap.importError} activeImport={bootstrap.activeImport}
+        contextReview={bootstrap.contextReview} contextStatus={bootstrap.contextStatus} contextError={bootstrap.contextError}
+        onSaveContextDraft={bootstrap.saveContextDraft} onConfirmContext={bootstrap.confirmContext} onRetryContext={bootstrap.retryContext}
       />
     </div>
   );
