@@ -127,6 +127,27 @@ test.describe('KAN-222 G1 contextual Copilot V2_CONFORMANCE', () => {
     expect(direct.status(), await direct.text()).toBe(200);
     const sessionId = (await direct.json()).data.bootstrapSession.id as string;
 
+    const invalidProvenance = await api.put(`/api/v1/portfolio-bootstrap/sessions/${sessionId}/context/draft`, {
+      headers: { ...authA, 'Idempotency-Key': `kan222-invalid-company-${sessionId}` },
+      data: {
+        expectedVersion: 0,
+        context: {
+          ...apiContext('Fuente Company no autorizada'),
+          situation: {
+            value: 'Fuente Company no autorizada',
+            provenance: 'source_extracted',
+            sourceRef: {
+              kind: 'company_context_entry', dimension: 'IDENTITY', fieldKey: 'purpose', sourceId: null,
+              entryFingerprint: 'untrusted-fingerprint',
+            },
+          },
+        },
+        sourceCompanyContext: null,
+      },
+      failOnStatusCode: false,
+    });
+    expect(invalidProvenance.status(), await invalidProvenance.text()).toBe(422);
+
     const first = await api.put(`/api/v1/portfolio-bootstrap/sessions/${sessionId}/context/draft`, {
       headers: { ...authA, 'Idempotency-Key': `kan222-a-${sessionId}` },
       data: { expectedVersion: 0, context: apiContext('Contexto privado tenant A'), sourceCompanyContext: null },

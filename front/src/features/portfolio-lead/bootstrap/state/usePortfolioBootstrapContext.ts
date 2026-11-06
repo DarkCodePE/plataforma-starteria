@@ -29,21 +29,25 @@ export function usePortfolioBootstrapContext(sessionId: string | null) {
   const [status, setStatus] = useState<PortfolioBootstrapContextStatus>('idle');
   const [error, setError] = useState<string | null>(null);
   const pendingOperation = useRef<(() => Promise<PortfolioBootstrapContextReview | null>) | null>(null);
+  const sessionEpoch = useRef(0);
 
   const complete = useCallback(async (
     operation: () => Promise<PortfolioBootstrapContextReview | null>,
     activeStatus: Extract<PortfolioBootstrapContextStatus, 'loading' | 'saving' | 'confirming'>,
     keepForRetry: boolean,
   ) => {
+    const operationEpoch = sessionEpoch.current;
     setStatus(activeStatus);
     setError(null);
     try {
       const result = await operation();
+      if (operationEpoch !== sessionEpoch.current) return result;
       setReview(result);
       setStatus('ready');
       pendingOperation.current = null;
       return result;
     } catch (caught) {
+      if (operationEpoch !== sessionEpoch.current) throw caught;
       if (keepForRetry) pendingOperation.current = () => complete(operation, activeStatus, true);
       setStatus('error');
       setError(errorMessage(caught));
@@ -63,6 +67,8 @@ export function usePortfolioBootstrapContext(sessionId: string | null) {
   }, [complete, sessionId]);
 
   useEffect(() => {
+    sessionEpoch.current += 1;
+    pendingOperation.current = null;
     void load().catch(() => undefined);
   }, [load]);
 

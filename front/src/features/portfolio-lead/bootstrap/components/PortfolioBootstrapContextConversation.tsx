@@ -91,6 +91,13 @@ export function PortfolioBootstrapContextConversation({
     setDraft((current) => ({ ...current, [field]: declared(value) }));
     setLocalError(null);
   };
+  const updateListField = (field: 'constraints' | 'assumptions', value: string) => {
+    setDraft((current) => ({
+      ...current,
+      [field]: value.split('\n').filter((item) => item.trim()).map(declared),
+    }));
+    setLocalError(null);
+  };
   const run = async (operation: () => Promise<unknown>) => {
     setLocalError(null);
     try { await operation(); } catch (caught) {
@@ -140,6 +147,23 @@ export function PortfolioBootstrapContextConversation({
             Vacíos por resolver
             <textarea value={draft.gaps.join('\n')} onChange={(event) => setDraft((current) => ({ ...current, gaps: event.target.value.split('\n').filter((value) => value.trim()) }))} rows={3} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 font-normal text-slate-950" />
           </label>
+          {(['constraints', 'assumptions'] as const).map((field) => (
+            <div key={field}>
+              <label htmlFor={`portfolio-context-${field}`} className="text-sm font-semibold text-slate-800">
+                {field === 'constraints' ? 'Restricciones conocidas' : 'Supuestos por validar'}
+              </label>
+              <textarea
+                id={`portfolio-context-${field}`}
+                value={draft[field].map((item) => item.value ?? '').join('\n')}
+                onChange={(event) => updateListField(field, event.target.value)}
+                rows={3}
+                className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-950"
+              />
+              <span className="mt-1 block text-xs font-medium text-slate-500">
+                {draft[field].length ? [...new Set(draft[field].map(provenanceLabel))].join(' · ') : 'Desconocido'}
+              </span>
+            </div>
+          ))}
         </div>
 
         {(localError || error) ? (

@@ -69,6 +69,8 @@ describe('PortfolioBootstrapContextConversation', () => {
 
     await user.type(screen.getByLabelText('Área o proceso'), 'Operaciones');
     await user.type(screen.getByLabelText('Vacíos por resolver'), 'Falta confirmar la señal');
+    await user.type(screen.getByLabelText('Restricciones conocidas'), 'Capacidad limitada');
+    await user.type(screen.getByLabelText('Supuestos por validar'), 'El problema ocurre en móvil');
     await user.click(screen.getByRole('button', { name: 'Guardar síntesis' }));
 
     expect(onSaveDraft).toHaveBeenCalledWith(expect.objectContaining({
@@ -76,6 +78,8 @@ describe('PortfolioBootstrapContextConversation', () => {
       area: declared('Operaciones'),
       stakeholder: { value: null, provenance: 'unknown' },
       gaps: ['Falta confirmar la señal'],
+      constraints: [declared('Capacidad limitada')],
+      assumptions: [declared('El problema ocurre en móvil')],
     }), null);
   });
 

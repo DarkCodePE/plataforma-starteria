@@ -58,6 +58,24 @@ describe('usePortfolioBootstrapContext', () => {
     expect(hook.result.current.review?.effectiveContext?.situation.value).toBe('Situación confirmada');
   });
 
+  it('CA03 ignores an older session response after navigation changes the active session', async () => {
+    let resolveOld: ((value: PortfolioBootstrapContextReview) => void) | undefined;
+    const newer = { ...initial, situation: { value: 'Contexto de la sesión nueva', provenance: 'user_declared' as const } };
+    getContext.mockImplementation((sessionId: string) => sessionId === 'session-old'
+      ? new Promise<PortfolioBootstrapContextReview>((resolve) => { resolveOld = resolve; })
+      : Promise.resolve(review({ sessionId: 'session-new', draft: newer, confirmedSnapshot: newer, effectiveContext: newer })));
+    const hook = renderHook(({ sessionId }) => usePortfolioBootstrapContext(sessionId), {
+      initialProps: { sessionId: 'session-old' as string | null },
+    });
+
+    hook.rerender({ sessionId: 'session-new' });
+    await waitFor(() => expect(hook.result.current.review?.sessionId).toBe('session-new'));
+    await act(async () => { resolveOld?.(review({ sessionId: 'session-old' })); });
+
+    expect(hook.result.current.review?.sessionId).toBe('session-new');
+    expect(hook.result.current.review?.effectiveContext?.situation.value).toBe('Contexto de la sesión nueva');
+  });
+
   it('CA03 keeps one Idempotency-Key across a failed draft request and its retry', async () => {
     const corrected = { ...initial, situation: { value: 'Corrección local', provenance: 'user_declared' as const, sourceRef: { kind: 'user_input' as const } } };
     saveDraft.mockRejectedValueOnce(new Error('Respuesta perdida')).mockResolvedValueOnce(review({
