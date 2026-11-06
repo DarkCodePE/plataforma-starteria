@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import React from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -50,6 +50,15 @@ function props(overrides = {}) {
 describe('PortfolioBootstrapHome — frozen Copilot-first composition', () => {
   beforeEach(() => {
     server.use(http.get('/api/v1/portfolio/challenges/:challengeId/activation-briefs', () => HttpResponse.json({ success: true, data: [] })));
+    server.use(http.get('/api/v1/portfolio-bootstrap/sessions/:sessionId/e5-eligibility', () => HttpResponse.json({
+      success: true,
+      data: {
+        allowed: true,
+        reasonCodes: ['ANALYZED_WORK_ELIGIBLE'],
+        blockers: [],
+        snapshotVersion: 'eligibility-v1',
+      },
+    })));
   });
   it('makes the conversation and seven-stage progress panel the primary PL-00 workspace', () => {
     render(<PortfolioBootstrapHome {...props()} />);
@@ -501,10 +510,11 @@ describe('PortfolioBootstrapHome — frozen Copilot-first composition', () => {
     expect(screen.queryByText('Estado no declarado')).not.toBeInTheDocument();
   });
 
-  it('opens analysis review after analysis and keeps every proposal under a human disposition', async () => {
+  it('KAN-213 CA-05 opens a persisted E4 with source, analyzer mode, rationale, gaps, uncertainty and provisional state', async () => {
     render(<PortfolioBootstrapHome {...props({ data: makeBootstrapWithProposedMutations() })} />);
 
     expect(await screen.findByTestId('portfolio-bootstrap-material-review')).toBeInTheDocument();
+    expect(screen.getByText('Análisis determinístico')).toBeInTheDocument();
     expect(screen.getByTestId('portfolio-analysis-summary')).toHaveTextContent('Iniciativas detectadas');
     expect(screen.getByText('Startería encontró…')).toBeInTheDocument();
     expect(screen.queryByText(/Gaps e incógnitas/i)).not.toBeInTheDocument();
@@ -519,7 +529,7 @@ describe('PortfolioBootstrapHome — frozen Copilot-first composition', () => {
     expect(screen.getAllByRole('button', { name: 'Marcar para comparar' }).length).toBeGreaterThan(0);
   });
 
-  it('recovers from a confirmed-link miss-click by reopening a separate review', async () => {
+  it('KAN-213 CA-06 preserves human review actions and reopens a confirmed result without canonical deduplication', async () => {
     const data = makeBootstrapWithProposedMutations();
     data.proposedMutations[0] = { ...data.proposedMutations[0], status: 'confirmed' };
     const reopen = vi.fn().mockResolvedValue(undefined);
@@ -530,6 +540,7 @@ describe('PortfolioBootstrapHome — frozen Copilot-first composition', () => {
     expect(dialog).toHaveTextContent('Vínculo confirmado');
     fireEvent.click(screen.getByRole('button', { name: 'Revisar vínculo' }));
     await waitFor(() => expect(reopen).toHaveBeenCalledWith(data.proposedMutations[0].id));
+    expect(screen.queryByText(/fusionadas automáticamente/i)).not.toBeInTheDocument();
   });
 
   it('filters compact initiative cards from an explainable analysis category', () => {
@@ -550,34 +561,41 @@ describe('PortfolioBootstrapHome — frozen Copilot-first composition', () => {
     expect(importDisclosure).not.toHaveAttribute('open');
   });
 
-  it('allows soft pending reviews to continue to Organization without losing the review surface', () => {
+  it('KAN-213 CA-07 allows soft pending reviews only after backend E5 eligibility and keeps E6/E7 blocked', async () => {
     render(<PortfolioBootstrapHome {...props({ data: makeBootstrapWithProposedMutations() })} />);
 
     expect(screen.getByTestId('portfolio-analysis-completion-gate')).toHaveTextContent('Lectura suficiente para continuar');
     const continueButton = screen.getByRole('button', { name: 'Continuar a organización' });
-    expect(continueButton).toBeEnabled();
+    expect(continueButton).toBeDisabled();
+    await waitFor(() => expect(continueButton).toBeEnabled());
     expect(screen.getByRole('button', { name: /5 Organización/i })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /6 Briefs/i })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /7 Asignación/i })).toBeDisabled();
     fireEvent.click(continueButton);
     expect(screen.getByTestId('portfolio-organization-proposal')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: /4 Análisis/i }));
     expect(screen.getByTestId('portfolio-bootstrap-material-review')).toBeInTheDocument();
   });
 
-  it('blocks Organization only for an explicit hard blocker and explains the gate', () => {
+  it('KAN-213 CA-07 blocks CTA and sidebar from backend hard eligibility even when the local analysis summary has no hard blocker', async () => {
     const data = makeBootstrapWithProposedMutations();
-    data.proposedMutations[1] = {
-      ...data.proposedMutations[1],
-      proposedValue: { ...(data.proposedMutations[1].proposedValue as Record<string, unknown>), severity: 'blocking' },
-    };
+    server.use(http.get('/api/v1/portfolio-bootstrap/sessions/:sessionId/e5-eligibility', () => HttpResponse.json({
+      success: true,
+      data: {
+        allowed: false,
+        reasonCodes: ['HARD_BLOCKERS_ACTIVE'],
+        blockers: [{ kind: 'confirmed_condition', id: 'condition-hard-1', status: 'confirmed', severity: 'blocking', disposition: 'active', dispositionVersion: 1 }],
+        snapshotVersion: 'eligibility-hard-v1',
+      },
+    })));
     render(<PortfolioBootstrapHome {...props({ data })} />);
 
     const gate = screen.getByTestId('portfolio-analysis-completion-gate');
-    expect(gate).toHaveTextContent('Hay un bloqueo real antes de organizar');
-    expect(gate).toHaveTextContent('HARD_BLOCKING_NOW');
-    expect(gate).toHaveTextContent('Evidencia o señal de negocio');
-    expect(gate).toHaveTextContent('Falta una senal de negocio observable para decidir siguiente paso.');
-    expect(gate).toHaveTextContent('Bloquea porque afecta la decisión de organización actual.');
-    expect(screen.getByRole('button', { name: 'Continuar a organización' })).toBeDisabled();
+    await waitFor(() => expect(gate).toHaveTextContent('Hay un bloqueo real antes de organizar'));
+    expect(gate).toHaveTextContent('Bloqueo confirmado activo');
+    expect(gate).toHaveTextContent('condition-hard-1');
+    const continueButton = screen.getByRole('button', { name: 'Continuar a organización' });
+    expect(continueButton).toBeDisabled();
     const organizationStage = screen.getByRole('button', { name: /5 Organización/i });
     expect(organizationStage).toBeDisabled();
     expect(screen.getByRole('button', { name: /6 Briefs/i })).toBeDisabled();
@@ -585,6 +603,46 @@ describe('PortfolioBootstrapHome — frozen Copilot-first composition', () => {
     fireEvent.click(organizationStage);
     expect(screen.queryByTestId('portfolio-organization-proposal')).not.toBeInTheDocument();
     expect(screen.getByTestId('portfolio-bootstrap-material-review')).toBeInTheDocument();
+  });
+
+  it('KAN-213 CA-08 fails closed on eligibility errors, exposes retry, and creates no false progress', async () => {
+    let attempts = 0;
+    server.use(http.get('/api/v1/portfolio-bootstrap/sessions/:sessionId/e5-eligibility', () => {
+      attempts += 1;
+      if (attempts === 1) return HttpResponse.json({ success: false, error: { message: 'Elegibilidad temporalmente no disponible.' } }, { status: 503 });
+      return HttpResponse.json({
+        success: true,
+        data: { allowed: true, reasonCodes: ['ANALYZED_WORK_ELIGIBLE'], blockers: [], snapshotVersion: 'eligibility-retry-v2' },
+      });
+    }));
+    render(<PortfolioBootstrapHome {...props({ data: makeBootstrapWithProposedMutations() })} />);
+
+    const alert = await screen.findByRole('alert', { name: 'Elegibilidad de Organización' });
+    expect(alert).toHaveTextContent('Elegibilidad temporalmente no disponible.');
+    expect(screen.getByRole('button', { name: 'Continuar a organización' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /5 Organización/i })).toBeDisabled();
+    expect(screen.queryByTestId('portfolio-organization-proposal')).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Reintentar elegibilidad' }));
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Continuar a organización' })).toBeEnabled());
+    expect(attempts).toBe(2);
+  });
+
+  it('KAN-213 CA-08 keeps a failed review actionable and permits an idempotent retry without closing E4', async () => {
+    const confirm = vi.fn()
+      .mockRejectedValueOnce(new Error('No pudimos guardar la revisión.'))
+      .mockResolvedValueOnce(undefined);
+    render(<PortfolioBootstrapHome {...props({ data: makeBootstrapWithProposedMutations(), onConfirmProposedMutation: confirm })} />);
+
+    fireEvent.click(screen.getAllByRole('button', { name: 'Ver análisis' })[0]);
+    const dialog = screen.getByRole('dialog');
+    fireEvent.click(within(dialog).getAllByRole('button', { name: /Confirmar vínculo revisado|Confirmar revisión/ })[0]);
+    expect(await screen.findByRole('alert', { name: 'Error de revisión' })).toHaveTextContent('No pudimos guardar la revisión.');
+    expect(dialog).toBeInTheDocument();
+    const retry = within(dialog).getAllByRole('button', { name: /Confirmar vínculo revisado|Confirmar revisión/ })[0];
+    expect(retry).toBeEnabled();
+    fireEvent.click(retry);
+    await waitFor(() => expect(confirm).toHaveBeenCalledTimes(2));
   });
 
   it('keeps a fully confirmed initiative in PL-03 with history review and a live Organization exit', async () => {
