@@ -208,6 +208,8 @@ type PortfolioE5Eligibility = {
   snapshotVersion: string;
 };
 
+type PortfolioE5EligibilityBlocker = PortfolioE5Eligibility['blockers'][number];
+
 type PortfolioE5EligibilityState = {
   status: 'idle' | 'loading' | 'ready' | 'error';
   data: PortfolioE5Eligibility | null;
@@ -2587,6 +2589,13 @@ function AnalysisCompletionGate({
                   {blocker.kind === 'confirmed_condition' ? 'Bloqueo confirmado activo' : 'Propuesta dura pendiente'}
                 </p>
                 <p className="mt-1 text-xs">Referencia auditable: {blocker.id}</p>
+                {blocker.kind === 'confirmed_condition' ? (
+                  <ConfirmedConditionDisposition
+                    sessionId={projection.bootstrapSessionId}
+                    blocker={blocker}
+                    onUpdated={eligibility.retry}
+                  />
+                ) : null}
               </li>
             ))}
           </ul>
@@ -2610,6 +2619,82 @@ function AnalysisCompletionGate({
         </button>
       </div>
     </section>
+  );
+}
+
+function ConfirmedConditionDisposition({
+  sessionId,
+  blocker,
+  onUpdated,
+}: {
+  sessionId: string;
+  blocker: PortfolioE5EligibilityBlocker;
+  onUpdated: () => void;
+}) {
+  const [reason, setReason] = useState('');
+  const [evidenceRef, setEvidenceRef] = useState('');
+  const [saving, setSaving] = useState<'resolved' | 'dismissed' | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const canSubmit = reason.trim().length >= 3 && evidenceRef.trim().length > 0 && !saving;
+
+  async function submit(disposition: 'resolved' | 'dismissed') {
+    if (!canSubmit || blocker.dispositionVersion === undefined) return;
+    setSaving(disposition);
+    setError(null);
+    try {
+      await api.patch(
+        `/portfolio-bootstrap/sessions/${encodeURIComponent(sessionId)}/advancement-conditions/${encodeURIComponent(blocker.id)}/disposition`,
+        {
+          disposition,
+          expectedVersion: blocker.dispositionVersion,
+          reason: reason.trim(),
+          evidenceRefs: [evidenceRef.trim()],
+        },
+        {
+          headers: {
+            'Idempotency-Key': `kan213-disposition-${sessionId}-${blocker.id}-${blocker.dispositionVersion}-${disposition}`,
+          },
+        },
+      );
+      onUpdated();
+    } catch (submitError) {
+      setError(apiFailureMessage(submitError, 'No pudimos guardar la disposición. Conservamos tus datos para reintentar.'));
+    } finally {
+      setSaving(null);
+    }
+  }
+
+  return (
+    <div className="mt-3 space-y-3 border-t border-amber-200 pt-3">
+      <p className="text-xs leading-5">Registra una disposición humana con motivo y evidencia. Resolver o descartar conserva el historial y vuelve a comprobar E5.</p>
+      <label className="block text-xs font-semibold text-slate-700">
+        Motivo de la disposición
+        <textarea
+          value={reason}
+          onChange={(event) => setReason(event.target.value)}
+          rows={2}
+          className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-normal text-slate-950"
+        />
+      </label>
+      <label className="block text-xs font-semibold text-slate-700">
+        Referencia de evidencia
+        <input
+          value={evidenceRef}
+          onChange={(event) => setEvidenceRef(event.target.value)}
+          placeholder="URL, documento o referencia interna"
+          className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-normal text-slate-950"
+        />
+      </label>
+      {error ? <p role="alert" className="rounded-lg border border-rose-200 bg-rose-50 p-2 text-xs text-rose-950">{error}</p> : null}
+      <div className="flex flex-wrap gap-2">
+        <button type="button" disabled={!canSubmit} onClick={() => void submit('resolved')} className="rounded-lg bg-slate-950 px-3 py-2 text-xs font-semibold text-white disabled:cursor-not-allowed disabled:bg-slate-400">
+          {saving === 'resolved' ? 'Guardando…' : 'Marcar bloqueo como resuelto'}
+        </button>
+        <button type="button" disabled={!canSubmit} onClick={() => void submit('dismissed')} className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-800 disabled:cursor-not-allowed disabled:text-slate-400">
+          {saving === 'dismissed' ? 'Guardando…' : 'Descartar bloqueo con evidencia'}
+        </button>
+      </div>
+    </div>
   );
 }
 
@@ -2753,7 +2838,7 @@ function MaterialReviewPanel({
           <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Análisis revisable</p>
           <h2 className="text-base font-semibold text-slate-950">Startería encontró…</h2>
           <p className="mt-1 text-sm text-slate-600">
-            Una primera lectura de tus iniciativas. La IA propone; tú confirmas, corriges o dejas cada vínculo pendiente.
+            Una primera lectura de tus iniciativas. El análisis propone; tú confirmas, corriges o dejas cada vínculo pendiente.
           </p>
           <p className="mt-2 text-xs font-semibold text-violet-800">
             {projection.latestAnalysisRun?.analyzerMode === 'real_ai' ? 'Análisis asistido por IA' : 'Análisis determinístico'}
@@ -2774,7 +2859,7 @@ function MaterialReviewPanel({
         <AnalysisSignal label="Iniciativas detectadas" value={String(projection.workItems.length)} detail="Importadas o escritas; cada una conserva fuente." />
         <AnalysisCategoryButton category="evidence" active={activeCategory} count={evidenceIds.size} label="Evidencia por validar" detail="No hay señal o contexto suficiente para sostener una conclusión." onClick={setActiveCategory} />
         <AnalysisCategoryButton category="owner" active={activeCategory} count={missingOwnerIds.size} label="Responsable pendiente" detail="La fuente no identifica una persona responsable." onClick={setActiveCategory} />
-        <AnalysisCategoryButton category="relation" active={activeCategory} count={relationIds.size} label="Relación estratégica por revisar" detail="La IA propuso un vínculo; aún no es una decisión." onClick={setActiveCategory} />
+        <AnalysisCategoryButton category="relation" active={activeCategory} count={relationIds.size} label="Relación estratégica por revisar" detail="El análisis propuso un vínculo; aún no es una decisión." onClick={setActiveCategory} />
         <AnalysisCategoryButton category="overlap" active={activeCategory} count={overlapIds.size} label="Posible solapamiento / comparación" detail="Nombres repetidos o similares: comparar antes de agrupar." onClick={setActiveCategory} />
         <AnalysisCategoryButton category="outside" active={activeCategory} count={outOfObjectiveIds.size} label="Fuera del objetivo" detail="Solo aparece cuando la lectura lo propone explícitamente." onClick={setActiveCategory} />
         <AnalysisCategoryButton category="blocker" active={activeCategory} count={blockingIds.size} label="Bloqueo real" detail="Solo dependencias marcadas como bloqueo del siguiente movimiento." onClick={setActiveCategory} />

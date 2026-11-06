@@ -64,13 +64,15 @@ async function prepareAnalyzedSession(api: APIRequestContext, lead: Awaited<Retu
     failOnStatusCode: false,
   });
   expect(analyzed.status(), await analyzed.text()).toBe(200);
-  const mutation = ((await analyzed.json()).data.proposedMutations as Array<{
+  const mutations = (await analyzed.json()).data.proposedMutations as Array<{
     id: string;
     targetType: string;
+    targetId: string | null;
     proposedValue: unknown;
-  }>).find((candidate) => candidate.targetType === 'advancement_condition');
+  }>;
+  const mutation = mutations.find((candidate) => candidate.targetType === 'advancement_condition');
   expect(mutation).toBeTruthy();
-  return { sessionId, auth, mutation };
+  return { sessionId, auth, mutation, mutations };
 }
 
 async function loginUi(page: Page, lead: { email: string; password: string }) {
@@ -141,12 +143,19 @@ test.describe('KAN-213 G2-B V2_CONFORMANCE', () => {
     expect(bypass.status(), await bypass.text()).toBe(409);
     expect(await bypass.json()).toMatchObject({ error: { code: 'PORTFOLIO_E5_INELIGIBLE' } });
 
-    const resolved = await api.patch(`/api/v1/portfolio-bootstrap/sessions/${sessionId}/advancement-conditions/${condition!.id}/disposition`, {
-      headers: { ...auth, 'Idempotency-Key': `kan213-resolve-${condition!.id}` },
-      data: { disposition: 'resolved', expectedVersion: condition!.dispositionVersion, reason: 'Evidencia revisada por Portfolio Lead.', evidenceRefs: ['kan213-e2e-review'] },
-      failOnStatusCode: false,
+    await page.getByLabel('Motivo de la disposición').fill('Evidencia revisada por Portfolio Lead.');
+    await page.getByLabel('Referencia de evidencia').fill('evidence://kan213/e2e-review');
+    await page.getByRole('button', { name: 'Marcar bloqueo como resuelto' }).click();
+    await expect(continueToOrganization).toBeEnabled({ timeout: 20_000 });
+    await expect.poll(async () => prisma.portfolioAdvancementCondition.findUnique({
+      where: { id: condition!.id },
+      select: { disposition: true, dispositionVersion: true, dispositionReason: true, dispositionEvidenceRefs: true },
+    })).toMatchObject({
+      disposition: 'resolved',
+      dispositionVersion: condition!.dispositionVersion + 1,
+      dispositionReason: 'Evidencia revisada por Portfolio Lead.',
+      dispositionEvidenceRefs: ['evidence://kan213/e2e-review'],
     });
-    expect(resolved.status(), await resolved.text()).toBe(200);
 
     await page.reload();
     await expect(page.getByTestId('portfolio-bootstrap-material-review')).toBeVisible({ timeout: 20_000 });
@@ -155,6 +164,57 @@ test.describe('KAN-213 G2-B V2_CONFORMANCE', () => {
     await expect(page.getByTestId('portfolio-organization-proposal')).toBeVisible();
     expect(await prisma.portfolioBootstrapWorkItem.count({ where: { bootstrapSessionId: sessionId } })).toBe(1);
     expect(await prisma.portfolioBootstrapAnalysisRun.count({ where: { bootstrapSessionId: sessionId } })).toBe(1);
+    await api.dispose();
+  });
+
+  test('CA-06 persists pending, correction, confirmation, reopen and rejection across browser re-entry', async ({ page }) => {
+    const api = await pwRequest.newContext({ baseURL });
+    const lead = await registerPortfolioLead(api);
+    const { sessionId, mutations } = await prepareAnalyzedSession(api, lead);
+    const relation = mutations.find((candidate) => candidate.targetType === 'strategic_connection');
+    const condition = mutations.find((candidate) => candidate.targetType === 'advancement_condition');
+    expect(relation).toBeTruthy();
+    expect(condition).toBeTruthy();
+
+    await loginUi(page, lead);
+    await page.getByRole('button', { name: 'Ver análisis' }).first().click();
+    const dialog = page.getByRole('dialog');
+    const groupMutations = mutations.filter((candidate) => candidate.targetId === relation!.targetId);
+    const relationIndex = groupMutations.findIndex((candidate) => candidate.id === relation!.id);
+    const conditionIndex = groupMutations.findIndex((candidate) => candidate.id === condition!.id);
+    expect(relationIndex).toBeGreaterThanOrEqual(0);
+    expect(conditionIndex).toBeGreaterThanOrEqual(0);
+
+    await dialog.locator('[data-review-action="pending"]').nth(conditionIndex).click();
+    await expect.poll(async () => (await prisma.portfolioBootstrapProposedMutation.findUnique({ where: { id: condition!.id } }))?.status).toBe('reviewed');
+
+    await dialog.locator('[data-review-action="correct"]').nth(relationIndex).click();
+    await dialog.getByLabel('Lectura corregida').selectOption('confirmed_alignment');
+    await dialog.getByLabel('Corrección o rationale').fill('Relación corregida y revisada por Portfolio Lead.');
+    await dialog.getByRole('button', { name: 'Guardar corrección' }).click();
+    await expect.poll(async () => (await prisma.portfolioBootstrapProposedMutation.findUnique({ where: { id: relation!.id } }))?.status).toBe('reviewed');
+
+    await dialog.getByRole('button', { name: 'Confirmar vínculo revisado' }).click();
+    await expect.poll(async () => (await prisma.portfolioBootstrapProposedMutation.findUnique({ where: { id: relation!.id } }))?.status).toBe('confirmed');
+
+    await page.reload();
+    await page.getByRole('button', { name: 'Ver análisis' }).first().click();
+    await expect(page.getByRole('dialog')).toContainText('Vínculo confirmado');
+    await page.getByRole('button', { name: 'Revisar vínculo' }).click();
+    await expect.poll(async () => prisma.portfolioBootstrapProposedMutation.count({
+      where: { bootstrapSessionId: sessionId, targetType: 'strategic_connection', status: 'proposed' },
+    })).toBe(1);
+
+    await page.reload();
+    await page.getByRole('button', { name: 'Ver análisis' }).first().click();
+    await page.getByRole('button', { name: 'Retirar vínculo' }).click();
+    await expect.poll(async () => prisma.portfolioBootstrapProposedMutation.count({
+      where: { bootstrapSessionId: sessionId, targetType: 'strategic_connection', status: 'rejected' },
+    })).toBe(1);
+
+    await page.reload();
+    await page.getByRole('button', { name: 'Ver análisis' }).first().click();
+    await expect(page.getByRole('dialog')).toContainText('Rechazada');
     await api.dispose();
   });
 });
