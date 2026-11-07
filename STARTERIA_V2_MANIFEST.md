@@ -347,8 +347,10 @@ logic_status: ACTIVE_V2_RELEASE_EVIDENCE_SLICE
 implementation_status: IMPLEMENTED_READY_FOR_REVIEW
 visual_status: NOT_APPLICABLE
 evidence_status: LOCAL_PASS_REMOTE_BLOCKED_CONFIG
-implementation_commits: b2df66d (Manifest + contrato tests-first RED); fee7d9f (selector/spec/workflow/runbook); 7462dbc (A/B/C trazan G1-G5)
+implementation_commits: b2df66d (Manifest + contrato tests-first RED); fee7d9f (selector/spec/workflow/runbook); 7462dbc (A/B/C trazan G1-G5); 3e52fc0 (reentrada gobernada + reason codes + cierre de hallazgos)
+independent_review: R1 CHANGES_REQUIRED; R2 APPROVED at 3e52fc0 with all material findings resolved
 local_evidence: contrato/seguridad 7/7 PASS; selector Playwright lista 3 tests exactos; backend 1911/1911 PASS con 195 skips environment-gated; frontend 1104/1104 PASS; front typecheck/lint/build/YAML/diff-check PASS
+known_baseline: backend typecheck conserva TS2740 preexistente en critical-synthesis-reasoning.test.ts, archivo sin cambios respecto a main@3038dc688965bd6dcd080a69e2587e3a9eba8867
 remote_evidence: NOT_EXECUTED; e2e-staging Environment ausente según KAN-235#10698; configuración/RBAC/DB/tunnel siguen UNKNOWN hasta autorización operativa
 delivery_status: STAGING_BLOCKED_CONFIG (repositorio listo para revisión; no equivale a certificación ejecutada)
 semantic_owner: selector fail-closed, contrato de equivalencia y evidencia de certificación E2E G1-G5 en staging aislado
