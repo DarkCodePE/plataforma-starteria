@@ -5,7 +5,7 @@ set -euo pipefail
 
 repo_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)
 namespace="${NAMESPACE:-starteria-e2e}"
-expected_migrations=72
+expected_migrations=77
 mode="${1:-bootstrap}"
 port_forward_pid=""
 
@@ -86,7 +86,7 @@ BEGIN
   FROM "_prisma_migrations"
   WHERE finished_at IS NULL AND rolled_back_at IS NULL;
   IF successful <> $expected_migrations OR failed <> 0 THEN
-    RAISE EXCEPTION 'expected 72 successful migrations and zero failed, got successful=% failed=%', successful, failed;
+    RAISE EXCEPTION 'expected $expected_migrations successful migrations and zero failed, got successful=% failed=%', successful, failed;
   END IF;
 END \$\$;
 SQL
@@ -97,4 +97,4 @@ SQL
   --to-schema-datamodel prisma/schema.prisma \
   --exit-code
 
-echo "E2E staging database ${mode} verified: 72/72, zero failed, zero drift"
+echo "E2E staging database ${mode} verified: ${expected_migrations}/${expected_migrations}, zero failed, zero drift"
