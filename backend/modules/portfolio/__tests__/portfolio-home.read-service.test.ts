@@ -397,3 +397,34 @@ describe('PortfolioHomeReadService — asignaciones de handoff por organización
     });
   });
 });
+
+describe('PortfolioHomeReadService - Starteria Lab requests owner scope', () => {
+  it('projects actor requests separately without recipient or mail evidence', async () => {
+    const findMany = vi.fn().mockResolvedValue([{
+      id: 'lab-1', organizationId: 'org-a', requesterId: 'u1', challengeId: 'challenge-1',
+      briefVersionId: 'brief-version-1', status: 'REQUESTED', notificationStatus: 'NOTIFIED',
+      createdAt: new Date('2026-11-07T10:00:00.000Z'), updatedAt: new Date('2026-11-07T10:05:00.000Z'),
+      notificationAttempts: [{ acceptedRecipients: ['private@example.test'] }],
+    }]);
+    const prisma = { ...makePrisma(), portfolioLabRequest: { findMany } };
+
+    const home = await new PortfolioHomeReadService(prisma as any)
+      .getHome('u1', { all: false, organizationIds: ['org-a'] });
+
+    expect(findMany).toHaveBeenCalledWith({
+      where: { organizationId: { in: ['org-a'] }, requesterId: 'u1' },
+      orderBy: { createdAt: 'desc' },
+      select: {
+        id: true, challengeId: true, briefVersionId: true, status: true,
+        notificationStatus: true, createdAt: true, updatedAt: true,
+      },
+    });
+    expect(home.labRequests).toEqual([{
+      requestId: 'lab-1', challengeId: 'challenge-1', briefVersionId: 'brief-version-1',
+      status: 'REQUESTED', notificationStatus: 'NOTIFIED',
+      createdAt: '2026-11-07T10:00:00.000Z', updatedAt: '2026-11-07T10:05:00.000Z',
+    }]);
+    expect(home.availability.labRequests).toBe('available');
+    expect(JSON.stringify(home.labRequests)).not.toContain('private@example.test');
+  });
+});

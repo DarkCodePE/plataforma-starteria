@@ -169,6 +169,7 @@ export type PortfolioHomeReadModel = {
     independentInitiatives: 'available' | 'unavailable';
     portfolioReading: 'available' | 'unavailable';
     handoffAssignments: 'available' | 'unavailable';
+    labRequests: 'available' | 'unavailable';
     learnings: 'available' | 'unavailable';
     capacity: 'available' | 'unavailable';
   };
@@ -216,6 +217,15 @@ export type PortfolioHomeReadModel = {
     projectionVersion: number;
     generatedAt: string;
   }>;
+  labRequests: Array<{
+    requestId: string;
+    challengeId: string;
+    briefVersionId: string;
+    status: string;
+    notificationStatus: string;
+    createdAt: string;
+    updatedAt: string;
+  }>;
   capacity: PortfolioCapacityReading | null;
   generatedAt: string;
   /** E2E Job-Driven §23: lo que el portfolio aprendió de las últimas decisiones. */
@@ -229,6 +239,7 @@ type PrismaLike = {
   project?: { findMany: (args: unknown) => Promise<any[]> };
   portfolioBootstrapSession?: { findFirst: (args: unknown) => Promise<any | null> };
   portfolioHandoffProjection?: { findMany: (args: unknown) => Promise<any[]> };
+  portfolioLabRequest?: { findMany: (args: unknown) => Promise<any[]> };
   portfolioLearning?: { findMany: (args: unknown) => Promise<any[]> };
 };
 
@@ -267,11 +278,12 @@ export class PortfolioHomeReadService {
   }
 
   async getHome(userId: string, scope: PortfolioScope = { all: false, organizationIds: [] }): Promise<PortfolioHomeReadModel> {
-    const [frontResult, independentResult, readingResult, handoffResult, learnings, capacityResult] = await Promise.all([
+    const [frontResult, independentResult, readingResult, handoffResult, labResult, learnings, capacityResult] = await Promise.all([
       this.safeRead('strategic_units', () => this.prisma.strategicFront.findMany({ where: frontScopeWhere(scope), include: READ_INCLUDE, orderBy: { updatedAt: 'desc' } }), []),
       this.safeRead('independent_initiatives', () => this.loadIndependentInitiatives(scope), []),
       this.safeRead('portfolio_reading', () => this.loadLatestReading(userId), null),
       this.safeRead('handoff_assignments', () => this.loadHandoffAssignments(scope), []),
+      this.safeRead('lab_requests', () => this.loadLabRequests(userId, scope), []),
       this.loadLearnings(scope),
       this.safeRead('capacity', () => this.capacityReadService.get(scope), null),
     ]);
@@ -303,6 +315,7 @@ export class PortfolioHomeReadService {
         independentInitiatives: independentResult.unavailable ? 'unavailable' : 'available',
         portfolioReading: readingResult.unavailable ? 'unavailable' : 'available',
         handoffAssignments: handoffResult.unavailable ? 'unavailable' : 'available',
+        labRequests: labResult.unavailable ? 'unavailable' : 'available',
         learnings: learnings.unavailable ? 'unavailable' : 'available',
         capacity: capacityResult.unavailable ? 'unavailable' : 'available',
       },
@@ -314,6 +327,7 @@ export class PortfolioHomeReadService {
       pendingDecisions,
       recommendations: this.mapRecommendations(reading, strategicUnits),
       handoffAssignments,
+      labRequests: labResult.value,
       capacity: capacityResult.value,
       learnings: learnings.items,
       learningsUnavailable: learnings.unavailable,
@@ -367,6 +381,30 @@ export class PortfolioHomeReadService {
 
   // F-02: sólo las asignaciones de las organizaciones del alcance. Una proyección sin organización
   // no se publica fuera del admin: no hay cómo saber de quién es.
+  private async loadLabRequests(
+    userId: string,
+    scope: PortfolioScope,
+  ): Promise<PortfolioHomeReadModel['labRequests']> {
+    if (!this.prisma.portfolioLabRequest?.findMany) return [];
+    const rows = await this.prisma.portfolioLabRequest.findMany({
+      where: { organizationId: { in: scope.organizationIds }, requesterId: userId },
+      orderBy: { createdAt: 'desc' },
+      select: {
+        id: true, challengeId: true, briefVersionId: true, status: true,
+        notificationStatus: true, createdAt: true, updatedAt: true,
+      },
+    });
+    return (rows ?? []).map((row: any) => ({
+      requestId: row.id,
+      challengeId: row.challengeId,
+      briefVersionId: row.briefVersionId,
+      status: row.status,
+      notificationStatus: row.notificationStatus,
+      createdAt: toIso(row.createdAt) ?? new Date(0).toISOString(),
+      updatedAt: toIso(row.updatedAt) ?? new Date(0).toISOString(),
+    }));
+  }
+
   private async loadHandoffAssignments(scope: PortfolioScope): Promise<PortfolioHomeReadModel['handoffAssignments']> {
     if (!this.prisma.portfolioHandoffProjection?.findMany) return [];
     const rows = await this.prisma.portfolioHandoffProjection.findMany({

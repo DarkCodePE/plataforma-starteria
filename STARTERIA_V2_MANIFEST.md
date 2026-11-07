@@ -256,10 +256,10 @@ semantic_owner: cierre humano de Portfolio Setup mediante outcomes independiente
 completion_routes: TEAM_SENT | LAB_NOTIFIED | BOTH
 completion_invariant: assignmentSentCount > 0 || validLabRequestCount > 0
 valid_team_outcome: semántica PL-06 existente sin cambios; Assignment del Challenge canónico de la sesión con BriefVersion CONFIRMED y entrega SMTP acreditada
-valid_lab_outcome: PortfolioLabRequest no terminal de la misma organizationId, enlazada a un Challenge materializado por esa sesión y a su ChallengeActivationBriefVersion exacta en estado CONFIRMED, con notificationStatus=NOTIFIED y aceptación persistida de ambos destinatarios server-side
+valid_lab_outcome: PortfolioLabRequest no terminal de la misma organizationId y requesterId que el actor propietario de la sesión, enlazada a un Challenge materializado por esa sesión y a su ChallengeActivationBriefVersion exacta en estado CONFIRMED, con notificationStatus=NOTIFIED y aceptación persistida de ambos destinatarios server-side
 human_checkpoint: confirmed=true obligatorio; actor y tenant autorizados; no inferir confirmación desde SMTP, UI, Calendly ni estado de solicitud
-required_concurrency: CAS sobre setupCompletedAt; idempotencyKey durable; reentrada devuelve el cierre existente; exactamente un audit portfolio_setup_completed
-required_history: conservar por separado summary de PL-06, outcome Lab, completionRoute y evidencia durable; no reetiquetar envío Lab como Assignment enviado
+required_concurrency: transacción serializable con retry + CAS sobre setupCompletedAt frente a cierre/terminalización concurrente; idempotencyKey durable; exactamente un audit portfolio_setup_completed
+required_history: el audit único congela summary PL-06, labSummary, completionRoute e IDs Lab sin destinatarios; la reentrada devuelve ese snapshot aunque el request cambie después; no reetiquetar envío Lab como Assignment enviado
 required_overview: Portfolio Overview proyecta la solicitud Lab owner/tenant-scoped con estado real; NOTIFIED se presenta como contacto pendiente, nunca como reunión, lectura o desarrollo confirmado
 allowed_backend: PortfolioSetupCompletionService y sus contratos/DTO/router tests; lectura aditiva owner/tenant-scoped de PortfolioLabRequest en Portfolio Home; tests unitarios, HTTP y PostgreSQL
 allowed_frontend: UX de finalización Lab-only/Equipo/BOTH y proyección factual en Portfolio Overview; cliente tipado; tests React y E2E autenticado

@@ -11,6 +11,7 @@ function validLabRequest(overrides: Record<string, unknown> = {}) {
     challengeId: 'challenge-1',
     briefId: 'brief-lab-1',
     briefVersionId: 'brief-version-lab-1',
+    requesterId: 'lead-1',
     status: 'REQUESTED',
     notificationStatus: 'NOTIFIED',
     briefVersion: {
@@ -93,7 +94,10 @@ function fixture(options: { sent?: number; created?: number; failed?: number; la
     portfolioHandoffAssignment: { findMany: vi.fn().mockResolvedValue(assignments) },
     portfolioLabRequest: { findMany: vi.fn().mockResolvedValue(options.labRequests ?? []) },
     portfolioAnchor: { create: vi.fn().mockResolvedValue({ id: 'anchor-2' }) },
-    auditLog: { create: vi.fn().mockResolvedValue({}) },
+    auditLog: {
+      create: vi.fn().mockImplementation(({ data }) => Promise.resolve({ id: 'audit-1', ...data })),
+      findFirst: vi.fn().mockResolvedValue(null),
+    },
   };
   const prisma = { ...tx, $transaction: vi.fn((callback) => callback(tx)) };
   return { prisma, tx, session };
@@ -139,6 +143,7 @@ describe('PortfolioSetupCompletionService', () => {
     expect(tx.portfolioLabRequest.findMany).toHaveBeenCalledWith(expect.objectContaining({
       where: expect.objectContaining({
         organizationId: 'org-1',
+        requesterId: 'lead-1',
         challengeId: { in: ['challenge-1'] },
         status: { notIn: ['CLOSED', 'NOT_PROCEEDING', 'CANCELLED'] },
         notificationStatus: 'NOTIFIED',
@@ -150,6 +155,36 @@ describe('PortfolioSetupCompletionService', () => {
         details: expect.objectContaining({ completionRoute: 'LAB_NOTIFIED' }),
       }),
     }));
+  });
+
+  it('returns the frozen completion snapshot on reentry even if the Lab request later becomes terminal', async () => {
+    const labRequest = validLabRequest();
+    const { prisma, tx, session } = fixture({ sent: 0, created: 0, labRequests: [labRequest] });
+    const service = new PortfolioSetupCompletionService(prisma as any, () => new Date('2026-11-07T12:00:00.000Z'));
+
+    const first = await service.complete({
+      sessionId: 'setup-1', authenticatedUserId: 'lead-1', permissions,
+      confirmed: true, idempotencyKey: 'close-lab-first',
+    });
+    Object.assign(labRequest, { status: 'CLOSED', notificationStatus: 'FAILED' });
+    tx.auditLog.findFirst.mockResolvedValue({
+      details: {
+        completionRoute: first.completionRoute,
+        summary: first.summary,
+        labSummary: first.labSummary,
+        labRequestIds: ['lab-request-1'],
+      },
+    });
+
+    const replay = await service.complete({
+      sessionId: 'setup-1', authenticatedUserId: 'lead-1', permissions,
+      confirmed: true, idempotencyKey: 'close-lab-reentry',
+    });
+
+    expect(replay).toEqual(first);
+    expect(session.setupCompletedAt).toEqual(new Date('2026-11-07T12:00:00.000Z'));
+    expect(tx.auditLog.create).toHaveBeenCalledTimes(1);
+    expect(tx.portfolioLabRequest.findMany).toHaveBeenCalledTimes(1);
   });
 
   it('reports BOTH without folding Lab notification into the PL-06 sent summary', async () => {
@@ -173,6 +208,7 @@ describe('PortfolioSetupCompletionService', () => {
     ['failed notification', validLabRequest({ notificationStatus: 'FAILED' })],
     ['terminal request', validLabRequest({ status: 'CLOSED' })],
     ['foreign tenant', validLabRequest({ organizationId: 'org-2' })],
+    ['another requester', validLabRequest({ requesterId: 'lead-2' })],
     ['another setup challenge', validLabRequest({ challengeId: 'challenge-other' })],
     ['draft BriefVersion', validLabRequest({ briefVersion: { id: 'brief-version-lab-1', organizationId: 'org-1', challengeId: 'challenge-1', briefId: 'brief-lab-1', status: 'DRAFT' } })],
     ['missing first SMTP acceptance', validLabRequest({ notificationAttempts: [{ status: 'ACCEPTED', acceptedRecipients: ['orlandokuanb@gmail.com'] }] })],
