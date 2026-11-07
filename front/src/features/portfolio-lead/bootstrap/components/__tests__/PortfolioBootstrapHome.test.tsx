@@ -13,6 +13,7 @@ vi.mock('../../services/portfolioObjectiveCopilotClient', () => ({
 
 import { PortfolioBootstrapHome } from '../PortfolioBootstrapHome';
 import { makeBootstrap, makeBootstrapWithProposedMutations, makeBootstrapWithWorkItems } from '../../testing/bootstrapFixtures';
+import { createEmptyPortfolioBootstrapContext, type PortfolioBootstrapContextReview } from '../../services/portfolioBootstrapContextClient';
 
 function props(overrides = {}) {
   return {
@@ -45,6 +46,25 @@ function props(overrides = {}) {
     activeImport: null,
     ...overrides,
   };
+}
+
+function confirmedContextReview(): PortfolioBootstrapContextReview {
+  const context = {
+    ...createEmptyPortfolioBootstrapContext(),
+    situation: { value: 'Contexto empresarial confirmado.', provenance: 'user_declared' as const, sourceRef: { kind: 'user_input' as const } },
+  };
+  return {
+    id: 'review-home', sessionId: 'bs-1', status: 'confirmed', version: 2,
+    draft: context, confirmedSnapshot: context, effectiveContext: context, hasPendingCorrection: false,
+    sourceCompanyContext: null, draftSourceCompanyContext: null, confirmedSourceCompanyContext: null,
+    effectiveSourceCompanyContext: null, draftProvenance: [], confirmedProvenance: [], effectiveProvenance: [],
+    sourceOutdated: false, confirmedBy: 'user-1', confirmedAt: '2026-11-07T00:00:00.000Z',
+    createdAt: '2026-11-07T00:00:00.000Z', updatedAt: '2026-11-07T00:00:00.000Z',
+  };
+}
+
+function objectiveProps(overrides = {}) {
+  return props({ contextReview: confirmedContextReview(), contextStatus: 'ready' as const, ...overrides });
 }
 
 describe('PortfolioBootstrapHome — frozen Copilot-first composition', () => {
@@ -134,7 +154,7 @@ describe('PortfolioBootstrapHome — frozen Copilot-first composition', () => {
   it('CA-1 confirms Objetivo and requires the explicit CTA before showing Incorporación', async () => {
     const user = userEvent.setup();
     const onConfirmAnchor = vi.fn().mockResolvedValue(undefined);
-    const input = props({ data: makeBootstrap('anchor_sufficient'), onConfirmAnchor });
+    const input = objectiveProps({ data: makeBootstrap('anchor_sufficient'), onConfirmAnchor });
     const { rerender } = render(<PortfolioBootstrapHome {...input} />);
 
     await user.click(screen.getByRole('button', { name: /Confirmar este punto de partida y continuar/i }));
@@ -152,7 +172,7 @@ describe('PortfolioBootstrapHome — frozen Copilot-first composition', () => {
   it('CA-2 clears a manual E2 review selection through the explicit continuation after confirmation', async () => {
     const user = userEvent.setup();
     const onConfirmAnchor = vi.fn().mockResolvedValue(undefined);
-    const input = props({ data: makeBootstrap('anchor_sufficient'), onConfirmAnchor });
+    const input = objectiveProps({ data: makeBootstrap('anchor_sufficient'), onConfirmAnchor });
     const { rerender } = render(<PortfolioBootstrapHome {...input} />);
 
     await user.click(screen.getByRole('button', { name: /2 Objetivo/i }));
@@ -167,7 +187,7 @@ describe('PortfolioBootstrapHome — frozen Copilot-first composition', () => {
   it('CA-3 keeps Objetivo editable and shows an actionable error when confirmation fails', async () => {
     const user = userEvent.setup();
     const onConfirmAnchor = vi.fn().mockRejectedValue(new Error('No pudimos confirmar el objetivo. Revisa tu conexión e inténtalo de nuevo.'));
-    render(<PortfolioBootstrapHome {...props({ data: makeBootstrap('anchor_sufficient'), onConfirmAnchor })} />);
+    render(<PortfolioBootstrapHome {...objectiveProps({ data: makeBootstrap('anchor_sufficient'), onConfirmAnchor })} />);
 
     await user.click(screen.getByRole('button', { name: /Confirmar este punto de partida y continuar/i }));
 
@@ -195,7 +215,7 @@ describe('PortfolioBootstrapHome — frozen Copilot-first composition', () => {
     await user.click(screen.getByRole('button', { name: /Objetivo Revisado o completado/i }));
 
     expect(screen.getByRole('heading', { name: 'Conversemos para definir qué queremos lograr' })).toBeInTheDocument();
-    expect(screen.getByText('Configurar con Copilot · 3 de 7 · Revisando Objetivo')).toBeInTheDocument();
+    expect(screen.getByText('Revisando Objetivo (Paso 2) · avance confirmado 3 de 7')).toBeInTheDocument();
     expect(screen.getByText('Tu avance confirmado está en Incorporación.')).toBeInTheDocument();
     expect(data.anchor?.status).toBe('anchor_confirmed');
     await user.click(screen.getByRole('button', { name: 'Continuar a Incorporación' }));
@@ -331,8 +351,9 @@ describe('PortfolioBootstrapHome — frozen Copilot-first composition', () => {
     const updateAnchor = vi.fn().mockResolvedValue(undefined);
     render(<PortfolioBootstrapHome {...props({ onUpdateAnchor: updateAnchor, onSaveContextDraft: save })} />);
 
+    fireEvent.click(screen.getByRole('button', { name: 'Revisar contexto' }));
     fireEvent.change(screen.getByLabelText('Situación actual'), { target: { value: 'Decisión previa: revisar abandono en clientes nuevos.' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Guardar síntesis' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Guardar ajustes' }));
 
     await waitFor(() => expect(save).toHaveBeenCalledWith(expect.objectContaining({
       situation: {
@@ -354,7 +375,7 @@ describe('PortfolioBootstrapHome — frozen Copilot-first composition', () => {
     const data = makeBootstrap('anchor_insufficient');
     data.anchor!.contextSummary = 'Customer success detecta abandono durante la activación.';
     data.anchor!.outcomeStatement = 'Resultado de negocio por definir';
-    render(<PortfolioBootstrapHome {...props({ data, onUpdateAnchor: save })} />);
+    render(<PortfolioBootstrapHome {...objectiveProps({ data, onUpdateAnchor: save })} />);
 
     fireEvent.change(screen.getByLabelText('Tu respuesta'), { target: { value: 'bajar abandono' } });
     fireEvent.click(screen.getByRole('button', { name: /Ayúdame a redactar/i }));
@@ -383,7 +404,7 @@ describe('PortfolioBootstrapHome — frozen Copilot-first composition', () => {
     const data = makeBootstrap('anchor_insufficient');
     data.anchor!.contextSummary = 'El abandono durante activación afecta el negocio.';
     data.anchor!.outcomeStatement = 'Resultado de negocio por definir';
-    render(<PortfolioBootstrapHome {...props({ data, onUpdateAnchor: save })} />);
+    render(<PortfolioBootstrapHome {...objectiveProps({ data, onUpdateAnchor: save })} />);
 
     fireEvent.change(screen.getByLabelText('Tu respuesta'), { target: { value: 'Reducir el abandono durante la activación de nuevos clientes.' } });
     fireEvent.click(screen.getByRole('button', { name: 'Enviar respuesta' }));
@@ -403,7 +424,7 @@ describe('PortfolioBootstrapHome — frozen Copilot-first composition', () => {
       decisionToEnable: 'Decidir qué etapa priorizar.',
       businessSignalValue: null,
     });
-    render(<PortfolioBootstrapHome {...props({ data, onUpdateAnchor: save })} />);
+    render(<PortfolioBootstrapHome {...objectiveProps({ data, onUpdateAnchor: save })} />);
 
     fireEvent.change(screen.getByLabelText('Tu respuesta'), { target: { value: 'usuarios que van de lead a cliente' } });
     fireEvent.click(screen.getByRole('button', { name: 'Enviar respuesta' }));
@@ -417,7 +438,7 @@ describe('PortfolioBootstrapHome — frozen Copilot-first composition', () => {
     const data = makeBootstrap('anchor_insufficient');
     data.anchor!.contextSummary = 'Hay presión comercial este trimestre.';
     data.anchor!.outcomeStatement = 'Resultado de negocio por definir';
-    render(<PortfolioBootstrapHome {...props({ data, onUpdateAnchor: save })} />);
+    render(<PortfolioBootstrapHome {...objectiveProps({ data, onUpdateAnchor: save })} />);
 
     fireEvent.click(screen.getByRole('button', { name: 'No lo sé todavía' }));
     await waitFor(() => expect(save).toHaveBeenCalledWith(expect.objectContaining({ sourceRefs: expect.objectContaining({ objectiveConversation: expect.objectContaining({ disposition: 'unknown', unknownFields: ['outcomeStatement'] }) }) })));
@@ -430,7 +451,7 @@ describe('PortfolioBootstrapHome — frozen Copilot-first composition', () => {
     const data = makeBootstrap('anchor_insufficient');
     data.anchor!.contextSummary = 'Necesitamos entender el abandono de clientes.';
     data.anchor!.outcomeStatement = 'Resultado de negocio por definir';
-    render(<PortfolioBootstrapHome {...props({ data, onUpdateAnchor: save })} />);
+    render(<PortfolioBootstrapHome {...objectiveProps({ data, onUpdateAnchor: save })} />);
 
     const answer = screen.getByLabelText('Tu respuesta');
     fireEvent.change(answer, { target: { value: 'Mi color favorito es azul.' } });
@@ -445,7 +466,7 @@ describe('PortfolioBootstrapHome — frozen Copilot-first composition', () => {
   it('keeps exactly one process-progress panel and one current objective draft', () => {
     const data = makeBootstrap('anchor_insufficient');
     data.anchor!.contextSummary = 'El equipo necesita recuperar crecimiento rentable.';
-    render(<PortfolioBootstrapHome {...props({ data })} />);
+    render(<PortfolioBootstrapHome {...objectiveProps({ data })} />);
 
     expect(screen.getAllByLabelText('Tu avance')).toHaveLength(1);
     expect(screen.getAllByTestId('portfolio-objective-card')).toHaveLength(1);

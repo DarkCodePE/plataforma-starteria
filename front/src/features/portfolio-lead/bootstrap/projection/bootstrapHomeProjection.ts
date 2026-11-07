@@ -10,6 +10,7 @@ import type { PortfolioBootstrapResponse } from '../services/portfolioBootstrapC
 
 export type BootstrapHomeProjection = {
   bootstrapSessionId: string;
+  sourceContinuationExists: boolean;
   homeState: HomeState;
   nextAction: NextBestPortfolioAction;
   anchor: NonNullable<PortfolioBootstrapResponse['anchor']>;
@@ -47,8 +48,9 @@ export function projectBootstrapHome(response: PortfolioBootstrapResponse): Boot
   if (!response.anchor) return null;
 
   const anchor = response.anchor;
+  const sourceContinuationExists = Boolean(response.sourceContinuation?.id ?? response.bootstrapSession.sourceContinuationId);
   const portfolioState: PortfolioBootstrapState = {
-    continuationExists: Boolean(response.sourceContinuation?.id ?? response.bootstrapSession.sourceContinuationId),
+    continuationExists: sourceContinuationExists,
     anchor: toDomainAnchor(anchor),
     existingWorkStatus: response.bootstrapSession.existingWorkStatus,
     detectedWorkItems: response.workItems.map((item) => ({
@@ -71,6 +73,7 @@ export function projectBootstrapHome(response: PortfolioBootstrapResponse): Boot
 
   return {
     bootstrapSessionId: response.bootstrapSession.id,
+    sourceContinuationExists,
     homeState,
     nextAction: resolveNextBestPortfolioAction(portfolioState),
     anchor,

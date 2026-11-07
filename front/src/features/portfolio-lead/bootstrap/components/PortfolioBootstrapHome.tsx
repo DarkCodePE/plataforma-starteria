@@ -405,7 +405,17 @@ function PortfolioCopilotWorkspace({
       return next;
     });
   }, []);
-  const inferredStage = frozenStageFrom(projection, bootstrapPhase);
+  const persistedAnchorStage = frozenStageFrom(projection, bootstrapPhase);
+  const legacyContinuationHasCapturedContext = projection.anchor.status === 'anchor_sufficient'
+    && projection.sourceContinuationExists
+    && Boolean(projection.anchor.contextSummary?.trim());
+  const inferredStage = projection.anchor.status === 'anchor_confirmed'
+    ? persistedAnchorStage
+    : contextReview?.effectiveContext
+      ? Math.max(1, persistedAnchorStage)
+      : legacyContinuationHasCapturedContext
+        ? Math.max(1, persistedAnchorStage)
+        : 0;
   const organizationIsMaterialized = Boolean(confirmedOrganization?.materialization ?? organizationProposal?.materialization);
   const backendAllowsOrganization = e5Eligibility.status === 'ready' && e5Eligibility.data?.allowed === true;
   const progressStage = assignmentTarget ? 6 : organizationIsMaterialized ? 5 : inferredStage;
@@ -435,6 +445,10 @@ function PortfolioCopilotWorkspace({
     await onConfirmAnchor();
     setSelectedStage(1);
   }, [onConfirmAnchor]);
+  const confirmContext = useCallback(async () => {
+    await onConfirmContext();
+    setSelectedStage(0);
+  }, [onConfirmContext]);
   const analyzeAndOpenReview = useCallback(async () => {
     try {
       await onAnalyzeWorkItems();
@@ -448,7 +462,7 @@ function PortfolioCopilotWorkspace({
     setOrganizationContinuationSessionId(projection.bootstrapSessionId);
     setSelectedStage(4);
   }, [backendAllowsOrganization, projection.bootstrapSessionId]);
-  const reviewingConfirmedObjective = progressStage === 2 && lastAvailableStage >= 2 && stage < progressStage;
+  const reviewingPriorStage = stage < progressStage;
   useEffect(() => {
     if (organizationProposal?.materialization) {
       setConfirmedOrganization(organizationProposal);
@@ -508,7 +522,11 @@ function PortfolioCopilotWorkspace({
   return (
     <section className="space-y-5" data-testid="portfolio-bootstrap-home-a" data-frozen-composition="copilot-first">
       <header className="rounded-2xl border border-slate-200 bg-white px-5 py-5 shadow-sm md:px-7">
-        <p className="text-xs font-bold uppercase tracking-[0.16em] text-violet-700">Configurar con Copilot · {progressStage + 1} de 7{reviewingConfirmedObjective ? ` · Revisando ${FROZEN_SETUP_STAGES[stage]}` : ''}</p>
+        <p className="text-xs font-bold uppercase tracking-[0.16em] text-violet-700">
+          {reviewingPriorStage
+            ? `Revisando ${FROZEN_SETUP_STAGES[stage]} (Paso ${stage + 1}) · avance confirmado ${progressStage + 1} de 7`
+            : `Configurar con Copilot · ${progressStage + 1} de 7`}
+        </p>
         <h1 className="mt-2 text-2xl font-semibold tracking-tight text-slate-950">{frozenStageTitle(stage)}</h1>
         <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">Copilot construye contigo; las fuentes, inferencias y confirmaciones quedan diferenciadas. No necesitas completar formularios en paralelo.</p>
       </header>
@@ -525,11 +543,13 @@ function PortfolioCopilotWorkspace({
           <div className="space-y-5 bg-slate-50/60 px-5 py-6 md:px-7">
             {stage === 0 ? (
               <FrozenContextConversation
+                key={projection.bootstrapSessionId}
+                operationScope={projection.bootstrapSessionId}
                 review={contextReview}
                 status={contextStatus}
                 error={contextError}
                 onSaveDraft={onSaveContextDraft}
-                onConfirm={onConfirmContext}
+                onConfirm={confirmContext}
                 onRetry={onRetryContext}
                 onContinue={() => setSelectedStage(1)}
               />
@@ -540,12 +560,12 @@ function PortfolioCopilotWorkspace({
             {stage === 4 ? <FrozenOrganizationStage projection={projection} proposal={organizationProposal} status={organizationStatus} error={organizationError} onSave={onSaveOrganizationProposal} onConfirm={onConfirmOrganizationProposal} onComplete={(confirmed) => { setConfirmedOrganization(confirmed); setSelectedStage(5); }} /> : null}
             {stage === 5 ? <FrozenBriefStage projection={projection} confirmedOrganization={confirmedOrganization} onBriefConfirmationChange={handleBriefConfirmationChange} onContinueToAssignment={openAssignment} /> : null}
             {stage === 6 && assignmentTarget ? <FrozenAssignmentStage target={assignmentTarget} onExit={exitAssignment} onCompleteSetup={onCompleteSetup} /> : null}
-            {reviewingConfirmedObjective ? (
+            {reviewingPriorStage && stage > 0 ? (
               <section className="rounded-xl border border-violet-200 bg-violet-50 p-4" aria-label="Continuar configuración">
                 <p className="text-sm font-semibold text-violet-950">Estás revisando {FROZEN_SETUP_STAGES[stage]}.</p>
-                <p className="mt-1 text-sm text-violet-900">Tu avance confirmado está en Incorporación.</p>
-                <button type="button" onClick={() => selectStage(2)} className="mt-3 inline-flex items-center gap-2 rounded-lg bg-violet-700 px-4 py-2 text-sm font-semibold text-white">
-                  Continuar a Incorporación <ChevronRight size={16} aria-hidden="true" />
+                <p className="mt-1 text-sm text-violet-900">Tu avance confirmado está en {FROZEN_SETUP_STAGES[progressStage]}.</p>
+                <button type="button" onClick={() => selectStage(progressStage)} className="mt-3 inline-flex items-center gap-2 rounded-lg bg-violet-700 px-4 py-2 text-sm font-semibold text-white">
+                  Continuar a {FROZEN_SETUP_STAGES[progressStage]} <ChevronRight size={16} aria-hidden="true" />
                 </button>
               </section>
             ) : null}

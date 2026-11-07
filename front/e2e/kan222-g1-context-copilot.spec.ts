@@ -38,7 +38,7 @@ async function loginUi(page: Page, lead: { email: string; password: string }) {
   await page.locator('input[type="password"]').fill(lead.password);
   await page.getByRole('button', { name: 'Entrar' }).click();
   await expect(page).toHaveURL(/\/portfolio\/inicio/, { timeout: 20_000 });
-  await expect(page.getByLabel('Situación actual')).toBeVisible({ timeout: 20_000 });
+  await expect(page.getByText('Cuéntame qué está ocurriendo')).toBeVisible({ timeout: 20_000 });
 }
 
 const apiContext = (situation: string) => ({
@@ -59,35 +59,37 @@ test.describe('KAN-222 G1 contextual Copilot V2_CONFORMANCE', () => {
     const session = await prisma.portfolioBootstrapSession.findFirstOrThrow({ where: { userId: lead.userId } });
     const anchorBefore = await prisma.portfolioAnchor.findUnique({ where: { bootstrapSessionId: session.id } });
 
-    await expect(page.getByText('Cuéntame qué está ocurriendo')).toBeVisible();
-    await page.getByRole('button', { name: 'No lo sé aún' }).click();
-    await expect(page.getByLabel('Situación actual')).toHaveValue('');
-    await page.getByLabel('Tu respuesta').fill('Mejorar todo');
-    await page.getByRole('button', { name: 'Incorporar respuesta' }).click();
-    await expect(page.getByText(/resultado concreto/i)).toBeVisible();
-    await page.getByLabel('Situación actual').fill('El abandono aumentó durante la activación de clientes nuevos.');
-    await page.getByLabel('Área o proceso').fill('Operaciones');
     const saveResponse = page.waitForResponse((response) => response.request().method() === 'PUT'
       && new URL(response.url()).pathname.endsWith(`/sessions/${session.id}/context/draft`));
-    await page.getByRole('button', { name: 'Guardar síntesis' }).click();
+    await page.getByLabel('Tu respuesta').fill('El abandono aumentó durante la activación de clientes nuevos.');
+    await page.getByRole('button', { name: 'Guardar y continuar' }).click();
     const saved = await saveResponse;
     expect(saved.status(), await saved.text()).toBe(200);
     expect(saved.request().headers()['idempotency-key']).toMatch(/^portfolio-context-draft:/);
     expect(saved.request().postDataJSON()).toMatchObject({ expectedVersion: 0, sourceCompanyContext: null });
 
+    await page.getByLabel('Tu respuesta').fill('Operaciones');
+    await page.getByRole('button', { name: 'Guardar y continuar' }).click();
+    await page.getByRole('button', { name: 'Todavía no lo sé' }).click();
+    await page.getByRole('button', { name: 'No aplica en este caso' }).click();
+    await page.getByRole('button', { name: 'Revisar contexto' }).click();
+
     const confirmResponse = page.waitForResponse((response) => response.request().method() === 'POST'
       && new URL(response.url()).pathname.endsWith(`/sessions/${session.id}/context/confirm`));
-    await page.getByRole('button', { name: 'Confirmar contexto' }).click();
+    await page.getByRole('button', { name: 'Estoy de acuerdo, confirmar contexto' }).click();
     const confirmed = await confirmResponse;
     expect(confirmed.status(), await confirmed.text()).toBe(200);
     expect(confirmed.request().headers()['idempotency-key']).toMatch(/^portfolio-context-confirm:/);
-    expect(confirmed.request().postDataJSON()).toEqual({ expectedVersion: 1 });
+    expect(confirmed.request().postDataJSON()).toEqual({ expectedVersion: 4 });
     await expect(page.getByRole('button', { name: /3 Incorporación/i })).toBeDisabled();
     expect(await prisma.portfolioAnchor.findUnique({ where: { bootstrapSessionId: session.id } })).toEqual(anchorBefore);
 
     await page.reload();
+    await expect(page.getByTestId('portfolio-objective-conversation')).toBeVisible();
+    await page.getByRole('button', { name: /Contexto Revisado o completado/i }).click();
+    await page.getByRole('button', { name: 'Revisar contexto' }).click();
     await expect(page.getByLabel('Situación actual')).toHaveValue('El abandono aumentó durante la activación de clientes nuevos.');
-    await page.getByRole('button', { name: 'Continuar al objetivo' }).click();
+    await page.getByRole('button', { name: 'Estoy de acuerdo, continuar al objetivo' }).click();
     await expect(page.getByTestId('portfolio-objective-conversation')).toBeVisible();
     await expect(page.getByRole('button', { name: /3 Incorporación/i })).toBeDisabled();
 
@@ -110,31 +112,34 @@ test.describe('KAN-222 G1 contextual Copilot V2_CONFORMANCE', () => {
     await page.reload();
     await expect(page.getByTestId('portfolio-bootstrap-work-intake')).toBeVisible({ timeout: 20_000 });
 
-    await page.getByRole('button', { name: /Contexto/i }).click();
+    await page.getByRole('button', { name: /Contexto Revisado o completado/i }).click();
+    await page.getByRole('button', { name: 'Revisar contexto' }).click();
     await page.getByLabel('Situación actual').fill('Corrección pendiente del contexto');
-    await page.getByRole('button', { name: 'Guardar síntesis' }).click();
+    await page.getByRole('button', { name: 'Guardar ajustes' }).click();
     await expect(page.getByText('Corrección pendiente de reconfirmación')).toBeVisible();
     await page.reload();
-    await page.getByRole('button', { name: /Contexto/i }).click();
+    await page.getByRole('button', { name: /Contexto Revisado o completado/i }).click();
     await expect(page.getByText('Corrección pendiente de reconfirmación')).toBeVisible();
     const review = await prisma.portfolioBootstrapContextReview.findUniqueOrThrow({ where: { bootstrapSessionId: session.id } });
     expect(review.draftJson.situation.value).toBe('Corrección pendiente del contexto');
     expect(review.confirmedSnapshotJson.situation.value).toBe('El abandono aumentó durante la activación de clientes nuevos.');
-    expect(review.version).toBe(3);
+    expect(review.version).toBe(6);
 
     const reconfirmResponse = page.waitForResponse((response) => response.request().method() === 'POST'
       && new URL(response.url()).pathname.endsWith(`/sessions/${session.id}/context/confirm`));
-    await page.getByRole('button', { name: 'Confirmar contexto' }).click();
+    await page.getByRole('button', { name: 'Revisar contexto' }).click();
+    await page.getByRole('button', { name: 'Estoy de acuerdo, confirmar contexto' }).click();
     const reconfirmed = await reconfirmResponse;
     expect(reconfirmed.status(), await reconfirmed.text()).toBe(200);
-    expect(reconfirmed.request().postDataJSON()).toEqual({ expectedVersion: 3 });
+    expect(reconfirmed.request().postDataJSON()).toEqual({ expectedVersion: 6 });
     await page.reload();
-    await page.getByRole('button', { name: /Contexto/i }).click();
+    await page.getByRole('button', { name: /Contexto Revisado o completado/i }).click();
+    await page.getByRole('button', { name: 'Revisar contexto' }).click();
     await expect(page.getByLabel('Situación actual')).toHaveValue('Corrección pendiente del contexto');
-    await expect(page.getByText('Contexto confirmado')).toBeVisible();
+    await expect(page.getByText('Contexto confirmado', { exact: true })).toBeVisible();
     const finalReview = await prisma.portfolioBootstrapContextReview.findUniqueOrThrow({ where: { bootstrapSessionId: session.id } });
     expect(finalReview.confirmedSnapshotJson).toMatchObject({ situation: { value: 'Corrección pendiente del contexto' } });
-    expect(finalReview.version).toBe(4);
+    expect(finalReview.version).toBe(7);
     await api.dispose();
   });
 

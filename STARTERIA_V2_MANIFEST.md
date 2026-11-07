@@ -462,6 +462,47 @@ bridge sólo fija, revalida y congela una versión ya publicada.
 
 ---
 
+## Slice PORTFOLIO_LEAD_G1_ADAPTIVE_CONTEXT_UX_REMEDIATION (KAN-240 / KAN-241)
+
+**Registrado:** 2026-11-07 por QA productivo KAN-240#10732 y autorización explícita de
+implementación KAN-241 sobre `main@4837e82f41439b75fdc41ab9d6621998b602643c`.
+
+```text
+slice_id: PORTFOLIO_LEAD_G1_ADAPTIVE_CONTEXT_UX_REMEDIATION
+qa_source: KAN-240#10732
+technical_task: KAN-241
+technical_scope_authority: KAN-241 description + instrucción explícita del responsable
+depends_on: PORTFOLIO_LEAD_G1_ADAPTIVE_CONTEXT_BRIDGE (KAN-219/220/221/222)
+baseline: main@4837e82f41439b75fdc41ab9d6621998b602643c
+logic_status: ACTIVE_V2_SLICE
+implementation_status: IMPLEMENTED_READY_FOR_REVIEW
+visual_status: V2_TARGET_DEFINED_BY_KAN_241
+evidence_status: LOCAL_PASS_CI_PENDING
+implementation_commits: 40d2978 (tests-first + Manifest); 8e01f6f (adaptive conversation, persistence and E1→E2→E3); c9df4f6 (independent-review fixes: dirty guard, post-save advance, timeout and disclosure accessibility); 675ff96 (session-scoped stale-response isolation); 84d3e31 (CI regression remediation: legacy sourceContinuation compatibility without weakening the direct-session E1 gate)
+semantic_owner: conversación frontend E1 de contexto empresarial y transición explícita E1→E2→E3
+allowed: frontend Portfolio Bootstrap E1/E2 navigation; preguntas deterministas adaptadas a hechos declarados; intención unknown/not_applicable persistida mediante el payload E1 existente; síntesis editable plegable; guardado y confirmación explícitos; errores/timeout/retry visibles; tests React y E2E autenticado sobre PostgreSQL desechable; ajuste documental del Manifest
+required_scenarios: cafetería sin área/equipo/experiencia formal; empresa con procesos formales; desconocidos/no aplica; reentrada; guardar/confirmar sin pérdida; transición explícita E1→E2→E3; errores y timeout visibles
+required_persistence: reutilizar GET/PUT draft/POST confirm de KAN-221; expectedVersion CAS; Idempotency-Key estable por retry; snapshots/provenance y confirmedSnapshot conservados; ninguna respuesta incorporada queda sólo en estado local
+required_conversation: preguntas concisas con propósito; no repetir campos resueltos; no inferir capacidades de IA, métricas, departamentos, equipos o hechos; vocabulario proporcional al contexto declarado
+required_progress: separar etapa revisada de avance persistido; CTA «Estoy de acuerdo, continuar al objetivo» sólo tras persistencia y confirmación efectiva; E2 confirmado habilita E3 sin alterar gates posteriores
+reuse_required: PortfolioBootstrapContextConversation; FrozenContextConversation; FrozenObjectiveConversation; PortfolioBootstrapHome; API/hook E1 existente
+preserves: relación Company opcional; versionado/provenance; CAS; idempotencia; tenant/owner guards backend; KAN-207; bootstrapPhase/existingWorkStatus/E5; confirmación humana
+excluded: backend/API/Prisma; Core; Steps; Handoff; IA/model/provider/prompt/runtime; infraestructura; secretos; gastos IA; datos productivos; merge/deploy
+stop_conditions: cualquier necesidad de ampliar el contrato backend/Prisma, cambiar autoridad/cardinalidad Core, crear una inferencia productiva o alterar gates E5+
+tests_required: KAN241-CA01..CA08 tests-first; regresiones KAN-221/222 y G1/G2; E2E autenticado con DB desechable; lint; typecheck; build; revisión independiente; CI
+local_evidence: focal frontend 73/73 PASS plus direct-vs-legacy gate 15/15 PASS; full frontend PASS; authenticated Playwright 3/3 PASS over disposable PostgreSQL with 77/77 migrations; exact LEGACY_COMPAT regression 7/7 PASS over disposable PostgreSQL with 77/77 migrations; KAN-221 PostgreSQL integration 5/5 PASS and 0 skips; lint PASS; typecheck:front PASS; build PASS; git diff --check PASS
+independent_review: APPROVED on 84d3e31 after original findings were resolved in c9df4f6, stale-session isolation was resolved in 675ff96 and the CI legacy-continuation remediation was independently re-reviewed without findings
+known_baseline_note: combined local typecheck reaches an unrelated backend Zod type error in portfolio-entry-runtime/critical-synthesis-reasoning.test.ts; this slice changes no backend file and CI remains authoritative
+guardrail: V2_CHANGE_GUARDRAIL_CHECK Proceed YES sólo para allowed; Proceed NO para excluded
+```
+
+Esta remediación cambia la interacción y la navegación frontend, no el contrato E1. Las decisiones
+«desconocido» y «no aplica» se conservan de forma explícita dentro del payload versionado existente
+y nunca se convierten en hechos inventados. El snapshot confirmado sólo cambia mediante la orden
+de confirmación ya autorizada; revisar E1 no altera el avance persistido ni habilita etapas posteriores.
+
+---
+
 ## Slice PORTFOLIO_LEAD_INTAKE_NAVIGATION_G2A (KAN-209 / KAN-212)
 
 **Registrado:** 2026-11-03 por HU KAN-209 y aprobación funcional KAN-210 `RESUELTO`; preparación técnica acotada en KAN-212.
