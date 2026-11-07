@@ -172,8 +172,8 @@ describe('PortfolioOverviewHome', () => {
     const g5Model = {
       ...model,
       workItems: [
-        { workItemId: 'work-1', label: 'Onboarding guiado', purpose: 'Reducir fricción', sourceType: 'manual', status: 'reviewed', currentStateHint: 'active', ownerCandidate: 'Operaciones', sourceRefs: { source: 'manual' }, actorId: 'lead-a', createdAt: '2026-11-07T08:00:00.000Z', updatedAt: '2026-11-07T08:05:00.000Z', bootstrapSessionId: 'session-a', linkedInitiativeId: 'project-1' },
-        { workItemId: 'work-3', label: 'Tercera iniciativa sin activar', purpose: null, sourceType: 'csv', status: 'reviewed', currentStateHint: 'idea', ownerCandidate: null, sourceRefs: { file: 'portfolio.csv', row: 3 }, actorId: 'lead-a', createdAt: '2026-11-07T08:10:00.000Z', updatedAt: '2026-11-07T08:10:00.000Z', bootstrapSessionId: 'session-a', linkedInitiativeId: null },
+        { workItemId: 'work-1', label: 'Onboarding guiado', purpose: 'Reducir fricción', sourceType: 'manual', status: 'confirmed_in_portfolio', currentStateHint: 'active', ownerCandidate: 'Operaciones', sourceRefs: { source: 'manual' }, actorId: 'lead-a', createdAt: '2026-11-07T08:00:00.000Z', updatedAt: '2026-11-07T08:05:00.000Z', bootstrapSessionId: 'session-a', linkedInitiativeId: 'project-1' },
+        { workItemId: 'work-3', label: 'Tercera iniciativa sin activar', purpose: null, sourceType: 'csv', status: 'needs_review', currentStateHint: 'idea', ownerCandidate: null, sourceRefs: { file: 'portfolio.csv', row: 3 }, actorId: 'lead-a', createdAt: '2026-11-07T08:10:00.000Z', updatedAt: '2026-11-07T08:10:00.000Z', bootstrapSessionId: 'session-a', linkedInitiativeId: null },
       ],
       briefs: [{ briefVersionId: 'brief-v2', briefId: 'brief-1', challengeId: 'challenge-1', challengeTitle: 'Reducir fricción', versionNumber: 2, status: 'CONFIRMED', intent: 'Reducir fricción', scope: 'Activación', sourceRefs: { proposal: 'proposal-1' }, provenance: { status: 'user_confirmed' }, createdByActorId: 'lead-a', confirmedByActorId: 'lead-a', createdAt: '2026-11-07T09:10:00.000Z', confirmedAt: '2026-11-07T09:15:00.000Z' }],
       availability: { ...model.availability, workItems: 'available', briefs: 'available', labRequests: 'available' },
@@ -186,7 +186,7 @@ describe('PortfolioOverviewHome', () => {
       expect(within(table).getByRole('columnheader', { name: heading })).toBeInTheDocument();
     }
     expect(within(table).getByText('Brief v2')).toBeInTheDocument();
-    expect(within(table).getByText('Sin activar')).toBeInTheDocument();
+    expect(within(table).getByText('Necesita revisión')).toBeInTheDocument();
     fireEvent.change(screen.getByRole('searchbox', { name: 'Filtrar trabajo y encargos' }), { target: { value: 'tercera' } });
     expect(within(table).getByText('Tercera iniciativa sin activar')).toBeInTheDocument();
     expect(within(table).queryByText('Onboarding guiado')).not.toBeInTheDocument();

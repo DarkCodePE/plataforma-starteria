@@ -319,7 +319,7 @@ export class PortfolioHomeReadService {
       this.safeRead('portfolio_reading', () => this.loadLatestReading(userId), null),
       this.safeRead('handoff_assignments', () => this.loadHandoffAssignments(scope), []),
       this.safeRead('lab_requests', () => this.loadLabRequests(userId, scope), []),
-      this.safeRead('work_items', () => this.loadWorkItems(scope), []),
+      this.safeRead('work_items', () => this.loadWorkItems(userId, scope), []),
       this.safeRead('briefs', () => this.loadBriefs(scope), []),
       this.loadLearnings(scope),
       this.safeRead('capacity', () => this.capacityReadService.get(scope), null),
@@ -446,10 +446,10 @@ export class PortfolioHomeReadService {
     }));
   }
 
-  private async loadWorkItems(scope: PortfolioScope): Promise<PortfolioHomeReadModel['workItems']> {
+  private async loadWorkItems(userId: string, scope: PortfolioScope): Promise<PortfolioHomeReadModel['workItems']> {
     if (!this.prisma.portfolioBootstrapWorkItem?.findMany) return [];
     const rows = await this.prisma.portfolioBootstrapWorkItem.findMany({
-      where: { bootstrapSession: { organizationId: { in: scope.organizationIds } } },
+      where: { bootstrapSession: { organizationId: { in: scope.organizationIds }, userId } },
       orderBy: { updatedAt: 'desc' },
       include: {
         bootstrapSession: { select: { id: true, organizationId: true, setupCompletedAt: true } },

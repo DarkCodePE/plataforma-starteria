@@ -228,8 +228,8 @@ function buildOperationalRows(model: PortfolioHomeReadModel, initiatives: Array<
     key: `work-${item.workItemId}`,
     title: item.label,
     destination: item.linkedInitiativeId ? `Iniciativa ${item.linkedInitiativeId}` : item.ownerCandidate ?? 'Sin owner confirmado',
-    status: item.linkedInitiativeId ? 'Vinculado a iniciativa' : 'Sin activar',
-    nextAction: item.linkedInitiativeId ? 'Abrir la iniciativa canónica' : 'Revisar antes de activar',
+    status: workItemStatusLabel(item.status),
+    nextAction: workItemNextAction(item.status),
     actor: item.actorId,
     provenance: item.sourceRefs,
     evidence: `${item.sourceType} · WorkItem ${item.workItemId} · estado ${item.status}`,
@@ -280,6 +280,28 @@ function buildOperationalRows(model: PortfolioHomeReadModel, initiatives: Array<
     updatedAt: request.updatedAt,
   }));
   return [...workRows, ...briefRows, ...assignmentRows, ...initiativeRows, ...labRows];
+}
+
+function workItemStatusLabel(status: string): string {
+  switch (status.toLowerCase()) {
+    case 'detected': return 'Detectado';
+    case 'needs_review': return 'Necesita revisión';
+    case 'pending': return 'Pendiente de decisión';
+    case 'confirmed_in_portfolio': return 'Confirmado en portafolio';
+    case 'rejected': return 'Rechazado';
+    default: return status;
+  }
+}
+
+function workItemNextAction(status: string): string {
+  switch (status.toLowerCase()) {
+    case 'detected': return 'Revisar trabajo detectado';
+    case 'needs_review': return 'Completar revisión humana';
+    case 'pending': return 'Resolver revisión pendiente';
+    case 'confirmed_in_portfolio': return 'Revisar destino confirmado';
+    case 'rejected': return 'Conservar trazabilidad';
+    default: return 'Revisar estado';
+  }
 }
 
 function assignmentNextAction(assignment: PortfolioHomeReadModel['handoffAssignments'][number]): string {
