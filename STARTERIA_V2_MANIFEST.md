@@ -195,6 +195,44 @@ determinación ADR específicas.
 
 ---
 
+## Slice PORTFOLIO_LEAD_G4_LAB_REQUEST_UX (KAN-224 / KAN-227)
+
+**Registrado:** 2026-11-07 por autoridad funcional KAN-224#10673/#10674 y autorización de
+integración frontend KAN-227#10678, sobre el backend KAN-226 fusionado en PR #259.
+
+```text
+slice_id: PORTFOLIO_LEAD_G4_LAB_REQUEST_UX
+functional_hu: KAN-224
+functional_authority: KAN-224#10673/#10674
+technical_task: KAN-227
+technical_scope_authority: KAN-227#10678
+depends_on: PORTFOLIO_LEAD_G4_LAB_BRIEF_REQUEST (KAN-226, PR #259 merged)
+baseline: main@890464bc5fd0a1a1c15ea922fa45dfbcdc5c3822
+logic_status: ACTIVE_V2_SLICE
+implementation_status: AUTHORIZED_NOT_IMPLEMENTED
+visual_status: V2_TARGET_DEFINED
+evidence_status: TESTING_REQUIRED
+semantic_owner: experiencia frontend de solicitud y seguimiento Startería Lab desde ChallengeActivationBriefVersion CONFIRMED
+allowed: cliente frontend tipado para /api/v1/portfolio-lab/requests; sección Lab aditiva junto a Equipo en ChallengeAssignmentPreparationPanel o feature frontend propia; preview de Brief confirmado; consentimiento; stable Idempotency-Key; contador de abiertas; create/dedup/409; estado de notificación y retry; seguimiento/reentrada; CTA Calendly exacto; tests frontend y E2E autenticados; ajuste documental de este Manifest
+required_api_reuse: GET /portfolio-lab/requests; GET /portfolio-lab/requests/:requestId; POST /portfolio-lab/requests; POST /portfolio-lab/requests/:requestId/notification-retry
+required_identity: challengeId + briefId + briefVersionId CONFIRMED exactos recuperados del target; organizationId/actor derivados exclusivamente por backend
+required_ux: Equipo Y/O Startería Lab coexistentes y no excluyentes; preview y consentimiento antes de POST; 0..3 abiertas; cuarto CTA deshabilitado y 409 comprensible; 200 deduplicado y 201 creado convergen sin duplicar; reentrada recupera estado durable
+required_state_semantics: REQUESTED persistido != notificationStatus PENDING/FAILED/NOTIFIED != reunión humana; no mostrar emails server-side; fallo SMTP conserva contexto y permite retry idempotente
+calendly_url: https://calendly.com/fabio-merino-97/new-meeting?month=2026-11
+calendly_semantics: abrir el enlace no muta la solicitud ni marca MEETING_SCHEDULED, reserva o lectura humana
+preserves: PL-06 Equipo y ChallengeAssignmentPreparationPanel existentes; E2/E5; slice KAN-207 sin cambios; BriefVersion confirmada; autoridad humana; no Project/Assignment/Step ficticios
+excluded: backend/API/Prisma; PortfolioSetupCompletionService.complete y gate setup 7/7; cierre Lab-only del setup; transición MEETING_SCHEDULED u operación staff nueva; Core; Steps; Handoff; IA; Portfolio Home si requiere nueva proyección/API; Calendly API/auto-calendar; infraestructura; secretos; gastos IA; merge/deploy
+stop_conditions: cualquier necesidad de backend/API/Prisma, Home read model nuevo, cambio de PL-06/KAN-207, completar setup con Lab, simular reunión/decisión de operador o introducir infraestructura/secretos
+guardrail: V2_CHANGE_GUARDRAIL_CHECK requerido y debe ser Proceed YES antes de tests/código productivo
+```
+
+Este slice hace visible una vía humana adicional sin convertirla en una asignación de Equipo ni
+en evidencia de finalización. La solicitud Lab y PL-06 pueden coexistir para el mismo reto. El
+seguimiento muestra únicamente estados durables del contrato KAN-226; Calendly es una salida
+externa opcional y no constituye una reserva dentro de Starteria.
+
+---
+
 ## Slice PORTFOLIO_LEAD_G3_ORGANIZATION_SELECTIVE_BRIEFS (KAN-223)
 
 **Registrado:** 2026-11-07 por HU KAN-223 y auditoría técnica acotada KAN-223#10670.
