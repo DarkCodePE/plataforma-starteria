@@ -1,9 +1,18 @@
 import { describe, expect, it } from 'vitest';
-import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { readdirSync, readFileSync } from 'node:fs';
+import { join, resolve } from 'node:path';
 
 const root = resolve(process.cwd(), '..');
 const read = (path: string) => readFileSync(resolve(root, path), 'utf8');
+const countNamedFiles = (directory: string, fileName: string): number =>
+  readdirSync(directory, { withFileTypes: true }).reduce(
+    (count, entry) =>
+      count +
+      (entry.isDirectory()
+        ? countNamedFiles(join(directory, entry.name), fileName)
+        : Number(entry.name === fileName)),
+    0,
+  );
 
 describe('MVP-RELEASE-01 isolated E2E staging operations', () => {
   it('renders only the fixed staging namespace with Mailpit and network isolation', () => {
@@ -25,9 +34,23 @@ describe('MVP-RELEASE-01 isolated E2E staging operations', () => {
     expect(workflow).not.toContain('scripts/ci/prod-db-migrate.sh apply');
     expect(bootstrap).toContain('database is not empty');
     expect(bootstrap).toContain('migrate deploy');
-    expect(bootstrap).toContain('expected 72 successful migrations');
+    expect(bootstrap).toContain('migrate status');
+    expect(bootstrap).toContain('migrate diff');
+    expect(bootstrap).toContain('--exit-code');
     expect(bootstrap).not.toContain('migrate resolve');
     expect(productionGuard).toContain('reject_destructive');
+  });
+
+  it('keeps the staging gate migration count aligned with the canonical migration files', () => {
+    const bootstrap = read('scripts/ci/e2e-staging-db-bootstrap.sh');
+    const declaredCount = bootstrap.match(/^expected_migrations=(\d+)$/m);
+    const actualCount = countNamedFiles(
+      resolve(root, 'front/prisma/migrations'),
+      'migration.sql',
+    );
+
+    expect(declaredCount).not.toBeNull();
+    expect(Number(declaredCount?.[1])).toBe(actualCount);
   });
 
   it('fails closed when the runner can access production and exercises sandbox Handoff', () => {
