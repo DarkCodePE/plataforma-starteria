@@ -79,13 +79,16 @@ jobs:
       - name: Validate staging shell and Playwright entrypoint
         working-directory: front
         env:
+          NAMESPACE: starteria-e2e
           E2E_PROD_BASE_URL: https://e2e.invalid
           E2E_STAGING_MAILPIT_URL: http://127.0.0.1:18025
+          E2E_STAGING_SOURCE_SHA: ${{ needs.resolve.outputs.sha }}
           E2E_PROD_LEAD_PASSWORD: synthetic-validation-only
           E2E_PROD_PARTICIPANT_PASSWORD: synthetic-validation-only
         run: |
           bash -n ../scripts/ci/render-e2e-staging-manifests.sh ../scripts/ci/e2e-staging-db-bootstrap.sh ../scripts/ci/e2e-staging-api-smoke.sh
           npx playwright test e2e/prod/handoff-mailpit-staging.spec.ts --list
+          npm run test:e2e:staging-goals:list
       - name: Lint
         working-directory: front
         run: npm run lint
@@ -329,6 +332,7 @@ jobs:
         run: |
           npm ci
           npx prisma generate
+          npx playwright install --with-deps chromium
           ln -sfn "$GITHUB_WORKSPACE/front/node_modules" "$GITHUB_WORKSPACE/node_modules"
       - name: Apply and verify Prisma migrations in staging
         run: |
@@ -385,6 +389,8 @@ jobs:
           E2E_PROD_LEAD_PASSWORD: ${{ secrets.E2E_STAGING_LEAD_PASSWORD }}
           E2E_PROD_PARTICIPANT_PASSWORD: ${{ secrets.E2E_STAGING_PARTICIPANT_PASSWORD }}
           E2E_STAGING_MAILPIT_URL: http://127.0.0.1:18025
+          E2E_STAGING_SOURCE_SHA: ${{ needs.resolve.outputs.sha }}
+          E2E_STAGING_GOALS_REPORT: ../artifacts/e2e-staging/goals-g1-g5-playwright.json
         run: |
           set -euo pipefail
           kubectl -n "$NAMESPACE" port-forward service/mailpit 18025:8025 > "$RUNNER_TEMP/e2e-mailpit-port-forward.log" 2>&1 &
@@ -392,6 +398,7 @@ jobs:
           for _ in $(seq 30); do curl -fsS "$E2E_STAGING_MAILPIT_URL/livez" >/dev/null 2>&1 && break; sleep 1; done
           curl -fsS "$E2E_STAGING_MAILPIT_URL/livez" >/dev/null
           npx playwright test e2e/prod/handoff-mailpit-staging.spec.ts --workers=1
+          npm run test:e2e:staging-goals
       - name: Execute authenticated staging API smoke
         env:
           E2E_PROD_BASE_URL: ${{ vars.E2E_STAGING_BASE_URL }}
