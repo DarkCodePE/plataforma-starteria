@@ -34,6 +34,7 @@ function review(overrides: Partial<PortfolioBootstrapContextReview> = {}): Portf
 
 function props(overrides: Partial<React.ComponentProps<typeof PortfolioBootstrapContextConversation>> = {}) {
   return {
+    operationScope: 'session-1',
     review: null,
     status: 'ready' as const,
     error: null,

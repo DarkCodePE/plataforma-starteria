@@ -538,6 +538,8 @@ function PortfolioCopilotWorkspace({
           <div className="space-y-5 bg-slate-50/60 px-5 py-6 md:px-7">
             {stage === 0 ? (
               <FrozenContextConversation
+                key={projection.bootstrapSessionId}
+                operationScope={projection.bootstrapSessionId}
                 review={contextReview}
                 status={contextStatus}
                 error={contextError}

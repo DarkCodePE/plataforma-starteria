@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import {
@@ -51,8 +51,15 @@ function review(overrides: Partial<PortfolioBootstrapContextReview> = {}): Portf
   };
 }
 
+function deferred<T>() {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  const promise = new Promise<T>((done) => { resolve = done; });
+  return { promise, resolve };
+}
+
 function props(overrides: Partial<React.ComponentProps<typeof PortfolioBootstrapContextConversation>> = {}) {
   return {
+    operationScope: 'session-kan241',
     review: null,
     status: 'ready' as const,
     error: null,
@@ -191,5 +198,42 @@ describe('KAN-241 adaptive E1 context conversation', () => {
     expect(screen.queryByText(/parte de la actividad/i)).not.toBeInTheDocument();
     expect(screen.getByText(/quién atendería este cambio y quién compraría/i)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Estoy de acuerdo, continuar al objetivo' })).toBeEnabled();
+  });
+
+  it('CA08 ignores a late save callback from session A after the conversation changes to session B', async () => {
+    const user = userEvent.setup();
+    const pendingA = deferred<unknown>();
+    const reviewB = review({
+      id: 'review-b',
+      sessionId: 'session-b',
+      version: 1,
+      draft: payload({
+        situation: declared('Contexto exclusivo de la sesión B.'),
+        gaps: ['context-disposition:area:not_applicable'],
+      }),
+    });
+    const { rerender } = render(<PortfolioBootstrapContextConversation {...props({
+      operationScope: 'session-a',
+      onSaveDraft: vi.fn(() => pendingA.promise),
+    })} />);
+
+    await user.type(screen.getByLabelText('Tu respuesta'), 'Respuesta tardía de la sesión A.');
+    await user.click(screen.getByRole('button', { name: 'Guardar y continuar' }));
+    expect(screen.getByTestId('portfolio-context-conversation')).toHaveAttribute('aria-busy', 'true');
+
+    rerender(<PortfolioBootstrapContextConversation {...props({
+      operationScope: 'session-b',
+      review: reviewB,
+    })} />);
+
+    await waitFor(() => expect(screen.getByTestId('portfolio-context-conversation')).toHaveAttribute('aria-busy', 'false'));
+    await user.click(screen.getByRole('button', { name: 'Revisar contexto' }));
+    expect(screen.getByLabelText('Situación actual')).toHaveValue('Contexto exclusivo de la sesión B.');
+
+    await act(async () => { pendingA.resolve(undefined); });
+
+    expect(screen.getByLabelText('Situación actual')).toHaveValue('Contexto exclusivo de la sesión B.');
+    expect(screen.queryByDisplayValue('Respuesta tardía de la sesión A.')).not.toBeInTheDocument();
+    expect(screen.getByTestId('portfolio-context-conversation')).toHaveAttribute('aria-busy', 'false');
   });
 });

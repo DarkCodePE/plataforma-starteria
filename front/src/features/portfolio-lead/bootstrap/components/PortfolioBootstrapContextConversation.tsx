@@ -154,6 +154,7 @@ function dispositionLabel(context: PortfolioBootstrapContextPayload, field: Cont
 }
 
 export function PortfolioBootstrapContextConversation({
+  operationScope,
   review,
   status,
   error,
@@ -162,6 +163,7 @@ export function PortfolioBootstrapContextConversation({
   onRetry,
   onContinue,
 }: {
+  operationScope: string;
   review: PortfolioBootstrapContextReview | null;
   status: PortfolioBootstrapContextStatus;
   error: string | null;
@@ -179,10 +181,18 @@ export function PortfolioBootstrapContextConversation({
   const [localError, setLocalError] = useState<string | null>(null);
   const summaryRef = useRef<HTMLElement>(null);
   const disclosureRef = useRef<HTMLButtonElement>(null);
+  const operationEpoch = useRef(0);
   useEffect(() => {
     setDraft(persistedDraft);
     setDirty(false);
-  }, [review?.id, review?.version]);
+  }, [operationScope, review?.id, review?.version]);
+  useEffect(() => {
+    operationEpoch.current += 1;
+    setAnswer('');
+    setSummaryOpen(false);
+    setLocalBusy(false);
+    setLocalError(null);
+  }, [operationScope]);
   useEffect(() => {
     if (summaryOpen) summaryRef.current?.focus();
   }, [summaryOpen]);
@@ -217,17 +227,20 @@ export function PortfolioBootstrapContextConversation({
     setLocalError(null);
   };
   const run = async (operation: () => Promise<unknown>, onSuccess?: () => void): Promise<boolean> => {
+    const epoch = operationEpoch.current;
     setLocalBusy(true);
     setLocalError(null);
     try {
       await operation();
+      if (epoch !== operationEpoch.current) return false;
       onSuccess?.();
       return true;
     } catch (caught) {
+      if (epoch !== operationEpoch.current) return false;
       setLocalError(caught instanceof Error ? caught.message : 'No pudimos completar la operación.');
       return false;
     } finally {
-      setLocalBusy(false);
+      if (epoch === operationEpoch.current) setLocalBusy(false);
     }
   };
   const saveConversationTurn = async (next: PortfolioBootstrapContextPayload) => {
