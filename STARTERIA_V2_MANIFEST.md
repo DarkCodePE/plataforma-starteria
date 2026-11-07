@@ -333,6 +333,46 @@ autenticado, y de que la revisión independiente confirme que no se incorporó s
 
 ---
 
+## Slice RELEASE_G1_G5_STAGING_CERTIFICATION (KAN-236 / KAN-237)
+
+**Registrado:** 2026-11-07 por KAN-236/KAN-237 y los hallazgos de preparación operativa
+KAN-235#10698 y KAN-233#10699 sobre `main@3038dc688965bd6dcd080a69e2587e3a9eba8867`.
+
+```text
+slice_id: RELEASE_G1_G5_STAGING_CERTIFICATION
+technical_tasks: KAN-236; KAN-237
+authority: Jira KAN-236 + KAN-237; KAN-235#10698; KAN-233#10699; docs/STARTERIA_AUTHORITY.md; docs/governance/STARTERIA_V2_MIGRATION_GUARDRAILS.md
+baseline: main@3038dc688965bd6dcd080a69e2587e3a9eba8867
+logic_status: ACTIVE_V2_RELEASE_EVIDENCE_SLICE
+implementation_status: IMPLEMENTED_READY_FOR_REVIEW
+visual_status: NOT_APPLICABLE
+evidence_status: LOCAL_PASS_REMOTE_BLOCKED_CONFIG
+implementation_commits: b2df66d (Manifest + contrato tests-first RED); fee7d9f (selector/spec/workflow/runbook); 7462dbc (A/B/C trazan G1-G5); 3e52fc0 (reentrada gobernada + reason codes + cierre de hallazgos)
+independent_review: R1 CHANGES_REQUIRED; R2 APPROVED at 3e52fc0 with all material findings resolved
+local_evidence: contrato/seguridad 7/7 PASS; selector Playwright lista 3 tests exactos; backend 1911/1911 PASS con 195 skips environment-gated; frontend 1104/1104 PASS; front typecheck/lint/build/YAML/diff-check PASS
+known_baseline: backend typecheck conserva TS2740 preexistente en critical-synthesis-reasoning.test.ts, archivo sin cambios respecto a main@3038dc688965bd6dcd080a69e2587e3a9eba8867
+remote_evidence: NOT_EXECUTED; e2e-staging Environment ausente según KAN-235#10698; configuración/RBAC/DB/tunnel siguen UNKNOWN hasta autorización operativa
+delivery_status: STAGING_BLOCKED_CONFIG (repositorio listo para revisión; no equivale a certificación ejecutada)
+semantic_owner: selector fail-closed, contrato de equivalencia y evidencia de certificación E2E G1-G5 en staging aislado
+classification_required: local_disposable_db | staging_remote_api_browser | staging_synthetic_provisioning
+local_disposable_boundary: las suites KAN-222/KAN-212/KAN-213/KAN-223/KAN-227/KAN-232 que importan PrismaClient permanecen sobre PostgreSQL desechable local y nunca reciben DATABASE_URL productiva
+remote_boundary: la certificación desplegada usa exclusivamente API/browser autenticados contra el tenant sintético de starteria-e2e; ningún spec remoto puede importar PrismaClient, leer DATABASE_URL, omitir credenciales mediante skip ni apuntar a producción
+required_scenarios: A (0 trabajo -> E5 -> Brief -> Lab -> Home); B (3 iniciativas -> E4 -> 1 frente/2 Briefs -> Equipo+Lab -> tercero no activado -> Home); C (25 CSV/XLSX -> revisión -> 1 frente -> Briefs selectivos -> Home)
+required_traceability: goal -> scenario -> environment -> test -> evidence -> CI; selector exacto; target full SHA; 0 skips
+allowed: STARTERIA_V2_MANIFEST.md; tests/fixtures/scripts E2E; front/e2e/prod specs API/browser; contrato estático de seguridad; invocación aditiva en .github/workflows/e2e-staging.yml; docs/e2e/E2E_STAGING_RUNBOOK.md; trazabilidad Jira/PR
+allowed_workflow_change: ejecutar el selector G1-G5 dentro del workflow e2e-staging existente y su Mailpit local; conservar sus preflights de namespace/RBAC, bootstrap/drift 77/77, SHA inmutable, tenant sintético y artefactos
+preserves: slices G1-G5; KAN-207; Core v0.2; ADR-005/008/009; PL-06; confirmación humana; tenant isolation; trazabilidad; suites locales con Prisma
+excluded: añadir KAN-232 ingenuamente a npm run test:e2e:prod; conectar PrismaClient o DATABASE_URL del runner a producción; backend/API/Prisma/runtime productivo; Core; Steps; Handoff; IA; entornos/DNS/secretos/infraestructura; ejecutar workflow_dispatch, staging o CD; merge/deploy; gastos IA
+stop_conditions: necesidad de cambiar runtime/backend/API/Prisma/semántica; acceso cross-namespace o productivo; credencial remota de base de datos fuera del port-forward aislado usado únicamente para provisionar el tenant sintético; escenario omitido o skip tolerado
+guardrail: V2_CHANGE_GUARDRAIL_CHECK reconciliado Proceed:YES sólo para allowed; Proceed:NO para excluded
+```
+
+Este slice certifica equivalencia observable, no reemplaza las suites locales con acceso directo a
+Prisma. Un `PASS` remoto sólo es válido con Environment autorizado, SHA completo, namespace y base
+aislados, Mailpit, RBAC fail-closed, A/B/C completos y cero skips; no acredita producción.
+
+---
+
 ## Slice PORTFOLIO_LEAD_G3_ORGANIZATION_SELECTIVE_BRIEFS (KAN-223)
 
 **Registrado:** 2026-11-07 por HU KAN-223 y auditoría técnica acotada KAN-223#10670.

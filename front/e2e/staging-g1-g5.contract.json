@@ -1,0 +1,82 @@
+{
+  "version": 1,
+  "expectedRemoteTests": 3,
+  "environments": [
+    {
+      "id": "local-postgresql-disposable",
+      "classification": "local_disposable_db",
+      "boundary": "Suites con PrismaClient directo; DATABASE_URL apunta exclusivamente a una base desechable local migrada para la ejecución."
+    },
+    {
+      "id": "starteria-e2e-remote",
+      "classification": "staging_remote_api_browser",
+      "boundary": "HTTPS, API y navegador autenticados; sin PrismaClient, DATABASE_URL, bypass de autenticación ni skips."
+    },
+    {
+      "id": "starteria-e2e-synthetic-tenant",
+      "classification": "staging_synthetic_provisioning",
+      "boundary": "Provisionamiento previo limitado a org-e2e-prod mediante port-forward a starteria-db en starteria-e2e después del gate RBAC."
+    }
+  ],
+  "scenarios": [
+    {
+      "id": "A",
+      "goals": ["G1", "G2", "G3", "G4", "G5"],
+      "journey": "0 trabajo -> E5 -> Brief confirmado -> Lab notificado por Mailpit -> Home"
+    },
+    {
+      "id": "B",
+      "goals": ["G1", "G2", "G3", "G4", "G5"],
+      "journey": "3 iniciativas -> E4 revisado -> 1 frente/2 Briefs -> Equipo+Lab -> tercero no activado -> Home"
+    },
+    {
+      "id": "C",
+      "goals": ["G1", "G2", "G3", "G4", "G5"],
+      "journey": "25 registros CSV/XLSX -> revisión -> 1 frente -> Briefs selectivos -> Home responsive"
+    }
+  ],
+  "goals": [
+    {
+      "id": "G1",
+      "localTests": ["front/e2e/kan222-g1-context-copilot.spec.ts"],
+      "remoteScenarios": ["A", "B", "C"],
+      "remoteEvidence": "draft/confirm E1, E2 anchor y reentrada autenticada"
+    },
+    {
+      "id": "G2",
+      "localTests": [
+        "front/e2e/kan212-g2a-navigation.spec.ts",
+        "front/e2e/kan213-g2b-analysis-review.spec.ts"
+      ],
+      "remoteScenarios": ["A", "B", "C"],
+      "remoteEvidence": "A prueba NO_EXISTING_WORK_ELIGIBLE; B/C prueban intake manual/importado, análisis E4, disposición humana y ANALYZED_WORK_ELIGIBLE antes de E5"
+    },
+    {
+      "id": "G3",
+      "localTests": [
+        "front/e2e/p12-r1-pl04-organization-runtime.spec.ts",
+        "front/e2e/p12-r1-challenge-brief-runtime.spec.ts",
+        "front/e2e/kan232-g5-home-final.spec.ts"
+      ],
+      "remoteScenarios": ["A", "B", "C"],
+      "remoteEvidence": "propuesta de un frente, materialización humana y BriefVersion CONFIRMED"
+    },
+    {
+      "id": "G4",
+      "localTests": [
+        "front/e2e/kan227-portfolio-lab-request.spec.ts",
+        "front/e2e/kan232-g5-home-final.spec.ts"
+      ],
+      "remoteScenarios": ["A", "B", "C"],
+      "remoteEvidence": "Lab real contra Mailpit y, en B, invitación Equipo aceptada por SMTP"
+    },
+    {
+      "id": "G5",
+      "localTests": ["front/e2e/kan232-g5-home-final.spec.ts"],
+      "remoteScenarios": ["A", "B", "C"],
+      "remoteEvidence": "read-model y tabla Home con estado factual, reentrada y viewport móvil"
+    }
+  ],
+  "remoteTests": ["front/e2e/prod/goals-g1-g5-staging.spec.ts"],
+  "syntheticProvisioning": ["backend/scripts/e2e-prod-tenant.ts"]
+}
