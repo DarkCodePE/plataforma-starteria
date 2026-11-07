@@ -3,7 +3,7 @@ import { Prisma } from '@prisma/client';
 import { AppError } from '../../shared/errors/AppError';
 import { mailer, sendMailWithReceipt, type MailDeliveryReceipt } from '../../shared/mail/mailer';
 
-const LAB_RECIPIENTS = [
+export const LAB_RECIPIENTS = [
   'fabio.merino.97@gmail.com',
   'orlandokuanb@gmail.com',
 ] as const;
