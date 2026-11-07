@@ -478,7 +478,7 @@ logic_status: ACTIVE_V2_SLICE
 implementation_status: IMPLEMENTED_READY_FOR_REVIEW
 visual_status: V2_TARGET_DEFINED_BY_KAN_241
 evidence_status: LOCAL_PASS_CI_PENDING
-implementation_commits: 40d2978 (tests-first + Manifest); 8e01f6f (adaptive conversation, persistence and E1→E2→E3); c9df4f6 (independent-review fixes: dirty guard, post-save advance, timeout and disclosure accessibility)
+implementation_commits: 40d2978 (tests-first + Manifest); 8e01f6f (adaptive conversation, persistence and E1→E2→E3); c9df4f6 (independent-review fixes: dirty guard, post-save advance, timeout and disclosure accessibility); 675ff96 (session-scoped stale-response isolation)
 semantic_owner: conversación frontend E1 de contexto empresarial y transición explícita E1→E2→E3
 allowed: frontend Portfolio Bootstrap E1/E2 navigation; preguntas deterministas adaptadas a hechos declarados; intención unknown/not_applicable persistida mediante el payload E1 existente; síntesis editable plegable; guardado y confirmación explícitos; errores/timeout/retry visibles; tests React y E2E autenticado sobre PostgreSQL desechable; ajuste documental del Manifest
 required_scenarios: cafetería sin área/equipo/experiencia formal; empresa con procesos formales; desconocidos/no aplica; reentrada; guardar/confirmar sin pérdida; transición explícita E1→E2→E3; errores y timeout visibles
@@ -490,8 +490,8 @@ preserves: relación Company opcional; versionado/provenance; CAS; idempotencia;
 excluded: backend/API/Prisma; Core; Steps; Handoff; IA/model/provider/prompt/runtime; infraestructura; secretos; gastos IA; datos productivos; merge/deploy
 stop_conditions: cualquier necesidad de ampliar el contrato backend/Prisma, cambiar autoridad/cardinalidad Core, crear una inferencia productiva o alterar gates E5+
 tests_required: KAN241-CA01..CA08 tests-first; regresiones KAN-221/222 y G1/G2; E2E autenticado con DB desechable; lint; typecheck; build; revisión independiente; CI
-local_evidence: focal frontend 72/72 PASS; full frontend PASS; authenticated Playwright 3/3 PASS over disposable PostgreSQL with 77/77 migrations; KAN-221 PostgreSQL integration 5/5 PASS and 0 skips; lint PASS; typecheck:front PASS; build PASS; git diff --check PASS
-independent_review: first pass CHANGES_REQUESTED on 8e01f6f; all material findings resolved in c9df4f6; final recheck requested before PR
+local_evidence: focal frontend 73/73 PASS; full frontend PASS; authenticated Playwright 3/3 PASS over disposable PostgreSQL with 77/77 migrations; KAN-221 PostgreSQL integration 5/5 PASS and 0 skips; lint PASS; typecheck:front PASS; build PASS; git diff --check PASS
+independent_review: first pass CHANGES_REQUESTED on 8e01f6f; original findings resolved in c9df4f6; second-pass stale-session finding resolved in 675ff96; final recheck requested before PR
 known_baseline_note: combined local typecheck reaches an unrelated backend Zod type error in portfolio-entry-runtime/critical-synthesis-reasoning.test.ts; this slice changes no backend file and CI remains authoritative
 guardrail: V2_CHANGE_GUARDRAIL_CHECK Proceed YES sólo para allowed; Proceed NO para excluded
 ```
