@@ -491,7 +491,7 @@ excluded: backend/API/Prisma; Core; Steps; Handoff; IA/model/provider/prompt/run
 stop_conditions: cualquier necesidad de ampliar el contrato backend/Prisma, cambiar autoridad/cardinalidad Core, crear una inferencia productiva o alterar gates E5+
 tests_required: KAN241-CA01..CA08 tests-first; regresiones KAN-221/222 y G1/G2; E2E autenticado con DB desechable; lint; typecheck; build; revisión independiente; CI
 local_evidence: focal frontend 73/73 PASS; full frontend PASS; authenticated Playwright 3/3 PASS over disposable PostgreSQL with 77/77 migrations; KAN-221 PostgreSQL integration 5/5 PASS and 0 skips; lint PASS; typecheck:front PASS; build PASS; git diff --check PASS
-independent_review: first pass CHANGES_REQUESTED on 8e01f6f; original findings resolved in c9df4f6; second-pass stale-session finding resolved in 675ff96; final recheck requested before PR
+independent_review: APPROVED on 1d9c490 after original findings were resolved in c9df4f6 and the second-pass stale-session finding was resolved in 675ff96
 known_baseline_note: combined local typecheck reaches an unrelated backend Zod type error in portfolio-entry-runtime/critical-synthesis-reasoning.test.ts; this slice changes no backend file and CI remains authoritative
 guardrail: V2_CHANGE_GUARDRAIL_CHECK Proceed YES sólo para allowed; Proceed NO para excluded
 ```
