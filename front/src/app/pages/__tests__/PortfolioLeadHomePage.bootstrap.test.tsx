@@ -10,6 +10,17 @@ const getCurrent = vi.fn();
 const getHome = vi.fn();
 const openAdditional = vi.fn();
 
+vi.mock('../../../features/portfolio-lead/bootstrap/state/usePortfolioBootstrapContext', () => ({
+  usePortfolioBootstrapContext: () => ({
+    review: null,
+    status: 'idle',
+    error: null,
+    saveDraft: vi.fn(),
+    confirm: vi.fn(),
+    retry: vi.fn(),
+  }),
+}));
+
 vi.mock('../../../features/portfolio-lead/bootstrap/services/portfolioBootstrapClient', () => ({
   createOrReusePortfolioBootstrapSession: (...args: unknown[]) => createOrReuse(...args),
   createOrReuseDirectPortfolioBootstrapSession: (...args: unknown[]) => createDirect(...args),

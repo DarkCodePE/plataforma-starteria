@@ -3,6 +3,12 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { usePortfolioBootstrap } from '../usePortfolioBootstrap';
 import { makeBootstrap } from '../../testing/bootstrapFixtures';
 
+const useContext = vi.hoisted(() => vi.fn());
+
+vi.mock('../usePortfolioBootstrapContext', () => ({
+  usePortfolioBootstrapContext: (...args: unknown[]) => useContext(...args),
+}));
+
 const createOrReuse = vi.fn();
 const createDirect = vi.fn();
 const getCurrent = vi.fn();
@@ -55,6 +61,14 @@ vi.mock('../../services/portfolioBootstrapClient', () => ({
 describe('usePortfolioBootstrap', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    useContext.mockReturnValue({
+      review: null,
+      status: 'idle',
+      error: null,
+      saveDraft: vi.fn(),
+      confirm: vi.fn(),
+      retry: vi.fn(),
+    });
     createDirect.mockResolvedValue(makeBootstrap('anchor_insufficient'));
     getCurrent.mockResolvedValue(makeBootstrap('anchor_confirmed'));
     createOrReuse.mockResolvedValue(makeBootstrap('anchor_sufficient'));

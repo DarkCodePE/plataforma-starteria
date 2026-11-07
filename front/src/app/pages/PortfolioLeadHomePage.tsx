@@ -122,6 +122,8 @@ function OrdinaryPortfolioLeadHomePage() {
         organizationError={bootstrap.organizationError} onSaveOrganizationProposal={bootstrap.saveOrganizationProposal}
         onConfirmOrganizationProposal={bootstrap.confirmOrganizationProposal} onNavigate={navigate}
         initialAssignmentTarget={assignmentTarget} onOpenAssignment={openAssignment} onCompleteSetup={finishSetup}
+        contextReview={bootstrap.contextReview} contextStatus={bootstrap.contextStatus} contextError={bootstrap.contextError}
+        onSaveContextDraft={bootstrap.saveContextDraft} onConfirmContext={bootstrap.confirmContext} onRetryContext={bootstrap.retryContext}
       />
     </div>;
   }
