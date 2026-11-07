@@ -110,12 +110,12 @@ test.describe('KAN-222 G1 contextual Copilot V2_CONFORMANCE', () => {
     await page.reload();
     await expect(page.getByTestId('portfolio-bootstrap-work-intake')).toBeVisible({ timeout: 20_000 });
 
-    await page.getByRole('button', { name: /1 Contexto/i }).click();
+    await page.getByRole('button', { name: /Contexto/i }).click();
     await page.getByLabel('Situación actual').fill('Corrección pendiente del contexto');
     await page.getByRole('button', { name: 'Guardar síntesis' }).click();
     await expect(page.getByText('Corrección pendiente de reconfirmación')).toBeVisible();
     await page.reload();
-    await page.getByRole('button', { name: /1 Contexto/i }).click();
+    await page.getByRole('button', { name: /Contexto/i }).click();
     await expect(page.getByText('Corrección pendiente de reconfirmación')).toBeVisible();
     const review = await prisma.portfolioBootstrapContextReview.findUniqueOrThrow({ where: { bootstrapSessionId: session.id } });
     expect(review.draftJson.situation.value).toBe('Corrección pendiente del contexto');
@@ -129,7 +129,7 @@ test.describe('KAN-222 G1 contextual Copilot V2_CONFORMANCE', () => {
     expect(reconfirmed.status(), await reconfirmed.text()).toBe(200);
     expect(reconfirmed.request().postDataJSON()).toEqual({ expectedVersion: 3 });
     await page.reload();
-    await page.getByRole('button', { name: /1 Contexto/i }).click();
+    await page.getByRole('button', { name: /Contexto/i }).click();
     await expect(page.getByLabel('Situación actual')).toHaveValue('Corrección pendiente del contexto');
     await expect(page.getByText('Contexto confirmado')).toBeVisible();
     const finalReview = await prisma.portfolioBootstrapContextReview.findUniqueOrThrow({ where: { bootstrapSessionId: session.id } });
