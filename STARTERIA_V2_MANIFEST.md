@@ -263,6 +263,7 @@ required_history: el audit único congela summary PL-06, labSummary, completionR
 required_overview: Portfolio Overview proyecta la solicitud Lab owner/tenant-scoped con estado real; NOTIFIED se presenta como contacto pendiente, nunca como reunión, lectura o desarrollo confirmado
 allowed_backend: PortfolioSetupCompletionService y sus contratos/DTO/router tests; lectura aditiva owner/tenant-scoped de PortfolioLabRequest en Portfolio Home; tests unitarios, HTTP y PostgreSQL
 allowed_frontend: UX de finalización Lab-only/Equipo/BOTH y proyección factual en Portfolio Overview; cliente tipado; tests React y E2E autenticado
+allowed_ci: invocación aditiva del test PostgreSQL KAN-230 en el job existente, reutilizando la base desechable ya migrada; sin servicios, secretos ni infraestructura nuevos
 allowed_docs: reconciliación y cierre de este slice en STARTERIA_V2_MANIFEST.md; trazabilidad Jira/PR
 reuse_required: PortfolioLabRequest KAN-226; PortfolioLabRequestPanel KAN-227; ChallengeActivationBrief/Version de ADR-008; materializaciones canónicas de la sesión; completion CAS/idempotencia/audit existentes
 preserves: KAN-207 sin cambios; PL-06 y ADR-005/008/009 sin cambios; autoridad humana; tenant isolation; historial; openAdditionalFront sólo tras cierre real
