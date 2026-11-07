@@ -41,7 +41,8 @@ describe('KAN-236/KAN-237 G1-G5 isolated staging certification contract', () => 
     ]);
     expect(contract.goals.map(({ id }) => id)).toEqual(['G1', 'G2', 'G3', 'G4', 'G5']);
     expect(contract.scenarios.map(({ id }) => id)).toEqual(['A', 'B', 'C']);
-    expect(contract.scenarios.every(({ goals }) => goals.length > 0)).toBe(true);
+    expect(contract.scenarios.every(({ goals }) =>
+      JSON.stringify(goals) === JSON.stringify(['G1', 'G2', 'G3', 'G4', 'G5']))).toBe(true);
     expect(contract.goals.every(({ localTests, remoteScenarios }) =>
       localTests.length > 0 && remoteScenarios.length > 0)).toBe(true);
     expect(contract.goals.find(({ id }) => id === 'G5')?.localTests)

@@ -21,7 +21,7 @@
   "scenarios": [
     {
       "id": "A",
-      "goals": ["G1", "G3", "G4", "G5"],
+      "goals": ["G1", "G2", "G3", "G4", "G5"],
       "journey": "0 trabajo -> E5 -> Brief confirmado -> Lab notificado por Mailpit -> Home"
     },
     {
@@ -48,7 +48,7 @@
         "front/e2e/kan212-g2a-navigation.spec.ts",
         "front/e2e/kan213-g2b-analysis-review.spec.ts"
       ],
-      "remoteScenarios": ["B", "C"],
+      "remoteScenarios": ["A", "B", "C"],
       "remoteEvidence": "intake manual/importado, análisis E4 y disposición humana antes de E5"
     },
     {

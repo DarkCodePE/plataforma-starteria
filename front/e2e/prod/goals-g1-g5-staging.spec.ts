@@ -390,7 +390,7 @@ async function openHome(page: Page) {
   await expect(page.getByRole('table', { name: 'Seguimiento operativo del portafolio' })).toBeVisible();
 }
 
-test('A · G1/G3/G4/G5 · 0 trabajo → E5 → Brief → Lab/Mailpit → Home', async ({ page }) => {
+test('A · G1-G5 · 0 trabajo → E5 → Brief → Lab/Mailpit → Home', async ({ page }) => {
   const scenario = await beginScenario('A');
   await command('post', `/api/v1/portfolio-bootstrap/sessions/${scenario.sessionId}/work-items/none`, {
     token: lead.token,
