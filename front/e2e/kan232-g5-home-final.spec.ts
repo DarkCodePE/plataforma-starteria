@@ -1,4 +1,5 @@
 import { PrismaClient } from '@prisma/client';
+import { createHash } from 'node:crypto';
 import { expect, request as pwRequest, test, type APIRequestContext, type Page } from '@playwright/test';
 import * as XLSX from 'xlsx';
 
@@ -45,9 +46,28 @@ async function registerViewer(api: APIRequestContext, label: string) {
     data: { email, password, name: `KAN-232 viewer ${label}`, role: 'participante' },
   });
   expect(registration.status(), await registration.text()).toBe(201);
+  const userId = (await registration.json()).data.user.id as string;
   const login = await api.post('/api/v1/auth/login', { data: { email, password } });
   expect(login.status(), await login.text()).toBe(200);
-  return { token: accessToken(await login.json()) };
+  return { email, password, userId, token: accessToken(await login.json()) };
+}
+
+async function grantPortfolioReadInOrganization(
+  api: APIRequestContext,
+  viewer: Awaited<ReturnType<typeof registerViewer>>,
+  organizationId: string,
+) {
+  await prisma.user.update({
+    where: { id: viewer.userId },
+    data: { role: 'portfolio_lead', roles: ['portfolio_lead'], organizationId, isActive: true },
+  });
+  await prisma.organizationMember.create({ data: { userId: viewer.userId, organizationId, role: 'member' } });
+  await prisma.organizationPortfolioAccessGrant.create({
+    data: { userId: viewer.userId, organizationId, capability: 'portfolio:read' },
+  });
+  const login = await api.post('/api/v1/auth/login', { data: { email: viewer.email, password: viewer.password } });
+  expect(login.status(), await login.text()).toBe(200);
+  return accessToken(await login.json());
 }
 
 async function loginUi(page: Page, lead: Pick<Lead, 'email' | 'password'>) {
@@ -87,30 +107,21 @@ async function materializeOrganization(
   sessionId: string,
   challengeCount: number,
   relatedInitiativeIds: string[][] = [],
+  ungroupedInitiativeIds: string[] = [],
 ) {
   const auth = bearer(lead.token);
-  const frontResponse = await api.post('/api/v1/portfolio/strategic-fronts', {
-    headers: auth,
-    data: { name: `Frente G5 ${lead.stamp}`, strategicObjective: 'Mover activación con decisiones trazables.' },
-  });
-  expect(frontResponse.status(), await frontResponse.text()).toBe(201);
-  const frontId = (await frontResponse.json()).data.id as string;
-  const challenges: CanonicalChallenge[] = [];
-  for (let index = 0; index < challengeCount; index += 1) {
-    const response = await api.post(`/api/v1/portfolio/strategic-fronts/${frontId}/challenges`, {
-      headers: auth,
-      data: {
-        title: `Reto G5 ${index + 1} ${lead.stamp}`,
-        objective: `Decidir la intervención selectiva ${index + 1}.`,
-        constraints: 'Mantener confirmación humana y trazabilidad.',
-        openQuestions: 'Falta observar impacto real.',
-      },
+  if (relatedInitiativeIds.flat().length > 0 || ungroupedInitiativeIds.length > 0) {
+    const analyzed = await api.post(`/api/v1/portfolio-bootstrap/sessions/${sessionId}/analyze`, {
+      headers: { ...auth, 'Idempotency-Key': `kan232-analysis-${lead.stamp}` }, data: {},
     });
-    expect(response.status(), await response.text()).toBe(201);
-    challenges.push({ challengeId: (await response.json()).data.id as string });
+    expect(analyzed.status(), await analyzed.text()).toBe(200);
   }
+  const eligibility = await api.get(`/api/v1/portfolio-bootstrap/sessions/${sessionId}/e5-eligibility`, { headers: auth });
+  expect(eligibility.status(), await eligibility.text()).toBe(200);
+  expect((await eligibility.json()).data.allowed).toBe(true);
+
   const frontCandidateId = `front-${lead.stamp}`;
-  const proposalChallenges = challenges.map((challenge, index) => ({
+  const proposalChallenges = Array.from({ length: challengeCount }, (_, index) => ({
     candidateId: `challenge-${lead.stamp}-${index}`,
     title: `Reto G5 ${index + 1} ${lead.stamp}`,
     problem: `Decisión selectiva ${index + 1} pendiente.`,
@@ -120,14 +131,10 @@ async function materializeOrganization(
     gaps: ['Falta observar impacto real.'],
     overlaps: [],
   }));
-  const proposal = await prisma.portfolioOrganizationProposal.create({
+  const saved = await api.put(`/api/v1/portfolio-bootstrap/sessions/${sessionId}/organization-proposal`, {
+    headers: auth,
     data: {
-      bootstrapSessionId: sessionId,
-      organizationId: lead.organizationId,
-      version: 1,
-      status: 'materialized',
-      sourceVersion: `kan232-${lead.stamp}`,
-      payloadHash: `kan232-${lead.stamp}`,
+      expectedVersion: 0,
       payload: {
         summary: 'Organización G5 confirmada.',
         fronts: [{
@@ -140,34 +147,30 @@ async function materializeOrganization(
         }],
         crossCuttingInitiativeIds: [],
         outsideObjectiveInitiativeIds: [],
-        ungroupedInitiativeIds: [],
+        ungroupedInitiativeIds,
       },
-      sourceRefs: { source: 'KAN-232 authenticated E2E' },
-      provenance: { source: 'HUMAN_CONFIRMED' },
-      reviewedBy: lead.userId,
     },
   });
-  await prisma.portfolioOrganizationMaterialization.create({
-    data: {
-      proposalId: proposal.id,
-      bootstrapSessionId: sessionId,
-      organizationId: lead.organizationId,
-      proposalVersion: 1,
-      approvalFingerprint: `approval-${lead.stamp}`,
-      idempotencyKey: `materialize-${lead.stamp}`,
-      canonicalMappings: {
-        fronts: [{ candidateId: frontCandidateId, canonicalId: frontId }],
-        challenges: challenges.map((challenge, index) => ({
-          candidateId: proposalChallenges[index].candidateId,
-          canonicalId: challenge.challengeId,
-          relatedInitiativeIds: relatedInitiativeIds[index] ?? [],
-        })),
-        specialDestinations: { crossCuttingInitiativeIds: [], outsideObjectiveInitiativeIds: [], ungroupedInitiativeIds: [] },
-      },
-      confirmedBy: lead.userId,
-    },
+  expect(saved.status(), await saved.text()).toBe(200);
+  const proposalVersion = (await saved.json()).data.version as number;
+  const confirmed = await api.post(`/api/v1/portfolio-bootstrap/sessions/${sessionId}/organization-proposal/confirm`, {
+    headers: { ...auth, 'Idempotency-Key': `kan232-materialize-${lead.stamp}` },
+    data: { proposalVersion },
   });
-  return { frontId, challenges };
+  expect(confirmed.status(), await confirmed.text()).toBe(200);
+  const mappings = (await confirmed.json()).data.materialization.canonicalMappings as {
+    fronts: Array<{ candidateId: string; canonicalId: string }>;
+    challenges: Array<{ candidateId: string; canonicalId: string; relatedInitiativeIds: string[] }>;
+    specialDestinations: { ungroupedInitiativeIds: string[] };
+  };
+  expect(mappings.challenges).toHaveLength(challengeCount);
+  expect(mappings.specialDestinations.ungroupedInitiativeIds).toEqual(ungroupedInitiativeIds);
+  return {
+    frontId: mappings.fronts[0].canonicalId,
+    challenges: proposalChallenges.map((candidate) => ({
+      challengeId: mappings.challenges.find((mapping) => mapping.candidateId === candidate.candidateId)!.canonicalId,
+    })),
+  };
 }
 
 async function confirmBrief(api: APIRequestContext, lead: Lead, challenge: CanonicalChallenge, suffix: string) {
@@ -243,10 +246,17 @@ async function acceptLabNotification(lead: Lead, requestId: string, suffix: stri
   });
 }
 
-async function createRejectedTeamAssignment(api: APIRequestContext, lead: Lead, brief: Required<CanonicalChallenge>) {
-  const invitedEmail = `owner-${lead.stamp}@starteria.test`;
+async function createTeamAssignment(
+  api: APIRequestContext,
+  lead: Lead,
+  brief: Required<CanonicalChallenge>,
+  outcome: 'accept' | 'reject',
+  suffix: string,
+) {
+  const recipient = await registerViewer(api, `team-${suffix}`);
+  const invitedEmail = recipient.email;
   const response = await api.post(`/api/v1/portfolio/challenges/${brief.challengeId}/handoff-assignments`, {
-    headers: { ...bearer(lead.token), 'Idempotency-Key': `kan232-assignment-${lead.stamp}` },
+    headers: { ...bearer(lead.token), 'Idempotency-Key': `kan232-assignment-${lead.stamp}-${suffix}` },
     data: {
       targetKind: 'CHALLENGE', briefId: brief.briefId, briefVersionId: brief.briefVersionId,
       contextNote: 'Encargo trazable G5.', invitedEmailNormalized: invitedEmail,
@@ -256,7 +266,7 @@ async function createRejectedTeamAssignment(api: APIRequestContext, lead: Lead, 
   expect(response.status(), await response.text()).toBe(201);
   const assignment = (await response.json()).data.assignment;
   const stale = await api.patch(`/api/v1/portfolio/handoff-assignments/${assignment.id}/preparation`, {
-    headers: { ...bearer(lead.token), 'Idempotency-Key': `kan232-stale-${lead.stamp}` },
+    headers: { ...bearer(lead.token), 'Idempotency-Key': `kan232-stale-${lead.stamp}-${suffix}` },
     data: {
       expectedVersion: 999,
       contextNote: 'Intento stale que no debe aplicar.',
@@ -270,25 +280,55 @@ async function createRejectedTeamAssignment(api: APIRequestContext, lead: Lead, 
     data: {
       assignmentId: assignment.id,
       status: 'SUCCEEDED',
-      providerMessageRef: `kan232-team-smtp-${lead.stamp}`,
-      idempotencyKey: `kan232-team-send-${lead.stamp}`,
-      requestFingerprint: `kan232-team-fingerprint-${lead.stamp}`,
+      providerMessageRef: `kan232-team-smtp-${lead.stamp}-${suffix}`,
+      idempotencyKey: `kan232-team-send-${lead.stamp}-${suffix}`,
+      requestFingerprint: `kan232-team-fingerprint-${lead.stamp}-${suffix}`,
     },
   });
   await prisma.portfolioHandoffAssignment.update({
     where: { id: assignment.id },
     data: {
-      state: 'REJECTED', sentAt: new Date(), rejectedAt: new Date(), rejectedBy: invitedEmail,
-      rejectionReason: 'No hay capacidad disponible.', version: { increment: 1 },
+      state: 'SENT', sentAt: new Date(), version: { increment: 1 },
     },
   });
   await prisma.portfolioHandoffProjection.update({
     where: { assignmentId: assignment.id },
     data: {
-      handoffState: 'REJECTED', rejectedAt: new Date(), rejectionReason: 'No hay capacidad disponible.',
-      lastMaterialEvent: 'assignment_rejected', projectionVersion: { increment: 1 }, generatedAt: new Date(),
+      handoffState: 'SENT', lastMaterialEvent: 'invitation_sent',
+      projectionVersion: { increment: 1 }, generatedAt: new Date(),
     },
   });
+  const invitationToken = `kan232-invitation-${lead.stamp}-${suffix}`;
+  await prisma.portfolioHandoffInvitation.create({
+    data: {
+      assignmentId: assignment.id,
+      tokenHash: createHash('sha256').update(invitationToken).digest('hex'),
+    },
+  });
+  const claimed = await api.post('/api/v1/public/handoff-invitations/claim', {
+    headers: bearer(recipient.token), data: { token: invitationToken },
+  });
+  expect(claimed.status(), await claimed.text()).toBe(200);
+  expect((await claimed.json()).data.identityClaimStatus).toBe('MATCHED');
+  const responseHeaders = {
+    ...bearer(recipient.token),
+    'Idempotency-Key': `kan232-${outcome}-${lead.stamp}-${suffix}`,
+  };
+  const transition = outcome === 'accept'
+    ? await api.post(`/api/v1/handoff/assignments/${assignment.id}/accept`, {
+      headers: responseHeaders, data: { expectedVersion: 2 },
+    })
+    : await api.post(`/api/v1/handoff/assignments/${assignment.id}/reject`, {
+      headers: responseHeaders, data: { expectedVersion: 2, reason: 'No hay capacidad disponible.' },
+    });
+  expect(transition.status(), await transition.text()).toBe(200);
+  const transitioned = (await transition.json()).data;
+  expect(transitioned.state).toBe(outcome === 'accept' ? 'ACCEPTED' : 'REJECTED');
+  if (outcome === 'accept') {
+    expect(transitioned.initiativeId).toBeNull();
+    expect(await prisma.portfolioHandoffAssignment.findUniqueOrThrow({ where: { id: assignment.id } }))
+      .toMatchObject({ state: 'ACCEPTED', targetKind: 'CHALLENGE', initiativeId: null });
+  }
   return assignment.id as string;
 }
 
@@ -395,6 +435,10 @@ test.describe('KAN-232 G5 authenticated PostgreSQL certification', () => {
       headers: bearer(viewer.token), data: { name: 'No autorizado' }, failOnStatusCode: false,
     });
     expect(forbidden.status()).toBe(403);
+    const forbiddenHome = await api.get('/api/v1/portfolio/home', {
+      headers: bearer(viewer.token), failOnStatusCode: false,
+    });
+    expect(forbiddenHome.status()).toBe(403);
 
     await loginUi(page, lead);
     await expect(page.getByTestId('portfolio-overview-home')).toBeVisible({ timeout: 20_000 });
@@ -427,16 +471,25 @@ test.describe('KAN-232 G5 authenticated PostgreSQL certification', () => {
       where: { bootstrapSessionId: sessionId }, orderBy: { createdAt: 'asc' },
     });
     expect(workItems).toHaveLength(3);
-    const structure = await materializeOrganization(api, lead, sessionId, 2, [[workItems[0].id], [workItems[1].id]]);
+    const sameTenantLead = await registerViewer(api, 'same-tenant-lead');
+    const sameTenantToken = await grantPortfolioReadInOrganization(api, sameTenantLead, lead.organizationId);
+    const ownerScopedHome = await api.get('/api/v1/portfolio/home', { headers: bearer(sameTenantToken) });
+    expect(ownerScopedHome.status(), await ownerScopedHome.text()).toBe(200);
+    expect((await ownerScopedHome.json()).data.workItems).toEqual([]);
+    const structure = await materializeOrganization(api, lead, sessionId, 2, [[workItems[0].id], [workItems[1].id]], [workItems[2].id]);
     const teamBrief = await confirmBrief(api, lead, structure.challenges[0], 'team');
     const labBrief = await confirmBrief(api, lead, structure.challenges[1], 'lab');
-    await createRejectedTeamAssignment(api, lead, teamBrief as Required<CanonicalChallenge>);
+    const stepsBeforeAccept = await prisma.step.count();
+    await createTeamAssignment(api, lead, teamBrief as Required<CanonicalChallenge>, 'accept', 'accepted');
+    expect(await prisma.step.count()).toBe(stepsBeforeAccept);
+    await createTeamAssignment(api, lead, labBrief as Required<CanonicalChallenge>, 'reject', 'rejected');
     const labRequestId = await createLabRequest(api, lead, labBrief as Required<CanonicalChallenge>, 'b');
     await acceptLabNotification(lead, labRequestId, 'b');
     await completeSetup(api, lead, sessionId, 'BOTH');
 
     await loginUi(page, lead);
     await expect(page.getByTestId('portfolio-overview-home')).toBeVisible({ timeout: 20_000 });
+    await expect(page.getByText('Aceptada', { exact: true }).first()).toBeVisible();
     await expect(page.getByText('Rechazada', { exact: true }).first()).toBeVisible();
     await expect(page.getByText('Contacto pendiente', { exact: true }).first()).toBeVisible();
     const filter = page.getByRole('searchbox', { name: 'Filtrar trabajo y encargos' });
@@ -468,7 +521,11 @@ test.describe('KAN-232 G5 authenticated PostgreSQL certification', () => {
       assignments: await prisma.portfolioHandoffAssignment.count({ where: { organizationId: lead.organizationId } }),
       steps: await prisma.step.count(),
     };
-    const structure = await materializeOrganization(api, lead, sessionId, 2, [[workItems[0].id], [workItems[1].id]]);
+    const structure = await materializeOrganization(
+      api, lead, sessionId, 2,
+      [[workItems[0].id], [workItems[1].id]],
+      workItems.slice(2).map((item) => item.id),
+    );
     const selectedBrief = await confirmBrief(api, lead, structure.challenges[0], 'c-selected');
     await confirmBrief(api, lead, structure.challenges[1], 'c-second-selected');
     const requestId = await createLabRequest(api, lead, selectedBrief as Required<CanonicalChallenge>, 'c');
