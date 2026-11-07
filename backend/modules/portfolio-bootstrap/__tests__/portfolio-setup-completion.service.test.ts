@@ -4,7 +4,28 @@ import { PortfolioSetupCompletionService } from '../portfolio-setup-completion.s
 
 const permissions = permissionsForRoles(['portfolio_lead']);
 
-function fixture(options: { sent?: number; created?: number; failed?: number } = {}) {
+function validLabRequest(overrides: Record<string, unknown> = {}) {
+  return {
+    id: 'lab-request-1',
+    organizationId: 'org-1',
+    challengeId: 'challenge-1',
+    briefId: 'brief-lab-1',
+    briefVersionId: 'brief-version-lab-1',
+    status: 'REQUESTED',
+    notificationStatus: 'NOTIFIED',
+    briefVersion: {
+      id: 'brief-version-lab-1', organizationId: 'org-1', challengeId: 'challenge-1',
+      briefId: 'brief-lab-1', status: 'CONFIRMED',
+    },
+    notificationAttempts: [{
+      status: 'ACCEPTED',
+      acceptedRecipients: ['fabio.merino.97@gmail.com', 'orlandokuanb@gmail.com'],
+    }],
+    ...overrides,
+  };
+}
+
+function fixture(options: { sent?: number; created?: number; failed?: number; labRequests?: any[] } = {}) {
   const sent = options.sent ?? 2;
   const created = options.created ?? 2;
   const failed = options.failed ?? 0;
@@ -70,6 +91,7 @@ function fixture(options: { sent?: number; created?: number; failed?: number } =
       })),
     },
     portfolioHandoffAssignment: { findMany: vi.fn().mockResolvedValue(assignments) },
+    portfolioLabRequest: { findMany: vi.fn().mockResolvedValue(options.labRequests ?? []) },
     portfolioAnchor: { create: vi.fn().mockResolvedValue({ id: 'anchor-2' }) },
     auditLog: { create: vi.fn().mockResolvedValue({}) },
   };
@@ -87,11 +109,94 @@ describe('PortfolioSetupCompletionService', () => {
       confirmed: true, idempotencyKey: 'close-setup-1',
     });
 
-    expect(result).toMatchObject({ completed: true, summary: { sent: 2, unsent: 2, failed: 0 } });
+    expect(result).toMatchObject({
+      completed: true,
+      completionRoute: 'TEAM_SENT',
+      summary: { sent: 2, unsent: 2, failed: 0 },
+      labSummary: { notified: 0 },
+    });
     expect(tx.portfolioBootstrapSession.updateMany).toHaveBeenCalledWith(expect.objectContaining({
       where: expect.objectContaining({ id: 'setup-1', setupCompletedAt: null }),
       data: expect.objectContaining({ setupCompletedByActorId: 'lead-1', setupCompletionIdempotencyKey: 'close-setup-1' }),
     }));
+  });
+
+  it('closes Lab-only when one active request has the exact confirmed BriefVersion and both SMTP acceptances', async () => {
+    const { prisma, tx } = fixture({ sent: 0, created: 0, labRequests: [validLabRequest()] });
+    const service = new PortfolioSetupCompletionService(prisma as any, () => new Date('2026-11-07T12:00:00.000Z'));
+
+    const result = await service.complete({
+      sessionId: 'setup-1', authenticatedUserId: 'lead-1', permissions,
+      confirmed: true, idempotencyKey: 'close-lab-only',
+    });
+
+    expect(result).toMatchObject({
+      completed: true,
+      completionRoute: 'LAB_NOTIFIED',
+      summary: { sent: 0, unsent: 0, failed: 0 },
+      labSummary: { notified: 1 },
+    });
+    expect(tx.portfolioLabRequest.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({
+        organizationId: 'org-1',
+        challengeId: { in: ['challenge-1'] },
+        status: { notIn: ['CLOSED', 'NOT_PROCEEDING', 'CANCELLED'] },
+        notificationStatus: 'NOTIFIED',
+      }),
+    }));
+    expect(tx.auditLog.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({
+        action: 'portfolio_setup_completed',
+        details: expect.objectContaining({ completionRoute: 'LAB_NOTIFIED' }),
+      }),
+    }));
+  });
+
+  it('reports BOTH without folding Lab notification into the PL-06 sent summary', async () => {
+    const { prisma } = fixture({ sent: 1, created: 0, labRequests: [validLabRequest()] });
+    const service = new PortfolioSetupCompletionService(prisma as any);
+
+    const result = await service.complete({
+      sessionId: 'setup-1', authenticatedUserId: 'lead-1', permissions,
+      confirmed: true, idempotencyKey: 'close-both',
+    });
+
+    expect(result).toMatchObject({
+      completionRoute: 'BOTH',
+      summary: { sent: 1 },
+      labSummary: { notified: 1 },
+    });
+  });
+
+  it.each([
+    ['REQUESTED without notification', validLabRequest({ notificationStatus: 'PENDING' })],
+    ['failed notification', validLabRequest({ notificationStatus: 'FAILED' })],
+    ['terminal request', validLabRequest({ status: 'CLOSED' })],
+    ['foreign tenant', validLabRequest({ organizationId: 'org-2' })],
+    ['another setup challenge', validLabRequest({ challengeId: 'challenge-other' })],
+    ['draft BriefVersion', validLabRequest({ briefVersion: { id: 'brief-version-lab-1', organizationId: 'org-1', challengeId: 'challenge-1', briefId: 'brief-lab-1', status: 'DRAFT' } })],
+    ['missing first SMTP acceptance', validLabRequest({ notificationAttempts: [{ status: 'ACCEPTED', acceptedRecipients: ['orlandokuanb@gmail.com'] }] })],
+    ['failed delivery attempt', validLabRequest({ notificationAttempts: [{ status: 'FAILED', acceptedRecipients: ['fabio.merino.97@gmail.com', 'orlandokuanb@gmail.com'] }] })],
+  ])('does not close Lab-only for %s', async (_label, request) => {
+    const { prisma, tx } = fixture({ sent: 0, created: 0, labRequests: [request] });
+    const service = new PortfolioSetupCompletionService(prisma as any);
+
+    await expect(service.complete({
+      sessionId: 'setup-1', authenticatedUserId: 'lead-1', permissions,
+      confirmed: true, idempotencyKey: 'close-invalid-lab',
+    })).rejects.toMatchObject({ statusCode: 409, code: 'PORTFOLIO_SETUP_DELIVERY_REQUIRED' });
+    expect(tx.portfolioBootstrapSession.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('requires the explicit human confirmation even when Lab delivery is valid', async () => {
+    const { prisma, tx } = fixture({ sent: 0, created: 0, labRequests: [validLabRequest()] });
+    const service = new PortfolioSetupCompletionService(prisma as any);
+
+    await expect(service.complete({
+      sessionId: 'setup-1', authenticatedUserId: 'lead-1', permissions,
+      confirmed: false, idempotencyKey: 'close-without-human',
+    })).rejects.toMatchObject({ statusCode: 400, code: 'PORTFOLIO_SETUP_CONFIRMATION_REQUIRED' });
+    expect(tx.portfolioBootstrapSession.updateMany).not.toHaveBeenCalled();
   });
 
   it('uses a CAS so two concurrent confirmations persist one completion audit', async () => {
