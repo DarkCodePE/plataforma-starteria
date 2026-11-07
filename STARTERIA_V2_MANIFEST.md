@@ -209,9 +209,12 @@ technical_scope_authority: KAN-227#10678
 depends_on: PORTFOLIO_LEAD_G4_LAB_BRIEF_REQUEST (KAN-226, PR #259 merged)
 baseline: main@890464bc5fd0a1a1c15ea922fa45dfbcdc5c3822
 logic_status: ACTIVE_V2_SLICE
-implementation_status: AUTHORIZED_NOT_IMPLEMENTED
+implementation_status: KAN227_IMPLEMENTED_READY_FOR_REVIEW
 visual_status: V2_TARGET_DEFINED
-evidence_status: TESTING_REQUIRED
+evidence_status: LOCAL_VERIFIED_INDEPENDENT_REVIEW_APPROVED_CI_PENDING
+implementation_commits: 0858a30 (LAB-UX01..09 tests-first); 954b2ae (typed client + UX + authenticated E2E); 5cb7ae7 (independent-review findings closed)
+local_evidence: LAB client/panel 11/11; PL-06 + Lab focal 30/30; frontend 1097/1097; authenticated PostgreSQL E2E 1/1; KAN-226 PostgreSQL regression 6/6; lint PASS; typecheck:front PASS; build PASS
+independent_review: APPROVED after round 2; initial 3 MEDIUM findings closed in 5cb7ae7
 semantic_owner: experiencia frontend de solicitud y seguimiento Startería Lab desde ChallengeActivationBriefVersion CONFIRMED
 allowed: cliente frontend tipado para /api/v1/portfolio-lab/requests; sección Lab aditiva junto a Equipo en ChallengeAssignmentPreparationPanel o feature frontend propia; preview de Brief confirmado; consentimiento; stable Idempotency-Key; contador de abiertas; create/dedup/409; estado de notificación y retry; seguimiento/reentrada; CTA Calendly exacto; tests frontend y E2E autenticados; ajuste documental de este Manifest
 required_api_reuse: GET /portfolio-lab/requests; GET /portfolio-lab/requests/:requestId; POST /portfolio-lab/requests; POST /portfolio-lab/requests/:requestId/notification-retry
