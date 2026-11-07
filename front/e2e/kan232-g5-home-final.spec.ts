@@ -368,7 +368,17 @@ test.describe('KAN-232 G5 authenticated PostgreSQL certification', () => {
     const brief = await confirmBrief(api, lead, structure.challenges[0], 'a');
     const requestId = await createLabRequest(api, lead, brief as Required<CanonicalChallenge>, 'a');
     const failedOrPending = await prisma.portfolioLabRequest.findUniqueOrThrow({ where: { id: requestId } });
-    expect(['FAILED', 'PENDING', 'NOTIFIED']).toContain(failedOrPending.notificationStatus);
+    expect(failedOrPending.notificationStatus).toBe('FAILED');
+    const retryHeaders = { ...bearer(lead.token), 'Idempotency-Key': `kan232-retry-${lead.stamp}` };
+    const retry = await api.post(`/api/v1/portfolio-lab/requests/${requestId}/notification-retry`, {
+      headers: retryHeaders, data: {},
+    });
+    expect(retry.status(), await retry.text()).toBe(200);
+    const replayedRetry = await api.post(`/api/v1/portfolio-lab/requests/${requestId}/notification-retry`, {
+      headers: retryHeaders, data: {},
+    });
+    expect(replayedRetry.status(), await replayedRetry.text()).toBe(200);
+    expect((await replayedRetry.json()).data.idempotent).toBe(true);
     await acceptLabNotification(lead, requestId, 'a');
     await completeSetup(api, lead, sessionId, 'LAB_NOTIFIED');
 
