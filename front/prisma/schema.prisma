@@ -203,6 +203,29 @@ enum PortfolioActivationCommandType {
   UPDATE_ASSIGNMENT
 }
 
+enum PortfolioLabRequestStatus {
+  REQUESTED
+  CONTACT_PENDING
+  MEETING_SCHEDULED
+  UNDER_REVIEW
+  CLOSED
+  NOT_PROCEEDING
+  CANCELLED
+}
+
+enum PortfolioLabNotificationStatus {
+  PENDING
+  FAILED
+  NOTIFIED
+}
+
+enum PortfolioLabNotificationAttemptStatus {
+  PENDING
+  ACCEPTED
+  FAILED
+  DISABLED
+}
+
 enum SessionStatus {
   PENDING_SCHEDULE
   SCHEDULED
@@ -650,6 +673,9 @@ model User {
   activationBriefVersionsCreated ChallengeActivationBriefVersion[] @relation("ChallengeActivationBriefVersionCreatedBy")
   activationBriefVersionsConfirmed ChallengeActivationBriefVersion[] @relation("ChallengeActivationBriefVersionConfirmedBy")
   activationCommandReceipts PortfolioActivationCommandReceipt[] @relation("PortfolioActivationCommandActor")
+  portfolioLabRequestsRequested PortfolioLabRequest[] @relation("PortfolioLabRequestRequester")
+  portfolioLabRequestHistoryActors PortfolioLabRequestHistory[] @relation("PortfolioLabRequestHistoryActor")
+  portfolioLabNotificationAttemptActors PortfolioLabNotificationAttempt[] @relation("PortfolioLabNotificationAttemptActor")
   importedInitiativeLinksConfirmed PortfolioImportedInitiativeLink[] @relation("ImportedInitiativeConfirmedBy")
   importedInitiativeLinksRevoked PortfolioImportedInitiativeLink[] @relation("ImportedInitiativeRevokedBy")
   handoffMemberIdentities  PortfolioHandoffMember[] @relation("HandoffMemberUser")
@@ -1641,6 +1667,7 @@ model Challenge {
   handoffAssignments PortfolioHandoffAssignment[]
   activationBriefs ChallengeActivationBrief[]
   activationBriefVersions ChallengeActivationBriefVersion[]
+  portfolioLabRequests PortfolioLabRequest[]
   importedInitiativeLinks PortfolioImportedInitiativeLink[]
 
   @@index([strategicFrontId])
@@ -1745,6 +1772,7 @@ model ChallengeActivationBrief {
   updatedAt        DateTime  @updatedAt
 
   versions ChallengeActivationBriefVersion[]
+  portfolioLabRequests PortfolioLabRequest[]
 
   @@unique([id, organizationId])
   @@index([organizationId])
@@ -1779,6 +1807,7 @@ model ChallengeActivationBriefVersion {
   confirmedAt           DateTime?
 
   assignments PortfolioHandoffAssignment[]
+  portfolioLabRequests PortfolioLabRequest[]
 
   @@unique([briefId, versionNumber])
   @@unique([id, organizationId, challengeId], map: "ChallengeActivationBriefVersion_id_organizationId_challengeId_k")
@@ -1805,6 +1834,76 @@ model PortfolioActivationCommandReceipt {
 
   @@unique([organizationId, commandType, idempotencyKey], map: "PortfolioActivationCommandReceipt_organizationId_commandType_id")
   @@index([organizationId, createdAt])
+}
+
+// KAN-226: a durable request for human Startería Lab contact. It references the
+// exact confirmed Challenge mandate and never substitutes a PL-06 Assignment.
+model PortfolioLabRequest {
+  id                       String                         @id @default(cuid())
+  organizationId           String
+  organization             Organization                   @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  challengeId              String
+  challenge                Challenge                      @relation(fields: [challengeId], references: [id], onDelete: Restrict)
+  briefId                  String
+  brief                    ChallengeActivationBrief       @relation(fields: [briefId, organizationId], references: [id, organizationId], onDelete: Restrict)
+  briefVersionId           String
+  briefVersion             ChallengeActivationBriefVersion @relation(fields: [briefVersionId, organizationId, challengeId], references: [id, organizationId, challengeId], onDelete: Restrict)
+  requesterId              String
+  requester                User                           @relation("PortfolioLabRequestRequester", fields: [requesterId], references: [id], onDelete: Restrict)
+  consentAt                DateTime
+  consentPurpose           String
+  status                   PortfolioLabRequestStatus      @default(REQUESTED)
+  notificationStatus       PortfolioLabNotificationStatus @default(PENDING)
+  idempotencyKeyHash       String
+  payloadHash              String
+  providerMessageRef       String?
+  lastNotificationError    String?
+  terminalAt               DateTime?
+  version                  Int                            @default(1)
+  createdAt                DateTime                       @default(now())
+  updatedAt                DateTime                       @updatedAt
+
+  notificationAttempts PortfolioLabNotificationAttempt[]
+  history              PortfolioLabRequestHistory[]
+
+  @@unique([organizationId, requesterId, idempotencyKeyHash], map: "PortfolioLabRequest_org_actor_idempotency_key")
+  @@index([organizationId, status, createdAt])
+  @@index([challengeId, briefVersionId])
+  @@index([requesterId, createdAt])
+}
+
+model PortfolioLabNotificationAttempt {
+  id                 String                                @id @default(cuid())
+  requestId          String
+  request            PortfolioLabRequest                   @relation(fields: [requestId], references: [id], onDelete: Restrict)
+  actorId            String
+  actor              User                                  @relation("PortfolioLabNotificationAttemptActor", fields: [actorId], references: [id], onDelete: Restrict)
+  idempotencyKeyHash String
+  payloadHash        String
+  status             PortfolioLabNotificationAttemptStatus @default(PENDING)
+  providerMessageRef String?
+  errorCode          String?
+  createdAt          DateTime                              @default(now())
+  completedAt        DateTime?
+
+  @@unique([requestId, idempotencyKeyHash], map: "PortfolioLabNotificationAttempt_request_idempotency_key")
+  @@index([requestId, createdAt])
+}
+
+model PortfolioLabRequestHistory {
+  id         String                     @id @default(cuid())
+  requestId  String
+  request    PortfolioLabRequest        @relation(fields: [requestId], references: [id], onDelete: Restrict)
+  actorId    String
+  actor      User                       @relation("PortfolioLabRequestHistoryActor", fields: [actorId], references: [id], onDelete: Restrict)
+  eventType  String
+  fromStatus PortfolioLabRequestStatus?
+  toStatus   PortfolioLabRequestStatus?
+  metadata   Json
+  createdAt  DateTime                   @default(now())
+
+  @@index([requestId, createdAt])
+  @@index([actorId, createdAt])
 }
 
 model PortfolioHandoffSemanticEvent {
@@ -2663,6 +2762,7 @@ model Organization {
   portfolioAccessGrants OrganizationPortfolioAccessGrant[]
   projects        Project[]
   importedInitiativeLinks PortfolioImportedInitiativeLink[]
+  portfolioLabRequests PortfolioLabRequest[]
   stepReasoningSessions StepReasoningSession[]
 
   @@index([cohortId])
@@ -4321,3 +4421,4 @@ model PortfolioLearning {
   @@index([strategicFrontId])
   @@index([decidedAt])
 }
+

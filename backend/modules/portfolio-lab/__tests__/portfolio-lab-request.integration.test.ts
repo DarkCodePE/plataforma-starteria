@@ -86,7 +86,7 @@ async function seedBrief(
       organizationId,
       briefId,
       challengeId,
-      versionNumber: status === 'CONFIRMED' ? 1 : 2,
+      versionNumber: 1,
       status,
       intent: `Resolver ${challengeId}`,
       scope: 'Solicitud manual Startería Lab',
@@ -291,6 +291,10 @@ suite('KAN-226 PortfolioLabRequest PostgreSQL integration', () => {
       consentAccepted: true,
       consentPurpose: 'Solicitar apoyo humano a Startería Lab con este Brief confirmado.',
     };
+    await request(app).post('/api/v1/portfolio-lab/requests').set(auth).set('Idempotency-Key', 'kan226-http-client-recipients').send({
+      ...body,
+      recipients: ['attacker@example.test'],
+    }).expect(400);
     const created = await request(app).post('/api/v1/portfolio-lab/requests').set(auth).set('Idempotency-Key', 'kan226-http-create').send(body).expect(201);
     await request(app).get('/api/v1/portfolio-lab/requests').set(auth).expect(200).expect(({ body: responseBody }) => {
       expect(responseBody.data).toEqual(expect.arrayContaining([expect.objectContaining({ id: created.body.data.request.id, challengeId: confirmed.challengeId })]));
