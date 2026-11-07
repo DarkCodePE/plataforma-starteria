@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo, useState } from 'react';
 import { AlertTriangle, ArrowRight, BriefcaseBusiness, CheckSquare, Gauge, Sparkles } from 'lucide-react';
 import type { PortfolioHomeReadModel } from '../../../app/services/portfolioService';
 
@@ -11,6 +11,17 @@ type Props = {
 };
 
 type OverviewItem = { key: string; title: string; detail: string };
+type OperationalRow = {
+  key: string;
+  title: string;
+  destination: string;
+  status: string;
+  nextAction: string;
+  actor: string | null;
+  provenance: unknown;
+  evidence: string;
+  updatedAt: string | null;
+};
 
 export function PortfolioOverviewHome({
   model,
@@ -25,6 +36,14 @@ export function PortfolioOverviewHome({
   const initiatives = [...linkedInitiatives, ...independentInitiatives];
   const assignments = model.handoffAssignments ?? [];
   const labRequests = model.labRequests ?? [];
+  const [operationalFilter, setOperationalFilter] = useState('');
+  const [expandedRow, setExpandedRow] = useState<string | null>(null);
+  const operationalRows = useMemo(() => buildOperationalRows(model, initiatives), [model, initiatives]);
+  const visibleOperationalRows = operationalRows.filter((row) => {
+    const needle = operationalFilter.trim().toLocaleLowerCase('es');
+    return needle.length === 0 || [row.title, row.destination, row.status, row.nextAction]
+      .some((value) => value.toLocaleLowerCase('es').includes(needle));
+  });
   const challengeAssignments = assignments.filter((assignment) => assignment.targetKind === 'CHALLENGE');
   const activeFront = fronts[0] ?? null;
   const observations = activeFront?.metricObservations ?? [];
@@ -112,6 +131,35 @@ export function PortfolioOverviewHome({
       <Counter icon={<AlertTriangle size={18} />} label="Alertas o decisiones" value={actionableCount} dataMetric="actionable" detail="Intervenciones y decisiones persistidas" />
     </section>
 
+    <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm md:p-7" aria-labelledby="portfolio-operational-title">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <p className="text-xs font-bold uppercase tracking-[0.14em] text-violet-700">Seguimiento real</p>
+          <h2 id="portfolio-operational-title" className="mt-1 text-xl font-semibold text-slate-950">Trabajo y encargos</h2>
+          <p className="mt-1 text-sm leading-6 text-slate-600">Estados leídos de sus fuentes gobernadas; ninguna fila activa un Step ni acredita impacto.</p>
+        </div>
+        <label className="text-sm font-semibold text-slate-800">
+          Filtrar trabajo y encargos
+          <input type="search" value={operationalFilter} onChange={(event) => setOperationalFilter(event.target.value)} className="mt-1 block min-h-11 w-full rounded-lg border border-slate-300 px-3 py-2 font-normal text-slate-950 outline-none focus:border-violet-600 focus:ring-2 focus:ring-violet-200 sm:w-72" placeholder="Nombre, owner o estado" />
+        </label>
+      </div>
+      {(model.availability?.workItems === 'unavailable' || model.availability?.briefs === 'unavailable') ? <p role="status" className="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950">Parte del seguimiento no está disponible. Las filas visibles conservan su estado real.</p> : null}
+      <div className="mt-4 overflow-x-auto" data-testid="portfolio-operational-table-scroll">
+        <table className="min-w-[900px] w-full border-collapse text-left text-sm" aria-label="Seguimiento operativo del portafolio">
+          <thead><tr className="border-b border-slate-200 text-xs uppercase tracking-wide text-slate-500"><th className="px-3 py-3">Trabajo/Encargo</th><th className="px-3 py-3">Destino/Owner</th><th className="px-3 py-3">Estado real</th><th className="px-3 py-3">Siguiente acción</th><th className="px-3 py-3">Detalle</th></tr></thead>
+          <tbody>{visibleOperationalRows.map((row) => {
+            const expanded = expandedRow === row.key;
+            const detailId = `portfolio-operational-detail-${row.key.replace(/[^a-zA-Z0-9_-]/g, '-')}`;
+            return <React.Fragment key={row.key}>
+              <tr className="border-b border-slate-100 align-top last:border-0"><th scope="row" className="px-3 py-3 font-semibold text-slate-950">{row.title}</th><td className="px-3 py-3 text-slate-700">{row.destination}</td><td className="px-3 py-3"><span className="inline-flex rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-800">{row.status}</span></td><td className="px-3 py-3 text-slate-700">{row.nextAction}</td><td className="px-3 py-3"><button type="button" aria-expanded={expanded} aria-controls={detailId} onClick={() => setExpandedRow(expanded ? null : row.key)} className="min-h-11 rounded-lg px-2 font-semibold text-violet-800 underline-offset-4 hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2">{expanded ? 'Ocultar detalle' : `Ver detalle de ${row.title}`}</button></td></tr>
+              {expanded ? <tr id={detailId} className="border-b border-slate-200 bg-slate-50"><td colSpan={5} className="px-4 py-4 text-xs leading-5 text-slate-700"><div className="grid gap-1 sm:grid-cols-2"><p><strong>Actor:</strong> {row.actor ?? 'Sin datos'}</p><p><strong>Actualizado:</strong> {row.updatedAt ? formatDate(row.updatedAt) : 'Sin datos'}</p><p><strong>Fuente y procedencia:</strong> {formatTrace(row.provenance)}</p><p><strong>Evidencia/eventos:</strong> {row.evidence}</p><p><strong>Permiso:</strong> lectura del portafolio de la organización</p><p><strong>Siguiente paso:</strong> {row.nextAction}</p></div></td></tr> : null}
+            </React.Fragment>;
+          })}</tbody>
+        </table>
+        {visibleOperationalRows.length === 0 ? <p role="status" className="py-6 text-center text-sm text-slate-600">No hay filas que coincidan con el filtro.</p> : null}
+      </div>
+    </section>
+
     <section className="grid gap-4 xl:grid-cols-2" aria-label="Atención y decisiones">
       <OverviewList title="Requiere intervención" icon={<AlertTriangle size={18} />} empty="No hay intervenciones persistidas que requieran atención ahora." items={[...handoffAttention, ...projectedAttention].slice(0, 5)} />
       <OverviewList title="Decisiones del portafolio" icon={<CheckSquare size={18} />} empty="No hay decisiones pendientes persistidas." items={model.pendingDecisions.slice(0, 5).map((item) => ({ key: item.requestId, title: item.requestedDecision ?? 'Decisión por resolver', detail: `Project ${item.initiativeId} · ${item.status ?? 'estado desconocido'}` }))} />
@@ -135,10 +183,12 @@ export function PortfolioOverviewHome({
 
     <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm md:p-7" aria-label="Capacidad, tiempo y recursos">
       <h2 className="font-semibold text-slate-950">Capacidad, tiempo y recursos</h2>
-      {model.availability?.capacity === 'unavailable' ? <p role="status" className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950">No disponible: no pudimos recuperar la lectura de capacidad.</p> : <dl className="mt-4 grid gap-3 sm:grid-cols-3">
+      {model.availability?.capacity === 'unavailable' ? <p role="status" className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950">No disponible: no pudimos recuperar la lectura de capacidad.</p> : <dl className="mt-4 grid gap-3 sm:grid-cols-3 lg:grid-cols-5">
         <MetricField label="Capacidad observada" value={model.capacity ? `${model.capacity.totalActiveInitiatives} ${model.capacity.totalActiveInitiatives === 1 ? 'iniciativa activa' : 'iniciativas activas'}` : null} />
         <MetricField label="Horas observadas" value={null} />
         <MetricField label="Coste observado" value={null} />
+        <MetricField label="ROI observado" value={null} field="roi" />
+        <MetricField label="Impacto observado" value={null} field="impact" />
       </dl>}
       {model.capacity ? <><p className="mt-3 text-xs leading-5 text-slate-500">{model.capacity.note}</p>{model.capacity.signals.length > 0 ? <ul className="mt-3 space-y-2 text-sm text-slate-700">{model.capacity.signals.slice(0, 3).map((signal) => <li key={`${signal.kind}-${signal.frontId}-${signal.challengeId ?? ''}`} className="rounded-lg bg-slate-50 px-3 py-2">{signal.message}</li>)}</ul> : null}</> : null}
       <p className="mt-3 text-xs text-slate-500">{model.learningsUnavailable ? 'Los aprendizajes de decisiones no están disponibles.' : `${model.learnings.length} aprendizajes persistidos disponibles.`}</p>
@@ -171,6 +221,81 @@ export function PortfolioOverviewHome({
       </section> : null}
     </section>
   </div>;
+}
+
+function buildOperationalRows(model: PortfolioHomeReadModel, initiatives: Array<PortfolioHomeReadModel['strategicUnits'][number]['challenges'][number]['initiatives'][number] | PortfolioHomeReadModel['independentInitiatives'][number]>): OperationalRow[] {
+  const workRows: OperationalRow[] = (model.workItems ?? []).map((item) => ({
+    key: `work-${item.workItemId}`,
+    title: item.label,
+    destination: item.linkedInitiativeId ? `Iniciativa ${item.linkedInitiativeId}` : item.ownerCandidate ?? 'Sin owner confirmado',
+    status: item.linkedInitiativeId ? 'Vinculado a iniciativa' : 'Sin activar',
+    nextAction: item.linkedInitiativeId ? 'Abrir la iniciativa canónica' : 'Revisar antes de activar',
+    actor: item.actorId,
+    provenance: item.sourceRefs,
+    evidence: `${item.sourceType} · WorkItem ${item.workItemId} · estado ${item.status}`,
+    updatedAt: item.updatedAt,
+  }));
+  const briefRows: OperationalRow[] = (model.briefs ?? []).map((brief) => ({
+    key: `brief-${brief.briefVersionId}`,
+    title: `Brief v${brief.versionNumber}`,
+    destination: brief.challengeTitle ?? `Reto ${brief.challengeId}`,
+    status: brief.status === 'CONFIRMED' ? 'Brief confirmado' : 'Brief en borrador',
+    nextAction: brief.status === 'CONFIRMED' ? 'Elegir Equipo y/o Startería Lab' : 'Confirmar Brief',
+    actor: brief.confirmedByActorId ?? brief.createdByActorId,
+    provenance: { sourceRefs: brief.sourceRefs, provenance: brief.provenance },
+    evidence: `BriefVersion ${brief.briefVersionId} · estado ${brief.status}`,
+    updatedAt: brief.confirmedAt ?? brief.createdAt,
+  }));
+  const assignmentRows: OperationalRow[] = (model.handoffAssignments ?? []).map((assignment) => ({
+    key: `assignment-${assignment.assignmentId}`,
+    title: `Assignment ${assignment.assignmentId}`,
+    destination: assignment.invitedEmail ?? (assignment.initiativeRef ? `Iniciativa ${assignment.initiativeRef}` : `Reto ${assignment.challengeRef}`),
+    status: assignmentStatusLabel(assignment),
+    nextAction: assignmentNextAction(assignment),
+    actor: null,
+    provenance: assignment.sourceEventRefs ?? [],
+    evidence: assignment.lastMaterialEvent ?? `Assignment ${assignment.assignmentId}`,
+    updatedAt: assignment.startedAt ?? assignment.acceptedAt ?? assignment.rejectedAt ?? assignment.latestDeliveryAttemptAt ?? assignment.generatedAt ?? null,
+  }));
+  const initiativeRows: OperationalRow[] = initiatives.map((initiative) => ({
+    key: `initiative-${initiative.initiativeId}`,
+    title: initiative.title ?? `Iniciativa ${initiative.initiativeId}`,
+    destination: 'Owner canónico',
+    status: initiative.activationVisibility === 'initiative_active' ? 'Iniciativa iniciada' : 'Iniciativa canónica',
+    nextAction: 'Abrir Initiative Overview',
+    actor: null,
+    provenance: { source: 'Project', initiativeId: initiative.initiativeId },
+    evidence: initiative.currentExecutionState.currentStep == null ? 'Sin Step registrado' : `Step registrado ${initiative.currentExecutionState.currentStep}; no implica evidencia confirmada`,
+    updatedAt: 'updatedAt' in initiative ? initiative.updatedAt ?? null : null,
+  }));
+  const labRows: OperationalRow[] = (model.labRequests ?? []).map((request) => ({
+    key: `lab-${request.requestId}`,
+    title: `Solicitud Lab ${request.requestId}`,
+    destination: `Reto ${request.challengeId}`,
+    status: labRequestStatusLabel(request),
+    nextAction: request.notificationStatus === 'FAILED' ? 'Reintentar notificación' : request.status === 'MEETING_SCHEDULED' ? 'Dar seguimiento a la reunión registrada' : 'Esperar contacto humano',
+    actor: null,
+    provenance: { briefVersionId: request.briefVersionId },
+    evidence: `Solicitud persistida · notificación ${request.notificationStatus}`,
+    updatedAt: request.updatedAt,
+  }));
+  return [...workRows, ...briefRows, ...assignmentRows, ...initiativeRows, ...labRows];
+}
+
+function assignmentNextAction(assignment: PortfolioHomeReadModel['handoffAssignments'][number]): string {
+  if (assignment.deliveryStatus === 'failed') return 'Reintentar envío';
+  const actions: Record<string, string> = {
+    CREATED: 'Revisar y enviar', SENT: 'Esperar respuesta', VIEWED: 'Esperar respuesta',
+    ACCEPTED: 'Iniciar de forma explícita', STARTED: 'Abrir Initiative Overview',
+    REJECTED: 'Responder o reasignar', REVOKED: 'Revisar revocación', EXPIRED: 'Revisar expiración',
+  };
+  return actions[assignment.handoffState] ?? 'Revisar estado';
+}
+
+function formatTrace(value: unknown): string {
+  if (value == null) return 'Sin datos';
+  if (typeof value === 'string') return value;
+  try { return JSON.stringify(value); } catch { return 'No serializable'; }
 }
 
 function assignmentStatusLabel(assignment: PortfolioHomeReadModel['handoffAssignments'][number]): string {

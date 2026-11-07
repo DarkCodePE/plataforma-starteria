@@ -162,8 +162,8 @@ describe('PortfolioOverviewHome', () => {
     render(<PortfolioOverviewHome model={withLab as any} onOpenCopilot={vi.fn()} onOpenAdditionalFront={vi.fn()} />);
 
     expect(screen.getByRole('heading', { name: 'Startería Lab' })).toBeInTheDocument();
-    expect(screen.getByText('Contacto pendiente')).toBeInTheDocument();
-    expect(screen.getByText(/Solicitud Lab lab-1/i)).toBeInTheDocument();
+    expect(screen.getAllByText('Contacto pendiente').length).toBeGreaterThanOrEqual(2);
+    expect(screen.getAllByText(/Solicitud Lab lab-1/i).length).toBeGreaterThanOrEqual(2);
     expect(screen.queryByText(/reunión confirmada/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/Assignment lab-1/i)).not.toBeInTheDocument();
   });
@@ -195,8 +195,8 @@ describe('PortfolioOverviewHome', () => {
     expect(details).toHaveAttribute('aria-expanded', 'false');
     fireEvent.click(details);
     expect(details).toHaveAttribute('aria-expanded', 'true');
-    expect(within(table).getByText(/Actor: lead-a/)).toBeInTheDocument();
-    expect(within(table).getByText(/Fuente y procedencia:/)).toBeInTheDocument();
+    expect(within(table).getByText('lead-a')).toBeInTheDocument();
+    expect(within(table).getByText('Fuente y procedencia:')).toBeInTheDocument();
   });
 
   it('G5-CA02/CA03 keeps sent, accepted, started, rejected and Lab notification as distinct factual rows', () => {
