@@ -46,6 +46,9 @@ export function PortfolioLabRequestPanel({ target, version }: Props) {
   const [notice, setNotice] = useState<string | null>(null);
   const createKey = useRef(createIdempotencyKey(`portfolio-lab:create:${target.challengeId}:${target.briefVersionId}`));
   const retryKeys = useRef(new Map<string, string>());
+  const requestTrigger = useRef<HTMLButtonElement>(null);
+  const previewRegion = useRef<HTMLElement>(null);
+  const noticeRegion = useRef<HTMLParagraphElement>(null);
 
   useEffect(() => {
     let active = true;
@@ -59,9 +62,19 @@ export function PortfolioLabRequestPanel({ target, version }: Props) {
 
   const openRequests = useMemo(() => requests.filter(isOpen), [requests]);
   const activeForBrief = useMemo(() => openRequests.find((item) => item.challengeId === target.challengeId && item.briefVersionId === target.briefVersionId), [openRequests, target.briefVersionId, target.challengeId]);
+  const requestsForBrief = useMemo(() => requests.filter((item) => item.challengeId === target.challengeId && item.briefVersionId === target.briefVersionId), [requests, target.briefVersionId, target.challengeId]);
+  const otherRequestCount = requests.length - requestsForBrief.length;
   const limitReached = openRequests.length >= 3;
   const gaps = values(version.knownGaps);
   const constraints = values(version.constraintsSnapshot);
+
+  useEffect(() => { if (expanded) previewRegion.current?.focus(); }, [expanded]);
+  useEffect(() => { if (notice) noticeRegion.current?.focus(); }, [notice]);
+
+  const closePreview = () => {
+    setExpanded(false);
+    window.setTimeout(() => requestTrigger.current?.focus(), 0);
+  };
 
   const submit = async () => {
     if (!consent || activeForBrief || limitReached) return;
@@ -106,16 +119,17 @@ export function PortfolioLabRequestPanel({ target, version }: Props) {
         <h2 id="portfolio-lab-title" className="mt-1 text-2xl font-semibold text-slate-950">Activa este reto con tu equipo, Startería Lab o ambos</h2>
         <p className="mt-2 text-sm leading-6 text-slate-700">Puedes seguir preparando responsables en PL-06 y, además, solicitar acompañamiento de Startería Lab sobre esta versión confirmada.</p>
       </div>
-      <p className="shrink-0 rounded-full bg-white px-3 py-1.5 text-sm font-semibold text-cyan-950 shadow-sm" aria-live="polite">{loading ? 'Recuperando solicitudes…' : `${openRequests.length} de 3 solicitudes abiertas`}</p>
+      <p className="shrink-0 rounded-full bg-white px-3 py-1.5 text-sm font-semibold text-cyan-950 shadow-sm" aria-live="polite">{loading ? 'Recuperando solicitudes…' : `Tus solicitudes abiertas: ${openRequests.length}`}</p>
     </div>
+    {!loading ? <p className="mt-2 text-xs text-slate-600">El máximo es 3 por organización. El servidor confirma el cupo organizacional al enviar.</p> : null}
 
     {activeForBrief ? <p className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm font-medium text-emerald-950">Ya existe una solicitud activa para esta versión confirmada.</p> : null}
     {limitReached && !activeForBrief ? <p className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950">La organización alcanzó el máximo de 3 solicitudes abiertas. Cierra una con el equipo de Lab antes de crear otra.</p> : null}
     {loadError ? <p role="status" className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950">{loadError} PL-06 sigue disponible.</p> : null}
 
-    <button type="button" disabled={loading || Boolean(loadError) || Boolean(activeForBrief) || limitReached} onClick={() => { setExpanded(true); setError(null); setNotice(null); }} className="mt-5 rounded-xl bg-cyan-900 px-4 py-2.5 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50">Solicitar acompañamiento de Startería Lab</button>
+    <button ref={requestTrigger} type="button" aria-expanded={expanded} aria-controls="portfolio-lab-request-preview" disabled={loading || Boolean(loadError) || Boolean(activeForBrief) || limitReached} onClick={() => { setExpanded(true); setError(null); setNotice(null); }} className="mt-5 rounded-xl bg-cyan-900 px-4 py-2.5 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50">Solicitar acompañamiento de Startería Lab</button>
 
-    {expanded ? <section className="mt-5 rounded-xl border border-cyan-200 bg-white p-4" aria-label="Vista previa de la solicitud a Startería Lab">
+    {expanded ? <section ref={previewRegion} id="portfolio-lab-request-preview" tabIndex={-1} className="mt-5 rounded-xl border border-cyan-200 bg-white p-4 outline-none focus:ring-2 focus:ring-cyan-300" aria-label="Vista previa de la solicitud a Startería Lab">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h3 className="font-semibold text-slate-950">Vista previa del Brief compartido</h3>
         <span className="text-xs font-bold text-emerald-800">Versión {version.versionNumber} · Confirmada e inmutable</span>
@@ -132,17 +146,18 @@ export function PortfolioLabRequestPanel({ target, version }: Props) {
       </label>
       <div className="mt-4 flex flex-wrap gap-2">
         <button type="button" disabled={!consent || submitting} onClick={() => void submit()} className="rounded-xl bg-cyan-900 px-4 py-2.5 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50">{submitting ? 'Enviando solicitud…' : 'Enviar solicitud a Startería Lab'}</button>
-        <button type="button" disabled={submitting} onClick={() => setExpanded(false)} className="rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-900">Cancelar</button>
+        <button type="button" disabled={submitting} onClick={closePreview} className="rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-900">Cancelar</button>
       </div>
     </section> : null}
 
     {error ? <div role="alert" className="mt-4 flex gap-2 rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-950"><AlertCircle className="mt-0.5 shrink-0" size={17} /><div><p>{error}</p>{expanded && consent ? <button type="button" disabled={submitting} onClick={() => void submit()} className="mt-2 font-semibold underline">Reintentar envío de la solicitud</button> : null}</div></div> : null}
-    {notice ? <p role="status" className="mt-4 flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm font-medium text-emerald-950"><CheckCircle2 size={17} />{notice}</p> : null}
+    {notice ? <p ref={noticeRegion} tabIndex={-1} role="status" className="mt-4 flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm font-medium text-emerald-950 outline-none focus:ring-2 focus:ring-emerald-300"><CheckCircle2 size={17} />{notice}</p> : null}
 
-    {requests.length ? <section className="mt-6" aria-labelledby="portfolio-lab-tracking-title">
+    {requestsForBrief.length ? <section className="mt-6" aria-labelledby="portfolio-lab-tracking-title">
       <h3 id="portfolio-lab-tracking-title" className="font-semibold text-slate-950">Seguimiento de Startería Lab</h3>
-      <div className="mt-3 grid gap-3">{requests.map((item) => <LabRequestCard key={item.id} item={item} retrying={retryingId === item.id} onRetry={() => void retryNotification(item)} />)}</div>
+      <div className="mt-3 grid gap-3">{requestsForBrief.map((item) => <LabRequestCard key={item.id} item={item} retrying={retryingId === item.id} onRetry={() => void retryNotification(item)} />)}</div>
     </section> : null}
+    {otherRequestCount ? <p className="mt-4 text-xs text-slate-600">{otherRequestCount} {otherRequestCount === 1 ? 'solicitud tuya de otro Brief no se muestra' : 'solicitudes tuyas de otros Briefs no se muestran'} en este seguimiento.</p> : null}
 
     <div className="mt-5 rounded-xl border border-slate-200 bg-white p-4 text-sm leading-6 text-slate-700">
       <p>La solicitud Lab no crea asignaciones, proyectos ni Steps y no completa el setup. PL-06 se mantiene disponible.</p>

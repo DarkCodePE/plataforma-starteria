@@ -64,7 +64,12 @@ describe('KAN-227 Portfolio Lab UX', () => {
   it('LAB-UX02 muestra la versión confirmada exacta y exige consentimiento antes del POST', async () => {
     const user = userEvent.setup();
     renderPanel();
-    await user.click(await screen.findByRole('button', { name: 'Solicitar acompañamiento de Startería Lab' }));
+    const trigger = await screen.findByRole('button', { name: 'Solicitar acompañamiento de Startería Lab' });
+    expect(trigger).toHaveAttribute('aria-expanded', 'false');
+    expect(trigger).toHaveAttribute('aria-controls', 'portfolio-lab-request-preview');
+    await user.click(trigger);
+    expect(trigger).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getByRole('region', { name: 'Vista previa de la solicitud a Startería Lab' })).toHaveFocus();
     expect(screen.getAllByText('Versión 5 · Confirmada e inmutable')).toHaveLength(2);
     expect(screen.getByText(version.intent)).toBeInTheDocument();
     expect(screen.getByText(version.scope)).toBeInTheDocument();
@@ -72,6 +77,9 @@ describe('KAN-227 Portfolio Lab UX', () => {
     expect(screen.getByRole('button', { name: 'Enviar solicitud a Startería Lab' })).toBeDisabled();
     await user.click(screen.getByRole('checkbox', { name: /consiento compartir este Brief confirmado/i }));
     expect(screen.getByRole('button', { name: 'Enviar solicitud a Startería Lab' })).toBeEnabled();
+    await user.click(screen.getByRole('button', { name: 'Cancelar' }));
+    await waitFor(() => expect(trigger).toHaveFocus());
+    expect(trigger).toHaveAttribute('aria-expanded', 'false');
   });
 
   it('LAB-UX03 conserva una Idempotency-Key estable ante fallo y distingue creación de deduplicación', async () => {
@@ -87,7 +95,7 @@ describe('KAN-227 Portfolio Lab UX', () => {
     await user.click(screen.getByRole('button', { name: 'Reintentar envío de la solicitud' }));
     await waitFor(() => expect(labApi.createPortfolioLabRequest).toHaveBeenCalledTimes(2));
     expect(labApi.createPortfolioLabRequest.mock.calls[0][1]).toBe(labApi.createPortfolioLabRequest.mock.calls[1][1]);
-    expect(await screen.findByText('Solicitud recuperada sin duplicarla')).toBeInTheDocument();
+    expect(await screen.findByText('Solicitud recuperada sin duplicarla')).toHaveFocus();
   });
 
   it('LAB-UX04 cuenta 0/1/2/3 abiertas, no cuenta terminales y explica el 409 del límite', async () => {
@@ -99,7 +107,8 @@ describe('KAN-227 Portfolio Lab UX', () => {
     const user = userEvent.setup();
     labApi.createPortfolioLabRequest.mockRejectedValue({ code: 'PORTFOLIO_LAB_OPEN_LIMIT', message: 'La organización ya tiene 3 solicitudes abiertas a Startería Lab.' });
     const { unmount } = renderPanel();
-    expect(await screen.findByText('2 de 3 solicitudes abiertas')).toBeInTheDocument();
+    expect(await screen.findByText('Tus solicitudes abiertas: 2')).toBeInTheDocument();
+    expect(screen.getByText('El máximo es 3 por organización. El servidor confirma el cupo organizacional al enviar.')).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Solicitar acompañamiento de Startería Lab' }));
     await user.click(screen.getByRole('checkbox', { name: /consiento compartir este Brief confirmado/i }));
     await user.click(screen.getByRole('button', { name: 'Enviar solicitud a Startería Lab' }));
@@ -107,36 +116,44 @@ describe('KAN-227 Portfolio Lab UX', () => {
     unmount();
     labApi.listPortfolioLabRequests.mockResolvedValue([request({ id: 'a', challengeId: 'a' }), request({ id: 'b', challengeId: 'b' }), request({ id: 'c', challengeId: 'c' })]);
     renderPanel();
-    expect(await screen.findByText('3 de 3 solicitudes abiertas')).toBeInTheDocument();
+    expect(await screen.findByText('Tus solicitudes abiertas: 3')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Solicitar acompañamiento de Startería Lab' })).toBeDisabled();
   });
 
   it('LAB-UX05 separa solicitud persistida, notificación aceptada, pendiente y fallida sin exponer emails', async () => {
-    labApi.listPortfolioLabRequests.mockResolvedValue([
-      request({ id: 'accepted' }),
-      request({ id: 'pending', challengeId: 'other-1', briefVersionId: 'other-v1', notificationStatus: 'PENDING', providerMessageRef: null }),
-      request({ id: 'failed', challengeId: 'other-2', briefVersionId: 'other-v2', notificationStatus: 'FAILED', providerMessageRef: null, lastNotificationError: 'SMTP_DOWN' }),
-    ]);
-    renderPanel();
-    expect(await screen.findAllByText('Solicitud registrada')).toHaveLength(3);
+    labApi.listPortfolioLabRequests.mockResolvedValue([request({ id: 'accepted' })]);
+    const { unmount } = renderPanel();
+    expect(await screen.findByText('Solicitud registrada')).toBeInTheDocument();
     expect(screen.getByText('Notificación aceptada por el servidor')).toBeInTheDocument();
-    expect(screen.getByText('Notificación pendiente')).toBeInTheDocument();
-    expect(screen.getByText('Error al notificar')).toBeInTheDocument();
+    unmount();
+    labApi.listPortfolioLabRequests.mockResolvedValue([request({ id: 'pending', notificationStatus: 'PENDING', providerMessageRef: null })]);
+    const pending = renderPanel();
+    expect(await screen.findByText('Notificación pendiente')).toBeInTheDocument();
+    pending.unmount();
+    labApi.listPortfolioLabRequests.mockResolvedValue([request({ id: 'failed', notificationStatus: 'FAILED', providerMessageRef: null, lastNotificationError: 'SMTP_DOWN' })]);
+    renderPanel();
+    expect(await screen.findByText('Error al notificar')).toBeInTheDocument();
     expect(screen.queryByText(/@gmail\.com/i)).not.toBeInTheDocument();
   });
 
   it('LAB-UX06 reintenta sólo una notificación pendiente/fallida y conserva su key ante error de red', async () => {
     const user = userEvent.setup();
-    labApi.listPortfolioLabRequests.mockResolvedValue([request({ notificationStatus: 'FAILED', providerMessageRef: null, lastNotificationError: 'SMTP_DOWN' })]);
+    labApi.listPortfolioLabRequests.mockResolvedValue([
+      request({ notificationStatus: 'FAILED', providerMessageRef: null, lastNotificationError: 'SMTP_DOWN' }),
+      request({ id: 'other-failed', challengeId: 'other-challenge', briefVersionId: 'other-version', notificationStatus: 'FAILED', providerMessageRef: null, lastNotificationError: 'SMTP_DOWN' }),
+    ]);
     labApi.retryPortfolioLabNotification
       .mockRejectedValueOnce({ code: 'NETWORK_ERROR', message: 'No pudimos conectar con el servidor.' })
       .mockResolvedValueOnce({ request: request({ notificationStatus: 'NOTIFIED' }), idempotent: true });
     renderPanel();
-    await user.click(await screen.findByRole('button', { name: 'Reintentar notificación' }));
+    expect(await screen.findAllByRole('button', { name: 'Reintentar notificación' })).toHaveLength(1);
+    expect(screen.getByText('1 solicitud tuya de otro Brief no se muestra en este seguimiento.')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Reintentar notificación' }));
     expect(await screen.findByRole('alert')).toHaveTextContent('No pudimos conectar');
     await user.click(screen.getByRole('button', { name: 'Reintentar notificación' }));
     await waitFor(() => expect(labApi.retryPortfolioLabNotification).toHaveBeenCalledTimes(2));
     expect(labApi.retryPortfolioLabNotification.mock.calls[0][1]).toBe(labApi.retryPortfolioLabNotification.mock.calls[1][1]);
+    expect(labApi.retryPortfolioLabNotification.mock.calls[0][0]).toBe('lab-request-1');
     expect(await screen.findAllByText('Notificación aceptada por el servidor')).toHaveLength(2);
     expect(screen.queryByRole('button', { name: 'Reintentar notificación' })).not.toBeInTheDocument();
   });
@@ -163,7 +180,7 @@ describe('KAN-227 Portfolio Lab UX', () => {
     labApi.listPortfolioLabRequests.mockResolvedValue([request()]);
     renderPanel();
     expect(await screen.findByText('Seguimiento de Startería Lab')).toBeInTheDocument();
-    expect(screen.getByText('1 de 3 solicitudes abiertas')).toBeInTheDocument();
+    expect(screen.getByText('Tus solicitudes abiertas: 1')).toBeInTheDocument();
     expect(screen.getByText('Ya existe una solicitud activa para esta versión confirmada.')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Solicitar acompañamiento de Startería Lab' })).toBeDisabled();
     expect(labApi.createPortfolioLabRequest).not.toHaveBeenCalled();

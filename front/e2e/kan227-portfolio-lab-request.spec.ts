@@ -102,7 +102,7 @@ test.describe('KAN-227 LAB-UX09 authenticated runtime', () => {
     expect(persisted[0].status).toBe('REQUESTED');
     await page.reload();
     await expect(panel.getByText('Ya existe una solicitud activa para esta versión confirmada.')).toBeVisible({ timeout: 20_000 });
-    await expect(panel.getByText('1 de 3 solicitudes abiertas')).toBeVisible();
+    await expect(panel.getByText('Tus solicitudes abiertas: 1')).toBeVisible();
     expect(await prisma.portfolioLabRequest.count({ where: { organizationId: lead.organizationId } })).toBe(1);
     const crossTenant = await api.get(`/api/v1/portfolio-lab/requests/${persisted[0].id}`, { headers: bearer(other.token), failOnStatusCode: false });
     expect(crossTenant.status()).toBe(404);
