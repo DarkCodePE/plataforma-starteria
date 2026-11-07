@@ -186,6 +186,9 @@ test.describe('P12-R1 PL-04 confirmed organization runtime', () => {
     ]);
 
     await restoreUiSession(page, lead);
+    const continueToOrganization = page.getByRole('button', { name: 'Continuar a organización' });
+    await expect(continueToOrganization).toBeEnabled({ timeout: 20_000 });
+    await continueToOrganization.click();
     await expect(page.getByRole('heading', { name: 'Define la estructura estratégica del objetivo' })).toBeVisible({ timeout: 20_000 });
     await expect(page.getByText('Aquí estás definiendo la estructura estratégica con la que darás seguimiento al objetivo.')).toBeVisible();
     const proposal = page.getByTestId('portfolio-organization-proposal');

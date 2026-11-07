@@ -154,6 +154,43 @@ Handoff, Steps, Portfolio Home o IA.
 
 ---
 
+## Slice PORTFOLIO_LEAD_G3_ORGANIZATION_SELECTIVE_BRIEFS (KAN-223)
+
+**Registrado:** 2026-11-07 por HU KAN-223 y auditoría técnica acotada KAN-223#10670.
+
+```text
+slice_id: PORTFOLIO_LEAD_G3_ORGANIZATION_SELECTIVE_BRIEFS
+functional_hu: KAN-223
+functional_authority: KAN-223 + G3_ORGANIZACION_BRIEFS.md
+technical_scope_authority: KAN-223#10670
+depends_on: PL-04 KAN-154/KAN-155; PL-05 KAN-156/KAN-157; PORTFOLIO_LEAD_E5_ELIGIBILITY_BACKEND_G2B KAN-215/KAN-217; PORTFOLIO_LEAD_G1_ADAPTIVE_CONTEXT_BRIDGE KAN-219/KAN-222
+logic_status: ACTIVE_V2_SLICE
+implementation_status: G3_IMPLEMENTED_READY_FOR_REVIEW
+visual_status: V2_TARGET_DEFINED
+evidence_status: LOCAL_VERIFIED_INDEPENDENT_REVIEW_APPROVED
+product_code_delta: NONE_REQUIRED_AFTER_GAP_AUDIT
+implementation_commits: 8c2bf76 (Manifest + tests-first 0/1/3/25); 731ce00 (E2E PL-04 respeta continuación explícita E5)
+independent_review: APPROVED at 731ce001a2e27d02a78e9a161c32c27f597c5142; no material findings
+test_evidence: frontend 1069/1069 PASS; PostgreSQL KAN-221 5/5 + PL-04 11/11 + PL-05 3/3 PASS; authenticated E2E KAN-213/PL-04/PL-05 4/4 PASS; lint/build/Prisma validate/frontend typecheck PASS
+known_baseline: backend typecheck conserva TS2740 preexistente fuera del diff en critical-synthesis-reasoning.test.ts
+semantic_owner: Portfolio Lead setup E5 Organización y E6 Briefs selectivos sobre PL-04/PL-05 existentes
+allowed: frontend V2 de FrozenOrganizationStage/FrozenBriefStage y pruebas focales/E2E autenticadas; correcciones mínimas de gaps demostrados por CA 0/1/3/25; ajuste documental del Manifest
+reuse_required: PortfolioOrganizationService.confirmAndMaterialize; ChallengeActivationBrief/ChallengeActivationBriefVersion; KAN-217 eligibility; KAN-154/155/156/157
+preserves: confirmación humana; snapshot/version; CAS; idempotencia; tenant; reentrada; destinos ungrouped/cross-cutting/outside; frontera PL05→PL06; slice KAN-207 sin cambios
+excluded: backend/API/Prisma productivos nuevos; nueva materialización canónica; WorkItems o AnalysisRun inventados; Briefs masivos; Brief sin Challenge canónico; Core; ADR; Steps; Handoff; IA/model/provider/runtime; infraestructura; secretos; merge/deploy
+stop_conditions: cualquier gap que requiera backend/API/Prisma productivos, cambiar cardinalidad/Core/ADR, reinterpretar opt-out como materialización o certificar multifrente
+baseline: main@9b616df24eee269698b08b4848479233ed215dc2
+guardrail: V2_CHANGE_GUARDRAIL_CHECK requerido antes de editar código productivo
+```
+
+Este slice reduce la complejidad del primer setup sin cambiar el modelo canónico. La propuesta
+inicial mantiene un frente de trabajo y retos revisables; sólo `confirmAndMaterialize` puede crear
+las identidades canónicas tras confirmación humana. Guardar un opt-out conserva una revisión
+provisional y no habilita E6. E6 recupera y prepara Briefs de forma selectiva exclusivamente para
+Challenges canónicos, sin crear Assignment, Initiative, WorkItem, AnalysisRun o Step.
+
+---
+
 ## Slice PORTFOLIO_LEAD_G1_ADAPTIVE_CONTEXT_BRIDGE (KAN-219 / KAN-220 / KAN-221)
 
 **Registrado:** 2026-11-06 por aprobación funcional KAN-219, autorización técnica acotada para
