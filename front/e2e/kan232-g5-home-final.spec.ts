@@ -115,6 +115,20 @@ async function materializeOrganization(
       headers: { ...auth, 'Idempotency-Key': `kan232-analysis-${lead.stamp}` }, data: {},
     });
     expect(analyzed.status(), await analyzed.text()).toBe(200);
+    const mutations = (await analyzed.json()).data.proposedMutations as Array<{ id: string; status: string }>;
+    expect(mutations.length).toBeGreaterThan(0);
+    const reviewed = await api.post(
+      `/api/v1/portfolio-bootstrap/sessions/${sessionId}/proposed-mutations/${mutations[0].id}/reject`,
+      {
+        headers: auth,
+        data: { reviewNote: 'Disposición humana G5: conservar la evidencia sin aplicar esta propuesta automática.' },
+      },
+    );
+    expect(reviewed.status(), await reviewed.text()).toBe(200);
+    expect((await reviewed.json()).data.mutation).toMatchObject({ id: mutations[0].id, status: 'rejected' });
+    expect(await prisma.portfolioBootstrapProposedMutation.count({
+      where: { id: mutations[0].id, bootstrapSessionId: sessionId, status: 'rejected', reviewedBy: lead.userId },
+    })).toBe(1);
   }
   const eligibility = await api.get(`/api/v1/portfolio-bootstrap/sessions/${sessionId}/e5-eligibility`, { headers: auth });
   expect(eligibility.status(), await eligibility.text()).toBe(200);
@@ -277,6 +291,9 @@ async function createTeamAssignment(
   });
   expect(stale.status()).toBe(409);
   await prisma.portfolioHandoffDeliveryAttempt.create({
+    // External SMTP is intentionally the sole fixture boundary in this browser journey.
+    // PL-06 delivery regressions certify the invitation command, transport receipt and
+    // idempotency; from here G5 consumes the resulting durable SMTP_ACCEPTED/SENT state.
     data: {
       assignmentId: assignment.id,
       status: 'SUCCEEDED',
