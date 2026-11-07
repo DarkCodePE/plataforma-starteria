@@ -1,0 +1,3 @@
+ALTER TABLE "PortfolioLabRequest"
+  RENAME CONSTRAINT "PortfolioLabRequest_briefVersionId_organizationId_challengeId_f"
+  TO "PortfolioLabRequest_briefVersionId_organizationId_challeng_fkey";
