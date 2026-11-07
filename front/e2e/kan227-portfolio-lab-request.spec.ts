@@ -61,8 +61,9 @@ async function confirmedBrief(api: APIRequestContext, lead: Awaited<ReturnType<t
   } });
   const created = await api.post(`/api/v1/portfolio/challenges/${challengeId}/activation-briefs`, { headers: { ...auth, 'Idempotency-Key': `kan227-brief-${lead.stamp}` }, data: {
     intent: 'Reducir la principal barrera de activación.', scope: 'Contrastar onboarding y diagnóstico.',
-    inheritedContext: { expectedDeliverable: 'Recomendación priorizada con evidencia.', decisionToEnable: 'Elegir la primera barrera.' },
-    constraintsSnapshot: ['Revisión legal'], knownGaps: ['Falta línea base'], sourceRefs: ['E2E KAN-227'], provenance: { source: 'PL05_COPILOT' },
+    strategicContextRefs: { objective: 'Aumentar activación B2B.' },
+    inheritedContext: { challengeProblem: 'No sabemos qué barrera interrumpe la activación.', expectedDeliverable: 'Recomendación priorizada con evidencia.', decisionToEnable: 'Elegir la primera barrera.' },
+    constraintsSnapshot: ['Mantener revisión legal.'], knownGaps: ['Falta línea base'], sourceRefs: [{ source: 'E2E KAN-227' }], provenance: { source: 'PL05_COPILOT' },
   } });
   expect(created.status(), await created.text()).toBe(201);
   const brief = (await created.json()).data.brief;

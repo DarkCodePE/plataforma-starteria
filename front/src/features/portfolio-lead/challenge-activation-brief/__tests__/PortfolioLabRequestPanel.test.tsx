@@ -57,7 +57,7 @@ describe('KAN-227 Portfolio Lab UX', () => {
     expect(await screen.findByRole('heading', { name: 'Asigna responsables para abordar este reto' })).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'Activa este reto con tu equipo, Startería Lab o ambos' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '+ Asignar responsable' })).toBeEnabled();
-    expect(screen.getByRole('button', { name: 'Solicitar acompañamiento de Startería Lab' })).toBeEnabled();
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Solicitar acompañamiento de Startería Lab' })).toBeEnabled());
     expect(screen.queryByRole('radio')).not.toBeInTheDocument();
   });
 
@@ -65,7 +65,7 @@ describe('KAN-227 Portfolio Lab UX', () => {
     const user = userEvent.setup();
     renderPanel();
     await user.click(await screen.findByRole('button', { name: 'Solicitar acompañamiento de Startería Lab' }));
-    expect(screen.getByText('Versión 5 · Confirmada e inmutable')).toBeInTheDocument();
+    expect(screen.getAllByText('Versión 5 · Confirmada e inmutable')).toHaveLength(2);
     expect(screen.getByText(version.intent)).toBeInTheDocument();
     expect(screen.getByText(version.scope)).toBeInTheDocument();
     expect(screen.getByText('Falta línea base')).toBeInTheDocument();
@@ -137,7 +137,7 @@ describe('KAN-227 Portfolio Lab UX', () => {
     await user.click(screen.getByRole('button', { name: 'Reintentar notificación' }));
     await waitFor(() => expect(labApi.retryPortfolioLabNotification).toHaveBeenCalledTimes(2));
     expect(labApi.retryPortfolioLabNotification.mock.calls[0][1]).toBe(labApi.retryPortfolioLabNotification.mock.calls[1][1]);
-    expect(await screen.findByText('Notificación aceptada por el servidor')).toBeInTheDocument();
+    expect(await screen.findAllByText('Notificación aceptada por el servidor')).toHaveLength(2);
     expect(screen.queryByRole('button', { name: 'Reintentar notificación' })).not.toBeInTheDocument();
   });
 
