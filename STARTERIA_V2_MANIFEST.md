@@ -154,6 +154,47 @@ Handoff, Steps, Portfolio Home o IA.
 
 ---
 
+## Slice PORTFOLIO_LEAD_G4_LAB_BRIEF_REQUEST (KAN-224 / KAN-225 / KAN-226)
+
+**Registrado:** 2026-11-07 por ratificación funcional KAN-224#10674, auditoría técnica
+KAN-225#10675 e instrucción de ejecución backend KAN-226#10676.
+
+```text
+slice_id: PORTFOLIO_LEAD_G4_LAB_BRIEF_REQUEST
+functional_hu: KAN-224
+functional_authority: KAN-224#10674
+technical_audit: KAN-225#10675
+technical_task: KAN-226
+technical_scope_authority: KAN-226#10676
+baseline: main@6ad4567559eb31caf3df37ddbffe40625abb64e8
+logic_status: ACTIVE_V2_SLICE
+implementation_status: AUTHORIZED_NOT_IMPLEMENTED
+visual_status: NOT_APPLICABLE (KAN-227 frontend separado)
+evidence_status: TESTING_REQUIRED
+semantic_owner: solicitud manual de apoyo Startería Lab referida a Challenge y ChallengeActivationBriefVersion CONFIRMED
+allowed: backend/API/Prisma aditivos; migración focal; tests unitarios/HTTP/PostgreSQL; reutilización de backend/shared/mail/mailer.ts; ajuste documental del Manifest
+required_identity: organizationId + challengeId + briefId + briefVersionId inmutable + requesterId/actor + consentimiento explícito
+required_limits: máximo 3 solicitudes abiertas por organizationId bajo concurrencia; una activa por organizationId+challengeId+briefVersionId; terminales liberan cupo y conservan historia
+required_delivery_semantics: REQUESTED persistido != NOTIFIED/SMTP aceptado != MEETING_SCHEDULED; fallo/disabled del mailer conserva la solicitud y registra fallo reintentable
+server_side_recipients: fabio.merino.97@gmail.com; orlandokuanb@gmail.com (nunca aceptados desde payload cliente)
+required_security: owner/role scoped; tenant isolation; Brief/Version/Challenge de la misma organización; IDs ajenos no filtran existencia
+required_reentry: idempotency key + payload fingerprint; retry devuelve receipt estable; historial inmutable y seguimiento GET
+reuse_required: ChallengeActivationBrief/ChallengeActivationBriefVersion y validación CONFIRMED de ADR-008; patrones tenant/actor del handoff sin crear Assignment; backend/shared/mail/mailer.ts
+preserves: rutas Equipo y Lab no excluyentes; PL-06/ADR-009 sin cambios; BriefVersion exacta e inmutable; confirmación humana; no falsificar lectura humana ni reunión
+excluded: PortfolioSetupCompletionService.complete y gate setup 7/7; KAN-227/frontend; Project/Initiative/PortfolioHandoffAssignment/Step falsos; Core; Steps; Handoff; IA; Calendly API; infraestructura/proveedor/secretos nuevos; merge/deploy
+adr_determination: NO ADR nuevo para el registro aditivo acotado; STOP si se cambia completion, autoridad/cardinalidad Core, PL-06, Steps o Handoff
+stop_conditions: autoridad insuficiente para una superficie; consumidor desconocido que exija cambio no aditivo; ausencia de enforcement transaccional real; necesidad de infra/secretos; cualquier cambio a completeSetup
+guardrail: V2_CHANGE_GUARDRAIL_CHECK reconciliado — Proceed YES sólo para el alcance allowed; Proceed NO para excluded
+```
+
+La solicitud Lab es un encargo manual trazable, no una asignación PL-06 ni una ejecución de
+tecnología. La persistencia de la solicitud debe sobrevivir a un fallo de notificación; la aceptación
+del transporte SMTP no prueba lectura humana y ningún enlace o clic de Calendly prueba una reunión.
+El posible uso de un outcome Lab para completar el setup queda separado hasta una autorización y
+determinación ADR específicas.
+
+---
+
 ## Slice PORTFOLIO_LEAD_G3_ORGANIZATION_SELECTIVE_BRIEFS (KAN-223)
 
 **Registrado:** 2026-11-07 por HU KAN-223 y auditoría técnica acotada KAN-223#10670.
