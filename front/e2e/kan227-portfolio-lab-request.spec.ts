@@ -70,7 +70,7 @@ async function confirmedBrief(api: APIRequestContext, lead: Awaited<ReturnType<t
   const briefVersionId = brief.versions[0].id as string;
   const confirmed = await api.post(`/api/v1/portfolio/activation-brief-versions/${briefVersionId}/confirm`, { headers: { ...auth, 'Idempotency-Key': `kan227-confirm-${lead.stamp}` }, data: {} });
   expect(confirmed.status(), await confirmed.text()).toBe(200);
-  return { challengeId, briefId: brief.id as string, briefVersionId };
+  return { sessionId, challengeId, briefId: brief.id as string, briefVersionId };
 }
 
 test.describe('KAN-227 LAB-UX09 authenticated runtime', () => {
@@ -100,12 +100,35 @@ test.describe('KAN-227 LAB-UX09 authenticated runtime', () => {
     const persisted = await prisma.portfolioLabRequest.findMany({ where: { organizationId: lead.organizationId, challengeId: target.challengeId, briefVersionId: target.briefVersionId } });
     expect(persisted).toHaveLength(1);
     expect(persisted[0].status).toBe('REQUESTED');
+    await prisma.portfolioLabNotificationAttempt.create({ data: {
+      requestId: persisted[0].id, actorId: lead.userId,
+      idempotencyKeyHash: `kan231-accepted-${lead.stamp}`, payloadHash: `kan231-payload-${lead.stamp}`,
+      status: 'ACCEPTED', acceptedRecipients: ['fabio.merino.97@gmail.com', 'orlandokuanb@gmail.com'],
+      providerMessageRef: `kan231-smtp-${lead.stamp}`, completedAt: new Date(),
+    } });
+    await prisma.portfolioLabRequest.update({
+      where: { id: persisted[0].id },
+      data: { notificationStatus: 'NOTIFIED', providerMessageRef: `kan231-smtp-${lead.stamp}`, lastNotificationError: null },
+    });
     await page.reload();
     await expect(panel.getByText('Ya existe una solicitud activa para esta versión confirmada.')).toBeVisible({ timeout: 20_000 });
     await expect(panel.getByText('Tus solicitudes abiertas: 1')).toBeVisible();
     expect(await prisma.portfolioLabRequest.count({ where: { organizationId: lead.organizationId } })).toBe(1);
     const crossTenant = await api.get(`/api/v1/portfolio-lab/requests/${persisted[0].id}`, { headers: bearer(other.token), failOnStatusCode: false });
     expect(crossTenant.status()).toBe(404);
+    await panel.getByRole('button', { name: /^Finalizar configuraci.n con Starter.a Lab$/ }).click();
+    await expect(panel.getByText(/Contacto pendiente/)).toBeVisible();
+    await panel.getByRole('button', { name: /^S., finalizar configuraci.n$/ }).click();
+    await expect(page).toHaveURL(/\/portfolio\/inicio$/, { timeout: 20_000 });
+    await expect(page.getByRole('heading', { name: /^Starter.a Lab$/ })).toBeVisible({ timeout: 20_000 });
+    await expect(page.getByText('Contacto pendiente')).toBeVisible();
+    const completed = await prisma.portfolioBootstrapSession.findUniqueOrThrow({ where: { id: target.sessionId } });
+    expect(completed.setupCompletedAt).toBeTruthy();
+    const audits = await prisma.auditLog.findMany({
+      where: { action: 'portfolio_setup_completed', resource: 'portfolio_setup', resourceId: target.sessionId },
+    });
+    expect(audits).toHaveLength(1);
+    expect(audits[0].details).toMatchObject({ completionRoute: 'LAB_NOTIFIED', labSummary: { notified: 1 } });
     expect(await prisma.portfolioHandoffAssignment.count()).toBe(before.assignments);
     expect(await prisma.project.count()).toBe(before.projects);
     expect(await prisma.step.count()).toBe(before.steps);

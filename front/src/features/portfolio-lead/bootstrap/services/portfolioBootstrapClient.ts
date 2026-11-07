@@ -406,9 +406,17 @@ export async function getCurrentPortfolioBootstrapSession(): Promise<PortfolioBo
   }
 }
 
-export async function completePortfolioSetup(sessionId: string): Promise<{ completed: true; completedAt: string; summary: { sent: number; unsent: number; failed: number } }> {
+export type PortfolioSetupCompletionResult = {
+  completed: true;
+  completedAt: string;
+  completionRoute: 'TEAM_SENT' | 'LAB_NOTIFIED' | 'BOTH';
+  summary: { sent: number; unsent: number; failed: number };
+  labSummary: { notified: number };
+};
+
+export async function completePortfolioSetup(sessionId: string): Promise<PortfolioSetupCompletionResult> {
   try {
-    const { data } = await api.post<ApiResponse<{ completed: true; completedAt: string; summary: { sent: number; unsent: number; failed: number } }>>(
+    const { data } = await api.post<ApiResponse<PortfolioSetupCompletionResult>>(
       `/portfolio-bootstrap/sessions/${encodeURIComponent(sessionId)}/complete-setup`,
       { confirmed: true },
       { headers: { 'Idempotency-Key': `portfolio-setup-complete:${sessionId}` } },

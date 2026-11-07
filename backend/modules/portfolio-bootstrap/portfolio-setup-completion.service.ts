@@ -1,9 +1,19 @@
 import { createHash } from 'node:crypto';
-import type { PrismaClient } from '@prisma/client';
+import { Prisma, type PrismaClient } from '@prisma/client';
 import { can, type Permission } from '../../shared/authz/permissions';
 import { AppError } from '../../shared/errors/AppError';
+import { LAB_RECIPIENTS } from '../portfolio-lab/portfolio-lab-request.service';
 
 type CompletionSummary = { sent: number; unsent: number; failed: number };
+type LabCompletionSummary = { notified: number };
+export type PortfolioSetupCompletionRoute = 'TEAM_SENT' | 'LAB_NOTIFIED' | 'BOTH';
+type CompletionResult = {
+  completed: true;
+  completedAt: string;
+  completionRoute: PortfolioSetupCompletionRoute;
+  summary: CompletionSummary;
+  labSummary: LabCompletionSummary;
+};
 
 export class PortfolioSetupCompletionService {
   constructor(
@@ -17,7 +27,7 @@ export class PortfolioSetupCompletionService {
     permissions: ReadonlySet<Permission>;
     confirmed: boolean;
     idempotencyKey: string;
-  }): Promise<{ completed: true; completedAt: string; summary: CompletionSummary }> {
+  }): Promise<CompletionResult> {
     if (!can(input.permissions, 'portfolio:write')) {
       throw AppError.forbidden('No tienes permiso para finalizar esta configuración.', 'PORTFOLIO_SETUP_COMPLETE_FORBIDDEN');
     }
@@ -28,7 +38,7 @@ export class PortfolioSetupCompletionService {
       throw AppError.badRequest('Falta la clave de idempotencia.', 'IDEMPOTENCY_KEY_REQUIRED');
     }
 
-    return this.prisma.$transaction(async (transaction) => {
+    return withSerializableRetry(() => this.prisma.$transaction(async (transaction) => {
       const db = transaction as any;
       const actor = await db.user.findUnique({
         where: { id: input.authenticatedUserId },
@@ -50,6 +60,23 @@ export class PortfolioSetupCompletionService {
         throw AppError.conflict('La configuración todavía no tiene un frente y un reto canónicos.', 'PORTFOLIO_SETUP_STRUCTURE_REQUIRED');
       }
 
+      if (session.setupCompletedAt) {
+        const audit = await db.auditLog.findFirst({
+          where: {
+            userId: input.authenticatedUserId,
+            action: 'portfolio_setup_completed',
+            resource: 'portfolio_setup',
+            resourceId: session.id,
+          },
+          orderBy: { createdAt: 'desc' },
+          select: { details: true },
+        });
+        const snapshot = completionSnapshot(audit?.details);
+        if (snapshot) {
+          return { completed: true as const, completedAt: session.setupCompletedAt.toISOString(), ...snapshot };
+        }
+      }
+
       const assignments = await db.portfolioHandoffAssignment.findMany({
         where: {
           organizationId: actor.organizationId,
@@ -61,13 +88,39 @@ export class PortfolioSetupCompletionService {
         },
       });
       const summary = summarizeAssignments(assignments, challengeIds);
-      if (summary.sent === 0) {
+      const labRequests = await db.portfolioLabRequest.findMany({
+        where: {
+          organizationId: actor.organizationId,
+          requesterId: input.authenticatedUserId,
+          challengeId: { in: challengeIds },
+          status: { notIn: ['CLOSED', 'NOT_PROCEEDING', 'CANCELLED'] },
+          notificationStatus: 'NOTIFIED',
+        },
+        include: {
+          briefVersion: {
+            select: { id: true, organizationId: true, challengeId: true, briefId: true, status: true },
+          },
+          notificationAttempts: {
+            where: { status: 'ACCEPTED' },
+            select: { status: true, acceptedRecipients: true },
+          },
+        },
+      });
+      const labRequestIds = eligibleLabRequestIds(
+        labRequests,
+        actor.organizationId,
+        input.authenticatedUserId,
+        challengeIds,
+      );
+      const labSummary = { notified: labRequestIds.length };
+      if (summary.sent === 0 && labSummary.notified === 0) {
         throw AppError.conflict(
           'Envía al menos una invitación y confirma su recepción SMTP antes de finalizar.',
           'PORTFOLIO_SETUP_DELIVERY_REQUIRED',
         );
       }
 
+      const completionRoute = routeFor(summary, labSummary);
       const completedAt = session.setupCompletedAt ?? this.now();
       if (!session.setupCompletedAt) {
         const claimed = await db.portfolioBootstrapSession.updateMany({
@@ -87,6 +140,9 @@ export class PortfolioSetupCompletionService {
           await this.audit(db, input.authenticatedUserId, 'portfolio_setup_completed', session.id, {
             organizationId: actor.organizationId,
             summary,
+            labSummary,
+            labRequestIds,
+            completionRoute,
           });
         } else {
           const completed = await db.portfolioBootstrapSession.findFirst({
@@ -101,11 +157,23 @@ export class PortfolioSetupCompletionService {
           if (!completed?.setupCompletedAt) {
             throw AppError.conflict('La configuraciÃ³n cambiÃ³ durante el cierre.', 'PORTFOLIO_SETUP_COMPLETION_CONFLICT');
           }
-          return { completed: true as const, completedAt: completed.setupCompletedAt.toISOString(), summary };
+          return {
+            completed: true as const,
+            completedAt: completed.setupCompletedAt.toISOString(),
+            completionRoute,
+            summary,
+            labSummary,
+          };
         }
       }
-      return { completed: true as const, completedAt: completedAt.toISOString(), summary };
-    });
+      return {
+        completed: true as const,
+        completedAt: completedAt.toISOString(),
+        completionRoute,
+        summary,
+        labSummary,
+      };
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable, timeout: 10_000 }));
   }
 
   async openAdditionalFront(input: {
@@ -256,6 +324,76 @@ function summarizeAssignments(assignments: any[], challengeIds: string[]): Compl
     else if (assignment.state === 'CREATED') unsent += 1;
   }
   return { sent, unsent, failed };
+}
+
+function eligibleLabRequestIds(
+  requests: any[],
+  organizationId: string | null,
+  requesterId: string,
+  challengeIds: string[],
+): string[] {
+  const requestIds: string[] = [];
+  for (const request of requests ?? []) {
+    if (request.organizationId !== organizationId) continue;
+    if (request.requesterId !== requesterId) continue;
+    if (!challengeIds.includes(request.challengeId)) continue;
+    if (['CLOSED', 'NOT_PROCEEDING', 'CANCELLED'].includes(request.status)) continue;
+    if (request.notificationStatus !== 'NOTIFIED') continue;
+    const version = request.briefVersion;
+    if (!version
+      || version.id !== request.briefVersionId
+      || version.briefId !== request.briefId
+      || version.organizationId !== organizationId
+      || version.challengeId !== request.challengeId
+      || version.status !== 'CONFIRMED') continue;
+    const acceptedRecipients = new Set<string>((request.notificationAttempts ?? [])
+      .filter((attempt: any) => attempt.status === 'ACCEPTED')
+      .flatMap((attempt: any) => attempt.acceptedRecipients ?? [])
+      .map((recipient: string) => recipient.toLowerCase()));
+    if (!LAB_RECIPIENTS.every((recipient) => acceptedRecipients.has(recipient))) continue;
+    requestIds.push(request.id);
+  }
+  return requestIds;
+}
+
+function completionSnapshot(details: unknown): Pick<CompletionResult, 'completionRoute' | 'summary' | 'labSummary'> | null {
+  if (!details || typeof details !== 'object') return null;
+  const value = details as Record<string, any>;
+  if (!['TEAM_SENT', 'LAB_NOTIFIED', 'BOTH'].includes(value.completionRoute)) return null;
+  if (!value.summary || typeof value.summary.sent !== 'number'
+    || typeof value.summary.unsent !== 'number' || typeof value.summary.failed !== 'number') return null;
+  if (!value.labSummary || typeof value.labSummary.notified !== 'number') return null;
+  return {
+    completionRoute: value.completionRoute,
+    summary: value.summary,
+    labSummary: value.labSummary,
+  };
+}
+
+function isRetryableTransactionError(error: unknown): boolean {
+  return error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2034';
+}
+
+async function withSerializableRetry<T>(operation: () => Promise<T>): Promise<T> {
+  let lastError: unknown;
+  for (let attempt = 1; attempt <= 3; attempt += 1) {
+    try {
+      return await operation();
+    } catch (error) {
+      lastError = error;
+      if (!isRetryableTransactionError(error) || attempt === 3) throw error;
+    }
+  }
+  throw lastError;
+}
+
+function routeFor(
+  summary: CompletionSummary,
+  labSummary: LabCompletionSummary,
+): PortfolioSetupCompletionRoute {
+  if (summary.sent > 0 && labSummary.notified > 0) return 'BOTH';
+  if (labSummary.notified > 0) return 'LAB_NOTIFIED';
+  return 'TEAM_SENT';
 }
 
 function emptyBootstrapDto(session: any, anchor: any) {

@@ -41,7 +41,9 @@ const request = (overrides: Record<string, unknown> = {}) => ({
   ...overrides,
 });
 
-function renderPanel() { return render(<ChallengeAssignmentPreparationPanel target={target} />); }
+function renderPanel(onCompleteSetup?: () => Promise<void>) {
+  return render(<ChallengeAssignmentPreparationPanel target={target} onCompleteSetup={onCompleteSetup} />);
+}
 
 describe('KAN-227 Portfolio Lab UX', () => {
   beforeEach(() => {
@@ -184,5 +186,39 @@ describe('KAN-227 Portfolio Lab UX', () => {
     expect(screen.getByText('Ya existe una solicitud activa para esta versión confirmada.')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Solicitar acompañamiento de Startería Lab' })).toBeDisabled();
     expect(labApi.createPortfolioLabRequest).not.toHaveBeenCalled();
+  });
+
+  it('G4-LAB01 offers an explicit Lab-only completion checkpoint only after real notification', async () => {
+    const user = userEvent.setup();
+    const onCompleteSetup = vi.fn().mockResolvedValue(undefined);
+    labApi.listPortfolioLabRequests.mockResolvedValue([request()]);
+    renderPanel(onCompleteSetup);
+
+    const action = await screen.findByRole('button', { name: 'Finalizar configuración con Startería Lab' });
+    expect(action).toHaveAttribute('aria-expanded', 'false');
+    expect(action).toHaveAttribute('aria-controls', 'portfolio-lab-completion-confirmation');
+    await user.click(action);
+    const confirmation = screen.getByRole('group', { name: 'Confirmar finalización Lab' });
+    expect(action).toHaveAttribute('aria-expanded', 'true');
+    expect(confirmation).toHaveFocus();
+    expect(screen.getByText(/contacto pendiente/i)).toBeInTheDocument();
+    expect(screen.getByText(/no confirma una reunión/i)).toBeInTheDocument();
+    expect(onCompleteSetup).not.toHaveBeenCalled();
+    await user.click(screen.getByRole('button', { name: 'Seguir aquí' }));
+    expect(action).toHaveAttribute('aria-expanded', 'false');
+    await waitFor(() => expect(action).toHaveFocus());
+    await user.click(action);
+    await user.click(screen.getByRole('button', { name: 'Sí, finalizar configuración' }));
+    await waitFor(() => expect(onCompleteSetup).toHaveBeenCalledOnce());
+  });
+
+  it('G4-LAB02 keeps completion unavailable while notification is pending or failed', async () => {
+    const onCompleteSetup = vi.fn().mockResolvedValue(undefined);
+    labApi.listPortfolioLabRequests.mockResolvedValue([request({ notificationStatus: 'FAILED' })]);
+    renderPanel(onCompleteSetup);
+
+    expect(await screen.findByText('Error al notificar')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Finalizar configuración con Startería Lab/i })).not.toBeInTheDocument();
+    expect(onCompleteSetup).not.toHaveBeenCalled();
   });
 });

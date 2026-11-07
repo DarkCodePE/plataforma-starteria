@@ -280,7 +280,7 @@ export function ChallengeAssignmentPreparationPanel({ target, onBack, onExitToPo
       {!deliveryBatch ? <FlowCompletion onExit={requestExit} onViewTracking={assignments.length ? viewTracking : undefined} /> : null}
       {exitPrompt && editor ? <ExitPrompt editor={editor} saving={status === 'saving'} onSaveAndExit={() => void save(true)} onDiscardAndExit={() => { setEditor(null); setEditorNotice(null); setExitPrompt(false); leavePortfolio(); }} onContinue={() => setExitPrompt(false)} /> : null}
     </article>
-    <PortfolioLabRequestPanel target={target} version={version} />
+    <PortfolioLabRequestPanel target={target} version={version} onCompleteSetup={onCompleteSetup} />
   </section>;
 }
 
