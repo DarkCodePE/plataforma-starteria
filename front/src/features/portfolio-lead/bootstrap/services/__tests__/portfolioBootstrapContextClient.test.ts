@@ -17,6 +17,7 @@ vi.mock('../../../../../app/services/api', () => ({
 }));
 
 import {
+  PORTFOLIO_CONTEXT_REQUEST_TIMEOUT_MS,
   confirmPortfolioBootstrapContext,
   getPortfolioBootstrapContext,
   savePortfolioBootstrapContextDraft,
@@ -41,7 +42,10 @@ describe('portfolioBootstrapContextClient', () => {
 
     await expect(getPortfolioBootstrapContext('session/a')).resolves.toBeNull();
 
-    expect(http.get).toHaveBeenCalledWith('/portfolio-bootstrap/sessions/session%2Fa/context');
+    expect(http.get).toHaveBeenCalledWith(
+      '/portfolio-bootstrap/sessions/session%2Fa/context',
+      { timeout: PORTFOLIO_CONTEXT_REQUEST_TIMEOUT_MS },
+    );
   });
 
   it('CA03 saves a draft with expectedVersion and the caller stable Idempotency-Key', async () => {
@@ -62,9 +66,15 @@ describe('portfolioBootstrapContextClient', () => {
     expect(http.put).toHaveBeenNthCalledWith(1,
       '/portfolio-bootstrap/sessions/session-1/context/draft',
       { expectedVersion: 0, context, sourceCompanyContext: null },
-      { headers: { 'Idempotency-Key': 'kan222-draft-stable' } },
+      {
+        headers: { 'Idempotency-Key': 'kan222-draft-stable' },
+        timeout: PORTFOLIO_CONTEXT_REQUEST_TIMEOUT_MS,
+      },
     );
-    expect(http.put.mock.calls[1]?.[2]).toEqual({ headers: { 'Idempotency-Key': 'kan222-draft-stable' } });
+    expect(http.put.mock.calls[1]?.[2]).toEqual({
+      headers: { 'Idempotency-Key': 'kan222-draft-stable' },
+      timeout: PORTFOLIO_CONTEXT_REQUEST_TIMEOUT_MS,
+    });
   });
 
   it('CA03 confirms the current version without sending or replacing a snapshot', async () => {
@@ -76,7 +86,25 @@ describe('portfolioBootstrapContextClient', () => {
     expect(http.post).toHaveBeenCalledWith(
       '/portfolio-bootstrap/sessions/session-1/context/confirm',
       { expectedVersion: 1 },
-      { headers: { 'Idempotency-Key': 'kan222-confirm-stable' } },
+      {
+        headers: { 'Idempotency-Key': 'kan222-confirm-stable' },
+        timeout: PORTFOLIO_CONTEXT_REQUEST_TIMEOUT_MS,
+      },
     );
+  });
+
+  it('CA07 maps an aborted request to a visible timeout while leaving retry ownership to the hook', async () => {
+    http.put.mockRejectedValue(Object.assign(new Error('timeout of 15000ms exceeded'), { code: 'ECONNABORTED' }));
+
+    await expect(savePortfolioBootstrapContextDraft('session-1', {
+      expectedVersion: 0,
+      context,
+      sourceCompanyContext: null,
+    }, 'kan241-timeout-stable')).rejects.toMatchObject({
+      apiError: {
+        code: 'REQUEST_TIMEOUT',
+        message: 'Tiempo de espera agotado al guardar el contexto.',
+      },
+    });
   });
 });

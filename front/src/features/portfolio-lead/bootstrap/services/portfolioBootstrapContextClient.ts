@@ -2,6 +2,8 @@ import api, { parseApiError, type AuthError } from '../../../../app/services/api
 
 type ApiResponse<T> = { success: boolean; data: T };
 
+export const PORTFOLIO_CONTEXT_REQUEST_TIMEOUT_MS = 15_000;
+
 export type PortfolioBootstrapContextFieldProvenance =
   | 'user_declared'
   | 'source_extracted'
@@ -92,10 +94,21 @@ export class PortfolioBootstrapContextClientError extends Error {
   }
 }
 
-async function contextRequest<T>(request: () => Promise<{ data: ApiResponse<T> }>): Promise<T> {
+async function contextRequest<T>(
+  request: () => Promise<{ data: ApiResponse<T> }>,
+  timeoutMessage: string,
+): Promise<T> {
   try {
     return (await request()).data.data;
   } catch (error) {
+    const code = (error as { code?: unknown })?.code;
+    if (code === 'ECONNABORTED' || code === 'ETIMEDOUT') {
+      throw new PortfolioBootstrapContextClientError({
+        code: 'REQUEST_TIMEOUT',
+        message: timeoutMessage,
+        hint: 'Reintenta la operación; se conservará la misma clave idempotente.',
+      });
+    }
     throw new PortfolioBootstrapContextClientError(parseApiError(error));
   }
 }
@@ -103,7 +116,8 @@ async function contextRequest<T>(request: () => Promise<{ data: ApiResponse<T> }
 export function getPortfolioBootstrapContext(sessionId: string): Promise<PortfolioBootstrapContextReview | null> {
   return contextRequest(() => api.get<ApiResponse<PortfolioBootstrapContextReview | null>>(
     `/portfolio-bootstrap/sessions/${encodeURIComponent(sessionId)}/context`,
-  ));
+    { timeout: PORTFOLIO_CONTEXT_REQUEST_TIMEOUT_MS },
+  ), 'Tiempo de espera agotado al cargar el contexto.');
 }
 
 export function savePortfolioBootstrapContextDraft(
@@ -114,8 +128,11 @@ export function savePortfolioBootstrapContextDraft(
   return contextRequest(() => api.put<ApiResponse<PortfolioBootstrapContextReview>>(
     `/portfolio-bootstrap/sessions/${encodeURIComponent(sessionId)}/context/draft`,
     input,
-    { headers: { 'Idempotency-Key': idempotencyKey } },
-  ));
+    {
+      headers: { 'Idempotency-Key': idempotencyKey },
+      timeout: PORTFOLIO_CONTEXT_REQUEST_TIMEOUT_MS,
+    },
+  ), 'Tiempo de espera agotado al guardar el contexto.');
 }
 
 export function confirmPortfolioBootstrapContext(
@@ -126,6 +143,9 @@ export function confirmPortfolioBootstrapContext(
   return contextRequest(() => api.post<ApiResponse<PortfolioBootstrapContextReview>>(
     `/portfolio-bootstrap/sessions/${encodeURIComponent(sessionId)}/context/confirm`,
     { expectedVersion },
-    { headers: { 'Idempotency-Key': idempotencyKey } },
-  ));
+    {
+      headers: { 'Idempotency-Key': idempotencyKey },
+      timeout: PORTFOLIO_CONTEXT_REQUEST_TIMEOUT_MS,
+    },
+  ), 'Tiempo de espera agotado al confirmar el contexto.');
 }

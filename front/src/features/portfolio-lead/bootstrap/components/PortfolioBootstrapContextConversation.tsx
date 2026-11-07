@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type {
   PortfolioBootstrapCompanyContextSource,
   PortfolioBootstrapContextField,
@@ -174,9 +174,18 @@ export function PortfolioBootstrapContextConversation({
   const [draft, setDraft] = useState<PortfolioBootstrapContextPayload>(persistedDraft);
   const [answer, setAnswer] = useState('');
   const [summaryOpen, setSummaryOpen] = useState(false);
+  const [dirty, setDirty] = useState(false);
   const [localBusy, setLocalBusy] = useState(false);
   const [localError, setLocalError] = useState<string | null>(null);
-  useEffect(() => setDraft(persistedDraft), [review?.id, review?.version]);
+  const summaryRef = useRef<HTMLElement>(null);
+  const disclosureRef = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    setDraft(persistedDraft);
+    setDirty(false);
+  }, [review?.id, review?.version]);
+  useEffect(() => {
+    if (summaryOpen) summaryRef.current?.focus();
+  }, [summaryOpen]);
   const question = useMemo(
     () => guidedContextQuestion(draft, { hasPendingCorrection: review?.hasPendingCorrection }),
     [draft, review?.hasPendingCorrection],
@@ -196,6 +205,7 @@ export function PortfolioBootstrapContextConversation({
   });
   const updateField = (field: ContextField, value: string) => {
     setDraft((current) => replaceField(current, field, value));
+    setDirty(true);
     setLocalError(null);
   };
   const updateListField = (field: 'constraints' | 'assumptions', value: string) => {
@@ -203,23 +213,29 @@ export function PortfolioBootstrapContextConversation({
       ...current,
       [field]: value.split('\n').filter((item) => item.trim()).map(declared),
     }));
+    setDirty(true);
     setLocalError(null);
   };
-  const run = async (operation: () => Promise<unknown>, onSuccess?: () => void) => {
+  const run = async (operation: () => Promise<unknown>, onSuccess?: () => void): Promise<boolean> => {
     setLocalBusy(true);
     setLocalError(null);
     try {
       await operation();
       onSuccess?.();
+      return true;
     } catch (caught) {
       setLocalError(caught instanceof Error ? caught.message : 'No pudimos completar la operación.');
+      return false;
     } finally {
       setLocalBusy(false);
     }
   };
   const saveConversationTurn = async (next: PortfolioBootstrapContextPayload) => {
-    setDraft(next);
-    await run(() => onSaveDraft(next, sourceCompany), () => setAnswer(''));
+    await run(() => onSaveDraft(next, sourceCompany), () => {
+      setDraft(next);
+      setDirty(false);
+      setAnswer('');
+    });
   };
   const saveAnswer = async () => {
     if (!question.field || !answer.trim() || busy) return;
@@ -229,6 +245,26 @@ export function PortfolioBootstrapContextConversation({
     if (!question.field || busy) return;
     await saveConversationTurn(markField(draft, question.field, disposition));
   };
+  const toggleSummary = () => {
+    if (summaryOpen) {
+      setSummaryOpen(false);
+      disclosureRef.current?.focus();
+      return;
+    }
+    setSummaryOpen(true);
+  };
+  const updateGaps = (value: string) => {
+    setDraft((current) => ({
+      ...current,
+      gaps: [...dispositionGaps(current.gaps), ...value.split('\n').filter((item) => item.trim())],
+    }));
+    setDirty(true);
+    setLocalError(null);
+  };
+  const saveSummary = () => run(
+    () => onSaveDraft(draft, sourceCompany),
+    () => setDirty(false),
+  );
 
   return (
     <div className="space-y-5" data-testid="portfolio-context-conversation" aria-busy={busy}>
@@ -259,7 +295,7 @@ export function PortfolioBootstrapContextConversation({
             </div>
           </>
         ) : null}
-        <button type="button" aria-expanded={summaryOpen} onClick={() => setSummaryOpen((current) => !current)} className="mt-4 rounded-lg border border-violet-300 bg-white px-4 py-2 text-sm font-semibold text-violet-900">
+        <button ref={disclosureRef} type="button" aria-expanded={summaryOpen} aria-controls="portfolio-context-summary" onClick={toggleSummary} className="mt-4 rounded-lg border border-violet-300 bg-white px-4 py-2 text-sm font-semibold text-violet-900">
           {summaryOpen ? 'Ocultar síntesis' : 'Revisar contexto'}
         </button>
       </section>
@@ -273,7 +309,7 @@ export function PortfolioBootstrapContextConversation({
       ) : null}
 
       {summaryOpen ? (
-        <section className="rounded-xl border border-slate-200 bg-white p-4">
+        <section ref={summaryRef} id="portfolio-context-summary" role="region" aria-label="Síntesis editable del contexto" tabIndex={-1} className="rounded-xl border border-slate-200 bg-white p-4 outline-none focus-visible:ring-2 focus-visible:ring-violet-500">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div><h3 className="font-semibold text-slate-950">Síntesis editable</h3><p className="text-sm text-slate-600">Revisa lo declarado. Los desconocidos y «no aplica» quedan registrados sin convertirse en hechos.</p></div>
             {review?.effectiveSourceCompanyContext ? <p className="text-xs font-semibold text-slate-600">Versión {review.effectiveSourceCompanyContext.versionNumber} de Company Context</p> : null}
@@ -289,7 +325,7 @@ export function PortfolioBootstrapContextConversation({
             ))}
             <label className="text-sm font-semibold text-slate-800 md:col-span-2">
               Vacíos por resolver
-              <textarea disabled={busy} value={userGaps(draft.gaps).join('\n')} onChange={(event) => setDraft((current) => ({ ...current, gaps: [...dispositionGaps(current.gaps), ...event.target.value.split('\n').filter((value) => value.trim())] }))} rows={3} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 font-normal text-slate-950 disabled:opacity-60" />
+              <textarea disabled={busy} value={userGaps(draft.gaps).join('\n')} onChange={(event) => updateGaps(event.target.value)} rows={3} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 font-normal text-slate-950 disabled:opacity-60" />
             </label>
             {(['constraints', 'assumptions'] as const).map((field) => (
               <div key={field}>
@@ -301,10 +337,11 @@ export function PortfolioBootstrapContextConversation({
           </div>
 
           <div className="mt-4 flex flex-wrap gap-2">
-            <button type="button" disabled={busy} onClick={() => void run(() => onSaveDraft(draft, sourceCompany))} className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-800 disabled:opacity-50">Guardar ajustes</button>
-            {review?.status === 'draft' ? <button type="button" disabled={busy} onClick={() => void run(onConfirm)} className="rounded-lg bg-slate-950 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">Estoy de acuerdo, confirmar contexto</button> : null}
+            <button type="button" disabled={busy || !dirty} onClick={() => void saveSummary()} className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-800 disabled:opacity-50">Guardar ajustes</button>
+            {review?.status === 'draft' ? <button type="button" disabled={busy || dirty} onClick={() => void run(onConfirm)} className="rounded-lg bg-slate-950 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">Estoy de acuerdo, confirmar contexto</button> : null}
             {review?.status === 'confirmed' ? <p role="status" className="self-center text-sm font-semibold text-emerald-800">Contexto confirmado</p> : null}
           </div>
+          {dirty ? <p className="mt-2 text-sm font-medium text-amber-800">Guarda los ajustes antes de confirmar.</p> : null}
         </section>
       ) : null}
 

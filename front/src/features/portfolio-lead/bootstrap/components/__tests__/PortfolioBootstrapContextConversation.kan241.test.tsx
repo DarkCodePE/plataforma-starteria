@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import {
@@ -123,11 +123,14 @@ describe('KAN-241 adaptive E1 context conversation', () => {
     const user = userEvent.setup();
     render(<PortfolioBootstrapContextConversation {...props({ review: review() })} />);
 
-    expect(screen.getByRole('button', { name: 'Revisar contexto' })).toHaveAttribute('aria-expanded', 'false');
+    const disclosure = screen.getByRole('button', { name: 'Revisar contexto' });
+    expect(disclosure).toHaveAttribute('aria-expanded', 'false');
+    expect(disclosure).toHaveAttribute('aria-controls', 'portfolio-context-summary');
     expect(screen.queryByLabelText('Situación actual')).not.toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: 'Revisar contexto' }));
 
+    expect(screen.getByRole('region', { name: 'Síntesis editable del contexto' })).toHaveFocus();
     expect(screen.getByLabelText('Situación actual')).toHaveValue('Somos una cafetería y queremos probar desayunos para llevar para oficinas cercanas.');
     expect(screen.getAllByText('No aplica en este caso').length).toBeGreaterThan(0);
     expect(screen.getByRole('button', { name: 'Estoy de acuerdo, confirmar contexto' })).toBeEnabled();
@@ -144,8 +147,34 @@ describe('KAN-241 adaptive E1 context conversation', () => {
 
     expect(await screen.findByRole('alert')).toHaveTextContent('Tiempo de espera agotado al guardar.');
     expect(screen.getByLabelText('Tu respuesta')).toHaveValue('Una respuesta que debe conservarse.');
+    expect(screen.getByText(/Cuéntame qué está ocurriendo/i)).toBeInTheDocument();
+    expect(screen.queryByText(/parte de la actividad/i)).not.toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Reintentar operación' }));
     await waitFor(() => expect(onRetry).toHaveBeenCalledOnce());
+  });
+
+  it('CA04 blocks confirmation of dirty synthesis until the edited draft is persisted', async () => {
+    const user = userEvent.setup();
+    const onSaveDraft = vi.fn().mockResolvedValue(undefined);
+    const onConfirm = vi.fn().mockResolvedValue(undefined);
+    render(<PortfolioBootstrapContextConversation {...props({ review: review(), onSaveDraft, onConfirm })} />);
+
+    await user.click(screen.getByRole('button', { name: 'Revisar contexto' }));
+    fireEvent.change(screen.getByLabelText('Situación actual'), {
+      target: { value: 'Corrección persistida antes de confirmar.' },
+    });
+
+    expect(screen.getByRole('button', { name: 'Estoy de acuerdo, confirmar contexto' })).toBeDisabled();
+    expect(screen.getByText(/guarda los ajustes antes de confirmar/i)).toBeVisible();
+
+    await user.click(screen.getByRole('button', { name: 'Guardar ajustes' }));
+    await waitFor(() => expect(onSaveDraft).toHaveBeenCalledWith(expect.objectContaining({
+      situation: declared('Corrección persistida antes de confirmar.'),
+    }), null));
+    expect(screen.getByRole('button', { name: 'Estoy de acuerdo, confirmar contexto' })).toBeEnabled();
+
+    await user.click(screen.getByRole('button', { name: 'Estoy de acuerdo, confirmar contexto' }));
+    await waitFor(() => expect(onConfirm).toHaveBeenCalledOnce());
   });
 
   it('CA08 re-enters a confirmed partial context without repeating completed or declined questions', () => {
