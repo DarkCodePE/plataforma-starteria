@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { AlertCircle, ArrowLeft, CheckCircle2, ChevronDown, FileText, LockKeyhole, Pencil } from 'lucide-react';
 import { createIdempotencyKey } from '../../portfolio-entry/public/idempotency';
 import type { ChallengeAssignmentTarget } from './ChallengeActivationBriefPanel';
+import { PortfolioLabRequestPanel } from './PortfolioLabRequestPanel';
 import {
   createChallengeHandoffAssignment,
   getActivationBrief,
@@ -279,6 +280,7 @@ export function ChallengeAssignmentPreparationPanel({ target, onBack, onExitToPo
       {!deliveryBatch ? <FlowCompletion onExit={requestExit} onViewTracking={assignments.length ? viewTracking : undefined} /> : null}
       {exitPrompt && editor ? <ExitPrompt editor={editor} saving={status === 'saving'} onSaveAndExit={() => void save(true)} onDiscardAndExit={() => { setEditor(null); setEditorNotice(null); setExitPrompt(false); leavePortfolio(); }} onContinue={() => setExitPrompt(false)} /> : null}
     </article>
+    <PortfolioLabRequestPanel target={target} version={version} />
   </section>;
 }
 

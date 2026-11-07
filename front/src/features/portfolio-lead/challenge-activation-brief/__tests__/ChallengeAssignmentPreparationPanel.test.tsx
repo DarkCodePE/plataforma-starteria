@@ -12,8 +12,14 @@ const api = vi.hoisted(() => ({
   updateChallengeHandoffAssignment: vi.fn(),
   sendHandoffInvitationBatch: vi.fn(),
 }));
+const labApi = vi.hoisted(() => ({
+  listPortfolioLabRequests: vi.fn(),
+  createPortfolioLabRequest: vi.fn(),
+  retryPortfolioLabNotification: vi.fn(),
+}));
 
 vi.mock('../challengeActivationBriefClient', () => api);
+vi.mock('../portfolioLabRequestClient', () => labApi);
 import { ChallengeAssignmentPreparationPanel } from '../ChallengeAssignmentPreparationPanel';
 
 const confirmedVersion = {
@@ -30,6 +36,7 @@ const target = { challengeId: 'challenge-1', briefId: 'brief-a', briefVersionId:
 describe('ChallengeAssignmentPreparationPanel - PL-06A multiple preparation', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    labApi.listPortfolioLabRequests.mockResolvedValue([]);
     api.getActivationBrief.mockResolvedValue(brief);
     api.listChallengeHandoffAssignments.mockResolvedValue([]);
     api.listAssignableInitiatives.mockResolvedValue({ canonicalInitiatives: [], importedRecords: [{ id: 'work-1', label: 'Onboarding guiado', reason: 'IMPORTED_RECORD_NOT_CANONICAL' }], otherImportedRecords: [] });
