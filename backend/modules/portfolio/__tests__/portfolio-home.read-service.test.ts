@@ -458,7 +458,7 @@ describe('PortfolioHomeReadService - G5 operational rows', () => {
       .getHome('lead-a', { all: false, organizationIds: ['org-a'] });
 
     expect(workFindMany).toHaveBeenCalledWith(expect.objectContaining({
-      where: { bootstrapSession: { organizationId: { in: ['org-a'] } } },
+      where: { bootstrapSession: { organizationId: { in: ['org-a'] }, userId: 'lead-a' } },
     }));
     expect(briefFindMany).toHaveBeenCalledWith(expect.objectContaining({
       where: { organizationId: { in: ['org-a'] } },
@@ -491,6 +491,7 @@ describe('PortfolioHomeReadService - G5 operational rows', () => {
     expect(home.availability.workItems).toBe('unavailable');
     expect(home.availability.briefs).toBe('available');
     expect(workFindMany.mock.calls[0][0].where.bootstrapSession.organizationId.in).toEqual(['org-a']);
+    expect(workFindMany.mock.calls[0][0].where.bootstrapSession.userId).toBe('lead-a');
     expect(briefFindMany.mock.calls[0][0].where.organizationId.in).toEqual(['org-a']);
   });
 });

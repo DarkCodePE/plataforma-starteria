@@ -232,4 +232,31 @@ describe('PortfolioOverviewHome', () => {
     expect(screen.getByText('Sin datos', { selector: '[data-field="impact"]' })).toBeInTheDocument();
     expect(screen.queryByText(/% completado/i)).not.toBeInTheDocument();
   });
+
+  it('G5-CA07 preserves detected, pending, confirmed and rejected WorkItem states as factual labels and actions', () => {
+    const workItems = [
+      ['detected', 'Detectado', 'Revisar trabajo detectado'],
+      ['needs_review', 'Necesita revisión', 'Completar revisión humana'],
+      ['pending', 'Pendiente de decisión', 'Resolver revisión pendiente'],
+      ['confirmed_in_portfolio', 'Confirmado en portafolio', 'Revisar destino confirmado'],
+      ['rejected', 'Rechazado', 'Conservar trazabilidad'],
+    ].map(([status, _label, _action], index) => ({
+      workItemId: `work-${index}`, bootstrapSessionId: 'session-a', label: `Trabajo ${status}`,
+      purpose: null, sourceType: 'manual', status, currentStateHint: null, ownerCandidate: null,
+      sourceRefs: { source: 'manual' }, actorId: 'lead-a', linkedInitiativeId: index === 3 ? 'project-1' : null,
+      createdAt: '2026-11-07T08:00:00.000Z', updatedAt: '2026-11-07T08:00:00.000Z',
+    }));
+    render(<PortfolioOverviewHome model={{ ...model, workItems, briefs: [] } as any} onOpenCopilot={vi.fn()} onOpenAdditionalFront={vi.fn()} />);
+    const table = screen.getByRole('table', { name: 'Seguimiento operativo del portafolio' });
+    for (const [_status, label, action] of [
+      ['detected', 'Detectado', 'Revisar trabajo detectado'],
+      ['needs_review', 'Necesita revisión', 'Completar revisión humana'],
+      ['pending', 'Pendiente de decisión', 'Resolver revisión pendiente'],
+      ['confirmed_in_portfolio', 'Confirmado en portafolio', 'Revisar destino confirmado'],
+      ['rejected', 'Rechazado', 'Conservar trazabilidad'],
+    ]) {
+      expect(within(table).getByText(label)).toBeInTheDocument();
+      expect(within(table).getByText(action)).toBeInTheDocument();
+    }
+  });
 });
