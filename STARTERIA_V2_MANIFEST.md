@@ -168,23 +168,24 @@ technical_audit: KAN-220#10651, #10652, #10655, #10656, #10657 + revisión indep
 technical_task: KAN-221
 frontend_task: KAN-222
 frontend_authority: KAN-222#10667 (APPROVED; alcance limitado a frontend V2, tests focales y E2E autenticado)
-frontend_implementation_status: IMPLEMENTED_PENDING_INDEPENDENT_REVIEW
+frontend_implementation_status: IMPLEMENTED_INDEPENDENT_REVIEW_APPROVED_CI_PENDING
 logic_status: ACTIVE_V2_BASELINE (solo semántica funcional aprobada)
 implementation_status: IMPLEMENTED_UNVERIFIED
 visual_status: V2_TARGET_DEFINED
 evidence_status: TESTING
 runtime_verification: LOCAL_UNIT_REGRESSION_PRISMA_LINT_BUILD_PASS; KAN-221_POSTGRESQL_5_OF_5_PASS; CI_6_OF_6_PASS_PR_256
-implementation_commits: ace7855 (KAN-221 tests-first); 433eec1 (KAN-221 backend/API/Prisma); 6572118 + b944c01 (KAN-221 independent-review fixes); e5393a7 (KAN-222 tests-first); c39327f (KAN-222 frontend)
+implementation_commits: ace7855 (KAN-221 tests-first); 433eec1 (KAN-221 backend/API/Prisma); 6572118 + b944c01 (KAN-221 independent-review fixes); e5393a7 (KAN-222 tests-first); c39327f (KAN-222 frontend); 760cb33 + e69bcd5 (KAN-222 hardening/independent-review fixes)
 independent_review: R1 CHANGES_REQUIRED; R2 CHANGES_REQUIRED; R3 APPROVED
+frontend_independent_review: KAN-222 R1 CHANGES_REQUIRED; R2 APPROVED at e69bcd5
 implementation_surfaces: portfolio-bootstrap context schemas/router/controller/service; additive Prisma review/history/operation models and migration; KAN-222 frontend E1 client/hook/conversation wiring; focused/unit/HTTP/DB-integration/authenticated E2E tests
-test_evidence: KAN-221 focused 37/37 PASS; KAN-222 focused 13/13 + Bootstrap regression 59/59 PASS; frontend full regression/build/lint/front typecheck PASS; backend KAN-221 non-DB 17/17 PASS; backend typecheck retains pre-existing TS2740 only
+test_evidence: KAN-221 focused 37/37 PASS; KAN-222 focused + Bootstrap regression 61/61 PASS; frontend full regression/build/lint/front typecheck PASS; backend KAN-221 non-DB 17/17 PASS; backend typecheck retains pre-existing TS2740 only
 postgresql_evidence: 5/5 KAN-221 integration scenarios PASS, 0 skipped, under PORTFOLIO_BOOTSTRAP_DB_INTEGRATION=1 in CI run 42306134658 / PR #256
 semantic_owners: CompanyContextVersion PUBLISHED = fuente opcional; Bootstrap E1 = revisión/snapshot confirmado; PortfolioAnchor E2 = objetivo independiente
 preserves: PORTFOLIO_LEAD_SETUP_NAVIGATION_REENTRY_G1 KAN-205/207 sin cambios
 allowed: backend/API/Prisma aditivos y tests KAN-221 ya fusionados; frontend V2, tests focales y E2E autenticado KAN-222; ajuste documental mínimo del Manifest
 excluded: Core; backend/API/Prisma adicionales; Steps; Handoff; canonicalización; Company obligatoria; cambio de bootstrapPhase/existingWorkStatus/E5; IA/model/provider/prompt/runtime; infra; secretos; merge/deploy
 adr_required: NO — mientras la relación sea opcional, provisional y de procedencia; STOP y ADR si se vuelve canónica/obligatoria o cambia autoridad/cardinalidad Core
-guardrail: KAN-221 cerrado por PR #255 y certificado por PR #256; KAN-222 requiere V2_CHANGE_GUARDRAIL_CHECK Proceed YES antes de editar código frontend productivo
+guardrail: KAN-221 cerrado por PR #255 y certificado por PR #256; KAN-222 V2_CHANGE_GUARDRAIL_CHECK emitido Proceed YES antes de editar código frontend productivo
 baseline_evidence: front 1065/1065 PASS; backend 1872/1872 PASS + 180 environment-gated SKIPPED; lint/typecheck front/Prisma validate PASS; typecheck backend conserva TS2740 preexistente en blob origin/main 93bee03d5133bed32ea7ce949e168e621d5a4476
 ```
 
