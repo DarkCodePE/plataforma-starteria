@@ -195,10 +195,19 @@ describe('KAN-227 Portfolio Lab UX', () => {
     renderPanel(onCompleteSetup);
 
     const action = await screen.findByRole('button', { name: 'Finalizar configuración con Startería Lab' });
+    expect(action).toHaveAttribute('aria-expanded', 'false');
+    expect(action).toHaveAttribute('aria-controls', 'portfolio-lab-completion-confirmation');
     await user.click(action);
+    const confirmation = screen.getByRole('group', { name: 'Confirmar finalización Lab' });
+    expect(action).toHaveAttribute('aria-expanded', 'true');
+    expect(confirmation).toHaveFocus();
     expect(screen.getByText(/contacto pendiente/i)).toBeInTheDocument();
     expect(screen.getByText(/no confirma una reunión/i)).toBeInTheDocument();
     expect(onCompleteSetup).not.toHaveBeenCalled();
+    await user.click(screen.getByRole('button', { name: 'Seguir aquí' }));
+    expect(action).toHaveAttribute('aria-expanded', 'false');
+    await waitFor(() => expect(action).toHaveFocus());
+    await user.click(action);
     await user.click(screen.getByRole('button', { name: 'Sí, finalizar configuración' }));
     await waitFor(() => expect(onCompleteSetup).toHaveBeenCalledOnce());
   });

@@ -116,11 +116,11 @@ test.describe('KAN-227 LAB-UX09 authenticated runtime', () => {
     expect(await prisma.portfolioLabRequest.count({ where: { organizationId: lead.organizationId } })).toBe(1);
     const crossTenant = await api.get(`/api/v1/portfolio-lab/requests/${persisted[0].id}`, { headers: bearer(other.token), failOnStatusCode: false });
     expect(crossTenant.status()).toBe(404);
-    await panel.getByRole('button', { name: 'Finalizar configuraciÃ³n con StarterÃ­a Lab' }).click();
+    await panel.getByRole('button', { name: /^Finalizar configuraci.n con Starter.a Lab$/ }).click();
     await expect(panel.getByText(/Contacto pendiente/)).toBeVisible();
-    await panel.getByRole('button', { name: 'SÃ­, finalizar configuraciÃ³n' }).click();
+    await panel.getByRole('button', { name: /^S., finalizar configuraci.n$/ }).click();
     await expect(page).toHaveURL(/\/portfolio\/inicio$/, { timeout: 20_000 });
-    await expect(page.getByRole('heading', { name: 'StarterÃ­a Lab' })).toBeVisible({ timeout: 20_000 });
+    await expect(page.getByRole('heading', { name: /^Starter.a Lab$/ })).toBeVisible({ timeout: 20_000 });
     await expect(page.getByText('Contacto pendiente')).toBeVisible();
     const completed = await prisma.portfolioBootstrapSession.findUniqueOrThrow({ where: { id: target.sessionId } });
     expect(completed.setupCompletedAt).toBeTruthy();
