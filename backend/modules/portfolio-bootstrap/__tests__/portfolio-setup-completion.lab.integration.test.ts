@@ -5,7 +5,11 @@ import { createApp } from '../../../app';
 import { generateAccessToken } from '../../auth/token.service';
 import { PortfolioLabRequestService } from '../../portfolio-lab/portfolio-lab-request.service';
 
-const suite = process.env.PORTFOLIO_SETUP_LAB_DB_INTEGRATION === '1' ? describe : describe.skip;
+const suite =
+  process.env.PORTFOLIO_SETUP_LAB_DB_INTEGRATION === '1' ||
+  process.env.PORTFOLIO_BOOTSTRAP_DB_INTEGRATION === '1'
+    ? describe
+    : describe.skip;
 const prisma = new PrismaClient(process.env.E2E_DATABASE_URL
   ? { datasources: { db: { url: process.env.E2E_DATABASE_URL } } }
   : undefined);
