@@ -355,6 +355,11 @@ suite('KAN-226 PortfolioLabRequest PostgreSQL integration', () => {
       expect(responseBody.data.notificationAttempts.length).toBeGreaterThanOrEqual(1);
       expect(responseBody.data.notificationAttempts[0]).not.toHaveProperty('acceptedRecipients');
       expect(responseBody.data.notificationAttempts[0]).not.toHaveProperty('rejectedRecipients');
+      const serialized = JSON.stringify(responseBody.data);
+      expect(serialized).not.toContain('acceptedRecipients');
+      expect(serialized).not.toContain('rejectedRecipients');
+      expect(serialized).not.toContain('fabio.merino.97@gmail.com');
+      expect(serialized).not.toContain('orlandokuanb@gmail.com');
     });
     await request(app).get(`/api/v1/portfolio-lab/requests/${created.body.data.request.id}`).set(otherAuth).expect(404);
     await request(app).get('/api/v1/portfolio-lab/requests').set(sameTenantAuth).expect(200).expect(({ body: responseBody }) => {

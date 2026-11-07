@@ -457,8 +457,8 @@ export class PortfolioLabRequestService {
           metadata: {
             acceptedByTransport: result.accepted,
             allRecipientsAccepted,
-            acceptedRecipients: result.acceptedRecipients ?? [],
-            rejectedRecipients: result.rejectedRecipients ?? [],
+            acceptedRecipientCount: result.acceptedRecipients?.length ?? 0,
+            rejectedRecipientCount: result.rejectedRecipients?.length ?? 0,
             providerMessageRef: result.providerMessageRef ?? null,
             errorCode: result.errorCode ?? null,
             humanReceiptConfirmed: false,
