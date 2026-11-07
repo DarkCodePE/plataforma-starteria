@@ -39,6 +39,7 @@ import { strategicFramingRouter } from './modules/strategic-framing/strategic-fr
 import { portfolioHandoffInvitationRouter, portfolioHandoffDeliveryRouter, portfolioHandoffResponseRouter } from './modules/portfolio-handoff/portfolio-handoff-invitation.router';
 import { portfolioHandoffOwnerContinuityRouter } from './modules/portfolio-handoff/portfolio-handoff-owner-continuity.router';
 import { challengeActivationBriefRouter } from './modules/portfolio-handoff/challenge-activation-brief.router';
+import { portfolioLabRequestRouter } from './modules/portfolio-lab/portfolio-lab-request.router';
 import { firstValueP3Router } from './modules/first-value-p3/first-value-p3.router';
 import { reconstructionRouter } from './modules/reconstruction/reconstruction.router';
 
@@ -117,6 +118,7 @@ export function createApp(options: { portfolioEntryRouter?: ExpressRouter } = {}
   app.use('/api/v1/public/handoff-invitations', portfolioHandoffInvitationRouter);
   app.use('/api/v1/portfolio/handoff-assignments', portfolioHandoffDeliveryRouter);
   app.use('/api/v1/portfolio', challengeActivationBriefRouter);
+  app.use('/api/v1/portfolio-lab', portfolioLabRequestRouter);
   app.use('/api/v1/handoff/assignments', portfolioHandoffResponseRouter);
   app.use('/api/v1/handoff/assignments', portfolioHandoffOwnerContinuityRouter);
   // Internal ai-service → backend push channel (X-Internal-Token only; no JWT).
