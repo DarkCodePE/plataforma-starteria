@@ -49,7 +49,7 @@
         "front/e2e/kan213-g2b-analysis-review.spec.ts"
       ],
       "remoteScenarios": ["A", "B", "C"],
-      "remoteEvidence": "intake manual/importado, análisis E4 y disposición humana antes de E5"
+      "remoteEvidence": "A prueba NO_EXISTING_WORK_ELIGIBLE; B/C prueban intake manual/importado, análisis E4, disposición humana y ANALYZED_WORK_ELIGIBLE antes de E5"
     },
     {
       "id": "G3",

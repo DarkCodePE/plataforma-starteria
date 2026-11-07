@@ -70,6 +70,10 @@ describe('KAN-236/KAN-237 G1-G5 isolated staging certification contract', () => 
       const remoteSource = read(remotePath);
       expect(remoteSource).not.toMatch(/@prisma\/client|PrismaClient|DATABASE_URL/);
       expect(remoteSource).not.toMatch(/test\.(skip|fixme)|\.skip\(/);
+      expect(remoteSource).toContain('/sessions/additional-front');
+      expect(remoteSource).toContain('scenarioSessionIds.has(sessionId)');
+      expect(remoteSource).toContain('NO_EXISTING_WORK_ELIGIBLE');
+      expect(remoteSource).toContain('ANALYZED_WORK_ELIGIBLE');
     }
 
     const selector = read('scripts/ci/e2e-staging-goals-selector.mjs');

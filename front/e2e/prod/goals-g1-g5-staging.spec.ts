@@ -18,6 +18,7 @@ test.describe.configure({ mode: 'serial' });
 let api: APIRequestContext;
 let lead: Session;
 let participant: Session;
+const scenarioSessionIds = new Set<string>();
 
 function assertRuntimeContract() {
   if (!BASE || !MAILPIT || !LEAD_PASSWORD || !PARTICIPANT_PASSWORD) {
@@ -85,11 +86,16 @@ async function command(
 
 async function beginScenario(id: Scenario['id']): Promise<Scenario> {
   const stamp = `kan236-${id.toLowerCase()}-${Date.now()}`;
-  const direct = await command('post', '/api/v1/portfolio-bootstrap/sessions/direct', {
+  const opened = await command('post', id === 'A'
+    ? '/api/v1/portfolio-bootstrap/sessions/direct'
+    : '/api/v1/portfolio-bootstrap/sessions/additional-front', {
     token: lead.token,
+    ...(id === 'A' ? {} : { key: `${stamp}-additional-front` }),
     data: {},
   });
-  const sessionId = direct.bootstrapSession.id as string;
+  const sessionId = opened.bootstrapSession.id as string;
+  expect(scenarioSessionIds.has(sessionId), `scenario ${id} must use a fresh re-entry session`).toBe(false);
+  scenarioSessionIds.add(sessionId);
   const draft = await command('put', `/api/v1/portfolio-bootstrap/sessions/${sessionId}/context/draft`, {
     token: lead.token,
     key: `${stamp}-context-draft`,
@@ -143,6 +149,7 @@ async function materializeOrganization(
   scenario: Scenario,
   relatedInitiativeIds: string[][],
   ungroupedInitiativeIds: string[],
+  expectedEligibilityReason: 'NO_EXISTING_WORK_ELIGIBLE' | 'ANALYZED_WORK_ELIGIBLE',
 ) {
   const eligibility = await command(
     'get',
@@ -150,6 +157,7 @@ async function materializeOrganization(
     { token: lead.token },
   );
   expect(eligibility.allowed).toBe(true);
+  expect(eligibility.reasonCodes).toContain(expectedEligibilityReason);
 
   const candidateIds = relatedInitiativeIds.map((_, index) => `${scenario.stamp}-challenge-${index + 1}`);
   const proposal = await command(
@@ -396,7 +404,7 @@ test('A · G1-G5 · 0 trabajo → E5 → Brief → Lab/Mailpit → Home', async 
     token: lead.token,
     data: {},
   });
-  const [challenge] = await materializeOrganization(scenario, [[]], []);
+  const [challenge] = await materializeOrganization(scenario, [[]], [], 'NO_EXISTING_WORK_ELIGIBLE');
   const brief = await confirmBrief(scenario, challenge, 'lab');
   await createLabRequest(scenario, brief, 'lab');
   await completeSetup(scenario, 'LAB_NOTIFIED');
@@ -423,7 +431,12 @@ test('B · G1-G5 · 3 iniciativas → revisión → 1 frente/2 Briefs → Equipo
   ];
   const workIds = await addManualWork(scenario, labels);
   await analyzeAndReview(scenario);
-  const challenges = await materializeOrganization(scenario, [[workIds[0]], [workIds[1]]], [workIds[2]]);
+  const challenges = await materializeOrganization(
+    scenario,
+    [[workIds[0]], [workIds[1]]],
+    [workIds[2]],
+    'ANALYZED_WORK_ELIGIBLE',
+  );
   const teamBrief = await confirmBrief(scenario, challenges[0], 'team');
   const labBrief = await confirmBrief(scenario, challenges[1], 'lab');
   await createTeamDelivery(scenario, teamBrief);
@@ -450,7 +463,12 @@ test('C · G1-G5 · 25 CSV/XLSX → revisión → 1 frente → Briefs selectivos
   ];
   expect(workIds).toHaveLength(25);
   await analyzeAndReview(scenario);
-  const challenges = await materializeOrganization(scenario, [[workIds[0]], [workIds[1]]], workIds.slice(2));
+  const challenges = await materializeOrganization(
+    scenario,
+    [[workIds[0]], [workIds[1]]],
+    workIds.slice(2),
+    'ANALYZED_WORK_ELIGIBLE',
+  );
   const selected = await confirmBrief(scenario, challenges[0], 'selected-1');
   await confirmBrief(scenario, challenges[1], 'selected-2');
   await createLabRequest(scenario, selected, 'lab');

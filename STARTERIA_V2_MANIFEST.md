@@ -344,9 +344,13 @@ technical_tasks: KAN-236; KAN-237
 authority: Jira KAN-236 + KAN-237; KAN-235#10698; KAN-233#10699; docs/STARTERIA_AUTHORITY.md; docs/governance/STARTERIA_V2_MIGRATION_GUARDRAILS.md
 baseline: main@3038dc688965bd6dcd080a69e2587e3a9eba8867
 logic_status: ACTIVE_V2_RELEASE_EVIDENCE_SLICE
-implementation_status: AUTHORIZED_NOT_IMPLEMENTED
+implementation_status: IMPLEMENTED_READY_FOR_REVIEW
 visual_status: NOT_APPLICABLE
-evidence_status: TESTING_REQUIRED
+evidence_status: LOCAL_PASS_REMOTE_BLOCKED_CONFIG
+implementation_commits: b2df66d (Manifest + contrato tests-first RED); fee7d9f (selector/spec/workflow/runbook); 7462dbc (A/B/C trazan G1-G5)
+local_evidence: contrato/seguridad 7/7 PASS; selector Playwright lista 3 tests exactos; backend 1911/1911 PASS con 195 skips environment-gated; frontend 1104/1104 PASS; front typecheck/lint/build/YAML/diff-check PASS
+remote_evidence: NOT_EXECUTED; e2e-staging Environment ausente según KAN-235#10698; configuración/RBAC/DB/tunnel siguen UNKNOWN hasta autorización operativa
+delivery_status: STAGING_BLOCKED_CONFIG (repositorio listo para revisión; no equivale a certificación ejecutada)
 semantic_owner: selector fail-closed, contrato de equivalencia y evidencia de certificación E2E G1-G5 en staging aislado
 classification_required: local_disposable_db | staging_remote_api_browser | staging_synthetic_provisioning
 local_disposable_boundary: las suites KAN-222/KAN-212/KAN-213/KAN-223/KAN-227/KAN-232 que importan PrismaClient permanecen sobre PostgreSQL desechable local y nunca reciben DATABASE_URL productiva

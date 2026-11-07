@@ -90,9 +90,9 @@ goal -> scenario -> environment -> test -> evidence -> CI
 
 The deployed equivalence has exactly three serial authenticated tests:
 
-- A: G1 context/anchor, zero existing work, E5 organization, confirmed Brief, Lab notification accepted by Mailpit, completion and Home re-entry.
-- B: G1-G5 with three manual initiatives, deterministic E4 plus human review, one front/two Briefs, real Team and Lab SMTP acceptance, the third item left unactivated, and factual Home projection.
-- C: G1-G5 with 13 CSV plus 12 XLSX rows, deterministic E4 plus human review, one front, selective Briefs, Lab completion and responsive Home.
+- A: G1-G5 context/anchor, the explicit G2 no-work branch with `NO_EXISTING_WORK_ELIGIBLE`, E5 organization, confirmed Brief, Lab notification accepted by Mailpit, completion and Home re-entry.
+- B: G1-G5 in a fresh `additional-front` re-entry session with three manual initiatives, deterministic E4 plus human review and `ANALYZED_WORK_ELIGIBLE`, one front/two Briefs, real Team and Lab SMTP acceptance, the third item left unactivated, and factual Home projection.
+- C: G1-G5 in another fresh `additional-front` re-entry session with 13 CSV plus 12 XLSX rows, deterministic E4 plus human review and `ANALYZED_WORK_ELIGIBLE`, one front, selective Briefs, Lab completion and responsive Home.
 
 The selector fails closed unless the namespace is exactly `starteria-e2e`, the target is non-production HTTPS, Mailpit is a local port-forward, both actors are authenticated and `E2E_STAGING_SOURCE_SHA` is a full SHA. It statically rejects direct database access and skipped/fixed tests, then requires exactly 3/3 passing and **0 skips** from the Playwright JSON report.
 
