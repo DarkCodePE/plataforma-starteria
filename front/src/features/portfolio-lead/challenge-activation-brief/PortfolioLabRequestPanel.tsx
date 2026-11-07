@@ -53,6 +53,8 @@ export function PortfolioLabRequestPanel({ target, version, onCompleteSetup }: P
   const requestTrigger = useRef<HTMLButtonElement>(null);
   const previewRegion = useRef<HTMLElement>(null);
   const noticeRegion = useRef<HTMLParagraphElement>(null);
+  const completionTrigger = useRef<HTMLButtonElement>(null);
+  const completionConfirmation = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     let active = true;
@@ -75,10 +77,16 @@ export function PortfolioLabRequestPanel({ target, version, onCompleteSetup }: P
 
   useEffect(() => { if (expanded) previewRegion.current?.focus(); }, [expanded]);
   useEffect(() => { if (notice) noticeRegion.current?.focus(); }, [notice]);
+  useEffect(() => { if (confirmingCompletion) completionConfirmation.current?.focus(); }, [confirmingCompletion]);
 
   const closePreview = () => {
     setExpanded(false);
     window.setTimeout(() => requestTrigger.current?.focus(), 0);
+  };
+
+  const cancelCompletion = () => {
+    setConfirmingCompletion(false);
+    window.setTimeout(() => completionTrigger.current?.focus(), 0);
   };
 
   const submit = async () => {
@@ -179,10 +187,11 @@ export function PortfolioLabRequestPanel({ target, version, onCompleteSetup }: P
     {canCompleteWithLab && onCompleteSetup ? <section className="mt-5 rounded-xl border border-violet-200 bg-violet-50 p-4" aria-label="Finalizar configuración con Startería Lab">
       <h3 className="font-semibold text-violet-950">Startería Lab habilita el cierre de esta configuración</h3>
       <p className="mt-1 text-sm leading-6 text-violet-900">Contacto pendiente: la notificación fue aceptada por el servidor. Esto no confirma una reunión, lectura humana ni aceptación del desarrollo.</p>
-      {confirmingCompletion ? <div role="group" aria-label="Confirmar finalización Lab" className="mt-3 flex flex-wrap items-center gap-2">
+      <button ref={completionTrigger} type="button" aria-expanded={confirmingCompletion} aria-controls="portfolio-lab-completion-confirmation" onClick={() => setConfirmingCompletion(true)} className="mt-3 rounded-lg bg-slate-950 px-4 py-2.5 text-sm font-semibold text-white">Finalizar configuración con Startería Lab</button>
+      {confirmingCompletion ? <div ref={completionConfirmation} id="portfolio-lab-completion-confirmation" tabIndex={-1} role="group" aria-label="Confirmar finalización Lab" className="mt-3 flex flex-wrap items-center gap-2 outline-none focus:ring-2 focus:ring-violet-300">
         <button type="button" disabled={completing} onClick={() => void completeWithLab()} className="rounded-lg bg-violet-800 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-60">{completing ? 'Finalizando…' : 'Sí, finalizar configuración'}</button>
-        <button type="button" disabled={completing} onClick={() => setConfirmingCompletion(false)} className="rounded-lg border border-violet-300 bg-white px-3 py-2.5 text-sm font-semibold text-violet-950">Seguir aquí</button>
-      </div> : <button type="button" onClick={() => setConfirmingCompletion(true)} className="mt-3 rounded-lg bg-slate-950 px-4 py-2.5 text-sm font-semibold text-white">Finalizar configuración con Startería Lab</button>}
+        <button type="button" disabled={completing} onClick={cancelCompletion} className="rounded-lg border border-violet-300 bg-white px-3 py-2.5 text-sm font-semibold text-violet-950">Seguir aquí</button>
+      </div> : null}
       {completionError ? <p role="alert" className="mt-2 text-sm text-rose-800">{completionError}</p> : null}
     </section> : null}
 
