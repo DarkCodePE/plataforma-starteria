@@ -80,6 +80,30 @@ function props(overrides = {}) {
 }
 
 describe('KAN-241 explicit E1 → E2 → E3 navigation', () => {
+  it('CA06 keeps a direct session in E1 when it only has an unconfirmed anchor summary', () => {
+    const input = props({ contextReview: null });
+    input.data.sourceContinuation = null;
+    input.data.bootstrapSession.sourceContinuationId = null;
+    input.data.anchor!.status = 'anchor_sufficient';
+    input.data.anchor!.contextSummary = 'Resumen heredado que todavía no fue confirmado en G1.';
+
+    render(<PortfolioBootstrapHome {...input} />);
+
+    expect(screen.getByTestId('portfolio-context-conversation')).toBeVisible();
+    expect(screen.queryByTestId('portfolio-objective-conversation')).not.toBeInTheDocument();
+  });
+
+  it('CA09 preserves the objective step for an authenticated legacy continuation without a G1 review', () => {
+    const input = props({ contextReview: null });
+    input.data.anchor!.status = 'anchor_sufficient';
+    input.data.anchor!.contextSummary = 'Contexto ya capturado por la continuación histórica.';
+
+    render(<PortfolioBootstrapHome {...input} />);
+
+    expect(screen.getByTestId('portfolio-objective-conversation')).toBeVisible();
+    expect(screen.getByRole('button', { name: /Confirmar este punto de partida y continuar/i })).toBeEnabled();
+  });
+
   it('CA06 derives real progress from confirmed E1 and labels retrospective review separately', async () => {
     const user = userEvent.setup();
     render(<PortfolioBootstrapHome {...props()} />);

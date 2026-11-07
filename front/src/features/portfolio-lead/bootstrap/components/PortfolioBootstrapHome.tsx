@@ -406,11 +406,16 @@ function PortfolioCopilotWorkspace({
     });
   }, []);
   const persistedAnchorStage = frozenStageFrom(projection, bootstrapPhase);
+  const legacyContinuationHasCapturedContext = projection.anchor.status === 'anchor_sufficient'
+    && projection.sourceContinuationExists
+    && Boolean(projection.anchor.contextSummary?.trim());
   const inferredStage = projection.anchor.status === 'anchor_confirmed'
     ? persistedAnchorStage
     : contextReview?.effectiveContext
       ? Math.max(1, persistedAnchorStage)
-      : 0;
+      : legacyContinuationHasCapturedContext
+        ? Math.max(1, persistedAnchorStage)
+        : 0;
   const organizationIsMaterialized = Boolean(confirmedOrganization?.materialization ?? organizationProposal?.materialization);
   const backendAllowsOrganization = e5Eligibility.status === 'ready' && e5Eligibility.data?.allowed === true;
   const progressStage = assignmentTarget ? 6 : organizationIsMaterialized ? 5 : inferredStage;
