@@ -285,25 +285,30 @@ lectura, reunión o aceptación del trabajo. Las dos rutas se conservan como out
 
 ## Slice PORTFOLIO_LEAD_G5_HOME_E2E_CERTIFICATION (KAN-232)
 
-**Registrado:** 2026-11-07 por G5_HOME_E2E_FINAL.md, KAN-232 y autoridad de ejecución
-KAN-232#10689 sobre `main@e55934b79fca29007995aa9c8bb785ffda05d1c4`.
+**Registrado:** 2026-11-07 por G5_HOME_E2E_FINAL.md, KAN-232 y autoridad reconciliada
+KAN-232#10690 sobre `main@e55934b79fca29007995aa9c8bb785ffda05d1c4`; #10689 se conserva
+como preflight preliminar `Proceed:NO` previo a la reconciliación.
 
 ```text
 slice_id: PORTFOLIO_LEAD_G5_HOME_E2E_CERTIFICATION
 functional_hu: KAN-232
 functional_authority: G5_HOME_E2E_FINAL.md + KAN-232 description
-technical_scope_authority: KAN-232#10689, reconciliada por auditoría local de 2026-11-07
+technical_scope_authority: KAN-232#10689 (preliminar Proceed:NO) -> KAN-232#10690 (reconciliación local Proceed:YES para allowed)
 baseline: main@e55934b79fca29007995aa9c8bb785ffda05d1c4
 logic_status: ACTIVE_V2_SLICE
-implementation_status: AUTHORIZED_NOT_IMPLEMENTED
+implementation_status: IMPLEMENTED_PENDING_FINAL_REVIEW_AND_CI
 visual_status: V2_TARGET_DEFINED_BY_G5
-evidence_status: TESTING_REQUIRED
+evidence_status: LOCAL_PASS_FINAL_REVIEW_AND_PR_CI_PENDING
 depends_on: G1/G2/G3 integrados + PORTFOLIO_LEAD_G4_SETUP_COMPLETION_OUTCOMES (PR #261 merged)
 semantic_owner: proyección read-only de Portfolio Home y certificación E2E del journey Portfolio Lead
 authority_chain: Core v0.2 factual + ADR-005/008/009 + PH-0 frozen target/read-model contracts + G5/KAN-232 explicit runtime authorization
 authority_reconciliation: PH-0 por sí solo no autorizaba runtime; KAN-232 autoriza exclusivamente la proyección/read-model, UI y pruebas G5 aquí delimitadas sin promover dependencias candidatas de Activation o Steps
 current_route: GET /api/v1/portfolio/home -> /portfolio/inicio
-current_gap: Home separa Assignment/Lab/Initiative y usa Sin datos para métricas ausentes, pero no expone WorkItem provisional ni Brief confirmado en la tabla filtrable requerida; A/B/C y adversariales no están certificados juntos sobre navegador autenticado + PostgreSQL desechable
+current_gap: cerrado localmente; falta únicamente revisión independiente final y CI del PR, sin merge ni deploy
+implementation_commits: 52d5834, 45fdda6, 1a2e102, a17f0b0, 56e1228, 2ca15c0, 33b8d71, 3e5faa5
+local_evidence: backend focal 26/26; frontend focal 13/13; PL-06 delivery/invitation/response 32/32; suites front/back completas PASS; lint PASS; front typecheck PASS; build PASS; PostgreSQL disposable Playwright A/B/C 3/3 PASS sin skips
+known_baseline: typecheck backend conserva TS2740 preexistente en portfolio-entry-runtime/__tests__/critical-synthesis-reasoning.test.ts, fuera del slice y sin cambios
+smtp_fixture_boundary: el E2E G5 simula exclusivamente el receipt SMTP_ACCEPTED/SENT externo; claim/accept/reject son HTTP reales y la semántica/idempotencia de transporte queda certificada por la regresión PL-06 32/32
 allowed_backend: lectura aditiva owner/tenant-scoped de WorkItems, BriefVersions y estados ya canónicos en PortfolioHomeReadService; DTO/router/tests read-only; sin comandos ni persistencia
 allowed_frontend: tabla simple y filtrable Trabajo/Encargo | Destino/Owner | Estado real | Siguiente acción | Detalle; drilldown accesible; estados reales de WorkItem/Brief/Assignment/Initiative/Lab; Sin datos para KPI/ROI/impacto ausentes
 allowed_tests: tests-first G5-CA01..CA08; PostgreSQL disposable; navegador autenticado A/B/C; seguridad tenant/roles 403/404; stale/retry/doble clic; refresh/logout/login; SMTP fallido; invitación rechazada; responsive/accesibilidad; regresiones G1-G4 y CI
