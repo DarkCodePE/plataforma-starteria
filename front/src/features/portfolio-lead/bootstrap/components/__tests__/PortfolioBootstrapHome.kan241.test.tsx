@@ -87,7 +87,7 @@ describe('KAN-241 explicit E1 → E2 → E3 navigation', () => {
     expect(screen.getByText('Configurar con Copilot · 2 de 7')).toBeInTheDocument();
     expect(screen.getByTestId('portfolio-objective-conversation')).toBeVisible();
 
-    await user.click(screen.getByRole('button', { name: /1 Contexto/i }));
+    await user.click(screen.getByRole('button', { name: /Contexto Revisado o completado/i }));
 
     expect(screen.getByText('Revisando Contexto (Paso 1) · avance confirmado 2 de 7')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Estoy de acuerdo, continuar al objetivo' })).toBeEnabled();

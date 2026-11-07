@@ -129,7 +129,7 @@ describe('KAN-241 adaptive E1 context conversation', () => {
     await user.click(screen.getByRole('button', { name: 'Revisar contexto' }));
 
     expect(screen.getByLabelText('Situación actual')).toHaveValue('Somos una cafetería y queremos probar desayunos para llevar para oficinas cercanas.');
-    expect(screen.getByText('No aplica en este caso')).toBeInTheDocument();
+    expect(screen.getAllByText('No aplica en este caso').length).toBeGreaterThan(0);
     expect(screen.getByRole('button', { name: 'Estoy de acuerdo, confirmar contexto' })).toBeEnabled();
   });
 

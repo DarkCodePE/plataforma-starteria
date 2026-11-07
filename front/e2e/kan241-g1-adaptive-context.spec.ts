@@ -82,7 +82,7 @@ test.describe('KAN-241 G1 adaptive context with disposable PostgreSQL', () => {
 
     await page.reload();
     await expect(page.getByTestId('portfolio-objective-conversation')).toBeVisible({ timeout: 20_000 });
-    await page.getByRole('button', { name: /1 Contexto/i }).click();
+    await page.getByRole('button', { name: /Contexto Revisado o completado/i }).click();
     await expect(page.getByText(/quién atendería este cambio/i)).not.toBeVisible();
     await expect(page.getByRole('button', { name: 'Estoy de acuerdo, continuar al objetivo' })).toBeVisible();
 

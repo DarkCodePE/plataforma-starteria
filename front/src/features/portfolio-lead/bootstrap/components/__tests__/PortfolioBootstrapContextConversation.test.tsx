@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import {
@@ -48,7 +48,7 @@ function props(overrides: Partial<React.ComponentProps<typeof PortfolioBootstrap
 describe('PortfolioBootstrapContextConversation', () => {
   it('CA01 chooses honest deterministic questions for clear, ambiguous, unknown and correction scenarios', () => {
     expect(guidedContextQuestion(payload()).title).toMatch(/cuéntame qué está ocurriendo/i);
-    expect(guidedContextQuestion(payload({ situation: declared('Mejorar todo') })).title).toMatch(/resultado concreto/i);
+    expect(guidedContextQuestion(payload({ situation: declared('Mejorar todo') })).title).toMatch(/área o proceso/i);
     expect(guidedContextQuestion(payload({
       situation: declared('El abandono aumentó durante la activación y necesitamos entender dónde intervenir.'),
     })).title).toMatch(/área o proceso/i);
@@ -61,19 +61,20 @@ describe('PortfolioBootstrapContextConversation', () => {
     const onSaveDraft = vi.fn().mockResolvedValue(undefined);
     render(<PortfolioBootstrapContextConversation {...props({ onSaveDraft })} />);
 
-    expect(screen.getAllByText('Desconocido').length).toBeGreaterThan(0);
     await user.type(screen.getByLabelText('Tu respuesta'), 'El abandono subió durante la activación de clientes nuevos.');
-    await user.click(screen.getByRole('button', { name: 'Incorporar respuesta' }));
+    await user.click(screen.getByRole('button', { name: 'Guardar y continuar' }));
+    await user.click(screen.getByRole('button', { name: 'Revisar contexto' }));
+    expect(screen.getAllByText('Desconocido').length).toBeGreaterThan(0);
     expect(screen.getByLabelText('Situación actual')).toHaveValue('El abandono subió durante la activación de clientes nuevos.');
     expect(screen.getByText('Declarado por ti')).toBeInTheDocument();
 
     await user.type(screen.getByLabelText('Área o proceso'), 'Operaciones');
     await user.type(screen.getByLabelText('Vacíos por resolver'), 'Falta confirmar la señal');
-    await user.type(screen.getByLabelText('Restricciones conocidas'), 'Capacidad limitada');
-    await user.type(screen.getByLabelText('Supuestos por validar'), 'El problema ocurre en móvil');
-    await user.click(screen.getByRole('button', { name: 'Guardar síntesis' }));
+    fireEvent.change(screen.getByLabelText('Restricciones conocidas'), { target: { value: 'Capacidad limitada' } });
+    fireEvent.change(screen.getByLabelText('Supuestos por validar'), { target: { value: 'El problema ocurre en móvil' } });
+    await user.click(screen.getByRole('button', { name: 'Guardar ajustes' }));
 
-    expect(onSaveDraft).toHaveBeenCalledWith(expect.objectContaining({
+    expect(onSaveDraft).toHaveBeenLastCalledWith(expect.objectContaining({
       situation: declared('El abandono subió durante la activación de clientes nuevos.'),
       area: declared('Operaciones'),
       stakeholder: { value: null, provenance: 'unknown' },
@@ -91,6 +92,7 @@ describe('PortfolioBootstrapContextConversation', () => {
 
     expect(screen.getByText('Corrección pendiente de reconfirmación')).toBeInTheDocument();
     expect(screen.getByText('Contexto confirmado original')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Revisar contexto' }));
     expect(screen.getByLabelText('Situación actual')).toHaveValue('Borrador corregido pendiente');
   });
 
@@ -102,29 +104,31 @@ describe('PortfolioBootstrapContextConversation', () => {
       review: review({ status: 'draft', version: 3, hasPendingCorrection: true }), onConfirm, onContinue,
     })} />);
 
-    await user.click(screen.getByRole('button', { name: 'Confirmar contexto' }));
+    await user.click(screen.getByRole('button', { name: 'Revisar contexto' }));
+    await user.click(screen.getByRole('button', { name: 'Estoy de acuerdo, confirmar contexto' }));
     expect(onConfirm).toHaveBeenCalledOnce();
     expect(onContinue).not.toHaveBeenCalled();
 
-    await user.click(screen.getByRole('button', { name: 'Continuar al objetivo' }));
+    await user.click(screen.getByRole('button', { name: 'Estoy de acuerdo, continuar al objetivo' }));
     expect(onContinue).toHaveBeenCalledOnce();
   });
 
   it('CA06 does not offer a second confirmation after E1 is confirmed', () => {
     render(<PortfolioBootstrapContextConversation {...props({ review: review() })} />);
 
-    expect(screen.queryByRole('button', { name: 'Confirmar contexto' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Estoy de acuerdo, confirmar contexto' })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Revisar contexto' }));
     expect(screen.getByRole('status')).toHaveTextContent('Contexto confirmado');
-    expect(screen.getByRole('button', { name: 'Continuar al objetivo' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Estoy de acuerdo, continuar al objetivo' })).toBeEnabled();
   });
 
   it('CA06 makes loading inert and announces it without exposing prior navigation', () => {
     render(<PortfolioBootstrapContextConversation {...props({ review: null, status: 'loading' })} />);
 
     expect(screen.getByTestId('portfolio-context-conversation')).toHaveAttribute('aria-busy', 'true');
-    expect(screen.getByRole('status')).toHaveTextContent('Actualizando el contexto empresarial');
-    expect(screen.getByLabelText('Situación actual')).toBeDisabled();
-    expect(screen.queryByRole('button', { name: 'Continuar al objetivo' })).not.toBeInTheDocument();
+    expect(screen.getByRole('status')).toHaveTextContent('Cargando el contexto empresarial');
+    expect(screen.getByLabelText('Tu respuesta')).toBeDisabled();
+    expect(screen.queryByRole('button', { name: 'Estoy de acuerdo, continuar al objetivo' })).not.toBeInTheDocument();
   });
 
   it('CA05 presents optional Company provenance and sourceOutdated without replacing the snapshot', () => {
@@ -133,6 +137,7 @@ describe('PortfolioBootstrapContextConversation', () => {
       effectiveSourceCompanyContext: { companyId: 'company-1', versionId: 'version-1', versionNumber: 1 },
     }) })} />);
 
+    fireEvent.click(screen.getByRole('button', { name: 'Revisar contexto' }));
     expect(screen.getByText(/versión 1 de Company Context/i)).toBeInTheDocument();
     expect(screen.getByRole('alert')).toHaveTextContent(/existe una versión Company más reciente/i);
     expect(screen.queryByLabelText(/company id/i)).not.toBeInTheDocument();
@@ -144,8 +149,9 @@ describe('PortfolioBootstrapContextConversation', () => {
     const onRetry = vi.fn().mockResolvedValue(undefined);
     render(<PortfolioBootstrapContextConversation {...props({ onSaveDraft, onRetry })} />);
 
-    await user.type(screen.getByLabelText('Situación actual'), 'Edición que no debe perderse');
-    await user.click(screen.getByRole('button', { name: 'Guardar síntesis' }));
+    await user.click(screen.getByRole('button', { name: 'Revisar contexto' }));
+    fireEvent.change(screen.getByLabelText('Situación actual'), { target: { value: 'Edición que no debe perderse' } });
+    await user.click(screen.getByRole('button', { name: 'Guardar ajustes' }));
 
     expect(await screen.findByRole('alert')).toHaveTextContent('Conflicto de versión');
     expect(screen.getByLabelText('Situación actual')).toHaveValue('Edición que no debe perderse');
