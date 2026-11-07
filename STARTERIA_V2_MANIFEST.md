@@ -236,6 +236,49 @@ externa opcional y no constituye una reserva dentro de Starteria.
 
 ---
 
+## Slice PORTFOLIO_LEAD_G4_SETUP_COMPLETION_OUTCOMES (KAN-228 / KAN-229 / KAN-230 / KAN-231)
+
+**Registrado:** 2026-11-07 por decisión funcional KAN-228, auditoría KAN-229 y autorización
+explícita de ejecución KAN-229/230/231 sobre `main@9d2b633013392e5cef1475e34ffda44d8b653c44`.
+
+```text
+slice_id: PORTFOLIO_LEAD_G4_SETUP_COMPLETION_OUTCOMES
+functional_hu: KAN-228
+technical_tasks: KAN-229; KAN-230; KAN-231
+technical_audit: KAN-229#10682 + auditoría Core/ADR/repositorio de 2026-11-07
+baseline: main@9d2b633013392e5cef1475e34ffda44d8b653c44
+logic_status: ACTIVE_V2_SLICE
+implementation_status: AUTHORIZED_NOT_IMPLEMENTED
+visual_status: V2_TARGET_DEFINED_BY_KAN-228
+evidence_status: TESTING_REQUIRED
+depends_on: PORTFOLIO_LEAD_G4_LAB_BRIEF_REQUEST (KAN-226) + PORTFOLIO_LEAD_G4_LAB_REQUEST_UX (KAN-227)
+semantic_owner: cierre humano de Portfolio Setup mediante outcomes independientes y factuales de Equipo y/o Startería Lab
+completion_routes: TEAM_SENT | LAB_NOTIFIED | BOTH
+completion_invariant: assignmentSentCount > 0 || validLabRequestCount > 0
+valid_team_outcome: semántica PL-06 existente sin cambios; Assignment del Challenge canónico de la sesión con BriefVersion CONFIRMED y entrega SMTP acreditada
+valid_lab_outcome: PortfolioLabRequest no terminal de la misma organizationId, enlazada a un Challenge materializado por esa sesión y a su ChallengeActivationBriefVersion exacta en estado CONFIRMED, con notificationStatus=NOTIFIED y aceptación persistida de ambos destinatarios server-side
+human_checkpoint: confirmed=true obligatorio; actor y tenant autorizados; no inferir confirmación desde SMTP, UI, Calendly ni estado de solicitud
+required_concurrency: CAS sobre setupCompletedAt; idempotencyKey durable; reentrada devuelve el cierre existente; exactamente un audit portfolio_setup_completed
+required_history: conservar por separado summary de PL-06, outcome Lab, completionRoute y evidencia durable; no reetiquetar envío Lab como Assignment enviado
+required_overview: Portfolio Overview proyecta la solicitud Lab owner/tenant-scoped con estado real; NOTIFIED se presenta como contacto pendiente, nunca como reunión, lectura o desarrollo confirmado
+allowed_backend: PortfolioSetupCompletionService y sus contratos/DTO/router tests; lectura aditiva owner/tenant-scoped de PortfolioLabRequest en Portfolio Home; tests unitarios, HTTP y PostgreSQL
+allowed_frontend: UX de finalización Lab-only/Equipo/BOTH y proyección factual en Portfolio Overview; cliente tipado; tests React y E2E autenticado
+allowed_docs: reconciliación y cierre de este slice en STARTERIA_V2_MANIFEST.md; trazabilidad Jira/PR
+reuse_required: PortfolioLabRequest KAN-226; PortfolioLabRequestPanel KAN-227; ChallengeActivationBrief/Version de ADR-008; materializaciones canónicas de la sesión; completion CAS/idempotencia/audit existentes
+preserves: KAN-207 sin cambios; PL-06 y ADR-005/008/009 sin cambios; autoridad humana; tenant isolation; historial; openAdditionalFront sólo tras cierre real
+excluded: cambios Prisma innecesarios; nuevos estados Lab; Calendar API; Project/Initiative/PortfolioHandoffAssignment/Step ficticios; Core; Steps; Handoff; IA productiva; infraestructura; secretos; gastos IA; merge/deploy
+negative_guards: REQUESTED, notificationStatus PENDING/FAILED, intentos PENDING/FAILED/DISABLED, solicitudes CLOSED/NOT_PROCEEDING/CANCELLED, otro tenant, otro Challenge/sesión, BriefVersion no CONFIRMED y apertura de Calendly no habilitan cierre
+adr_determination: NO ADR nuevo; Core v0.2 no define el checkpoint de cierre de Setup y la ampliación preserva, sin redefinir, las identidades/cardinalidades y límites aceptados por ADR-005/008/009
+stop_conditions: necesidad de cambiar Core/Steps/Handoff/Prisma, inferir outcome sin evidencia durable, contar requests requester-scoped como autorización global, o crear entidades ficticias
+guardrail: V2_CHANGE_GUARDRAIL_CHECK requerido y debe ser Proceed YES antes de tests/código productivo
+```
+
+Este slice cambia exclusivamente el gate de aplicación que permite cerrar la configuración. No
+convierte la solicitud Lab en Assignment ni en Initiative, y no interpreta aceptación SMTP como
+lectura, reunión o aceptación del trabajo. Las dos rutas se conservan como outcomes independientes.
+
+---
+
 ## Slice PORTFOLIO_LEAD_G3_ORGANIZATION_SELECTIVE_BRIEFS (KAN-223)
 
 **Registrado:** 2026-11-07 por HU KAN-223 y auditoría técnica acotada KAN-223#10670.
