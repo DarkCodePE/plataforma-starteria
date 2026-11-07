@@ -24,6 +24,7 @@ export function PortfolioOverviewHome({
   const independentInitiatives = model.independentInitiatives ?? [];
   const initiatives = [...linkedInitiatives, ...independentInitiatives];
   const assignments = model.handoffAssignments ?? [];
+  const labRequests = model.labRequests ?? [];
   const challengeAssignments = assignments.filter((assignment) => assignment.targetKind === 'CHALLENGE');
   const activeFront = fronts[0] ?? null;
   const observations = activeFront?.metricObservations ?? [];
@@ -116,6 +117,16 @@ export function PortfolioOverviewHome({
       <OverviewList title="Decisiones del portafolio" icon={<CheckSquare size={18} />} empty="No hay decisiones pendientes persistidas." items={model.pendingDecisions.slice(0, 5).map((item) => ({ key: item.requestId, title: item.requestedDecision ?? 'Decisión por resolver', detail: `Project ${item.initiativeId} · ${item.status ?? 'estado desconocido'}` }))} />
     </section>
 
+    {model.availability?.labRequests === 'unavailable' ? <section role="status" className="rounded-2xl border border-amber-200 bg-amber-50 p-5 text-sm text-amber-950">No pudimos recuperar el seguimiento de Startería Lab. El resto del Overview sigue disponible.</section> : labRequests.length > 0 ? <section className="rounded-2xl border border-cyan-200 bg-cyan-50 p-5 shadow-sm md:p-6" aria-labelledby="portfolio-lab-overview-title">
+      <h2 id="portfolio-lab-overview-title" className="font-semibold text-slate-950">Startería Lab</h2>
+      <p className="mt-1 text-sm leading-6 text-slate-700">Solicitudes humanas separadas de Assignments, Projects y Steps. Su estado no acredita una reunión salvo que el equipo de Lab la registre expresamente.</p>
+      <ul className="mt-4 grid gap-3 md:grid-cols-2">{labRequests.map((item) => <li key={item.requestId} className="rounded-xl border border-cyan-200 bg-white p-4">
+        <div className="flex flex-wrap items-start justify-between gap-2"><p className="font-semibold text-slate-950">Solicitud Lab {item.requestId}</p><span className="rounded-full bg-cyan-100 px-2.5 py-1 text-xs font-semibold text-cyan-950">{labRequestStatusLabel(item)}</span></div>
+        <p className="mt-2 text-xs leading-5 text-slate-600">Reto {item.challengeId} · BriefVersion {item.briefVersionId}</p>
+        <p className="mt-1 text-xs text-slate-500">Actualizada {formatDate(item.updatedAt)}</p>
+      </li>)}</ul>
+    </section> : null}
+
     <section className="grid gap-3 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm md:grid-cols-3 md:p-7" aria-label="Lectura consultiva Startería">
       <ConsultativeBlock title="Qué vemos" text={whatWeSee} />
       <ConsultativeBlock title="Qué falta" text={whatIsMissing} />
@@ -169,6 +180,16 @@ function assignmentStatusLabel(assignment: PortfolioHomeReadModel['handoffAssign
     ACCEPTED: 'Aceptada', REJECTED: 'Rechazada', REVOKED: 'Revocada', EXPIRED: 'Expirada', STARTED: 'Iniciada',
   };
   return labels[assignment.handoffState] ?? assignment.handoffState;
+}
+
+function labRequestStatusLabel(item: NonNullable<PortfolioHomeReadModel['labRequests']>[number]): string {
+  if (item.status === 'MEETING_SCHEDULED') return 'Reunión registrada';
+  if (['CLOSED', 'NOT_PROCEEDING', 'CANCELLED'].includes(item.status)) {
+    return ({ CLOSED: 'Cerrada', NOT_PROCEEDING: 'No continúa', CANCELLED: 'Cancelada' } as Record<string, string>)[item.status];
+  }
+  if (item.notificationStatus === 'NOTIFIED') return 'Contacto pendiente';
+  if (item.notificationStatus === 'FAILED') return 'Error al notificar';
+  return 'Notificación pendiente';
 }
 
 function assignmentDetail(assignment: PortfolioHomeReadModel['handoffAssignments'][number]): string {

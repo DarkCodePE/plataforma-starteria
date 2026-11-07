@@ -17,6 +17,7 @@ const CONSENT_PURPOSE = 'Solicito apoyo para convertir este Brief confirmado en 
 type Props = {
   target: ChallengeAssignmentTarget;
   version: ActivationBriefVersion;
+  onCompleteSetup?: () => Promise<void>;
 };
 
 function isOpen(item: PortfolioLabRequest): boolean { return !TERMINAL_STATUSES.has(item.status); }
@@ -34,7 +35,7 @@ function upsert(items: PortfolioLabRequest[], next: PortfolioLabRequest): Portfo
   return [next, ...items.filter((item) => item.id !== next.id)];
 }
 
-export function PortfolioLabRequestPanel({ target, version }: Props) {
+export function PortfolioLabRequestPanel({ target, version, onCompleteSetup }: Props) {
   const [requests, setRequests] = useState<PortfolioLabRequest[]>([]);
   const [loading, setLoading] = useState(true);
   const [expanded, setExpanded] = useState(false);
@@ -44,6 +45,9 @@ export function PortfolioLabRequestPanel({ target, version }: Props) {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [confirmingCompletion, setConfirmingCompletion] = useState(false);
+  const [completing, setCompleting] = useState(false);
+  const [completionError, setCompletionError] = useState<string | null>(null);
   const createKey = useRef(createIdempotencyKey(`portfolio-lab:create:${target.challengeId}:${target.briefVersionId}`));
   const retryKeys = useRef(new Map<string, string>());
   const requestTrigger = useRef<HTMLButtonElement>(null);
@@ -67,6 +71,7 @@ export function PortfolioLabRequestPanel({ target, version }: Props) {
   const limitReached = openRequests.length >= 3;
   const gaps = values(version.knownGaps);
   const constraints = values(version.constraintsSnapshot);
+  const canCompleteWithLab = activeForBrief?.notificationStatus === 'NOTIFIED' && isOpen(activeForBrief);
 
   useEffect(() => { if (expanded) previewRegion.current?.focus(); }, [expanded]);
   useEffect(() => { if (notice) noticeRegion.current?.focus(); }, [notice]);
@@ -110,6 +115,18 @@ export function PortfolioLabRequestPanel({ target, version }: Props) {
     } catch (value) {
       setError(errorMessage(value, 'No pudimos reintentar la notificación. La solicitud sigue guardada.'));
     } finally { setRetryingId(null); }
+  };
+
+  const completeWithLab = async () => {
+    if (!onCompleteSetup || !canCompleteWithLab || completing) return;
+    setCompleting(true);
+    setCompletionError(null);
+    try {
+      await onCompleteSetup();
+    } catch (value) {
+      setCompletionError(errorMessage(value, 'No pudimos finalizar la configuración.'));
+      setCompleting(false);
+    }
   };
 
   return <article data-testid="portfolio-lab-request-panel" className="rounded-2xl border border-cyan-200 bg-gradient-to-br from-white to-cyan-50 p-5 shadow-sm md:p-6" aria-labelledby="portfolio-lab-title">
@@ -159,8 +176,18 @@ export function PortfolioLabRequestPanel({ target, version }: Props) {
     </section> : null}
     {otherRequestCount ? <p className="mt-4 text-xs text-slate-600">{otherRequestCount} {otherRequestCount === 1 ? 'solicitud tuya de otro Brief no se muestra' : 'solicitudes tuyas de otros Briefs no se muestran'} en este seguimiento.</p> : null}
 
+    {canCompleteWithLab && onCompleteSetup ? <section className="mt-5 rounded-xl border border-violet-200 bg-violet-50 p-4" aria-label="Finalizar configuración con Startería Lab">
+      <h3 className="font-semibold text-violet-950">Startería Lab habilita el cierre de esta configuración</h3>
+      <p className="mt-1 text-sm leading-6 text-violet-900">Contacto pendiente: la notificación fue aceptada por el servidor. Esto no confirma una reunión, lectura humana ni aceptación del desarrollo.</p>
+      {confirmingCompletion ? <div role="group" aria-label="Confirmar finalización Lab" className="mt-3 flex flex-wrap items-center gap-2">
+        <button type="button" disabled={completing} onClick={() => void completeWithLab()} className="rounded-lg bg-violet-800 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-60">{completing ? 'Finalizando…' : 'Sí, finalizar configuración'}</button>
+        <button type="button" disabled={completing} onClick={() => setConfirmingCompletion(false)} className="rounded-lg border border-violet-300 bg-white px-3 py-2.5 text-sm font-semibold text-violet-950">Seguir aquí</button>
+      </div> : <button type="button" onClick={() => setConfirmingCompletion(true)} className="mt-3 rounded-lg bg-slate-950 px-4 py-2.5 text-sm font-semibold text-white">Finalizar configuración con Startería Lab</button>}
+      {completionError ? <p role="alert" className="mt-2 text-sm text-rose-800">{completionError}</p> : null}
+    </section> : null}
+
     <div className="mt-5 rounded-xl border border-slate-200 bg-white p-4 text-sm leading-6 text-slate-700">
-      <p>La solicitud Lab no crea asignaciones, proyectos ni Steps y no completa el setup. PL-06 se mantiene disponible.</p>
+      <p>La solicitud Lab no crea asignaciones, proyectos ni Steps. Sólo una notificación realmente aceptada habilita el checkpoint humano de cierre; PL-06 se mantiene disponible.</p>
       <a href={CALENDLY_URL} target="_blank" rel="noreferrer" className="mt-3 inline-flex items-center gap-2 font-semibold text-cyan-900 underline"><CalendarDays size={17} />Abrir Calendly para proponer una reunión</a>
       <p className="mt-1 text-xs text-slate-500">Abrir Calendly no confirma ni registra una reunión en Startería.</p>
     </div>

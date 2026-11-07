@@ -20,6 +20,7 @@ const model = {
   pendingDecisions: [{ decisionId: null, requestId: 'decision-1', initiativeId: 'project-1', requestedDecision: 'Continuar', status: 'pending', recommendation: null, evidenceSummary: null, decisionAuthority: null, updatedAt: null }],
   recommendations: [],
   handoffAssignments: [{ assignmentId: 'assignment-challenge', targetKind: 'CHALLENGE', challengeRef: 'challenge-1', initiativeRef: null, initiativeOwnerRef: null, executionTeam: [], observers: [], handoffState: 'SENT', acceptedAt: null, rejectedAt: null, rejectionReason: null, portfolioResponse: null, startedAt: null, resultingInitiativeRef: null, lastMaterialEvent: 'sent', sourceEventRefs: [], projectionVersion: 1, generatedAt: '2026-10-24T08:00:00.000Z' }],
+  labRequests: [],
   generatedAt: '2026-10-24T08:00:00.000Z', learnings: [], learningsUnavailable: false,
   availability: { strategicUnits: 'available', independentInitiatives: 'available', portfolioReading: 'available', handoffAssignments: 'available', learnings: 'available', capacity: 'available' },
   capacity: { unit: 'active_initiatives', totalActiveInitiatives: 1, fronts: [], signals: [], note: 'Capacidad medida en iniciativas activas.' },
@@ -146,5 +147,24 @@ describe('PortfolioOverviewHome', () => {
     expect(screen.getByText(/Último resultado confirmado: Step 2/i)).toBeInTheDocument();
     expect(screen.getByText(/v4/i)).toBeInTheDocument();
     expect(screen.getByRole('link', { name: /Ver resultado confirmado de Step 2/i })).toHaveAttribute('href', '/projects/project-1/step/2');
+  });
+
+  it('shows Starteria Lab as a separate factual request with contact pending, never as a confirmed meeting', () => {
+    const withLab = {
+      ...model,
+      labRequests: [{
+        requestId: 'lab-1', challengeId: 'challenge-1', briefVersionId: 'brief-version-1',
+        status: 'REQUESTED', notificationStatus: 'NOTIFIED',
+        createdAt: '2026-11-07T10:00:00.000Z', updatedAt: '2026-11-07T10:05:00.000Z',
+      }],
+    };
+
+    render(<PortfolioOverviewHome model={withLab as any} onOpenCopilot={vi.fn()} onOpenAdditionalFront={vi.fn()} />);
+
+    expect(screen.getByRole('heading', { name: 'Startería Lab' })).toBeInTheDocument();
+    expect(screen.getByText('Contacto pendiente')).toBeInTheDocument();
+    expect(screen.getByText(/Solicitud Lab lab-1/i)).toBeInTheDocument();
+    expect(screen.queryByText(/reunión confirmada/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Assignment lab-1/i)).not.toBeInTheDocument();
   });
 });
