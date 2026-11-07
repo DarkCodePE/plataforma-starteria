@@ -142,13 +142,12 @@ describe('portfolio.router — autorización de escrituras (ADR-028)', () => {
     expect(listStrategicFronts).toHaveBeenCalledWith(expect.objectContaining({ all: false, organizationIds: expect.any(Array) }));
   });
 
-  it('expone Portfolio Home como lectura autenticada sin permiso de escritura', async () => {
+  it('G5-CA05 exige portfolio:read para Portfolio Home y no publica segmentos operativos tras revocación', async () => {
     currentUser = { id: 'u-par', email: 'par@starteria.io', role: 'participante' };
 
     const res = await request(makeApp()).get('/api/v1/portfolio/home');
 
-    expect(res.status, JSON.stringify(res.body)).toBe(200);
-    // Portfolio Home recibe el alcance organizacional (portfolio-scope.ts); sin portfolio:read, abierto como antes.
-    expect(getHome).toHaveBeenCalledWith('u-par', expect.objectContaining({ organizationIds: expect.any(Array) }));
+    expect(res.status, JSON.stringify(res.body)).toBe(403);
+    expect(getHome).not.toHaveBeenCalled();
   });
 });

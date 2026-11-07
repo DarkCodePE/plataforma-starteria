@@ -52,8 +52,9 @@ export const portfolioRouter = Router();
 
 portfolioRouter.use(authenticate);
 
-// PH-2: read-only consolidated Portfolio Home composition.
-portfolioRouter.get('/home', controller.getHome);
+// PH-2 / G5: the consolidated Home exposes operational and provenance data,
+// therefore callers need the explicit portfolio read capability.
+portfolioRouter.get('/home', requirePermission('portfolio:read'), controller.getHome);
 
 // ADR-028: las escrituras son `admin` + `portfolio_lead`. `mentor` las tenía por no
 // existir el rol correcto, no por decisión de producto; se le retiran aquí.

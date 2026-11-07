@@ -301,6 +301,9 @@ jobs:
       - name: KAN-212 G2-A V2_CONFORMANCE — authenticated navigation and reentry
         run: npm run test:e2e -- e2e/kan212-g2a-navigation.spec.ts
 
+      - name: KAN-232 G5 - authenticated PostgreSQL Home certification (A/B/C)
+        run: npm run test:e2e -- e2e/kan232-g5-home-final.spec.ts
+
       - name: CURRENT_114D — deterministic full-stack browser journey
         run: npm run test:e2e -- --portfolio-entry-full-stack-test e2e/portfolio-entry-conversion.spec.ts --grep CURRENT_114D
 

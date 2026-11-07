@@ -489,7 +489,7 @@ export async function listPortfolioLearnings(): Promise<PortfolioLearning[]> {
 }
 
 export interface PortfolioHomeReadModel {
-  availability?: { strategicUnits: 'available' | 'unavailable'; independentInitiatives: 'available' | 'unavailable'; portfolioReading: 'available' | 'unavailable'; handoffAssignments: 'available' | 'unavailable'; labRequests?: 'available' | 'unavailable'; learnings: 'available' | 'unavailable'; capacity: 'available' | 'unavailable' };
+  availability?: { strategicUnits: 'available' | 'unavailable'; independentInitiatives: 'available' | 'unavailable'; portfolioReading: 'available' | 'unavailable'; handoffAssignments: 'available' | 'unavailable'; labRequests?: 'available' | 'unavailable'; workItems?: 'available' | 'unavailable'; briefs?: 'available' | 'unavailable'; learnings: 'available' | 'unavailable'; capacity: 'available' | 'unavailable' };
   portfolioReading: {
     summary: string | null;
     strategicUnitCount: number | null;
@@ -544,8 +544,10 @@ export interface PortfolioHomeReadModel {
   attention: Array<{ type: string; summary: string; reason: string | null; severity: string | null; suggestedAction: string | null; entity: { type: string; id: string | null } }>;
   pendingDecisions: Array<{ requestId: string; initiativeId: string; requestedDecision: string | null; status: string | null }>;
   recommendations: Array<{ recommendation: string; reason: string | null; source: string; uncertainty: string | null; requiresHumanConfirmation: true }>;
-  handoffAssignments: Array<{ assignmentId: string; targetKind: string; challengeRef: string; initiativeRef: string | null; handoffState: string; deliveryStatus?: 'not_sent' | 'smtp_accepted' | 'failed'; latestDeliveryAttemptAt?: string | null; briefVersionId?: string | null; invitedEmail?: string | null; portfolioResponse?: string | null; rejectedAt?: string | null }>;
+  handoffAssignments: Array<{ assignmentId: string; targetKind: string; challengeRef: string; initiativeRef: string | null; handoffState: string; deliveryStatus?: 'not_sent' | 'smtp_accepted' | 'failed'; latestDeliveryAttemptAt?: string | null; briefVersionId?: string | null; invitedEmail?: string | null; acceptedAt?: string | null; startedAt?: string | null; portfolioResponse?: string | null; rejectedAt?: string | null; lastMaterialEvent?: string | null; sourceEventRefs?: string[]; generatedAt?: string }>;
   labRequests?: Array<{ requestId: string; challengeId: string; briefVersionId: string; status: string; notificationStatus: string; createdAt: string; updatedAt: string }>;
+  workItems?: Array<{ workItemId: string; bootstrapSessionId: string; label: string; purpose: string | null; sourceType: string; status: string; currentStateHint: string | null; ownerCandidate: string | null; sourceRefs: unknown; actorId: string; linkedInitiativeId: string | null; createdAt: string; updatedAt: string }>;
+  briefs?: Array<{ briefVersionId: string; briefId: string; challengeId: string; challengeTitle: string | null; versionNumber: number; status: string; intent: string | null; scope: string | null; sourceRefs: unknown; provenance: unknown; createdByActorId: string; confirmedByActorId: string | null; createdAt: string; confirmedAt: string | null }>;
   capacity: PortfolioCapacityReading | null;
   generatedAt: string;
   learnings: PortfolioLearning[];

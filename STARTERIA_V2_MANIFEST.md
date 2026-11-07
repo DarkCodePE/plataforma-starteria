@@ -283,6 +283,56 @@ lectura, reunión o aceptación del trabajo. Las dos rutas se conservan como out
 
 ---
 
+## Slice PORTFOLIO_LEAD_G5_HOME_E2E_CERTIFICATION (KAN-232)
+
+**Registrado:** 2026-11-07 por G5_HOME_E2E_FINAL.md, KAN-232 y autoridad reconciliada
+KAN-232#10690 sobre `main@e55934b79fca29007995aa9c8bb785ffda05d1c4`; #10689 se conserva
+como preflight preliminar `Proceed:NO` previo a la reconciliación.
+
+```text
+slice_id: PORTFOLIO_LEAD_G5_HOME_E2E_CERTIFICATION
+functional_hu: KAN-232
+functional_authority: G5_HOME_E2E_FINAL.md + KAN-232 description
+technical_scope_authority: KAN-232#10689 (preliminar Proceed:NO) -> KAN-232#10690 (reconciliación local Proceed:YES para allowed)
+baseline: main@e55934b79fca29007995aa9c8bb785ffda05d1c4
+logic_status: ACTIVE_V2_SLICE
+implementation_status: G5_E2E_CERTIFIED_READY_FOR_MERGE_REVIEW
+visual_status: V2_TARGET_DEFINED_BY_G5
+evidence_status: LOCAL_PASS + INDEPENDENT_REVIEW_APPROVED + PR_262_CI_6_OF_6_PASS
+depends_on: G1/G2/G3 integrados + PORTFOLIO_LEAD_G4_SETUP_COMPLETION_OUTCOMES (PR #261 merged)
+semantic_owner: proyección read-only de Portfolio Home y certificación E2E del journey Portfolio Lead
+authority_chain: Core v0.2 factual + ADR-005/008/009 + PH-0 frozen target/read-model contracts + G5/KAN-232 explicit runtime authorization
+authority_reconciliation: PH-0 por sí solo no autorizaba runtime; KAN-232 autoriza exclusivamente la proyección/read-model, UI y pruebas G5 aquí delimitadas sin promover dependencias candidatas de Activation o Steps
+current_route: GET /api/v1/portfolio/home -> /portfolio/inicio
+current_gap: ninguno dentro del slice autorizado; queda exclusivamente la decisión humana de merge review, no ejecutada aquí
+implementation_commits: 52d5834, 45fdda6, 1a2e102, a17f0b0, 56e1228, 2ca15c0, 33b8d71, 3e5faa5
+local_evidence: backend focal 26/26; frontend focal 13/13; PL-06 delivery/invitation/response 32/32; suites front/back completas PASS; lint PASS; front typecheck PASS; build PASS; PostgreSQL disposable Playwright A/B/C 3/3 PASS sin skips
+known_baseline: typecheck backend conserva TS2740 preexistente en portfolio-entry-runtime/__tests__/critical-synthesis-reasoning.test.ts, fuera del slice y sin cambios
+smtp_fixture_boundary: el E2E G5 simula exclusivamente el receipt SMTP_ACCEPTED/SENT externo; claim/accept/reject son HTTP reales y la semántica/idempotencia de transporte queda certificada por la regresión PL-06 32/32
+delivery_evidence: revisión independiente APPROVED sobre 476019b; PR #262; CI run 42391374524 con 6/6 checks SUCCESS; Jira KAN-232#10691
+allowed_backend: lectura aditiva owner/tenant-scoped de WorkItems, BriefVersions y estados ya canónicos en PortfolioHomeReadService; DTO/router/tests read-only; sin comandos ni persistencia
+allowed_frontend: tabla simple y filtrable Trabajo/Encargo | Destino/Owner | Estado real | Siguiente acción | Detalle; drilldown accesible; estados reales de WorkItem/Brief/Assignment/Initiative/Lab; Sin datos para KPI/ROI/impacto ausentes
+allowed_tests: tests-first G5-CA01..CA08; PostgreSQL disposable; navegador autenticado A/B/C; seguridad tenant/roles 403/404; stale/retry/doble clic; refresh/logout/login; SMTP fallido; invitación rechazada; responsive/accesibilidad; regresiones G1-G4 y CI
+allowed_ci: invocación aditiva de suites G5 en jobs y PostgreSQL desechable existentes, sin nuevos servicios, secretos ni infraestructura
+human_authority: confirmaciones existentes permanecen obligatorias; Home sólo lee y enlaza a superficies autoritativas
+state_separation: WorkItem provisional != Brief confirmado != Assignment created/sent/accepted/started != Initiative/Project canónico != Step activo != solicitud Lab/entrega software
+negative_guards: Accept no implica Start; solicitud/SMTP/Calendly Lab no implican software, reunión ni impacto; ningún KPI/ROI/progreso inferido; ningún Step/Project/Assignment ficticio; sin leaks cross-tenant ni datos server-side sensibles
+reuse_required: PortfolioOverviewHome; PortfolioHomeReadService; PortfolioBootstrapWorkItem; ChallengeActivationBrief/Version; PortfolioHandoffProjection; PortfolioLabRequest; KAN-221/222/223/226/227/229-231
+legacy_dependencies: proyecciones V2 actuales y adapters read-only clasificados V2/LEGACY_COMPAT; ninguna semántica legacy puede definir estado nuevo
+adapter_required: NO para comportamiento; sólo composición read-only de fuentes gobernadas existentes
+preserves: PH-0 boundaries; ADR-005/008/009; tenant isolation; provenance; historial; autoridad humana; PL-06; KAN-207; Core v0.2; Steps 0-4
+excluded: cambios Core/ADR/Steps/Handoff; comandos o side effects desde Home; Prisma/migraciones; IA productiva; nueva infraestructura/secretos; gastos IA; creación automática de Project/Assignment/Step; merge/deploy
+stop_conditions: necesidad de decidir pre_start/Step materialization/ownership/cardinalidad candidata; nueva entidad o escritura; fuente de estado ambigua; cambio Prisma/Core/Steps/Handoff/IA/infra
+guardrail: V2_CHANGE_GUARDRAIL_CHECK reconciliado Proceed:YES sólo para allowed; Proceed:NO para excluded
+delivery_status: G5_E2E_CERTIFIED_READY_FOR_MERGE_REVIEW o G5_BLOCKED con evidencia verificable
+```
+
+Este slice no declara Portfolio Home completamente V2_MIGRATED por anticipado. La promoción depende
+de que A/B/C y los adversariales pasen sin mocks ni skips sobre PostgreSQL desechable y navegador
+autenticado, y de que la revisión independiente confirme que no se incorporó semántica candidata.
+
+---
+
 ## Slice PORTFOLIO_LEAD_G3_ORGANIZATION_SELECTIVE_BRIEFS (KAN-223)
 
 **Registrado:** 2026-11-07 por HU KAN-223 y auditoría técnica acotada KAN-223#10670.

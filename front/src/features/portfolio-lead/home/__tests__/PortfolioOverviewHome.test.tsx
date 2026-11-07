@@ -162,9 +162,101 @@ describe('PortfolioOverviewHome', () => {
     render(<PortfolioOverviewHome model={withLab as any} onOpenCopilot={vi.fn()} onOpenAdditionalFront={vi.fn()} />);
 
     expect(screen.getByRole('heading', { name: 'Startería Lab' })).toBeInTheDocument();
-    expect(screen.getByText('Contacto pendiente')).toBeInTheDocument();
-    expect(screen.getByText(/Solicitud Lab lab-1/i)).toBeInTheDocument();
+    expect(screen.getAllByText('Contacto pendiente').length).toBeGreaterThanOrEqual(2);
+    expect(screen.getAllByText(/Solicitud Lab lab-1/i).length).toBeGreaterThanOrEqual(2);
     expect(screen.queryByText(/reunión confirmada/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/Assignment lab-1/i)).not.toBeInTheDocument();
+  });
+
+  it('G5-CA01/CA04 renders the accessible operational table and filters provisional work without hiding its real state', () => {
+    const g5Model = {
+      ...model,
+      workItems: [
+        { workItemId: 'work-1', label: 'Onboarding guiado', purpose: 'Reducir fricción', sourceType: 'manual', status: 'confirmed_in_portfolio', currentStateHint: 'active', ownerCandidate: 'Operaciones', sourceRefs: { source: 'manual' }, actorId: 'lead-a', createdAt: '2026-11-07T08:00:00.000Z', updatedAt: '2026-11-07T08:05:00.000Z', bootstrapSessionId: 'session-a', linkedInitiativeId: 'project-1' },
+        { workItemId: 'work-3', label: 'Tercera iniciativa sin activar', purpose: null, sourceType: 'csv', status: 'needs_review', currentStateHint: 'idea', ownerCandidate: null, sourceRefs: { file: 'portfolio.csv', row: 3 }, actorId: 'lead-a', createdAt: '2026-11-07T08:10:00.000Z', updatedAt: '2026-11-07T08:10:00.000Z', bootstrapSessionId: 'session-a', linkedInitiativeId: null },
+      ],
+      briefs: [{ briefVersionId: 'brief-v2', briefId: 'brief-1', challengeId: 'challenge-1', challengeTitle: 'Reducir fricción', versionNumber: 2, status: 'CONFIRMED', intent: 'Reducir fricción', scope: 'Activación', sourceRefs: { proposal: 'proposal-1' }, provenance: { status: 'user_confirmed' }, createdByActorId: 'lead-a', confirmedByActorId: 'lead-a', createdAt: '2026-11-07T09:10:00.000Z', confirmedAt: '2026-11-07T09:15:00.000Z' }],
+      availability: { ...model.availability, workItems: 'available', briefs: 'available', labRequests: 'available' },
+    };
+
+    render(<PortfolioOverviewHome model={g5Model as any} onOpenCopilot={vi.fn()} onOpenAdditionalFront={vi.fn()} />);
+
+    const table = screen.getByRole('table', { name: 'Seguimiento operativo del portafolio' });
+    for (const heading of ['Trabajo/Encargo', 'Destino/Owner', 'Estado real', 'Siguiente acción', 'Detalle']) {
+      expect(within(table).getByRole('columnheader', { name: heading })).toBeInTheDocument();
+    }
+    expect(within(table).getByText('Brief v2')).toBeInTheDocument();
+    expect(within(table).getByText('Necesita revisión')).toBeInTheDocument();
+    fireEvent.change(screen.getByRole('searchbox', { name: 'Filtrar trabajo y encargos' }), { target: { value: 'tercera' } });
+    expect(within(table).getByText('Tercera iniciativa sin activar')).toBeInTheDocument();
+    expect(within(table).queryByText('Onboarding guiado')).not.toBeInTheDocument();
+
+    const details = within(table).getByRole('button', { name: 'Ver detalle de Tercera iniciativa sin activar' });
+    expect(details).toHaveAttribute('aria-expanded', 'false');
+    fireEvent.click(details);
+    expect(details).toHaveAttribute('aria-expanded', 'true');
+    expect(within(table).getByText('lead-a')).toBeInTheDocument();
+    expect(within(table).getByText('Fuente y procedencia:')).toBeInTheDocument();
+  });
+
+  it('G5-CA02/CA03 keeps sent, accepted, started, rejected and Lab notification as distinct factual rows', () => {
+    const g5Model = {
+      ...model,
+      workItems: [], briefs: [],
+      handoffAssignments: [
+        { ...model.handoffAssignments[0], assignmentId: 'sent', handoffState: 'SENT', deliveryStatus: 'smtp_accepted', invitedEmail: 'sent@example.test', startedAt: null },
+        { ...model.handoffAssignments[0], assignmentId: 'accepted', handoffState: 'ACCEPTED', deliveryStatus: 'smtp_accepted', invitedEmail: 'accepted@example.test', acceptedAt: '2026-11-07T10:00:00.000Z', startedAt: null },
+        { ...model.handoffAssignments[0], assignmentId: 'started', handoffState: 'STARTED', deliveryStatus: 'smtp_accepted', invitedEmail: 'started@example.test', acceptedAt: '2026-11-07T10:00:00.000Z', startedAt: '2026-11-07T11:00:00.000Z' },
+        { ...model.handoffAssignments[0], assignmentId: 'rejected', handoffState: 'REJECTED', deliveryStatus: 'smtp_accepted', invitedEmail: 'rejected@example.test', rejectedAt: '2026-11-07T10:30:00.000Z' },
+      ],
+      labRequests: [{ requestId: 'lab-failed', challengeId: 'challenge-1', briefVersionId: 'brief-v2', status: 'REQUESTED', notificationStatus: 'FAILED', requesterId: 'lead-a', createdAt: '2026-11-07T10:00:00.000Z', updatedAt: '2026-11-07T10:05:00.000Z' }],
+      availability: { ...model.availability, workItems: 'available', briefs: 'available', labRequests: 'available' },
+    };
+
+    render(<PortfolioOverviewHome model={g5Model as any} onOpenCopilot={vi.fn()} onOpenAdditionalFront={vi.fn()} />);
+
+    const table = screen.getByRole('table', { name: 'Seguimiento operativo del portafolio' });
+    expect(within(table).getByText('Procesada por SMTP')).toBeInTheDocument();
+    expect(within(table).getByText('Aceptada')).toBeInTheDocument();
+    expect(within(table).getByText('Iniciada')).toBeInTheDocument();
+    expect(within(table).getByText('Rechazada')).toBeInTheDocument();
+    expect(within(table).getByText('Error al notificar')).toBeInTheDocument();
+    expect(within(table).queryByText(/software entregado/i)).not.toBeInTheDocument();
+    expect(within(table).queryByText(/Step activo/i)).not.toBeInTheDocument();
+  });
+
+  it('G5-CA06 exposes missing KPI/ROI/impact as Sin datos instead of deriving values from work', () => {
+    render(<PortfolioOverviewHome model={{ ...model, workItems: [], briefs: [] } as any} onOpenCopilot={vi.fn()} onOpenAdditionalFront={vi.fn()} />);
+    expect(screen.getByText('Sin datos', { selector: '[data-field="latest-observation"]' })).toBeInTheDocument();
+    expect(screen.getByText('Sin datos', { selector: '[data-field="roi"]' })).toBeInTheDocument();
+    expect(screen.getByText('Sin datos', { selector: '[data-field="impact"]' })).toBeInTheDocument();
+    expect(screen.queryByText(/% completado/i)).not.toBeInTheDocument();
+  });
+
+  it('G5-CA07 preserves detected, pending, confirmed and rejected WorkItem states as factual labels and actions', () => {
+    const workItems = [
+      ['detected', 'Detectado', 'Revisar trabajo detectado'],
+      ['needs_review', 'Necesita revisión', 'Completar revisión humana'],
+      ['pending', 'Pendiente de decisión', 'Resolver revisión pendiente'],
+      ['confirmed_in_portfolio', 'Confirmado en portafolio', 'Revisar destino confirmado'],
+      ['rejected', 'Rechazado', 'Conservar trazabilidad'],
+    ].map(([status, _label, _action], index) => ({
+      workItemId: `work-${index}`, bootstrapSessionId: 'session-a', label: `Trabajo ${status}`,
+      purpose: null, sourceType: 'manual', status, currentStateHint: null, ownerCandidate: null,
+      sourceRefs: { source: 'manual' }, actorId: 'lead-a', linkedInitiativeId: index === 3 ? 'project-1' : null,
+      createdAt: '2026-11-07T08:00:00.000Z', updatedAt: '2026-11-07T08:00:00.000Z',
+    }));
+    render(<PortfolioOverviewHome model={{ ...model, workItems, briefs: [] } as any} onOpenCopilot={vi.fn()} onOpenAdditionalFront={vi.fn()} />);
+    const table = screen.getByRole('table', { name: 'Seguimiento operativo del portafolio' });
+    for (const [_status, label, action] of [
+      ['detected', 'Detectado', 'Revisar trabajo detectado'],
+      ['needs_review', 'Necesita revisión', 'Completar revisión humana'],
+      ['pending', 'Pendiente de decisión', 'Resolver revisión pendiente'],
+      ['confirmed_in_portfolio', 'Confirmado en portafolio', 'Revisar destino confirmado'],
+      ['rejected', 'Rechazado', 'Conservar trazabilidad'],
+    ]) {
+      expect(within(table).getByText(label)).toBeInTheDocument();
+      expect(within(table).getByText(action)).toBeInTheDocument();
+    }
   });
 });
