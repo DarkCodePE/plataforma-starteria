@@ -245,12 +245,15 @@ explícita de ejecución KAN-229/230/231 sobre `main@9d2b633013392e5cef1475e34ff
 slice_id: PORTFOLIO_LEAD_G4_SETUP_COMPLETION_OUTCOMES
 functional_hu: KAN-228
 technical_tasks: KAN-229; KAN-230; KAN-231
-technical_audit: KAN-229#10682 + auditoría Core/ADR/repositorio de 2026-11-07
+technical_audit: KAN-229#10682 (preliminar Proceed:NO) + KAN-229#10683 (ratificación humana prevalente y Proceed:YES) + auditoría Core/ADR/repositorio de 2026-11-07
 baseline: main@9d2b633013392e5cef1475e34ffda44d8b653c44
 logic_status: ACTIVE_V2_SLICE
-implementation_status: AUTHORIZED_NOT_IMPLEMENTED
+implementation_status: IMPLEMENTED_READY_FOR_REVIEW
 visual_status: V2_TARGET_DEFINED_BY_KAN-228
-evidence_status: TESTING_REQUIRED
+evidence_status: LOCAL_VERIFIED_INDEPENDENT_REVIEW_FINDINGS_RESOLVED_CI_PENDING
+implementation_commits: c7ad3a1; 6118bf5; ac57fb4; 6f22bfe; 8e6b719; 34b63cb; f578d2f; e68354a; 47d69df
+verified_suites: backend completo PASS; frontend completo PASS; focal backend 37/37; focal frontend 20/20 y accesibilidad 11/11; PostgreSQL KAN-226 6/6 + KAN-230 4/4; comando CI PostgreSQL KAN-221+KAN-230 9/9 con 0 skips; E2E autenticado Lab-only 1/1; typecheck frontend, lint, build, YAML y diff-check PASS
+known_baseline_gate: typecheck backend global conserva TS2740 preexistente en critical-synthesis-reasoning.test.ts, archivo sin cambios respecto al baseline
 depends_on: PORTFOLIO_LEAD_G4_LAB_BRIEF_REQUEST (KAN-226) + PORTFOLIO_LEAD_G4_LAB_REQUEST_UX (KAN-227)
 semantic_owner: cierre humano de Portfolio Setup mediante outcomes independientes y factuales de Equipo y/o Startería Lab
 completion_routes: TEAM_SENT | LAB_NOTIFIED | BOTH
@@ -271,7 +274,7 @@ excluded: cambios Prisma innecesarios; nuevos estados Lab; Calendar API; Project
 negative_guards: REQUESTED, notificationStatus PENDING/FAILED, intentos PENDING/FAILED/DISABLED, solicitudes CLOSED/NOT_PROCEEDING/CANCELLED, otro tenant, otro Challenge/sesión, BriefVersion no CONFIRMED y apertura de Calendly no habilitan cierre
 adr_determination: NO ADR nuevo; Core v0.2 no define el checkpoint de cierre de Setup y la ampliación preserva, sin redefinir, las identidades/cardinalidades y límites aceptados por ADR-005/008/009
 stop_conditions: necesidad de cambiar Core/Steps/Handoff/Prisma, inferir outcome sin evidencia durable, contar requests requester-scoped como autorización global, o crear entidades ficticias
-guardrail: V2_CHANGE_GUARDRAIL_CHECK requerido y debe ser Proceed YES antes de tests/código productivo
+guardrail: V2_CHANGE_GUARDRAIL_CHECK resuelto Proceed:YES en KAN-229#10683 antes de la implementación productiva; reemitido para la invocación CI aditiva sin infraestructura nueva
 ```
 
 Este slice cambia exclusivamente el gate de aplicación que permite cerrar la configuración. No
