@@ -168,18 +168,18 @@ technical_audit: KAN-220#10651, #10652, #10655, #10656, #10657 + revisión indep
 technical_task: KAN-221
 frontend_task: KAN-222
 frontend_authority: KAN-222#10667 (APPROVED; alcance limitado a frontend V2, tests focales y E2E autenticado)
-frontend_implementation_status: IMPLEMENTED_INDEPENDENT_REVIEW_APPROVED_CI_PENDING
+frontend_implementation_status: IMPLEMENTED_READY_FOR_REVIEW
 logic_status: ACTIVE_V2_BASELINE (solo semántica funcional aprobada)
 implementation_status: IMPLEMENTED_UNVERIFIED
 visual_status: V2_TARGET_DEFINED
-evidence_status: TESTING
-runtime_verification: LOCAL_UNIT_REGRESSION_PRISMA_LINT_BUILD_PASS; KAN-221_POSTGRESQL_5_OF_5_PASS; CI_6_OF_6_PASS_PR_256
-implementation_commits: ace7855 (KAN-221 tests-first); 433eec1 (KAN-221 backend/API/Prisma); 6572118 + b944c01 (KAN-221 independent-review fixes); e5393a7 (KAN-222 tests-first); c39327f (KAN-222 frontend); 760cb33 + e69bcd5 (KAN-222 hardening/independent-review fixes)
+evidence_status: VERIFIED
+runtime_verification: LOCAL_UNIT_REGRESSION_PRISMA_LINT_BUILD_PASS; KAN-221_POSTGRESQL_5_OF_5_PASS; CI_5_OF_5_PASS_PR_257_RUN_42316275972
+implementation_commits: ace7855 (KAN-221 tests-first); 433eec1 (KAN-221 backend/API/Prisma); 6572118 + b944c01 (KAN-221 independent-review fixes); e5393a7 (KAN-222 tests-first); c39327f (KAN-222 frontend); 760cb33 + e69bcd5 (KAN-222 hardening/independent-review fixes); c95faf5 (KAN-222 E2E reentry fix)
 independent_review: R1 CHANGES_REQUIRED; R2 CHANGES_REQUIRED; R3 APPROVED
-frontend_independent_review: KAN-222 R1 CHANGES_REQUIRED; R2 APPROVED at e69bcd5
+frontend_independent_review: KAN-222 R1 CHANGES_REQUIRED; R2 APPROVED at e69bcd5; final scope/E2E review APPROVED at c95faf5
 implementation_surfaces: portfolio-bootstrap context schemas/router/controller/service; additive Prisma review/history/operation models and migration; KAN-222 frontend E1 client/hook/conversation wiring; focused/unit/HTTP/DB-integration/authenticated E2E tests
-test_evidence: KAN-221 focused 37/37 PASS; KAN-222 focused + Bootstrap regression 61/61 PASS; frontend full regression/build/lint/front typecheck PASS; backend KAN-221 non-DB 17/17 PASS; backend typecheck retains pre-existing TS2740 only
-postgresql_evidence: 5/5 KAN-221 integration scenarios PASS, 0 skipped, under PORTFOLIO_BOOTSTRAP_DB_INTEGRATION=1 in CI run 42306134658 / PR #256
+test_evidence: KAN-221 focused 37/37 PASS; KAN-222 focused + Bootstrap regression 61/61 PASS; authenticated KAN-222/KAN-212 combined E2E 5/5 PASS; frontend full regression/build/lint/front typecheck PASS; CI run 42316275972 5/5 jobs PASS; backend KAN-221 non-DB 17/17 PASS; backend typecheck retains pre-existing TS2740 only
+postgresql_evidence: 5/5 KAN-221 integration scenarios PASS, 0 skipped, under PORTFOLIO_BOOTSTRAP_DB_INTEGRATION=1 in CI runs 42306134658 / PR #256 and 42316275972 / PR #257
 semantic_owners: CompanyContextVersion PUBLISHED = fuente opcional; Bootstrap E1 = revisión/snapshot confirmado; PortfolioAnchor E2 = objetivo independiente
 preserves: PORTFOLIO_LEAD_SETUP_NAVIGATION_REENTRY_G1 KAN-205/207 sin cambios
 allowed: backend/API/Prisma aditivos y tests KAN-221 ya fusionados; frontend V2, tests focales y E2E autenticado KAN-222; ajuste documental mínimo del Manifest
