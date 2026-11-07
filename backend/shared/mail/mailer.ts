@@ -26,6 +26,13 @@ export interface Mailer {
   send(message: MailMessage): Promise<boolean>;
 }
 
+export interface MailDeliveryReceipt {
+  acceptedByTransport: boolean;
+  acceptedRecipients: string[];
+  rejectedRecipients: string[];
+  providerMessageRef?: string;
+}
+
 let cachedTransport: Transporter | null = null;
 
 function getTransport(): Transporter {
@@ -58,11 +65,19 @@ export const mailer: Mailer = {
   },
 };
 
-export async function sendMailWithReceipt(message: MailMessage): Promise<{ acceptedByTransport: boolean; providerMessageRef?: string }> {
+function recipientAddress(value: unknown): string | null {
+  if (typeof value === 'string') return value.trim().toLowerCase();
+  if (value && typeof value === 'object' && 'address' in value && typeof value.address === 'string') {
+    return value.address.trim().toLowerCase();
+  }
+  return null;
+}
+
+export async function sendMailWithReceipt(message: MailMessage): Promise<MailDeliveryReceipt> {
   const from = message.from || config.smtp.from;
   if (!config.smtp.host || !from) {
     logger.warn({ subject: message.subject }, 'Mailer disabled (SMTP or sender not configured) — email not sent');
-    return { acceptedByTransport: false };
+    return { acceptedByTransport: false, acceptedRecipients: [], rejectedRecipients: [] };
   }
   const receipt = await getTransport().sendMail({
     from,
@@ -72,7 +87,21 @@ export async function sendMailWithReceipt(message: MailMessage): Promise<{ accep
     text: message.text,
     html: message.html,
   });
-  return { acceptedByTransport: true, providerMessageRef: receipt.messageId };
+  const expectedRecipients = (Array.isArray(message.to) ? message.to : [message.to])
+    .map((recipient) => recipient.trim().toLowerCase());
+  const acceptedRecipients = (Array.isArray(receipt.accepted) ? receipt.accepted : [])
+    .map(recipientAddress)
+    .filter((recipient): recipient is string => Boolean(recipient));
+  const rejectedRecipients = (Array.isArray(receipt.rejected) ? receipt.rejected : [])
+    .map(recipientAddress)
+    .filter((recipient): recipient is string => Boolean(recipient));
+  const acceptedSet = new Set(acceptedRecipients);
+  return {
+    acceptedByTransport: expectedRecipients.every((recipient) => acceptedSet.has(recipient)),
+    acceptedRecipients,
+    rejectedRecipients,
+    providerMessageRef: receipt.messageId,
+  };
 }
 
 /** Test seam: reset the cached transport between suites. */

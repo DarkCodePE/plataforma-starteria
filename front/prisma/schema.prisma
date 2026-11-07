@@ -1883,6 +1883,8 @@ model PortfolioLabNotificationAttempt {
   status             PortfolioLabNotificationAttemptStatus @default(PENDING)
   providerMessageRef String?
   errorCode          String?
+  acceptedRecipients String[]                               @default([])
+  rejectedRecipients String[]                               @default([])
   createdAt          DateTime                              @default(now())
   completedAt        DateTime?
 

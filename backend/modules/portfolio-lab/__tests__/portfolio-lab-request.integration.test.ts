@@ -17,6 +17,7 @@ const ids = {
   organization: 'kan226-org',
   otherOrganization: 'kan226-other-org',
   actor: 'kan226-lead',
+  sameTenantActor: 'kan226-same-tenant-lead',
   otherActor: 'kan226-other-lead',
   participant: 'kan226-participant',
   front: 'kan226-front',
@@ -26,8 +27,8 @@ const ids = {
 };
 
 type NotificationOutcome =
-  | { acceptedByTransport: true; providerMessageRef: string }
-  | { acceptedByTransport: false }
+  | { acceptedByTransport: true; providerMessageRef: string; acceptedRecipients?: string[]; rejectedRecipients?: string[] }
+  | { acceptedByTransport: false; acceptedRecipients?: string[]; rejectedRecipients?: string[] }
   | Error;
 
 class FakeNotifier implements PortfolioLabNotifier {
@@ -130,6 +131,7 @@ suite('KAN-226 PortfolioLabRequest PostgreSQL integration', () => {
     });
     for (const [id, organizationId, role] of [
       [ids.actor, ids.organization, 'portfolio_lead'],
+      [ids.sameTenantActor, ids.organization, 'portfolio_lead'],
       [ids.otherActor, ids.otherOrganization, 'portfolio_lead'],
       [ids.participant, ids.organization, 'participante'],
     ] as const) {
@@ -271,6 +273,54 @@ suite('KAN-226 PortfolioLabRequest PostgreSQL integration', () => {
     expect(retryNotifier.calls).toHaveLength(2);
   });
 
+  it('LAB04b claims one concurrent retry, never degrades NOTIFIED, and retries only recipients still pending', async () => {
+    const target = await seedBrief(ids.challenges[0]);
+    const partial = new FakeNotifier();
+    partial.outcomes = [{
+      acceptedByTransport: false,
+      acceptedRecipients: ['fabio.merino.97@gmail.com'],
+      rejectedRecipients: ['orlandokuanb@gmail.com'],
+    }];
+    const service = new PortfolioLabRequestService(prisma as any, partial);
+    const created = await service.create(createInput(target, 'kan226-partial-initial'));
+    expect(created.request.notificationStatus).toBe('FAILED');
+
+    let release!: () => void;
+    const deliveryGate = new Promise<void>((resolve) => { release = resolve; });
+    const retryNotifier: PortfolioLabNotifier & { calls: string[][] } = {
+      enabled: true,
+      calls: [],
+      async sendWithReceipt(message) {
+        this.calls.push(message.to);
+        await deliveryGate;
+        return {
+          acceptedByTransport: true,
+          acceptedRecipients: [...message.to],
+          rejectedRecipients: [],
+          providerMessageRef: 'smtp-concurrent-ok',
+        };
+      },
+    };
+    const retryService = new PortfolioLabRequestService(prisma as any, retryNotifier);
+    const first = retryService.retryNotification({
+      organizationId: ids.organization, actorId: ids.actor,
+      requestId: created.request.id, idempotencyKey: 'kan226-concurrent-retry-a',
+    });
+    while (retryNotifier.calls.length === 0) await new Promise((resolve) => setTimeout(resolve, 5));
+    const second = await retryService.retryNotification({
+      organizationId: ids.organization, actorId: ids.actor,
+      requestId: created.request.id, idempotencyKey: 'kan226-concurrent-retry-b',
+    });
+    expect(second.idempotent).toBe(true);
+    expect(retryNotifier.calls).toEqual([['orlandokuanb@gmail.com']]);
+    release();
+    const accepted = await first;
+    expect(accepted.request.notificationStatus).toBe('NOTIFIED');
+    expect(await (prisma as any).portfolioLabNotificationAttempt.count({
+      where: { requestId: created.request.id, status: 'PENDING' },
+    })).toBe(0);
+  });
+
   it('LAB05 rejects missing consent, draft/foreign versions and cross-tenant or wrong-role access; GET re-enters owner-scoped history', async () => {
     const confirmed = await seedBrief(ids.challenges[0]);
     const draft = await seedBrief(ids.challenges[1], ids.organization, 'DRAFT');
@@ -284,6 +334,7 @@ suite('KAN-226 PortfolioLabRequest PostgreSQL integration', () => {
     const auth = { Authorization: `Bearer ${actorToken()}` };
     const otherAuth = { Authorization: `Bearer ${actorToken(ids.otherActor, 'portfolio_lead', ids.otherOrganization)}` };
     const participantAuth = { Authorization: `Bearer ${actorToken(ids.participant, 'participante', ids.organization)}` };
+    const sameTenantAuth = { Authorization: `Bearer ${actorToken(ids.sameTenantActor, 'portfolio_lead', ids.organization)}` };
     const body = {
       challengeId: confirmed.challengeId,
       briefId: confirmed.briefId,
@@ -302,8 +353,18 @@ suite('KAN-226 PortfolioLabRequest PostgreSQL integration', () => {
     await request(app).get(`/api/v1/portfolio-lab/requests/${created.body.data.request.id}`).set(auth).expect(200).expect(({ body: responseBody }) => {
       expect(responseBody.data.history.length).toBeGreaterThanOrEqual(2);
       expect(responseBody.data.notificationAttempts.length).toBeGreaterThanOrEqual(1);
+      expect(responseBody.data.notificationAttempts[0]).not.toHaveProperty('acceptedRecipients');
+      expect(responseBody.data.notificationAttempts[0]).not.toHaveProperty('rejectedRecipients');
     });
     await request(app).get(`/api/v1/portfolio-lab/requests/${created.body.data.request.id}`).set(otherAuth).expect(404);
+    await request(app).get('/api/v1/portfolio-lab/requests').set(sameTenantAuth).expect(200).expect(({ body: responseBody }) => {
+      expect(responseBody.data).toEqual([]);
+    });
+    await request(app).get(`/api/v1/portfolio-lab/requests/${created.body.data.request.id}`).set(sameTenantAuth).expect(404);
+    await request(app).post(`/api/v1/portfolio-lab/requests/${created.body.data.request.id}/notification-retry`)
+      .set(sameTenantAuth).set('Idempotency-Key', 'kan226-same-tenant-retry').expect(404);
+    await request(app).patch(`/api/v1/portfolio-lab/requests/${created.body.data.request.id}/status`)
+      .set(sameTenantAuth).set('Idempotency-Key', 'kan226-same-tenant-close').send({ status: 'CLOSED' }).expect(404);
     await request(app).post('/api/v1/portfolio-lab/requests').set(otherAuth).set('Idempotency-Key', 'kan226-http-cross-tenant').send(body).expect(404);
     await request(app).post('/api/v1/portfolio-lab/requests').set(participantAuth).set('Idempotency-Key', 'kan226-http-role').send(body).expect(403);
   });

@@ -45,7 +45,13 @@ async function ownChallenge(req: any, challengeId: string): Promise<string> {
 }
 
 function sanitizeAttempt(attempt: any) {
-  const { idempotencyKeyHash: _key, payloadHash: _payload, ...safe } = attempt;
+  const {
+    idempotencyKeyHash: _key,
+    payloadHash: _payload,
+    acceptedRecipients: _acceptedRecipients,
+    rejectedRecipients: _rejectedRecipients,
+    ...safe
+  } = attempt;
   return safe;
 }
 
@@ -71,7 +77,11 @@ portfolioLabRequestRouter.post('/requests', authenticate, write, async (req: any
     const result = await service.create({
       organizationId,
       actorId: req.user.id,
-      ...body,
+      challengeId: body.challengeId!,
+      briefId: body.briefId!,
+      briefVersionId: body.briefVersionId!,
+      consentAccepted: body.consentAccepted!,
+      consentPurpose: body.consentPurpose!,
       idempotencyKey: idempotencyKey(req),
     });
     res.status(result.idempotent || result.deduplicated ? 200 : 201).json({
@@ -84,7 +94,7 @@ portfolioLabRequestRouter.post('/requests', authenticate, write, async (req: any
 portfolioLabRequestRouter.get('/requests', authenticate, read, async (req: any, res, next) => {
   try {
     const organizationId = await organizationFor(req, 'read');
-    const requests = await service.list(organizationId);
+    const requests = await service.list(organizationId, req.user.id);
     res.json({ success: true, data: requests.map(sanitizeRequest) });
   } catch (error) { next(error); }
 });
@@ -93,7 +103,7 @@ portfolioLabRequestRouter.get('/requests/:requestId', authenticate, read, async 
   try {
     const { requestId } = portfolioLabRequestParamsSchema.parse(req.params);
     const organizationId = await organizationFor(req, 'read');
-    const result = await service.get(organizationId, requestId);
+    const result = await service.get(organizationId, req.user.id, requestId);
     res.json({ success: true, data: sanitizeRequest(result) });
   } catch (error) { next(error); }
 });
