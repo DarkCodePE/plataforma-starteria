@@ -428,3 +428,69 @@ describe('PortfolioHomeReadService - Starteria Lab requests owner scope', () => 
     expect(JSON.stringify(home.labRequests)).not.toContain('private@example.test');
   });
 });
+
+describe('PortfolioHomeReadService - G5 operational rows', () => {
+  it('G5-CA01/CA04 projects provisional work and confirmed Briefs from the tenant without inventing execution', async () => {
+    const workFindMany = vi.fn().mockResolvedValue([{
+      id: 'work-3', rawLabel: 'Tercera iniciativa sin activar', proposedName: 'Tercera iniciativa',
+      proposedPurpose: 'Conservar para revisión', sourceType: 'manual', status: 'reviewed',
+      currentStateHint: 'idea', ownerCandidate: 'Operaciones', sourceRefs: { source: 'csv', row: 3 },
+      createdBy: 'lead-a', createdAt: new Date('2026-11-07T08:00:00.000Z'),
+      updatedAt: new Date('2026-11-07T08:05:00.000Z'),
+      bootstrapSession: { id: 'session-a', organizationId: 'org-a', setupCompletedAt: new Date('2026-11-07T09:00:00.000Z') },
+      importedInitiativeLinks: [],
+    }]);
+    const briefFindMany = vi.fn().mockResolvedValue([{
+      id: 'brief-v2', briefId: 'brief-1', challengeId: 'challenge-1', versionNumber: 2,
+      status: 'CONFIRMED', intent: 'Reducir fricción', scope: 'Activación',
+      sourceRefs: { proposalId: 'proposal-1' }, provenance: { status: 'user_confirmed' },
+      createdByActorId: 'lead-a', confirmedByActorId: 'lead-a',
+      createdAt: new Date('2026-11-07T09:10:00.000Z'), confirmedAt: new Date('2026-11-07T09:15:00.000Z'),
+      challenge: { title: 'Reducir fricción' },
+    }]);
+    const prisma = {
+      ...makePrisma(),
+      portfolioBootstrapWorkItem: { findMany: workFindMany },
+      challengeActivationBriefVersion: { findMany: briefFindMany },
+    };
+
+    const home = await new PortfolioHomeReadService(prisma as any)
+      .getHome('lead-a', { all: false, organizationIds: ['org-a'] });
+
+    expect(workFindMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: { bootstrapSession: { organizationId: { in: ['org-a'] } } },
+    }));
+    expect(briefFindMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: { organizationId: { in: ['org-a'] } },
+    }));
+    expect(home.workItems).toEqual([expect.objectContaining({
+      workItemId: 'work-3', label: 'Tercera iniciativa', status: 'reviewed',
+      sourceType: 'manual', actorId: 'lead-a', linkedInitiativeId: null,
+    })]);
+    expect(home.briefs).toEqual([expect.objectContaining({
+      briefVersionId: 'brief-v2', versionNumber: 2, status: 'CONFIRMED',
+      challengeTitle: 'Reducir fricción', confirmedByActorId: 'lead-a',
+    })]);
+    expect(home.availability).toMatchObject({ workItems: 'available', briefs: 'available' });
+    expect(JSON.stringify({ workItems: home.workItems, briefs: home.briefs })).not.toContain('Step');
+  });
+
+  it('G5-CA05 fails closed per segment and never queries work or Briefs outside the organization scope', async () => {
+    const workFindMany = vi.fn().mockRejectedValue(new Error('work projection unavailable'));
+    const briefFindMany = vi.fn().mockResolvedValue([]);
+    const prisma = {
+      ...makePrisma(),
+      portfolioBootstrapWorkItem: { findMany: workFindMany },
+      challengeActivationBriefVersion: { findMany: briefFindMany },
+    };
+
+    const home = await new PortfolioHomeReadService(prisma as any)
+      .getHome('lead-a', { all: false, organizationIds: ['org-a'] });
+
+    expect(home.workItems).toEqual([]);
+    expect(home.availability.workItems).toBe('unavailable');
+    expect(home.availability.briefs).toBe('available');
+    expect(workFindMany.mock.calls[0][0].where.bootstrapSession.organizationId.in).toEqual(['org-a']);
+    expect(briefFindMany.mock.calls[0][0].where.organizationId.in).toEqual(['org-a']);
+  });
+});
