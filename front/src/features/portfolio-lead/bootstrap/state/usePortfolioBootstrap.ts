@@ -36,6 +36,7 @@ import {
   savePortfolioOrganizationProposal,
 } from '../services/portfolioBootstrapClient';
 import { usePortfolioBootstrapContext } from './usePortfolioBootstrapContext';
+import { usePortfolioBootstrapSemantic } from './usePortfolioBootstrapSemantic';
 
 export type PortfolioBootstrapLoadStatus = 'idle' | 'loading' | 'ready' | 'error';
 export type PortfolioBootstrapAnalysisStatus = 'idle' | 'processing' | 'error';
@@ -61,6 +62,7 @@ export function usePortfolioBootstrap(
   const [organizationStatus, setOrganizationStatus] = useState<'idle' | 'loading' | 'saving' | 'confirming' | 'error'>('idle');
   const [organizationError, setOrganizationError] = useState<string | null>(null);
   const context = usePortfolioBootstrapContext(data?.bootstrapSession.id ?? null);
+  const semantic = usePortfolioBootstrapSemantic(data?.bootstrapSession.id ?? null);
 
   const load = useCallback(async () => {
     if (entryMode === 'disabled' || (!portfolioEntryContinuationId && entryMode !== 'direct' && entryMode !== 'resume')) {
@@ -433,6 +435,7 @@ export function usePortfolioBootstrap(
     saveContextDraft: context.saveDraft,
     confirmContext: context.confirm,
     retryContext: context.retry,
+    semantic,
   }), [
     addManualWorkItem,
     analysisError,
@@ -468,6 +471,7 @@ export function usePortfolioBootstrap(
     context.review,
     context.saveDraft,
     context.status,
+    semantic,
     status,
     updateAnchor,
     updateWorkItem,

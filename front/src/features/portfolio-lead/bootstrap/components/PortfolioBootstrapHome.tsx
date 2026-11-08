@@ -17,7 +17,10 @@ import { suggestPortfolioObjective } from '../services/portfolioObjectiveCopilot
 import { ChallengeActivationBriefPanel, type ChallengeAssignmentTarget, type ChallengeBriefInheritedContext } from '../../challenge-activation-brief/ChallengeActivationBriefPanel';
 import { ChallengeAssignmentPreparationPanel } from '../../challenge-activation-brief/ChallengeAssignmentPreparationPanel';
 import { listActivationBriefs, type ActivationBrief } from '../../challenge-activation-brief/challengeActivationBriefClient';
-import { PortfolioBootstrapContextConversation } from './PortfolioBootstrapContextConversation';
+import {
+  PortfolioBootstrapContextConversation,
+  type PortfolioBootstrapSemanticController,
+} from './PortfolioBootstrapContextConversation';
 import type {
   PortfolioBootstrapCompanyContextSource,
   PortfolioBootstrapContextPayload,
@@ -68,6 +71,7 @@ export function PortfolioBootstrapHome({
   onSaveContextDraft = async () => undefined,
   onConfirmContext = async () => undefined,
   onRetryContext = async () => undefined,
+  semantic,
 }: {
   data: PortfolioBootstrapResponse | null;
   status: 'idle' | 'loading' | 'ready' | 'error';
@@ -112,6 +116,7 @@ export function PortfolioBootstrapHome({
   onSaveContextDraft?: (context: PortfolioBootstrapContextPayload, sourceCompanyContext: PortfolioBootstrapCompanyContextSource | null) => Promise<unknown>;
   onConfirmContext?: () => Promise<unknown>;
   onRetryContext?: () => Promise<unknown>;
+  semantic?: PortfolioBootstrapSemanticController;
 }) {
   const projection = useMemo(() => data ? projectBootstrapHome(data) : null, [data]);
   const eligibilityRequired = Boolean(projection && (
@@ -203,6 +208,7 @@ export function PortfolioBootstrapHome({
       onSaveContextDraft={onSaveContextDraft}
       onConfirmContext={onConfirmContext}
       onRetryContext={onRetryContext}
+      semantic={semantic}
     />
   );
 }
@@ -347,6 +353,7 @@ function PortfolioCopilotWorkspace({
   onSaveContextDraft,
   onConfirmContext,
   onRetryContext,
+  semantic,
 }: {
   projection: BootstrapProjection;
   bootstrapPhase: PortfolioBootstrapResponse['bootstrapSession']['bootstrapPhase'];
@@ -389,6 +396,7 @@ function PortfolioCopilotWorkspace({
   onSaveContextDraft: (context: PortfolioBootstrapContextPayload, sourceCompanyContext: PortfolioBootstrapCompanyContextSource | null) => Promise<unknown>;
   onConfirmContext: () => Promise<unknown>;
   onRetryContext: () => Promise<unknown>;
+  semantic?: PortfolioBootstrapSemanticController;
 }) {
   const [selectedStage, setSelectedStage] = useState<number | null>(initialAssignmentTarget ? 6 : null);
   const [assignmentTarget, setAssignmentTarget] = useState<ChallengeAssignmentTarget | null>(initialAssignmentTarget);
@@ -552,6 +560,7 @@ function PortfolioCopilotWorkspace({
                 onConfirm={confirmContext}
                 onRetry={onRetryContext}
                 onContinue={() => setSelectedStage(1)}
+                semantic={semantic}
               />
             ) : null}
             {stage === 1 ? <FrozenObjectiveConversation projection={projection} onSave={onUpdateAnchor} onConfirm={confirmObjective} /> : null}

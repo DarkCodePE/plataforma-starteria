@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { loadSemanticE1OrchestratorConfig } from '../portfolio-bootstrap-semantic-runtime';
+import {
+  createSemanticE1Model,
+  loadSemanticE1OrchestratorConfig,
+  semanticE1TestCompositionEnabled,
+} from '../portfolio-bootstrap-semantic-runtime';
 
 describe('semantic E1 runtime configuration', () => {
   it('loads validated defaults and explicit operational budgets', () => {
@@ -30,5 +34,42 @@ describe('semantic E1 runtime configuration', () => {
     expect(() => loadSemanticE1OrchestratorConfig({ SEMANTIC_E1_MAX_CALLS_PER_TURN: '2' })).toThrow();
     expect(() => loadSemanticE1OrchestratorConfig({ SEMANTIC_E1_TOTAL_TIMEOUT_MS: '0' })).toThrow();
     expect(() => loadSemanticE1OrchestratorConfig({ SEMANTIC_E1_QUESTION_LIMIT: '-1' })).toThrow();
+  });
+
+  it('enables the network-free model only behind both existing test guards', async () => {
+    expect(semanticE1TestCompositionEnabled({
+      NODE_ENV: 'test',
+      PORTFOLIO_ENTRY_E2E_TEST: 'true',
+    })).toBe(true);
+    expect(semanticE1TestCompositionEnabled({ NODE_ENV: 'test' })).toBe(false);
+    expect(semanticE1TestCompositionEnabled({ PORTFOLIO_ENTRY_E2E_TEST: 'true' })).toBe(false);
+
+    const model = createSemanticE1Model(loadSemanticE1OrchestratorConfig({}), {
+      NODE_ENV: 'test',
+      PORTFOLIO_ENTRY_E2E_TEST: 'true',
+    });
+    const output = await model.generate({
+      systemPrompt: 'test',
+      userPayload: {
+        rawInput: 'Somos una cafetería de 4 personas. Nunca hemos probado desayunos para llevar ni pedidos a oficinas.',
+        semanticState: null,
+      },
+      outputSchema: { safeParse: (candidate: unknown) => ({ success: true, data: candidate }) } as any,
+      metadata: { provider: 'configured', model: 'configured', seed_support: 'not_requested' },
+      call: { call_id: 'kan246-test', purpose: 'bootstrap_semantic_turn' },
+    });
+
+    expect(output.validated_output).toMatchObject({
+      facts: expect.arrayContaining([
+        expect.objectContaining({ conceptId: 'situation', provenance: 'user_declared' }),
+        expect.objectContaining({ conceptId: 'pilot_experience', value: false, provenance: 'user_declared' }),
+      ]),
+      questionPlan: expect.objectContaining({ resolves: ['direction'] }),
+      readyForHumanReview: false,
+    });
+    expect(output.execution_metadata).toMatchObject({
+      provider: 'deterministic_test_adapter',
+      model: 'portfolio-bootstrap-semantic-e2e-fake',
+    });
   });
 });

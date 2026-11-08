@@ -6,11 +6,23 @@ import type {
   PortfolioBootstrapContextReview,
 } from '../services/portfolioBootstrapContextClient';
 import { createEmptyPortfolioBootstrapContext } from '../services/portfolioBootstrapContextClient';
+import type { PortfolioBootstrapSemanticSnapshot } from '../services/portfolioBootstrapSemanticClient';
 import type { PortfolioBootstrapContextStatus } from '../state/usePortfolioBootstrapContext';
+import type { PortfolioBootstrapSemanticStatus } from '../state/usePortfolioBootstrapSemantic';
+import { PortfolioBootstrapSemanticConversation } from './PortfolioBootstrapSemanticConversation';
 
 type ContextField = 'situation' | 'area' | 'stakeholder' | 'pilotExperience';
 type ContextDisposition = 'unknown' | 'not_applicable';
 type GuidedQuestion = { field: ContextField | null; title: string; help: string };
+
+export type PortfolioBootstrapSemanticController = {
+  snapshot: PortfolioBootstrapSemanticSnapshot | null;
+  status: PortfolioBootstrapSemanticStatus;
+  error: string | null;
+  pendingInputText: string | null;
+  submit: (inputText: string) => Promise<unknown>;
+  retry: () => Promise<unknown>;
+};
 
 const FIELD_LABELS: Record<ContextField, string> = {
   situation: 'Situación actual',
@@ -162,6 +174,7 @@ export function PortfolioBootstrapContextConversation({
   onConfirm,
   onRetry,
   onContinue,
+  semantic,
 }: {
   operationScope: string;
   review: PortfolioBootstrapContextReview | null;
@@ -171,6 +184,7 @@ export function PortfolioBootstrapContextConversation({
   onConfirm: () => Promise<unknown>;
   onRetry: () => Promise<unknown>;
   onContinue: () => void;
+  semantic?: PortfolioBootstrapSemanticController;
 }) {
   const persistedDraft = review?.draft ?? createEmptyPortfolioBootstrapContext();
   const [draft, setDraft] = useState<PortfolioBootstrapContextPayload>(persistedDraft);
@@ -279,6 +293,30 @@ export function PortfolioBootstrapContextConversation({
     () => setDirty(false),
   );
 
+  if (semantic && semantic.snapshot?.enabled !== false) {
+    return (
+      <PortfolioBootstrapSemanticConversation
+        snapshot={semantic.snapshot}
+        status={semantic.status}
+        error={semantic.error}
+        pendingInputText={semantic.pendingInputText}
+        onSubmit={semantic.submit}
+        onRetry={semantic.retry}
+      >
+        <SemanticContextReviewPanel
+          operationScope={operationScope}
+          review={review}
+          status={status}
+          error={error}
+          onSaveDraft={onSaveDraft}
+          onConfirm={onConfirm}
+          onRetry={onRetry}
+          onContinue={onContinue}
+        />
+      </PortfolioBootstrapSemanticConversation>
+    );
+  }
+
   return (
     <div className="space-y-5" data-testid="portfolio-context-conversation" aria-busy={busy}>
       {busy ? (
@@ -372,5 +410,147 @@ export function PortfolioBootstrapContextConversation({
         </section>
       ) : null}
     </div>
+  );
+}
+
+function SemanticContextReviewPanel({
+  operationScope,
+  review,
+  status,
+  error,
+  onSaveDraft,
+  onConfirm,
+  onRetry,
+  onContinue,
+}: {
+  operationScope: string;
+  review: PortfolioBootstrapContextReview | null;
+  status: PortfolioBootstrapContextStatus;
+  error: string | null;
+  onSaveDraft: (context: PortfolioBootstrapContextPayload, sourceCompanyContext: PortfolioBootstrapCompanyContextSource | null) => Promise<unknown>;
+  onConfirm: () => Promise<unknown>;
+  onRetry: () => Promise<unknown>;
+  onContinue: () => void;
+}) {
+  const persistedDraft = review?.draft ?? createEmptyPortfolioBootstrapContext();
+  const [draft, setDraft] = useState<PortfolioBootstrapContextPayload>(persistedDraft);
+  const [dirty, setDirty] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [localError, setLocalError] = useState<string | null>(null);
+  const epoch = useRef(0);
+  const sourceCompany = review?.draftSourceCompanyContext ?? review?.sourceCompanyContext ?? null;
+  const contextBusy = busy || status === 'loading' || status === 'saving' || status === 'confirming';
+
+  useEffect(() => {
+    setDraft(persistedDraft);
+    setDirty(false);
+    setLocalError(null);
+  }, [operationScope, review?.id, review?.version]);
+
+  useEffect(() => {
+    epoch.current += 1;
+    setBusy(false);
+  }, [operationScope]);
+
+  const updateField = (field: ContextField, value: string) => {
+    setDraft((current) => ({
+      ...current,
+      [field]: value.trim()
+        ? { value, provenance: 'user_declared', sourceRef: { kind: 'user_input' } }
+        : { value: null, provenance: 'unknown' },
+      gaps: withoutFieldDisposition(current.gaps, field),
+    }));
+    setDirty(true);
+    setLocalError(null);
+  };
+
+  const updateList = (field: 'constraints' | 'assumptions', value: string) => {
+    setDraft((current) => ({
+      ...current,
+      [field]: value.split('\n').map((item) => item.trim()).filter(Boolean).map(declared),
+    }));
+    setDirty(true);
+    setLocalError(null);
+  };
+
+  const run = async (operation: () => Promise<unknown>, after?: () => void) => {
+    const operationEpoch = epoch.current;
+    setBusy(true);
+    setLocalError(null);
+    try {
+      await operation();
+      if (operationEpoch === epoch.current) after?.();
+    } catch (caught) {
+      if (operationEpoch === epoch.current) {
+        setLocalError(caught instanceof Error ? caught.message : 'No pudimos completar la revisión.');
+      }
+    } finally {
+      if (operationEpoch === epoch.current) setBusy(false);
+    }
+  };
+
+  return (
+    <section role="region" aria-label="Síntesis canónica editable" className="rounded-xl border border-slate-300 bg-white p-4">
+      <h3 className="font-semibold text-slate-950">Síntesis canónica editable</h3>
+      <p className="mt-1 text-sm text-slate-600">
+        Revisa y redacta el ContextReview. Starteria no convierte automáticamente conceptos del ledger en estos campos.
+      </p>
+      <div className="mt-4 grid gap-4 md:grid-cols-2">
+        {CONTEXT_FIELDS.map((field) => (
+          <label key={field} className="text-sm font-semibold text-slate-800">
+            {FIELD_LABELS[field]}
+            <textarea
+              disabled={contextBusy}
+              value={fieldValue(draft[field])}
+              onChange={(event) => updateField(field, event.target.value)}
+              rows={field === 'situation' ? 3 : 2}
+              className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 font-normal text-slate-950 disabled:opacity-60"
+            />
+          </label>
+        ))}
+        <label className="text-sm font-semibold text-slate-800">
+          Restricciones conocidas
+          <textarea disabled={contextBusy} value={draft.constraints.map(fieldValue).join('\n')} onChange={(event) => updateList('constraints', event.target.value)} rows={3} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 font-normal text-slate-950 disabled:opacity-60" />
+        </label>
+        <label className="text-sm font-semibold text-slate-800">
+          Hipótesis aceptadas o supuestos por validar
+          <textarea disabled={contextBusy} value={draft.assumptions.map(fieldValue).join('\n')} onChange={(event) => updateList('assumptions', event.target.value)} rows={3} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 font-normal text-slate-950 disabled:opacity-60" />
+        </label>
+        <label className="text-sm font-semibold text-slate-800 md:col-span-2">
+          Pendientes explícitos
+          <textarea disabled={contextBusy} value={userGaps(draft.gaps).join('\n')} onChange={(event) => {
+            setDraft((current) => ({ ...current, gaps: [...dispositionGaps(current.gaps), ...event.target.value.split('\n').map((item) => item.trim()).filter(Boolean)] }));
+            setDirty(true);
+            setLocalError(null);
+          }} rows={3} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 font-normal text-slate-950 disabled:opacity-60" />
+        </label>
+      </div>
+
+      <div className="mt-4 flex flex-wrap gap-2">
+        <button type="button" disabled={contextBusy || !dirty} onClick={() => void run(() => onSaveDraft(draft, sourceCompany), () => setDirty(false))} className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-800 disabled:opacity-50">
+          Guardar síntesis editable
+        </button>
+        {review?.status === 'draft' ? (
+          <button type="button" disabled={contextBusy || dirty} onClick={() => void run(onConfirm)} className="rounded-lg bg-slate-950 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">
+            Confirmar contexto revisado
+          </button>
+        ) : null}
+        {review?.status === 'confirmed' ? <p role="status" className="self-center text-sm font-semibold text-emerald-800">Contexto confirmado por una persona</p> : null}
+      </div>
+
+      {(localError || error) ? (
+        <div role="alert" className="mt-3 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-900">
+          <p>{localError ?? error}</p>
+          <button type="button" onClick={() => void run(onRetry)} className="mt-2 rounded-md border border-red-300 bg-white px-3 py-1.5 font-semibold">Reintentar revisión</button>
+        </div>
+      ) : null}
+
+      {review?.effectiveContext ? (
+        <div className="mt-4 rounded-lg border border-emerald-200 bg-emerald-50 p-3">
+          <p className="text-sm text-emerald-950">La confirmación persistida habilita E2; la convergencia semántica por sí sola no lo hace.</p>
+          <button type="button" disabled={contextBusy} onClick={onContinue} className="mt-3 rounded-lg bg-violet-700 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">Continuar al objetivo</button>
+        </div>
+      ) : null}
+    </section>
   );
 }

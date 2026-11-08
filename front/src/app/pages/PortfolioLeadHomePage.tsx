@@ -124,6 +124,7 @@ function OrdinaryPortfolioLeadHomePage() {
         initialAssignmentTarget={assignmentTarget} onOpenAssignment={openAssignment} onCompleteSetup={finishSetup}
         contextReview={bootstrap.contextReview} contextStatus={bootstrap.contextStatus} contextError={bootstrap.contextError}
         onSaveContextDraft={bootstrap.saveContextDraft} onConfirmContext={bootstrap.confirmContext} onRetryContext={bootstrap.retryContext}
+        semantic={bootstrap.semantic}
       />
     </div>;
   }

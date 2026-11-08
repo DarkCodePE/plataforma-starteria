@@ -70,6 +70,7 @@ export function PortfolioSetupHomeArrivalPage() {
         importStatus={bootstrap.importStatus} importError={bootstrap.importError} activeImport={bootstrap.activeImport}
         contextReview={bootstrap.contextReview} contextStatus={bootstrap.contextStatus} contextError={bootstrap.contextError}
         onSaveContextDraft={bootstrap.saveContextDraft} onConfirmContext={bootstrap.confirmContext} onRetryContext={bootstrap.retryContext}
+        semantic={bootstrap.semantic}
       />
     </div>
   );
