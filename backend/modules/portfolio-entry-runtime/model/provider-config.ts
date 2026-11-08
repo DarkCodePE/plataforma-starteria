@@ -42,6 +42,26 @@ export function loadPortfolioEntryProviderConfig(env: NodeJS.ProcessEnv = proces
   };
 }
 
+export function loadPortfolioEntryFallbackProviderConfig(
+  env: NodeJS.ProcessEnv = process.env,
+): PortfolioEntryProviderConfig | undefined {
+  const apiKey = env.PORTFOLIO_ENTRY_FALLBACK_API_KEY?.trim();
+  if (!apiKey) return undefined;
+  const provider = (env.PORTFOLIO_ENTRY_FALLBACK_PROVIDER?.trim() || 'deepseek_responses') as PortfolioEntryProviderConfig['provider'];
+  if (provider !== 'openai_responses' && provider !== 'deepseek_responses') {
+    return undefined;
+  }
+  return {
+    provider,
+    model: env.PORTFOLIO_ENTRY_FALLBACK_MODEL?.trim()
+      || (provider === 'openai_responses' ? 'gpt-4o-mini' : 'deepseek-chat'),
+    apiKey,
+    baseUrl: (env.PORTFOLIO_ENTRY_FALLBACK_BASE_URL?.trim()
+      || (provider === 'openai_responses' ? 'https://api.openai.com/v1' : 'https://api.deepseek.com')).replace(/\/$/, ''),
+    timeoutMs: positiveNumber(env.PORTFOLIO_ENTRY_FALLBACK_TIMEOUT_MS, 30_000, 'PORTFOLIO_ENTRY_FALLBACK_TIMEOUT_MS'),
+  };
+}
+
 function nonBlank(...values: (string | undefined)[]): string | undefined {
   return values.map((value) => value?.trim()).find((value) => Boolean(value));
 }

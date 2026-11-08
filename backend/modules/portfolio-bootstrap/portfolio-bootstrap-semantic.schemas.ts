@@ -96,6 +96,12 @@ export const portfolioBootstrapSemanticErrorSchema = z.object({
   retryable: z.boolean(),
 }).strict();
 
+export const portfolioBootstrapSemanticTurnRequestSchema = z.object({
+  expectedVersion: z.number().int().min(0),
+  inputText: z.string().trim().min(1).max(20_000),
+  answeredQuestionId: z.string().trim().min(1).max(120).nullable().default(null),
+}).strict();
+
 export const portfolioBootstrapSemanticTurnInputSchema = z.object({
   expectedVersion: z.number().int().min(0),
   inputText: z.string().trim().min(1).max(20_000),
