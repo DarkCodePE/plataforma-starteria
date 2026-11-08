@@ -268,13 +268,6 @@ export class PortfolioBootstrapService {
   ) {}
 
   /**
-   * Opens the existing Bootstrap workflow for an authenticated Portfolio Lead
-   * who arrived through the normal product route.  This is deliberately a
-   * provisional workspace: it creates neither a StrategicFront nor a
-   * Challenge nor an Initiative.  Those remain human-reviewed operations in
-   * their respective bounded contexts.
-   */
-  /**
    * Overview-only discovery. Unlike getCurrent(), this read includes E1/E2
    * drafts without an organization materialization, but never creates a session.
    * The owner and their current organization jointly scope every result.
@@ -290,6 +283,8 @@ export class PortfolioBootstrapService {
     source: 'direct' | 'entry_continuation';
     createdAt: string;
     updatedAt: string;
+    contextVersion: number | null;
+    contextUpdatedAt: string | null;
   }>> {
     if (!can(input.permissions, 'portfolio:read')) {
       throw AppError.forbidden('No tienes permiso para consultar este Portfolio.', 'PORTFOLIO_BOOTSTRAP_READ_FORBIDDEN');
@@ -313,11 +308,17 @@ export class PortfolioBootstrapService {
         id: true, status: true, bootstrapPhase: true,
         sourceContinuationId: true, createdAt: true, updatedAt: true,
         anchor: { select: { outcomeStatement: true, contextSummary: true } },
+        contextReview: { select: { version: true, updatedAt: true, draftJson: true } },
       },
     });
     return rows.map((row: any) => {
       const outcome = row.anchor?.outcomeStatement?.trim();
-      const situation = row.anchor?.contextSummary?.trim();
+      const context = row.contextReview?.draftJson;
+      const draftSituation = context && typeof context === 'object' && !Array.isArray(context)
+        ? (context as { situation?: { value?: unknown } }).situation?.value
+        : null;
+      const savedSituation = typeof draftSituation === 'string' ? draftSituation.trim() : '';
+      const situation = savedSituation || row.anchor?.contextSummary?.trim();
       const title = outcome && outcome !== 'Resultado de negocio por definir'
         ? outcome : situation || 'Preparación de portafolio sin título confirmado';
       return {
@@ -328,10 +329,16 @@ export class PortfolioBootstrapService {
         source: row.sourceContinuationId ? 'entry_continuation' as const : 'direct' as const,
         createdAt: row.createdAt.toISOString(),
         updatedAt: row.updatedAt.toISOString(),
+        contextVersion: row.contextReview?.version ?? null,
+        contextUpdatedAt: row.contextReview?.updatedAt?.toISOString() ?? null,
       };
     });
   }
 
+  /**
+   * Explicit preparation action. Reuses only an unfinished direct session
+   * for the same owner and organization; does not canonicalize business work.
+   */
   async createOrReuseDirect(input: {
     authenticatedUserId: string;
     permissions: ReadonlySet<Permission>;
@@ -351,6 +358,7 @@ export class PortfolioBootstrapService {
       const existing = await db.portfolioBootstrapSession.findFirst({
         where: {
           userId: input.authenticatedUserId,
+          organizationId: actor.organizationId,
           sourceContinuationId: null,
           status: { not: 'abandoned' },
           setupCompletedAt: null,
