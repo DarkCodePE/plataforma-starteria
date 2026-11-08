@@ -505,20 +505,21 @@ de confirmación ya autorizada; revisar E1 no altera el avance persistido ni hab
 
 ## Slice PORTFOLIO_LEAD_E1_SEMANTIC_LOOP_PHASE_A (KAN-242)
 
-**Registrado:** 2026-11-08 como auditoría y contrato propuesto sobre
-`main@afe81709fbb057d7d66d95581c995698985bf340`. No autoriza implementación.
+**Registrado:** 2026-11-08 como auditoría y contrato sobre
+`main@afe81709fbb057d7d66d95581c995698985bf340`; B1 fue autorizado por
+KAN-242#10748/#10781, reconciliado por KAN-243 y queda implementado para revisión.
 
 ```text
 slice_id: PORTFOLIO_LEAD_E1_SEMANTIC_LOOP_PHASE_A
 technical_task: KAN-242
-phase: A complete; B0 reconciled; B1 implementation authorized
+phase: A complete; B0 reconciled; B1 implemented and independently approved
 baseline: main@afe81709fbb057d7d66d95581c995698985bf340
 depends_on: PORTFOLIO_LEAD_G1_ADAPTIVE_CONTEXT_BRIDGE; PORTFOLIO_LEAD_G1_ADAPTIVE_CONTEXT_UX_REMEDIATION
 authority: KAN-242 FASE A; docs/STARTERIA_AUTHORITY.md; factual Core v0.2; ADR-002 read as Portfolio Entry-only evidence
 logic_status: ACTIVE_V2_SLICE (KAN-242#10748/#10781)
-implementation_status: B1_AUTHORIZED_NOT_IMPLEMENTED
+implementation_status: B1_IMPLEMENTED_READY_FOR_REVIEW
 visual_status: NOT_APPLICABLE_PHASE_A
-evidence_status: AUDIT_COMPLETE_CONTRACT_PROPOSED
+evidence_status: TESTS_FIRST; UNIT_13_OF_13; POSTGRES_SEMANTIC_7_OF_7; G1_G4_DB_REGRESSION_16_OF_16; MIGRATIONS_78_OF_78; DRIFT_ZERO; INDEPENDENT_REVIEW_APPROVED
 semantic_owner: Portfolio Bootstrap E1 exclusively; Portfolio Entry remains a separate bounded context
 current_behavior: deterministic four-field Bootstrap conversation with regex copy adaptation, persisted E1 review/snapshot, CAS/idempotency and human confirmation
 target_behavior_proposed: semantic narrative interpretation with evidence-bound facts, separate hypotheses, cross-field resolutions, one recap+reason+question, durable history, convergence and interpretative synthesis before human E1→E2 confirmation
@@ -526,12 +527,13 @@ implemented_reuse_candidate: Portfolio Entry structured adapter, prompt-manifest
 authority_boundary: ADR-002 and Portfolio Entry skills/prompts do not authorize Bootstrap runtime; skills v0.1 remain proposed and prompt v0.2 execution is confined to Entry
 material_dependency: RESOLVED_FOR_B1 — additive semantic state/turn persistence, internal write service and owner-scoped read API; ContextReview remains canonical snapshot
 provider_policy: reuse only already configured provider/fallback; no new key/provider/environment/purchase; deterministic fallback may not impersonate semantic inference
-cost_latency_status: UNKNOWN_BLOCKING_ROLLOUT — duration exists, but durable usage/retry/fallback accounting is incomplete; benchmark and budget approval required
+cost_latency_status: INSTRUMENTED_NOT_BENCHMARKED — duration/tokens/retry/fallback are durable; benchmark and budget approval remain required before rollout
 phase_b1_allowed: additive Prisma migration/models; Bootstrap E1 semantic schemas/service/read API; tests/unit/router/PostgreSQL; duration/token/retry/fallback persistence; configurable budget contract; feature flag OFF; docs/Jira/CI
 excluded: live inference; provider calls; prompts/planner/verifier runtime (KAN-245); frontend/chat/E2E UX (KAN-246); Portfolio Entry semantic authority; Core/Steps/Handoff; secrets; infrastructure; AI spend; merge; deploy
 stop_conditions: any public API accepting untrusted semantic facts; ContextReview replacement; cross-tenant read/write; live call; non-additive migration; Core/cardinality change
-guardrail: KAN-243 must emit Proceed YES for the exact B1 perimeter before tests/product code; B2/C require their own scoped execution
-next_gate: KAN-244 tests-first, disposable PostgreSQL, regression, independent review and CI/PR
+guardrail: KAN-243 emitted Proceed YES for the exact B1 perimeter in commit c256721; B2/C require their own scoped execution
+implementation_evidence: tests-first 8123039+d27c166+fdbdd31; implementation 60cb506+6274aae+add4a35; additive migration 20261108100000; ContextReview unchanged
+next_gate: KAN-244 PR/CI review; KAN-245 remains separately gated for any planner/provider runtime
 audit_artifact: docs/implementation/portfolio-bootstrap-e1-semantic-loop-phase-a-v0.1.md
 authorization: KAN-242#10748 + clarification #10781; no repeat functional approval required
 feature_flag: SEMANTIC_E1_ENABLED=false by default; B1 performs no live inference
