@@ -5,7 +5,7 @@ const review = (situation: string, pilotExperience: string | null = null, gaps: 
   id: 'review-a',
   sessionId: 'session-a',
   version: 3,
-  draft: { situation: { value: situation }, pilotExperience: { value: pilotExperience }, gaps },
+  draft: { situation: { value: situation, provenance: 'user_declared', sourceRef: { kind: 'user_input' } }, pilotExperience: { value: pilotExperience }, gaps },
 });
 
 describe('KAN-247 governed E1 context proposal projection', () => {
@@ -28,6 +28,13 @@ describe('KAN-247 governed E1 context proposal projection', () => {
         quote: 'Nunca hemos probado desayunos para llevar ni pedidos a oficinas.',
       },
     });
+  });
+
+  it('never relabels an inferred situation as a persisted user declaration', () => {
+    const data = review('Nunca hemos probado desayunos para llevar.');
+    data.draft.situation.provenance = 'copilot_suggested';
+    data.draft.situation.sourceRef = { kind: 'copilot_suggestion' };
+    expect(buildContextProjection({ review: data }).proposals).toEqual([]);
   });
 
   it('does not treat unclear or contradictory statements as a resolved pilot history', () => {

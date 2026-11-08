@@ -20,7 +20,7 @@ type CandidateReview = {
   sessionId: string;
   version: number;
   draft: {
-    situation: { value: string | null };
+    situation: { value: string | null; provenance?: string; sourceRef?: { kind: string } };
     pilotExperience: { value: string | null };
     gaps: string[];
   };
@@ -99,7 +99,10 @@ export function buildContextProjection(input: {
   ))) return output([]);
 
   const situation = review.draft.situation.value ?? '';
-  const narrativeQuote = explicitNoPilotQuote(situation);
+  const narrativeQuote = review.draft.situation.provenance === 'user_declared'
+    && review.draft.situation.sourceRef?.kind === 'user_input'
+    ? explicitNoPilotQuote(situation)
+    : null;
   if (narrativeQuote) return output([proposal(
     review.sessionId, narrativeQuote, 'persisted_user_narrative',
     { kind: 'context_narrative_quote', reviewId: review.id, reviewVersion: review.version, fieldPath: 'situation', quote: narrativeQuote },
