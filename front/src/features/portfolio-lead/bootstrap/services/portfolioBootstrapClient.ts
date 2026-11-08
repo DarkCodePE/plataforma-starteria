@@ -389,6 +389,8 @@ export type PortfolioResumableSession = {
   source: 'direct' | 'entry_continuation';
   createdAt: string;
   updatedAt: string;
+  contextVersion: number | null;
+  contextUpdatedAt: string | null;
 };
 
 /** Read-only, owner-scoped overview. Never provisions a Bootstrap session. */
