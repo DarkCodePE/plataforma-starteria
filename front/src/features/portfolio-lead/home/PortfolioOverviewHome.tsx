@@ -158,7 +158,12 @@ export function PortfolioOverviewHome({
                 {session.source === 'entry_continuation' ? 'Continuación desde entrada anterior' : 'Iniciado desde Portfolio Lead'}
                 {' · '}Sesión creada {resumeDateLabel(session.createdAt)}
               </p>
-              <p className="mt-1 text-xs text-[#6c7695]">Actualización de la sesión: {resumeDateLabel(session.updatedAt)}. Los datos se revisarán antes de confirmar.</p>
+              <p className="mt-1 text-xs text-[#6c7695]">
+                {session.contextVersion
+                  ? `Borrador de contexto v${session.contextVersion} · actualizado ${resumeDateLabel(session.contextUpdatedAt ?? session.updatedAt)}`
+                  : `Sesión actualizada ${resumeDateLabel(session.updatedAt)}`}
+                {' · '}La información pendiente se revisará antes de confirmar.
+              </p>
               <button type="button" onClick={() => onResumeSession?.(session.sessionId)} disabled={!onResumeSession}
                 className="mt-4 inline-flex items-center gap-2 rounded-lg bg-[#6446c0] px-4 py-2.5 text-sm font-bold text-white disabled:opacity-50">
                 Retomar este espacio <ArrowRight aria-hidden="true" size={16}/>
