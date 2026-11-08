@@ -38,6 +38,8 @@ async function loginUi(page: Page, lead: { email: string; password: string }) {
   await page.locator('input[type="password"]').fill(lead.password);
   await page.getByRole('button', { name: 'Entrar' }).click();
   await expect(page).toHaveURL(/\/portfolio\/inicio/, { timeout: 20_000 });
+  await expect(page.getByTestId('portfolio-overview-home')).toBeVisible({ timeout: 20_000 });
+  await page.getByRole('button', { name: 'Preparar nueva oportunidad' }).click();
   await expect(page.getByText('Cuéntame qué está ocurriendo')).toBeVisible({ timeout: 20_000 });
 }
 
