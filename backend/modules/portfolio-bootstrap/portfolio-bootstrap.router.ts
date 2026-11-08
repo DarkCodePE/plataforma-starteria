@@ -36,6 +36,7 @@ export function buildPortfolioBootstrapRouter(deps: PortfolioBootstrapRouterDeps
   router.post('/sessions/direct', auth, controller.createOrReuseDirect);
   router.post('/sessions/additional-front', auth, controller.openAdditionalFront);
   router.get('/sessions/current', auth, controller.getCurrent);
+  router.get('/sessions/resumable', auth, controller.listResumable);
   router.post('/sessions/from-continuation', auth, controller.createOrReuseFromContinuation);
   router.post('/sessions/from-portfolio-setup-continuity', auth, controller.createOrReuseFromPortfolioSetup);
   router.get('/sessions/:sessionId', auth, controller.getSession);
