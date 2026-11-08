@@ -84,11 +84,11 @@ jobs:
           E2E_DATABASE_ADMIN_URL: postgresql://postgres:postgres@127.0.0.1:5432/postgres
         run: npm run db:e2e:provision && npm run db:e2e:migrate
 
-      - name: KAN-221 G1 E1 + KAN-230 G4 completion PostgreSQL integration (9 scenarios)
+      - name: KAN-221/KAN-244 G1 E1 + KAN-230 G4 completion PostgreSQL integration (14 scenarios)
         env:
           DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/starteria_e2e
           PORTFOLIO_BOOTSTRAP_DB_INTEGRATION: '1'
-        run: npm exec -- vitest run --config vitest.backend.config.ts ../backend/modules/portfolio-bootstrap/__tests__/portfolio-bootstrap-context.integration.test.ts ../backend/modules/portfolio-bootstrap/__tests__/portfolio-setup-completion.lab.integration.test.ts
+        run: npm exec -- vitest run --config vitest.backend.config.ts ../backend/modules/portfolio-bootstrap/__tests__/portfolio-bootstrap-context.integration.test.ts ../backend/modules/portfolio-bootstrap/__tests__/portfolio-bootstrap-semantic.integration.test.ts ../backend/modules/portfolio-bootstrap/__tests__/portfolio-setup-completion.lab.integration.test.ts
 
       - name: Run Portfolio Entry session repository PostgreSQL integration suite
         env:

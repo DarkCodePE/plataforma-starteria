@@ -4,6 +4,7 @@ import type { PortfolioBootstrapService } from './portfolio-bootstrap.service';
 import type { PortfolioOrganizationService } from './portfolio-organization.service';
 import type { PortfolioSetupCompletionService } from './portfolio-setup-completion.service';
 import type { PortfolioBootstrapContextService } from './portfolio-bootstrap-context.service';
+import type { PortfolioBootstrapSemanticService } from './portfolio-bootstrap-semantic.service';
 import {
   analyzeBodySchema,
   advancementConditionParamsSchema,
@@ -36,7 +37,21 @@ export class PortfolioBootstrapController {
     private readonly organizationService: PortfolioOrganizationService,
     private readonly completionService: PortfolioSetupCompletionService,
     private readonly contextService: PortfolioBootstrapContextService,
+    private readonly semanticService: PortfolioBootstrapSemanticService,
   ) {}
+
+  getSemanticContext = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      if (!req.user?.id) throw AppError.unauthorized('No autorizado.', 'PORTFOLIO_BOOTSTRAP_AUTH_REQUIRED');
+      const { sessionId } = bootstrapSessionParamsSchema.parse(req.params);
+      const data = await this.semanticService.getState({
+        sessionId,
+        authenticatedUserId: req.user.id,
+        permissions: req.user.permissions,
+      });
+      res.json({ success: true, data });
+    } catch (error) { next(error); }
+  };
 
   getContext = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {

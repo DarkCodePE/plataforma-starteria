@@ -62,6 +62,28 @@ describe('Portfolio Bootstrap E1 semantic projection', () => {
     expect(next.activeQuestion).toEqual(current.activeQuestion);
     expect(next.convergence.status).toBe('provider_retryable_failure');
   });
+
+  it('persists unknown/no-aplica dispositions without treating unknown as a resolved gap', () => {
+    const unknown = {
+      conceptId: 'formal_area', disposition: 'unknown' as const, provenance: 'user_declared' as const,
+      evidenceRefs: [{ kind: 'user_input' as const, quote: 'No lo sé todavía' }],
+    };
+    const next = applySemanticTurnProjection(emptySemanticStateProjection(), {
+      status: 'completed', facts: [], hypotheses: [], dispositions: [unknown], answeredGaps: [],
+      answeredQuestionId: null, emittedQuestion: null,
+      convergence: { status: 'ready_for_human_review', reason: 'Se conserva la duda.' },
+      questionBudget: { limit: null, used: 0 },
+    }, { turnId: 'turn-unknown', semanticVersion: 1 });
+    expect(next.dispositions[0]).toMatchObject({ conceptId: 'formal_area', disposition: 'unknown' });
+    expect(next.answeredGaps).toEqual([]);
+
+    expect(() => applySemanticTurnProjection(emptySemanticStateProjection(), {
+      status: 'completed', facts: [], hypotheses: [], dispositions: [unknown], answeredGaps: ['formal_area'],
+      answeredQuestionId: null, emittedQuestion: null,
+      convergence: { status: 'ready_for_human_review', reason: 'Invalid.' },
+      questionBudget: { limit: null, used: 0 },
+    }, { turnId: 'turn-invalid', semanticVersion: 1 })).toThrowError(/desconocido/i);
+  });
 });
 
 function fact(conceptId: string, value: string) {

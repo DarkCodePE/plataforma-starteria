@@ -112,13 +112,16 @@ describeIntegration('KAN-244 E1 semantic persistence', () => {
 });
 
 function command(overrides: Record<string, unknown> = {}) {
+  const emitsQuestion = overrides.emittedQuestion !== undefined && overrides.emittedQuestion !== null;
   return {
     sessionId, authenticatedUserId: userId, permissions,
     idempotencyKey: 'turn-1', expectedVersion: 0,
     inputText: 'Somos una cafetería y nunca hemos probado pedidos a oficinas.',
     status: 'completed', facts: [], hypotheses: [], answeredGaps: [], answeredQuestionId: null,
     emittedQuestion: null,
-    convergence: { status: 'ready_for_human_review', reason: 'Suficiente para revisar.' },
+    convergence: emitsQuestion
+      ? { status: 'question_required', reason: 'Existe un gap material.' }
+      : { status: 'ready_for_human_review', reason: 'Suficiente para revisar.' },
     questionBudget: { limit: null, used: 0 }, error: null,
     execution: { provider: 'test-double', model: 'fixture', durationMs: 10, inputTokens: 5, outputTokens: 5, totalTokens: 10, retryCount: 0, fallbackUsed: false },
     ...overrides,

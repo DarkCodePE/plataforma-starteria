@@ -5,7 +5,7 @@ set -euo pipefail
 
 repo_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)
 namespace="${NAMESPACE:-starteria-e2e}"
-expected_migrations=77
+expected_migrations=78
 mode="${1:-bootstrap}"
 port_forward_pid=""
 

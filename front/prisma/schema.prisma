@@ -713,6 +713,7 @@ model User {
   copilotConversations     CopilotConversation[]
   stepReasoningSessionsCreated StepReasoningSession[] @relation("StepReasoningSessionCreator")
   stepReasoningTurns            StepReasoningTurn[]    @relation("StepReasoningTurnActor")
+  portfolioBootstrapSemanticTurns PortfolioBootstrapSemanticTurn[] @relation("PortfolioBootstrapSemanticTurnActor")
 }
 
 model Project {
@@ -2766,6 +2767,7 @@ model Organization {
   importedInitiativeLinks PortfolioImportedInitiativeLink[]
   portfolioLabRequests PortfolioLabRequest[]
   stepReasoningSessions StepReasoningSession[]
+  portfolioBootstrapSemanticTurns PortfolioBootstrapSemanticTurn[] @relation("PortfolioBootstrapSemanticTurnOrganization")
 
   @@index([cohortId])
 }
@@ -2949,6 +2951,12 @@ enum PortfolioBootstrapContextReviewAction {
 enum PortfolioBootstrapContextOperationType {
   save_draft
   confirm
+}
+
+enum PortfolioBootstrapSemanticTurnStatus {
+  completed
+  failed_retryable
+  failed_terminal
 }
 
 enum PortfolioOrganizationProposalStatus {
@@ -3290,6 +3298,7 @@ model PortfolioBootstrapSession {
   organizationMaterializations PortfolioOrganizationMaterialization[]
   contextReview PortfolioBootstrapContextReview?
   contextOperations PortfolioBootstrapContextOperation[]
+  semanticState PortfolioBootstrapSemanticState?
 
   @@unique([userId, sourceContinuationId])
   @@index([userId])
@@ -3367,6 +3376,72 @@ model PortfolioBootstrapContextOperation {
 
   @@unique([bootstrapSessionId, operation, idempotencyKeyHash])
   @@index([bootstrapSessionId, createdAt])
+}
+
+// KAN-244: additive semantic turn ledger for Portfolio Bootstrap E1. The
+// existing PortfolioBootstrapContextReview remains the canonical confirmed
+// snapshot; this aggregate records interpretation history and never replaces it.
+model PortfolioBootstrapSemanticState {
+  id                      String   @id @default(cuid())
+  bootstrapSessionId      String   @unique
+  version                 Int      @default(0)
+  factLedgerJson          Json
+  hypothesesJson          Json
+  dispositionsJson        Json
+  answeredGapsJson        Json
+  questionHistoryJson     Json
+  answeredQuestionIdsJson Json
+  activeQuestionJson      Json?
+  convergenceJson         Json
+  questionBudgetJson      Json
+  createdAt               DateTime @default(now())
+  updatedAt               DateTime @updatedAt
+
+  bootstrapSession PortfolioBootstrapSession       @relation(fields: [bootstrapSessionId], references: [id], onDelete: Cascade)
+  turns            PortfolioBootstrapSemanticTurn[]
+
+  @@index([bootstrapSessionId, version])
+}
+
+model PortfolioBootstrapSemanticTurn {
+  id                  String                               @id @default(cuid())
+  semanticStateId     String
+  semanticVersion     Int
+  organizationId      String?
+  actorUserId         String
+  inputText           String                               @db.Text
+  status              PortfolioBootstrapSemanticTurnStatus
+  factsJson           Json
+  hypothesesJson      Json
+  dispositionsJson    Json
+  answeredGapsJson    Json
+  answeredQuestionId  String?
+  emittedQuestionJson Json?
+  convergenceJson     Json
+  questionBudgetJson  Json
+  errorJson           Json?
+  provider            String?
+  model               String?
+  durationMs          Int
+  inputTokens         Int
+  outputTokens        Int
+  totalTokens         Int
+  retryCount          Int                                  @default(0)
+  fallbackUsed        Boolean                              @default(false)
+  idempotencyKeyHash  String
+  payloadHash         String
+  responseJson        Json
+  createdAt           DateTime                             @default(now())
+
+  semanticState PortfolioBootstrapSemanticState @relation(fields: [semanticStateId], references: [id], onDelete: Cascade)
+  organization  Organization?                   @relation("PortfolioBootstrapSemanticTurnOrganization", fields: [organizationId], references: [id], onDelete: Restrict)
+  actor         User                            @relation("PortfolioBootstrapSemanticTurnActor", fields: [actorUserId], references: [id], onDelete: Restrict)
+
+  @@unique([semanticStateId, semanticVersion], map: "PBSemanticTurn_state_version_key")
+  @@unique([semanticStateId, idempotencyKeyHash], map: "PBSemanticTurn_state_idempotency_key")
+  @@index([organizationId, createdAt])
+  @@index([actorUserId, createdAt])
+  @@index([status, createdAt])
 }
 
 // PL-04/KAN-154: immutable reviewed proposal versions. These rows are

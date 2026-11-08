@@ -6,6 +6,7 @@ import { PortfolioBootstrapService } from './portfolio-bootstrap.service';
 import { PortfolioOrganizationService } from './portfolio-organization.service';
 import { PortfolioSetupCompletionService } from './portfolio-setup-completion.service';
 import { PortfolioBootstrapContextService } from './portfolio-bootstrap-context.service';
+import { PortfolioBootstrapSemanticService } from './portfolio-bootstrap-semantic.service';
 
 export interface PortfolioBootstrapRouterDeps {
   authenticate?: RequestHandler;
@@ -13,6 +14,7 @@ export interface PortfolioBootstrapRouterDeps {
   organizationService?: PortfolioOrganizationService;
   completionService?: PortfolioSetupCompletionService;
   contextService?: PortfolioBootstrapContextService;
+  semanticService?: PortfolioBootstrapSemanticService;
 }
 
 export function buildPortfolioBootstrapRouter(deps: PortfolioBootstrapRouterDeps = {}): Router {
@@ -23,6 +25,7 @@ export function buildPortfolioBootstrapRouter(deps: PortfolioBootstrapRouterDeps
     deps.organizationService ?? new PortfolioOrganizationService(prisma),
     deps.completionService ?? new PortfolioSetupCompletionService(prisma),
     deps.contextService ?? new PortfolioBootstrapContextService(prisma),
+    deps.semanticService ?? new PortfolioBootstrapSemanticService(prisma),
   );
 
   router.post('/sessions/direct', auth, controller.createOrReuseDirect);
@@ -32,6 +35,7 @@ export function buildPortfolioBootstrapRouter(deps: PortfolioBootstrapRouterDeps
   router.post('/sessions/from-portfolio-setup-continuity', auth, controller.createOrReuseFromPortfolioSetup);
   router.get('/sessions/:sessionId', auth, controller.getSession);
   router.get('/sessions/:sessionId/context', auth, controller.getContext);
+  router.get('/sessions/:sessionId/context/semantic', auth, controller.getSemanticContext);
   router.put('/sessions/:sessionId/context/draft', auth, controller.saveContextDraft);
   router.post('/sessions/:sessionId/context/confirm', auth, controller.confirmContext);
   router.post('/sessions/:sessionId/complete-setup', auth, controller.completeSetup);
