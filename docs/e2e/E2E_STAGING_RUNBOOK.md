@@ -68,7 +68,7 @@ Store that tunnel token as `E2E_STAGING_CLOUDFLARED_TOKEN` and its public URL as
 4. Open **Actions -> E2E staging P12 -> Run workflow**.
 5. Enter `source_ref` as the full 40-character commit SHA. Although the resolver accepts a branch or tag for diagnostics, a movable ref is not acceptable certification evidence.
 6. Approve the `e2e-staging` Environment deployment when its protection rule requests it.
-7. The workflow resolves and checks out that exact SHA, builds immutable images, deploys only `starteria-e2e`, rejects a non-empty database, applies all 77 canonical migrations, verifies 77/77 plus zero schema drift, provisions the synthetic tenant, exercises Mailpit, executes G1-G5 A/B/C, runs authenticated smoke and finally runs the generic P12 suite.
+7. The workflow resolves and checks out that exact SHA, builds immutable images, deploys only `starteria-e2e`, rejects a non-empty database, applies all 78 canonical migrations, verifies 78/78 plus zero schema drift, provisions the synthetic tenant, exercises Mailpit, executes G1-G5 A/B/C, runs authenticated smoke and finally runs the generic P12 suite.
 
 The resolver fetches only from this repository's `origin`, resolves a full SHA, checks it out detached and uses a SHA-derived immutable tag. It deliberately does not impose the production workflow's ancestry-to-main rule.
 
@@ -83,7 +83,7 @@ goal -> scenario -> environment -> test -> evidence -> CI
 | Classification | Purpose | Allowed access | Evidence |
 |---|---|---|---|
 | `local_disposable_db` | Deep lifecycle, concurrency and persistence assertions | Direct Prisma only against disposable local PostgreSQL | Existing KAN-222/212/213/223/227/232 suites; KAN-232 A/B/C stays here |
-| `staging_synthetic_provisioning` | Create fixed actors and `org-e2e-prod` before testing | Temporary port-forward only to `starteria-db` in `starteria-e2e`, after RBAC and 77/77 gates | `tenant-provision.log`; application tests never receive the connection string |
+| `staging_synthetic_provisioning` | Create fixed actors and `org-e2e-prod` before testing | Temporary port-forward only to `starteria-db` in `starteria-e2e`, after RBAC and 78/78 gates | `tenant-provision.log`; application tests never receive the connection string |
 | `staging_remote_api_browser` | Observe deployed equivalence through HTTPS, API, browser and Mailpit | No Prisma client, database connection variable, authentication bypass, production URL or cross-namespace access | `goals-g1-g5-playwright.json`, screenshots/traces and selector summary |
 
 `front/e2e/kan232-g5-home-final.spec.ts` imports `PrismaClient`; never add it to `npm run test:e2e:prod`, point it at a production database, or use it as a remote staging spec. Its remote equivalent is `front/e2e/prod/goals-g1-g5-staging.spec.ts`, selected only by `npm run test:e2e:staging-goals` while the isolated Mailpit port-forward is active.
@@ -104,7 +104,7 @@ The workflow leaves staging available and uploads artifacts for 14 days even if 
 
 - `deployment-identity.json` with the full selected SHA, immutable images, service/prompt identity, namespace, URL, database identity, tenant, actors, feature configuration and timestamp;
 - rendered staging manifests;
-- Prisma bootstrap and post-rollout output with 77/77 and drift checks;
+- Prisma bootstrap and post-rollout output with 78/78 and drift checks;
 - tenant provisioning and authenticated smoke output;
 - Mailpit Handoff delivery, claim, acceptance, start and continuity output;
 - `goals-g1-g5-playwright.json` with 3/3 expected tests and 0 skips, tied to the same `source_sha`;
@@ -135,7 +135,7 @@ Confirm from artifacts that:
 4. `database_environment_id` is `starteria-db.starteria-e2e.svc.cluster.local/starteria_db`;
 5. the public URL is the independent staging HTTPS URL;
 6. the tenant is `org-e2e-prod` in the isolated database;
-7. migration evidence is 77/77 with drift checking enabled;
+7. migration evidence is 78/78 with drift checking enabled;
 8. the G1-G5 report is exactly 3/3 with 0 skips;
 9. generic P12 did not skip because credentials or URL were absent; and
 10. Mailpit captured only synthetic email. SMTP acceptance is not delivery, reading, human acceptance, a booked meeting, or permission to send real mail.

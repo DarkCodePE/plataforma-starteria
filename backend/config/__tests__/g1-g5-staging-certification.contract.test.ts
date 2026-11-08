@@ -110,7 +110,7 @@ describe('KAN-236/KAN-237 G1-G5 isolated staging certification contract', () => 
     expect(workflow).toContain('npm run test:e2e:staging-goals');
     expect(workflow).toContain('E2E_STAGING_SOURCE_SHA: ${{ needs.resolve.outputs.sha }}');
     expect(workflow).toContain('E2E_STAGING_GOALS_REPORT: ../artifacts/e2e-staging/goals-g1-g5-playwright.json');
-    expect(runbook).toContain('77/77');
+    expect(runbook).toContain('78/78');
     expect(runbook).toContain('goal -> scenario -> environment -> test -> evidence -> CI');
     expect(runbook).toContain('KAN-232');
     expect(runbook).toContain('0 skips');

@@ -4,4 +4,6 @@ export * from './portfolio-bootstrap.router';
 export * from './portfolio-bootstrap.schemas';
 export * from './portfolio-bootstrap.service';
 export * from './portfolio-bootstrap-context.service';
+export * from './portfolio-bootstrap-semantic.schemas';
+export * from './portfolio-bootstrap-semantic.service';
 export * from './portfolio-organization.service';
