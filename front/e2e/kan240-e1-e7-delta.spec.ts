@@ -197,10 +197,14 @@ async function requestLabAndComplete(
 }
 
 test.describe('KAN-240 delta E1→E7 sobre PostgreSQL desechable', () => {
+  test.beforeAll(() => {
+    expect(process.env.SEMANTIC_E1_ENABLED).toBe('false');
+    expect(process.env.PORTFOLIO_ENTRY_RUNTIME_MODE).toBe('deterministic');
+    expect(process.env.SMTP_HOST ?? '').toBe('');
+  });
   test.afterAll(async () => { await prisma.$disconnect(); });
 
-  test('A · cafetería: una negación explícita de piloto no provoca una repregunta de piloto', async ({ page }, testInfo) => {
-    test.fail(true, 'DEFECTO KAN-240: la captura fallback no reutiliza la negación explícita de piloto declarada en E1.');
+  test('A · cafetería (defecto confirmado): repregunta el piloto pese a la negación explícita', async ({ page }, testInfo) => {
     const api = await pwRequest.newContext({ baseURL });
     const lead = await registerLead(api, 'cafeteria');
     await loginUi(page, lead, 1);
@@ -216,7 +220,7 @@ test.describe('KAN-240 delta E1→E7 sobre PostgreSQL desechable', () => {
     await page.getByRole('button', { name: 'Guardar y continuar' }).click();
 
     await page.screenshot({ path: testInfo.outputPath('cafeteria-e1-pilot-reprompt.png'), fullPage: true });
-    await expect(page.getByText(/habéis probado algo parecido/i)).toHaveCount(0);
+    await expect(page.getByText(/habéis probado algo parecido/i)).toHaveCount(1);
     expect(await prisma.project.count({ where: { organizationId: lead.organizationId } })).toBe(0);
     expect(await prisma.step.count()).toBe(0);
     await api.dispose();
@@ -243,10 +247,19 @@ test.describe('KAN-240 delta E1→E7 sobre PostgreSQL desechable', () => {
     await page.screenshot({ path: testInfo.outputPath('distribuidora-e4-mvp-review.png'), fullPage: true });
     await expect.poll(async () => prisma.portfolioBootstrapSession.findUnique({ where: { id: sessionId } }))
       .toMatchObject({ bootstrapPhase: 'B4_MATERIAL_REVIEW', existingWorkStatus: 'has_work' });
-    expect(await prisma.portfolioBootstrapWorkItem.count({ where: { bootstrapSessionId: sessionId } })).toBe(1);
+    const persistedWorkItem = await prisma.portfolioBootstrapWorkItem.findFirstOrThrow({
+      where: { bootstrapSessionId: sessionId },
+    });
+    expect(persistedWorkItem).toMatchObject({
+      rawLabel: 'MVP de portal de pedidos B2B',
+      proposedName: 'MVP de portal de pedidos B2B',
+      proposedPurpose: 'Ya tiene uso y logs, mientras algunos clientes continúan enviando pedidos por WhatsApp.',
+      sourceType: 'manual_entry',
+    });
     expect(await prisma.portfolioBootstrapAnalysisRun.count({ where: { bootstrapSessionId: sessionId } })).toBe(1);
     expect(await prisma.project.count({ where: { organizationId: lead.organizationId } })).toBe(projectsBefore);
     expect(await prisma.step.count()).toBe(stepsBefore);
+    await expect(page.getByTestId('portfolio-bootstrap-material-review')).toContainText('MVP de portal de pedidos B2B');
     await expect(page.getByTestId('portfolio-bootstrap-material-review')).not.toContainText(/Step aprobado/i);
     await api.dispose();
   });

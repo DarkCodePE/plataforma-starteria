@@ -9,17 +9,17 @@ Commit del test: `61cfd94e1a239368dc92152879963bd068e69fce`
 
 La auditoría produce un recorrido verificable de una misma sesión desde E1 hasta E7 y Portfolio Overview, pero no certifica todavía un happy path de usuario completamente limpio.
 
-- Cafetería: E1 vuelve a preguntar por un piloto que ya fue negado explícitamente. Es un defecto funcional reproducido y conservado como fallo esperado.
+- Cafetería: E1 vuelve a preguntar por un piloto que ya fue negado explícitamente. Es un defecto funcional reproducido primero con una aserción RED y conservado después mediante una aserción diagnóstica exacta de una aparición.
 - Cafetería con workaround explícito: la misma sesión llega a E7 y Home; E1–E4 se ejecutan por UI y E5–E7 por APIs gobernadas ya existentes.
 - Distribuidora: un MVP con uso/logs llega a E4 sin crear ni autoaprobar `Project` o `Step`.
-- El entorno usa PostgreSQL 16 desechable con 78 migraciones. `scripts/run-e2e.ts` fuerza `SEMANTIC_E1_ENABLED=false` salvo que se solicite expresamente el test semántico; esta ejecución no lo solicitó.
+- El entorno usa PostgreSQL 16 desechable con 78 migraciones. Antes de cualquier request, el spec exige `SEMANTIC_E1_ENABLED=false`, `PORTFOLIO_ENTRY_RUNTIME_MODE=deterministic` y `SMTP_HOST` vacío; falla cerrado si el runner hereda una configuración live.
 - No hubo inferencia live, proveedor de pago, secretos nuevos, infraestructura, merge ni deploy.
 
 ## Matriz de trazabilidad
 
 | Criterio | Superficie | Test | Commits relevantes | Evidencia ejecutada |
 |---|---|---|---|---|
-| A1. Una negación explícita de piloto no debe generar la misma pregunta | `PortfolioBootstrapContextConversation.tsx`; contrato de proyección E1 pendiente | `A · cafetería: una negación explícita...` | `8e01f6f` (fallback persistido); `61cfd94` (reproductor) | FAIL esperado: aparece una vez «¿Habéis probado algo parecido?»; `test-results/...58ed2.../error-context.md` y `cafeteria-e1-pilot-reprompt.png` |
+| A1. Una negación explícita de piloto no debe generar la misma pregunta | `PortfolioBootstrapContextConversation.tsx`; contrato de proyección E1 pendiente | `A · cafetería (defecto confirmado)...` | `8e01f6f` (fallback persistido); `61cfd94` (reproductor) | RED inicial: esperado 0, recibido 1. Diagnóstico estable posterior: exige exactamente 1; `test-results/...58ed2.../error-context.md` y `cafeteria-e1-pilot-reprompt.png` |
 | A2. Objetivo sin KPI numérico inventado y E3 sin trabajo | `PortfolioBootstrapHome.tsx`; `portfolio-bootstrap.service.ts` | `A · diagnóstico: la misma sesión alcanza E1→E7...` | `c39327f`; `61cfd94` | PASS; la señal queda declarada como desconocida y E3 usa la ruta sin iniciativas |
 | A3. Ausencia de trabajo no crea `Project`/`Step` | Servicio de bootstrap y gates E3/E5 | mismo test diagnóstico | `43b7748`; `61cfd94` | PASS; conteos finales iguales a los iniciales |
 | A4. E5 reto, E6 Brief confirmado, E7 Lab notificado y Home | organización, Brief/Handoff, Lab y `PortfolioOverviewHome` | mismo test diagnóstico | `3e5faa5`; `61cfd94` | PASS; `completionRoute=LAB_NOTIFIED`, Home visible, Brief confirmado y contacto pendiente |
@@ -38,7 +38,7 @@ Actual: aparece una vez «¿Habéis probado algo parecido?».
 
 El fallback sólo considera resuelto `pilotExperience` cuando ese campo del `ContextReview` tiene valor o disposición. La negación sigue estando en la narrativa inicial, sin una proyección autorizada hacia ese campo.
 
-No se aplicó una regex o extractor en React. Ese atajo convertiría texto libre en un hecho de dominio y le asignaría una procedencia sin las reglas de mapping, conceptos no asignables, versionado e idempotencia exigidas por el handoff. La corrección mínima de runtime queda bloqueada hasta aprobar ese guardrail funcional; el PR de auditoría conserva el reproductor, no finge una reparación.
+No se aplicó una regex o extractor en React. Ese atajo convertiría texto libre en un hecho de dominio y le asignaría una procedencia sin las reglas de mapping, conceptos no asignables, versionado e idempotencia exigidas por el handoff. La corrección mínima de runtime queda bloqueada hasta aprobar ese guardrail funcional; el PR de auditoría conserva el RED inicial y una aserción diagnóstica exacta, no finge una reparación ni usa `test.fail()` para ocultar fallos ajenos.
 
 ## Alcance real del recorrido E1→E7
 
@@ -56,7 +56,7 @@ No se llama a SMTP ni se afirma que Lab/Fab haya aceptado o iniciado trabajo. La
 
 ```text
 npm run test:e2e -- e2e/kan240-e1-e7-delta.spec.ts --workers=1
-PASS (exit 0): 3 tests; A1 es fallo esperado y conserva su evidencia; A4 y C1 pasan realmente.
+PASS (exit 0): 3 tests; A1 exige exactamente la conducta defectuosa ya reproducida en RED; A4 y C1 pasan realmente.
 
 npm run test:e2e -- e2e/kan240-e1-e7-delta.spec.ts --grep "distribuidora" --workers=1
 PASS: 1/1.
