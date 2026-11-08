@@ -27,6 +27,21 @@ const declaredContextRefSchema = z.object({
   kind: z.enum(['user_input', 'decision_brief']),
 }).strict();
 
+const narrativeQuoteRefSchema = z.object({
+  kind: z.literal('context_narrative_quote'),
+  reviewId: z.string().trim().min(1),
+  reviewVersion: z.number().int().positive(),
+  fieldPath: z.literal('situation'),
+  quote: z.string().trim().min(1).max(1_000),
+}).strict();
+
+const semanticFactQuoteRefSchema = z.object({
+  kind: z.literal('semantic_fact_quote'),
+  turnId: z.string().trim().min(1),
+  semanticVersion: z.number().int().positive(),
+  quote: z.string().trim().min(1).max(1_000),
+}).strict();
+
 const copilotContextRefSchema = z.object({
   kind: z.enum(['copilot_inference', 'copilot_suggestion']),
   reference: z.string().trim().min(1).max(500).optional(),
@@ -35,7 +50,7 @@ const copilotContextRefSchema = z.object({
 export const portfolioBootstrapContextFieldSchema = z.object({
   value: z.string().trim().min(1).max(2_000).nullable(),
   provenance: z.enum(['user_declared', 'source_extracted', 'copilot_inferred', 'copilot_suggested', 'unknown']),
-  sourceRef: z.union([companyContextEntryRefSchema, declaredContextRefSchema, copilotContextRefSchema]).optional(),
+  sourceRef: z.union([companyContextEntryRefSchema, declaredContextRefSchema, copilotContextRefSchema, narrativeQuoteRefSchema, semanticFactQuoteRefSchema]).optional(),
 }).strict().superRefine((field, context) => {
   if (field.provenance === 'unknown' && (field.value !== null || field.sourceRef !== undefined)) {
     context.addIssue({ code: 'custom', message: 'Un campo desconocido debe ser null y no tener fuente.' });
@@ -43,8 +58,12 @@ export const portfolioBootstrapContextFieldSchema = z.object({
   if (field.provenance === 'source_extracted' && field.sourceRef?.kind !== 'company_context_entry') {
     context.addIssue({ code: 'custom', message: 'La procedencia extraída requiere una entrada Company verificable.' });
   }
-  if (field.provenance === 'user_declared' && !['user_input', 'decision_brief'].includes(field.sourceRef?.kind ?? '')) {
+  if (field.provenance === 'user_declared' && !['user_input', 'decision_brief', 'context_narrative_quote', 'semantic_fact_quote'].includes(field.sourceRef?.kind ?? '')) {
     context.addIssue({ code: 'custom', message: 'La declaración humana requiere user_input o decision_brief.' });
+  }
+  if ((field.sourceRef?.kind === 'context_narrative_quote' || field.sourceRef?.kind === 'semantic_fact_quote')
+    && (field.provenance !== 'user_declared' || field.value !== field.sourceRef.quote)) {
+    context.addIssue({ code: 'custom', message: 'La cita aceptada por la persona debe conservar el valor literal y su procedencia.' });
   }
   if (field.provenance === 'copilot_inferred' && field.sourceRef && field.sourceRef.kind !== 'copilot_inference') {
     context.addIssue({ code: 'custom', message: 'La inferencia Copilot debe conservar su procedencia.' });
