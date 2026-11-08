@@ -32,13 +32,16 @@ async function registerLead(api: APIRequestContext, label: string) {
   return { email, password, userId, organizationId: organization.id, token: accessToken(await login.json()) };
 }
 
-async function loginUi(page: Page, lead: { email: string; password: string }) {
+async function loginUi(page: Page, lead: { email: string; password: string; userId?: string }) {
   await page.goto('/auth');
   await page.getByPlaceholder('tu@empresa.com').fill(lead.email);
   await page.locator('input[type="password"]').fill(lead.password);
   await page.getByRole('button', { name: 'Entrar' }).click();
   await expect(page).toHaveURL(/\/portfolio\/inicio/, { timeout: 20_000 });
   await expect(page.getByTestId('portfolio-overview-home')).toBeVisible({ timeout: 20_000 });
+  if (lead.userId) {
+    expect(await prisma.portfolioBootstrapSession.count({ where: { userId: lead.userId } })).toBe(0);
+  }
   await page.getByRole('button', { name: 'Preparar nueva oportunidad' }).click();
   await expect(page.getByText('Cuéntame qué está ocurriendo')).toBeVisible({ timeout: 20_000 });
 }
