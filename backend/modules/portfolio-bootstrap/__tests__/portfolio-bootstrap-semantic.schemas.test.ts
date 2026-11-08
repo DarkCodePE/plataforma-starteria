@@ -95,6 +95,17 @@ describe('Portfolio Bootstrap E1 semantic contracts', () => {
     expect(() => portfolioBootstrapSemanticTurnInputSchema.parse(terminal)).toThrow(/terminal/i);
   });
 
+  it('rejects a user disposition whose quoted evidence is absent from the turn input', () => {
+    const forged = {
+      ...validTurn(), facts: [], answeredGaps: [],
+      dispositions: [{
+        conceptId: 'formal_area', disposition: 'unknown', provenance: 'user_declared',
+        evidenceRefs: [{ kind: 'user_input', quote: 'No lo sé todavía' }],
+      }],
+    };
+    expect(() => portfolioBootstrapSemanticTurnInputSchema.parse(forged)).toThrow(/evidencia/i);
+  });
+
   it('keeps the semantic runtime feature flag fail-closed by default', () => {
     expect(semanticE1Enabled({})).toBe(false);
     expect(semanticE1Enabled({ SEMANTIC_E1_ENABLED: 'false' })).toBe(false);

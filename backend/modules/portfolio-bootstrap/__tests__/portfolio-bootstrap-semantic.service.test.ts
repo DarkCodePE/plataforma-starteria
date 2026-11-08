@@ -124,6 +124,26 @@ describe('Portfolio Bootstrap E1 semantic projection', () => {
       ...base, emittedQuestion: question('area'), questionBudget: { limit: 3, used: 2 },
     }, { turnId: 'turn-budget', semanticVersion: 2 })).toThrowError(/presupuesto/i);
   });
+
+  it('rejects orphan answered gaps and retracts a prior grounded resolution', () => {
+    const orphan = {
+      status: 'completed' as const, facts: [], hypotheses: [], dispositions: [],
+      answeredGaps: ['pilot_experience'], answeredQuestionId: null, emittedQuestion: null,
+      convergence: { status: 'ready_for_human_review' as const, reason: 'Incorrecto.' },
+      questionBudget: { limit: null, used: 0 },
+    };
+    expect(() => applySemanticTurnProjection(emptySemanticStateProjection(), orphan, {
+      turnId: 'turn-orphan', semanticVersion: 1,
+    })).toThrowError(/evidencia|respaldado/i);
+
+    const current = { ...emptySemanticStateProjection(), answeredGaps: ['pilot_experience'] };
+    const retraction = applySemanticTurnProjection(current, {
+      ...orphan,
+      answeredGaps: [],
+      facts: [{ ...fact('pilot_experience', 'Retiro esa respuesta'), status: 'retracted' as const }],
+    }, { turnId: 'turn-retracted', semanticVersion: 2 });
+    expect(retraction.answeredGaps).toEqual([]);
+  });
 });
 
 function fact(conceptId: string, value: string) {
