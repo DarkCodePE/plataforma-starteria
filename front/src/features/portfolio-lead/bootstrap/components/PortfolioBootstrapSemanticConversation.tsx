@@ -63,6 +63,15 @@ export function PortfolioBootstrapSemanticConversation({
     }
   };
 
+  const retry = async () => {
+    try {
+      await onRetry();
+      setLocalError(null);
+    } catch (caught) {
+      setLocalError(caught instanceof Error ? caught.message : 'No pudimos reintentar la respuesta.');
+    }
+  };
+
   return (
     <div className="space-y-5" data-testid="portfolio-semantic-conversation" aria-busy={busy}>
       <section aria-label="Historial de conversación" className="space-y-3">
@@ -170,7 +179,7 @@ export function PortfolioBootstrapSemanticConversation({
       {(localError || error) ? (
         <div role="alert" className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-900">
           <p>{error ?? localError}</p>
-          <button type="button" onClick={() => void onRetry()} className="mt-2 rounded-md border border-red-300 bg-white px-3 py-1.5 font-semibold">
+          <button type="button" onClick={() => void retry()} className="mt-2 rounded-md border border-red-300 bg-white px-3 py-1.5 font-semibold">
             Reintentar el mismo turno
           </button>
         </div>

@@ -132,6 +132,21 @@ describe('PortfolioBootstrapSemanticConversation', () => {
     expect(screen.getByRole('button', { name: 'Reintentar el mismo turno' })).toBeEnabled();
   });
 
+  it('KAN-246 R3 clears a local submission error after retry succeeds', async () => {
+    const user = userEvent.setup();
+    const onSubmit = vi.fn().mockRejectedValue(new Error('Fallo transitorio local.'));
+    const onRetry = vi.fn().mockResolvedValue(null);
+    render(<PortfolioBootstrapSemanticConversation {...props({ onSubmit, onRetry })} />);
+
+    await user.type(screen.getByLabelText('Tu respuesta'), 'Relato conservado');
+    await user.click(screen.getByRole('button', { name: 'Enviar respuesta' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('Fallo transitorio local.');
+
+    await user.click(screen.getByRole('button', { name: 'Reintentar el mismo turno' }));
+    expect(onRetry).toHaveBeenCalledOnce();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
   it('KAN-246 S3 guards empty and oversized input at the interaction boundary', async () => {
     const user = userEvent.setup();
     const onSubmit = vi.fn().mockResolvedValue(null);
