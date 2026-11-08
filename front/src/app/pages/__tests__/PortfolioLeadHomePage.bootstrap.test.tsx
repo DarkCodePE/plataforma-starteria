@@ -7,6 +7,8 @@ import { makeBootstrap } from '../../../features/portfolio-lead/bootstrap/testin
 const createOrReuse = vi.fn();
 const createDirect = vi.fn();
 const getCurrent = vi.fn();
+const getResumable = vi.fn();
+const getSession = vi.fn();
 const getHome = vi.fn();
 const openAdditional = vi.fn();
 
@@ -36,7 +38,8 @@ vi.mock('../../../features/portfolio-lead/bootstrap/services/portfolioBootstrapC
   createOrReusePortfolioBootstrapSession: (...args: unknown[]) => createOrReuse(...args),
   createOrReuseDirectPortfolioBootstrapSession: (...args: unknown[]) => createDirect(...args),
   getCurrentPortfolioBootstrapSession: (...args: unknown[]) => getCurrent(...args),
-  getPortfolioBootstrapSession: vi.fn((sessionId: string) => createDirect(sessionId)),
+  getResumablePortfolioBootstrapSessions: (...args: unknown[]) => getResumable(...args),
+  getPortfolioBootstrapSession: (...args: unknown[]) => getSession(...args),
   getPortfolioOrganizationProposal: vi.fn().mockResolvedValue(null),
   createOrReusePortfolioSetupBootstrapSession: vi.fn(),
   completePortfolioSetup: vi.fn(),
@@ -120,6 +123,8 @@ describe('PortfolioLeadHomePage Bootstrap integration', () => {
     createOrReuse.mockResolvedValue(makeBootstrap('anchor_sufficient'));
     createDirect.mockResolvedValue(makeBootstrap('anchor_sufficient'));
     getCurrent.mockResolvedValue(null);
+    getResumable.mockResolvedValue([]);
+    getSession.mockResolvedValue(makeBootstrap('anchor_sufficient'));
     openAdditional.mockResolvedValue(makeBootstrap('anchor_insufficient'));
     getHome.mockResolvedValue({
       portfolioReading: { summary: null, strategicUnitCount: null, activeInitiativeCount: null, pendingActivationCount: null, blockerCount: null, pendingDecisionCount: null, coverageGapCount: null, evidenceGapCount: null, homeState: null, generatedAt: null, source: 'unavailable' },
@@ -147,33 +152,37 @@ describe('PortfolioLeadHomePage Bootstrap integration', () => {
     expect(screen.queryByText(/Step 0/i)).not.toBeInTheDocument();
   });
 
-  it('shows Portfolio Overview after the contextual setup has been persistently completed', async () => {
-    const completed = makeBootstrap('anchor_sufficient');
-    completed.bootstrapSession.setupCompletedAt = '2026-10-24T08:00:00.000Z';
-    createDirect.mockResolvedValue(completed);
+  it('KAN-250 always opens Inicio as Overview without creating a Bootstrap session', async () => {
     renderPage('/portfolio/inicio');
-
     expect(await screen.findByRole('heading', { name: /Qué necesita tu atención para mover el negocio/i })).toBeInTheDocument();
+    expect(getResumable).toHaveBeenCalledOnce();
+    expect(getCurrent).not.toHaveBeenCalled();
+    expect(createDirect).not.toHaveBeenCalled();
     expect(createOrReuse).not.toHaveBeenCalled();
-    expect(getHome).toHaveBeenCalled();
   });
 
-  it('reuses the same creation intent after an uncertain request failure', async () => {
-    const completed = makeBootstrap('anchor_sufficient');
-    completed.bootstrapSession.setupCompletedAt = '2026-10-24T08:00:00.000Z';
-    createDirect.mockResolvedValue(completed);
-    openAdditional
-      .mockRejectedValueOnce(new Error('network interrupted'))
-      .mockResolvedValueOnce(makeBootstrap('anchor_insufficient'));
+  it('KAN-250 shows resumable preparation on Inicio and reopens its exact persisted session', async () => {
+    getResumable.mockResolvedValue([{
+      sessionId: 'existing-session', title: 'Mejorar atención en cafetería',
+      bootstrapPhase: 'B1_ANCHOR', status: 'awaiting_anchor_review',
+      source: 'direct', createdAt: '2026-11-07T10:00:00.000Z', updatedAt: '2026-11-08T10:00:00.000Z',
+    }]);
     renderPage('/portfolio/inicio');
+    expect(await screen.findByText('Mejorar atención en cafetería')).toBeInTheDocument();
+    expect(createDirect).not.toHaveBeenCalled();
 
-    const action = await screen.findByRole('button', { name: 'Crear nuevo frente estratégico' });
-    fireEvent.click(action);
-    await screen.findByText('network interrupted');
-    fireEvent.click(action);
+    fireEvent.click(screen.getByRole('button', { name: 'Retomar este espacio' }));
+    await waitFor(() => expect(getSession).toHaveBeenCalledWith('existing-session'));
+    expect(createDirect).not.toHaveBeenCalled();
+    expect(await screen.findByTestId('portfolio-bootstrap-home-a')).toBeInTheDocument();
+  });
 
-    await waitFor(() => expect(openAdditional).toHaveBeenCalledTimes(2));
-    expect(openAdditional.mock.calls[0][0]).toEqual(openAdditional.mock.calls[1][0]);
-    expect(openAdditional.mock.calls[0][0]).toMatch(/^portfolio-additional-front:/);
+  it('KAN-250 opens a new workspace only when a human chooses to start', async () => {
+    renderPage('/portfolio/inicio');
+    const start = await screen.findByRole('button', { name: 'Preparar nueva oportunidad' });
+    expect(createDirect).not.toHaveBeenCalled();
+    fireEvent.click(start);
+    await waitFor(() => expect(createDirect).toHaveBeenCalledOnce());
+    expect(await screen.findByTestId('portfolio-bootstrap-home-a')).toBeInTheDocument();
   });
 });
