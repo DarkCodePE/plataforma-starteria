@@ -133,6 +133,17 @@ export const portfolioBootstrapSemanticTurnInputSchema = z.object({
       }
     }
   }
+  for (const [dispositionIndex, disposition] of turn.dispositions.entries()) {
+    for (const [refIndex, ref] of disposition.evidenceRefs.entries()) {
+      if (!normalizedInput.includes(normalizeEvidence(ref.quote))) {
+        context.addIssue({
+          code: 'custom',
+          path: ['dispositions', dispositionIndex, 'evidenceRefs', refIndex, 'quote'],
+          message: 'La evidencia declarada para la disposición no aparece en el input del turno.',
+        });
+      }
+    }
+  }
   const isFailure = turn.status !== 'completed';
   if (isFailure && (turn.facts.length || turn.hypotheses.length || turn.dispositions.length
     || turn.answeredGaps.length || turn.emittedQuestion)) {

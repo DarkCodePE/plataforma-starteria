@@ -126,8 +126,18 @@ export function applySemanticTurnProjection(
   const unknownConcepts = new Set(dispositions
     .filter((item) => item.disposition === 'unknown')
     .map((item) => item.conceptId));
+  const retractedConcepts = new Set(turn.facts
+    .filter((item) => item.status === 'retracted')
+    .map((item) => item.conceptId));
+  const groundedResolutions = new Set([
+    ...turn.facts.filter((item) => item.status !== 'retracted').map((item) => item.conceptId),
+    ...dispositions.filter((item) => item.disposition === 'not_applicable').map((item) => item.conceptId),
+  ]);
   if (turn.answeredGaps.some((gap) => unknownConcepts.has(gap))) {
     throw AppError.conflict('Un concepto desconocido no puede marcarse como resuelto.', 'PORTFOLIO_SEMANTIC_UNKNOWN_RESOLUTION_CONFLICT');
+  }
+  if (turn.answeredGaps.some((gap) => !current.answeredGaps.includes(gap) && !groundedResolutions.has(gap))) {
+    throw AppError.conflict('Un gap nuevo requiere evidencia grounded en el mismo turno.', 'PORTFOLIO_SEMANTIC_ANSWERED_GAP_UNGROUNDED');
   }
   const expectedBudgetUsed = current.questionBudget.used + (turn.emittedQuestion ? 1 : 0);
   const configuredLimit = current.questionBudget.limit ?? turn.questionBudget.limit;
@@ -143,7 +153,8 @@ export function applySemanticTurnProjection(
     factLedger: [...current.factLedger, ...turn.facts.map(decorate)],
     hypotheses: [...current.hypotheses, ...turn.hypotheses.map(decorate)],
     dispositions: [...current.dispositions, ...dispositions.map(decorate)],
-    answeredGaps: union(current.answeredGaps, turn.answeredGaps).filter((gap) => !unknownConcepts.has(gap)),
+    answeredGaps: union(current.answeredGaps, turn.answeredGaps)
+      .filter((gap) => !unknownConcepts.has(gap) && !retractedConcepts.has(gap)),
     questionHistory: turn.emittedQuestion
       ? [...current.questionHistory, decorate(turn.emittedQuestion)]
       : current.questionHistory,
