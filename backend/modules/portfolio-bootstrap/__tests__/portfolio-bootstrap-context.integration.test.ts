@@ -65,6 +65,27 @@ describeIntegration('KAN-221 Portfolio Bootstrap context persistence', () => {
     } })).toMatchObject({ status: 'active', bootstrapPhase: 'B0_CONTINUE', existingWorkStatus: 'no_existing_work', anchor: null, workItems: [], analysisRuns: [] });
   });
 
+  it('reads an anchored cafeteria pilot proposal without writing or exposing a foreign session', async () => {
+    await seed();
+    const app = makeApp(userId);
+    const candidate = {
+      ...context('Somos una cafetería de 4 personas. Nunca hemos probado desayunos para llevar ni pedidos a oficinas.'),
+      pilotExperience: { value: null, provenance: 'unknown' },
+    };
+    await request(app).put(`${base}/draft`).set('Idempotency-Key', 'kan247-cafeteria-draft')
+      .send({ expectedVersion: 0, context: candidate, sourceCompanyContext: null }).expect(200);
+
+    const response = await request(app).get(`${base}/proposals`).expect(200);
+    expect(response.body.data).toMatchObject({ reviewVersion: 1, proposals: [{
+      targetField: 'pilotExperience', status: 'UNREVIEWED', sourceKind: 'persisted_user_narrative',
+      sourceRef: { kind: 'context_narrative_quote', reviewVersion: 1, fieldPath: 'situation' },
+    }] });
+    expect(response.body.data.proposals[0].sourceRef.quote).toContain('Nunca hemos probado desayunos');
+    await request(makeApp(otherUserId)).get(`${base}/proposals`).expect(404);
+    expect(await (prisma as any).portfolioBootstrapContextReviewVersion.count()).toBe(1);
+    expect(await (prisma as any).portfolioBootstrapContextOperation.count()).toBe(1);
+  });
+
   it('returns 404 for a foreign owner and leaves no receipt', async () => {
     await seed();
     await request(makeApp(otherUserId)).put(`${base}/draft`).set('Idempotency-Key', 'foreign')
