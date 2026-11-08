@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router';
 import { usePortfolioLead } from '../../features/portfolio-lead';
 import { PortfolioBootstrapHome, usePortfolioBootstrap } from '../../features/portfolio-lead/bootstrap';
-import { completePortfolioSetup, openAdditionalPortfolioFrontSetup } from '../../features/portfolio-lead/bootstrap/services/portfolioBootstrapClient';
+import { completePortfolioSetup, createOrReuseDirectPortfolioBootstrapSession, getResumablePortfolioBootstrapSessions, openAdditionalPortfolioFrontSetup, type PortfolioResumableSession } from '../../features/portfolio-lead/bootstrap/services/portfolioBootstrapClient';
 import type { ChallengeAssignmentTarget } from '../../features/portfolio-lead/challenge-activation-brief/ChallengeActivationBriefPanel';
 import { PortfolioOverviewHome } from '../../features/portfolio-lead/home/PortfolioOverviewHome';
 import { PortfolioCopilotDrawer } from '../../features/copilot';
@@ -28,6 +28,10 @@ function OrdinaryPortfolioLeadHomePage() {
   const [homeStatus, setHomeStatus] = useState<'loading' | 'ready' | 'error'>('loading');
   const [homeError, setHomeError] = useState<string | null>(null);
   const [openingAdditionalFront, setOpeningAdditionalFront] = useState(false);
+  const [startingOpportunity, setStartingOpportunity] = useState(false);
+  const [resumableSessions, setResumableSessions] = useState<PortfolioResumableSession[]>([]);
+  const [resumableStatus, setResumableStatus] = useState<'loading' | 'ready' | 'error'>('loading');
+  const [resumableError, setResumableError] = useState<string | null>(null);
   const additionalFrontIntentRef = useRef<string | null>(null);
   const copilotAvailable = isPortfolioCopilotEnabled();
 
@@ -42,11 +46,12 @@ function OrdinaryPortfolioLeadHomePage() {
     if (params.get('stage') !== 'assignment' || !challengeId || !briefId || !briefVersionId) return null;
     return { challengeId, briefId, briefVersionId, challengeName: params.get('challengeName') ?? 'Reto confirmado' };
   }, [params]);
+  const explicitSetupRoute = Boolean(entryContinuationId || additionalFrontRequested || setupSessionId || assignmentTarget);
   const entryContext = usePortfolioHomeEntryContext(entryContinuationId);
   const bootstrap = usePortfolioBootstrap(
     entryContinuationId ? (entryContext.status === 'ready' ? entryContinuationId : null) : setupSessionId,
     'legacy',
-    entryContinuationId ? 'continuation' : setupSessionId ? 'session' : additionalFrontRequested ? 'direct' : 'resume',
+    entryContinuationId ? 'continuation' : setupSessionId ? 'session' : additionalFrontRequested ? 'direct' : assignmentTarget ? 'resume' : 'disabled',
   );
 
   const loadHome = useCallback(async () => {
@@ -61,6 +66,39 @@ function OrdinaryPortfolioLeadHomePage() {
     }
   }, []);
   useEffect(() => { void loadHome(); }, [loadHome]);
+
+  const loadResumable = useCallback(async () => {
+    setResumableStatus('loading');
+    setResumableError(null);
+    try {
+      setResumableSessions(await getResumablePortfolioBootstrapSessions());
+      setResumableStatus('ready');
+    } catch (error) {
+      setResumableStatus('error');
+      setResumableError(error instanceof Error ? error.message : 'No pudimos cargar las preparaciones pendientes.');
+    }
+  }, []);
+  useEffect(() => {
+    if (!explicitSetupRoute) void loadResumable();
+  }, [explicitSetupRoute, loadResumable]);
+
+  const startOpportunity = async () => {
+    if (startingOpportunity) return;
+    setStartingOpportunity(true);
+    setHomeError(null);
+    try {
+      // Explicit human intent only. Inicio itself never writes a Bootstrap session.
+      const result = await createOrReuseDirectPortfolioBootstrapSession();
+      navigate(`/portfolio/inicio?bootstrapSessionId=${encodeURIComponent(result.bootstrapSession.id)}`);
+    } catch (error) {
+      setHomeError(error instanceof Error ? error.message : 'No pudimos abrir la preparación.');
+    } finally {
+      setStartingOpportunity(false);
+    }
+  };
+  const resumeOpportunity = (sessionId: string) => {
+    navigate(`/portfolio/inicio?bootstrapSessionId=${encodeURIComponent(sessionId)}`);
+  };
 
   const openAssignment = (target: ChallengeAssignmentTarget) => {
     const next = new URLSearchParams(location.search);
@@ -95,9 +133,8 @@ function OrdinaryPortfolioLeadHomePage() {
     }
   };
 
-  const explicitSetupRoute = Boolean(entryContinuationId || additionalFrontRequested || setupSessionId || assignmentTarget);
-  const setupCompleted = Boolean(bootstrap.data?.bootstrapSession.setupCompletedAt);
-  const showSetup = explicitSetupRoute || bootstrap.status !== 'ready' || !setupCompleted;
+  // Ordinary Inicio is always an Overview, irrespective of unfinished setup.
+  const showSetup = explicitSetupRoute;
 
   if (showSetup) {
     return <div className="mx-auto max-w-7xl space-y-6 p-4 sm:p-6 md:p-8">
@@ -133,7 +170,20 @@ function OrdinaryPortfolioLeadHomePage() {
   if (homeStatus === 'error' || !home) return <main className="mx-auto max-w-[1500px] p-6"><section role="alert" className="rounded-2xl border border-amber-200 bg-amber-50 p-6 text-amber-950"><h1 className="font-semibold">No pudimos recuperar Portfolio Overview</h1><p className="mt-1 text-sm">{homeError ?? 'La lectura no está disponible ahora.'}</p><button type="button" onClick={() => void loadHome()} className="mt-4 rounded-lg border border-amber-300 bg-white px-3 py-2 text-sm font-semibold">Reintentar</button></section></main>;
 
   return <>
-    <PortfolioOverviewHome model={home} onOpenCopilot={() => setCopilotOpen(true)} onOpenAdditionalFront={() => void openAdditionalFront()} openingAdditionalFront={openingAdditionalFront} copilotAvailable={copilotAvailable} />
+    <PortfolioOverviewHome
+      model={home}
+      onOpenCopilot={() => setCopilotOpen(true)}
+      onOpenAdditionalFront={() => void openAdditionalFront()}
+      openingAdditionalFront={openingAdditionalFront}
+      onStartOpportunity={() => void startOpportunity()}
+      startingOpportunity={startingOpportunity}
+      resumableSessions={resumableSessions}
+      resumableStatus={resumableStatus}
+      resumableError={resumableError}
+      onRetryResumable={() => void loadResumable()}
+      onResumeSession={resumeOpportunity}
+      copilotAvailable={copilotAvailable}
+    />
     {homeError ? <p role="alert" className="mx-auto mb-4 max-w-[1500px] px-6 text-sm text-rose-800">{homeError}</p> : null}
     {copilotAvailable ? <PortfolioCopilotDrawer open={copilotOpen} onOpenChange={setCopilotOpen} onPortfolioRefresh={portfolioState.refreshPortfolioData} /> : null}
   </>;
