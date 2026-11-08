@@ -75,13 +75,13 @@ describeIntegration('KAN-221 Portfolio Bootstrap context persistence', () => {
   it('reconciles concurrent identical save and confirm requests to one exact response', async () => {
     await seed();
     const app = makeApp(userId);
-    const saves = await Promise.all([1, 2].map(() => request(app).put(`${base}/draft`).set('Idempotency-Key', 'race-save')
+    const saves = await Promise.all([1, 2, 3, 4].map(() => request(app).put(`${base}/draft`).set('Idempotency-Key', 'race-save')
       .send({ expectedVersion: 0, context: context('Concurrent'), sourceCompanyContext: null })));
-    expect(saves.map((response) => response.status)).toEqual([200, 200]);
+    expect(saves.map((response) => response.status)).toEqual([200, 200, 200, 200]);
     expect(saves[0].body.data).toEqual(saves[1].body.data);
-    const confirms = await Promise.all([1, 2].map(() => request(app).post(`${base}/confirm`).set('Idempotency-Key', 'race-confirm')
+    const confirms = await Promise.all([1, 2, 3, 4].map(() => request(app).post(`${base}/confirm`).set('Idempotency-Key', 'race-confirm')
       .send({ expectedVersion: 1 })));
-    expect(confirms.map((response) => response.status)).toEqual([200, 200]);
+    expect(confirms.map((response) => response.status)).toEqual([200, 200, 200, 200]);
     expect(confirms[0].body.data).toEqual(confirms[1].body.data);
     expect(await (prisma as any).portfolioBootstrapContextReviewVersion.count()).toBe(2);
     expect(await (prisma as any).portfolioBootstrapContextOperation.count()).toBe(2);
