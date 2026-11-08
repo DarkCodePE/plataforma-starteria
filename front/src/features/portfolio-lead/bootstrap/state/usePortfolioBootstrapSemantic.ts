@@ -18,6 +18,11 @@ export type PortfolioBootstrapSemanticStatus =
 
 export const PORTFOLIO_SEMANTIC_POLL_INTERVAL_MS = 400;
 export const PORTFOLIO_SEMANTIC_POLL_LIMIT = 5;
+const RECONCILABLE_SEMANTIC_CONFLICTS = new Set([
+  'PORTFOLIO_SEMANTIC_VERSION_CONFLICT',
+  'PORTFOLIO_SEMANTIC_QUESTION_ACTIVE',
+  'PORTFOLIO_SEMANTIC_QUESTION_STALE',
+]);
 
 type PendingTurn = {
   sessionId: string;
@@ -121,7 +126,17 @@ export function usePortfolioBootstrapSemantic(sessionId: string | null) {
       const normalized = applySnapshot(next);
       const persisted = normalized.turns.find((turn) => turn.id === turnId);
       const stillPending = persisted?.status === 'failed_retryable' && persisted.error?.code === 'inference_pending';
-      if (!stillPending) {
+      if (!persisted || stillPending) continue;
+      if (persisted.status !== 'completed') {
+        const failureMessage = persisted.convergence.reason
+          || 'No pudimos completar la interpretación semántica.';
+        if (!persisted.error?.retryable) pendingTurn.current = null;
+        setPendingInputText(pendingTurn.current?.input.inputText ?? persisted.inputText);
+        setStatus('error');
+        setError(failureMessage);
+        throw new Error(failureMessage);
+      }
+      if (persisted.status === 'completed') {
         pendingTurn.current = null;
         setPendingInputText(null);
         setStatus('ready');
@@ -130,8 +145,10 @@ export function usePortfolioBootstrapSemantic(sessionId: string | null) {
       }
     }
     if (epoch === sessionEpoch.current && targetSession === sessionRef.current) {
-      setStatus('processing');
-      setError('Starteria sigue procesando la respuesta. Puedes volver a consultar sin reenviar el turno.');
+      const pollingMessage = 'Starteria sigue procesando la respuesta. Reintenta para consultar el mismo turno sin volver a crearlo.';
+      setStatus('error');
+      setError(pollingMessage);
+      throw new Error(pollingMessage);
     }
     return null;
   }, [applySnapshot]);
@@ -173,7 +190,7 @@ export function usePortfolioBootstrapSemantic(sessionId: string | null) {
       } catch (caught) {
         if (epoch !== sessionEpoch.current || pending.sessionId !== sessionRef.current) return null;
         if (caught instanceof PortfolioBootstrapSemanticClientError
-          && caught.apiError.code === 'PORTFOLIO_SEMANTIC_VERSION_CONFLICT') {
+          && RECONCILABLE_SEMANTIC_CONFLICTS.has(caught.apiError.code)) {
           let latest: PortfolioBootstrapSemanticSnapshot;
           try {
             latest = await getPortfolioBootstrapSemanticContext(pending.sessionId);
@@ -212,6 +229,7 @@ export function usePortfolioBootstrapSemantic(sessionId: string | null) {
 
   const submit = useCallback((inputText: string) => {
     if (inFlight.current) return inFlight.current;
+    if (pendingTurn.current) return perform(pendingTurn.current);
     if (!sessionId) return Promise.reject(new Error('Bootstrap session unavailable'));
     const trimmed = inputText.trim();
     if (!trimmed) return Promise.reject(new Error('Escribe una respuesta antes de enviarla.'));

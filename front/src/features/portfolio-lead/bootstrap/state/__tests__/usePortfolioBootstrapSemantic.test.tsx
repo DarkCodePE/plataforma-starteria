@@ -97,7 +97,7 @@ describe('usePortfolioBootstrapSemantic', () => {
 
     await act(async () => { await result.current.submit('No lo sabemos todavía').catch(() => undefined); });
     expect(result.current.pendingInputText).toBe('No lo sabemos todavía');
-    await act(async () => { await result.current.retry(); });
+    await act(async () => { await result.current.submit('Relato conservado'); });
 
     expect(submitTurn).toHaveBeenCalledTimes(2);
     expect(submitTurn.mock.calls[0]?.[2]).toBe(submitTurn.mock.calls[1]?.[2]);
@@ -121,15 +121,20 @@ describe('usePortfolioBootstrapSemantic', () => {
     expect(result.current.status).toBe('error');
     expect(result.current.error).toContain('proveedor no está disponible');
     expect(result.current.pendingInputText).toBe('Relato conservado');
-    await act(async () => { await result.current.retry(); });
+    await act(async () => { await result.current.submit('Texto distinto que debe ignorarse'); });
 
     expect(submitTurn).toHaveBeenCalledTimes(2);
     expect(submitTurn.mock.calls[0]?.[2]).toBe(submitTurn.mock.calls[1]?.[2]);
+    expect(submitTurn.mock.calls[1]?.[1]).toMatchObject({ inputText: 'Relato conservado' });
     expect(result.current.status).toBe('ready');
     expect(result.current.pendingInputText).toBeNull();
   });
 
-  it('KAN-246 R3 reconciles a semantic version conflict before retry without losing input', async () => {
+  it.each([
+    'PORTFOLIO_SEMANTIC_VERSION_CONFLICT',
+    'PORTFOLIO_SEMANTIC_QUESTION_ACTIVE',
+    'PORTFOLIO_SEMANTIC_QUESTION_STALE',
+  ])('KAN-246 R3 reconciles %s before retry without losing input', async (conflictCode) => {
     const oldQuestion = { id: 'question-old', recap: 'Anterior', question: '¿Anterior?', reasonToAsk: 'Anterior', resolves: ['old'] };
     const currentQuestion = { id: 'question-current', recap: 'Actual', question: '¿Actual?', reasonToAsk: 'Actual', resolves: ['current'] };
     getSemantic
@@ -137,8 +142,8 @@ describe('usePortfolioBootstrapSemantic', () => {
       .mockResolvedValueOnce({ enabled: true, state: state(2, currentQuestion), turns: [turn('other', 2)] });
     submitTurn
       .mockRejectedValueOnce(new PortfolioBootstrapSemanticClientError({
-        code: 'PORTFOLIO_SEMANTIC_VERSION_CONFLICT',
-        message: 'La versión semántica cambió.',
+        code: conflictCode,
+        message: 'La conversación semántica cambió.',
       }))
       .mockResolvedValueOnce({ processing: false, result: { state: state(3), turn: turn('done', 3) } });
     const { result } = renderHook(() => usePortfolioBootstrapSemantic('session-1'));
@@ -148,7 +153,7 @@ describe('usePortfolioBootstrapSemantic', () => {
     expect(getSemantic).toHaveBeenCalledTimes(2);
     expect(result.current.pendingInputText).toBe('Respuesta que no se pierde');
     expect(result.current.snapshot?.state?.version).toBe(2);
-    await act(async () => { await result.current.retry(); });
+    await act(async () => { await result.current.submit('Respuesta que no se pierde'); });
 
     expect(submitTurn).toHaveBeenCalledTimes(2);
     expect(submitTurn.mock.calls[0]?.[2]).toBe(submitTurn.mock.calls[1]?.[2]);
@@ -178,6 +183,56 @@ describe('usePortfolioBootstrapSemantic', () => {
     expect(getSemantic).toHaveBeenCalledTimes(3);
     expect(result.current.snapshot?.turns[0]?.status).toBe('completed');
     expect(result.current.status).toBe('ready');
+  });
+
+  it('KAN-246 R3 surfaces a retryable provider failure discovered while polling a 202', async () => {
+    const pending = turn('pending', 1, 'failed_retryable');
+    const failed = {
+      ...pending,
+      error: { code: 'provider_unavailable', retryable: true },
+      convergence: { status: 'provider_retryable_failure', reason: 'Proveedor temporalmente no disponible.' },
+    } as const;
+    getSemantic
+      .mockResolvedValueOnce({ enabled: true, state: state(0), turns: [] })
+      .mockResolvedValueOnce({ enabled: true, state: { ...state(1), convergence: failed.convergence }, turns: [failed] });
+    submitTurn
+      .mockResolvedValueOnce({ processing: true, result: { state: state(1), turn: pending } })
+      .mockResolvedValueOnce({ processing: false, result: { state: state(1), turn: turn('done', 1) } });
+    const { result } = renderHook(() => usePortfolioBootstrapSemantic('session-1'));
+    await waitFor(() => expect(result.current.status).toBe('ready'));
+
+    await act(async () => { await result.current.submit('Relato tras 202').catch(() => undefined); });
+    expect(result.current.status).toBe('error');
+    expect(result.current.pendingInputText).toBe('Relato tras 202');
+    await act(async () => { await result.current.retry(); });
+
+    expect(submitTurn).toHaveBeenCalledTimes(2);
+    expect(submitTurn.mock.calls[0]?.[2]).toBe(submitTurn.mock.calls[1]?.[2]);
+  });
+
+  it('KAN-246 R3 bounds 202 polling when the pending turn is temporarily absent and keeps the input', async () => {
+    vi.useFakeTimers();
+    getSemantic
+      .mockResolvedValueOnce({ enabled: true, state: state(0), turns: [] })
+      .mockResolvedValue({ enabled: true, state: state(1), turns: [] });
+    submitTurn.mockResolvedValue({
+      processing: true,
+      result: { state: state(1), turn: turn('pending', 1, 'failed_retryable') },
+    });
+    const { result } = renderHook(() => usePortfolioBootstrapSemantic('session-1'));
+    await act(async () => { await vi.runAllTimersAsync(); });
+
+    let operation!: Promise<unknown>;
+    act(() => {
+      operation = result.current.submit('Relato acotado');
+      void operation.catch(() => undefined);
+    });
+    await act(async () => { await vi.runAllTimersAsync(); });
+    await act(async () => { await operation.catch(() => undefined); });
+
+    expect(getSemantic).toHaveBeenCalledTimes(6);
+    expect(result.current.status).toBe('error');
+    expect(result.current.pendingInputText).toBe('Relato acotado');
   });
 
   it('KAN-246 S2 collapses a double click into one logical POST', async () => {

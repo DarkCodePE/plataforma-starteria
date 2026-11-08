@@ -128,6 +128,8 @@ describe('PortfolioBootstrapSemanticConversation', () => {
     expect(screen.queryByText('El contexto está listo para revisión humana')).not.toBeInTheDocument();
     expect(screen.getByRole('alert')).toHaveTextContent('Proveedor no disponible');
     expect(screen.getByLabelText('Tu respuesta')).toHaveValue('Relato conservado');
+    expect(screen.getByRole('button', { name: 'Enviar respuesta' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Reintentar el mismo turno' })).toBeEnabled();
   });
 
   it('KAN-246 S3 guards empty and oversized input at the interaction boundary', async () => {

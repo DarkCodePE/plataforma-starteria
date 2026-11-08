@@ -42,6 +42,7 @@ export function PortfolioBootstrapSemanticConversation({
   const [localError, setLocalError] = useState<string | null>(null);
   const state = snapshot?.state ?? null;
   const busy = status === 'loading' || status === 'submitting' || status === 'processing';
+  const submissionBlocked = busy || status === 'error';
   const reviewConvergence = state && !state.activeQuestion && status !== 'error'
     && state.convergence.status !== 'provider_retryable_failure'
     && state.convergence.status !== 'safety_stop';
@@ -116,13 +117,13 @@ export function PortfolioBootstrapSemanticConversation({
           <textarea
             value={inputText}
             maxLength={20_000}
-            disabled={busy}
+            disabled={submissionBlocked}
             onChange={(event) => setInputText(event.target.value)}
             rows={4}
             className="mt-2 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 font-normal text-slate-950 disabled:opacity-60"
           />
         </label>
-        <button type="submit" disabled={busy || !inputText.trim()} className="rounded-lg bg-violet-700 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">
+        <button type="submit" disabled={submissionBlocked || !inputText.trim()} className="rounded-lg bg-violet-700 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">
           Enviar respuesta
         </button>
       </form>
