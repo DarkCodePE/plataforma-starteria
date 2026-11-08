@@ -582,6 +582,33 @@ petición ni por una configuración productiva y el flag continúa apagado fuera
 
 ---
 
+## Slice PORTFOLIO_LEAD_E1_PROVISIONAL_CONTEXT_PROJECTION (KAN-247)
+
+**Registrado:** 2026-11-08 sobre `main@2ab78569d5559f19cd1bbb1e861efe0cc532c890`.
+
+```text
+slice_id: PORTFOLIO_LEAD_E1_PROVISIONAL_CONTEXT_PROJECTION
+technical_task: KAN-247
+baseline: main@2ab78569d5559f19cd1bbb1e861efe0cc532c890
+authority: KAN-247 functional scope, Core factual v0.2 INV-03/04/05/10, Authority Map, V2 Guardrails
+semantic_owner: V2 Portfolio Bootstrap backend (not React or Portfolio Entry)
+logic_status: ACTIVE_V2_SLICE_WITH_NARROW_LITERAL_POLICY
+implementation_status: PR_272_OPEN_PENDING_CERTIFICATION
+visual_status: CANDIDATE_E1_PROPOSAL_REVIEW
+evidence_status: TESTS_AUTHORED_CI_AND_BROWSER_NOT_YET_CERTIFIED
+feature_flag: SEMANTIC_E1_ENABLED=false by default; semantic tests are deterministic only
+allowed: read-only authenticated projection from versioned user statement or verified semantic turn, sourceRef proof checked on human save, provisional user acceptance into ContextReview draft, existing human confirm E1→E2, exact quote and CAS
+preserves: KAN-221/244/245/246/248, previous ContextReview snapshot, Step/Core and tenant guards
+excluded: auto confirmation, KPI/baseline/Project/Step creation, semantic business extraction in React, Company or canonical domain changes, Fab delivery, live AI/SMTP, infra/merge/deploy
+tests: backend projection unit; KAN-221 PostgreSQL owner/CAS/forgery; RTL empty initial review and cafeteria; KAN-240 A1 0-reprompt target with hybrid E1-E7
+known_failure_fixed_in_branch: G1 Playwright runtime crash on null proposal (CI initial attempt #42514010452); guarded projection in commit 8524b2c; later CI needs confirmation
+limitations: only unambiguous first-person no-pilot literal and grounded pilot_experience facts currently mapped; other field mapping, persisted rejection, multi-actor B/D acceptance and E2-E7 UI-only remain pending
+documentation: docs/implementation/STARTERIA_PORTFOLIO_E2E_TRACEABILITY_POST_KAN248_v0.1.md
+next_gate: complete CI, targeted KAN-240 Chromium E2E, backend typecheck, independent review, PR without merge
+```
+
+---
+
 ## Slice PORTFOLIO_LEAD_INTAKE_NAVIGATION_G2A (KAN-209 / KAN-212)
 
 **Registrado:** 2026-11-03 por HU KAN-209 y aprobación funcional KAN-210 `RESUELTO`; preparación técnica acotada en KAN-212.
