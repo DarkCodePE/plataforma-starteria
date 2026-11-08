@@ -204,7 +204,7 @@ test.describe('KAN-240 delta E1→E7 sobre PostgreSQL desechable', () => {
   });
   test.afterAll(async () => { await prisma.$disconnect(); });
 
-  test('A · cafetería (defecto confirmado): repregunta el piloto pese a la negación explícita', async ({ page }, testInfo) => {
+  test('A · cafetería: reutiliza negación explícita sin repreguntar por el piloto', async ({ page }, testInfo) => {
     const api = await pwRequest.newContext({ baseURL });
     const lead = await registerLead(api, 'cafeteria');
     await loginUi(page, lead, 1);
@@ -219,8 +219,11 @@ test.describe('KAN-240 delta E1→E7 sobre PostgreSQL desechable', () => {
     );
     await page.getByRole('button', { name: 'Guardar y continuar' }).click();
 
-    await page.screenshot({ path: testInfo.outputPath('cafeteria-e1-pilot-reprompt.png'), fullPage: true });
-    await expect(page.getByText(/habéis probado algo parecido/i)).toHaveCount(1);
+    await expect(page.getByText('Esto ya aparece en lo que contaste')).toBeVisible();
+    await expect(page.getByText(/habéis probado algo parecido/i)).toHaveCount(0);
+    await page.getByRole('button', { name: 'Sí, conservar esta información' }).click();
+    await expect(page.getByText(/ya podemos revisar el contexto/i)).toBeVisible();
+    await page.screenshot({ path: testInfo.outputPath('cafeteria-e1-pilot-sourced.png'), fullPage: true });
     expect(await prisma.project.count({ where: { organizationId: lead.organizationId } })).toBe(0);
     expect(await prisma.step.count()).toBe(0);
     await api.dispose();
@@ -264,7 +267,7 @@ test.describe('KAN-240 delta E1→E7 sobre PostgreSQL desechable', () => {
     await api.dispose();
   });
 
-  test('A · diagnóstico: la misma sesión alcanza E1→E7 y Home tras responder la repregunta redundante', async ({ page }, testInfo) => {
+  test('A · continuidad: la misma sesión alcanza E1→E7 y Home sin repregunta piloto', async ({ page }, testInfo) => {
     const api = await pwRequest.newContext({ baseURL });
     const lead = await registerLead(api, 'cafeteria-continuidad');
     const projectsBefore = await prisma.project.count({ where: { organizationId: lead.organizationId } });
@@ -279,9 +282,10 @@ test.describe('KAN-240 delta E1→E7 sobre PostgreSQL desechable', () => {
     await page.getByRole('button', { name: 'No aplica en este caso' }).click();
     await page.getByLabel('Tu respuesta').fill('La responsable sería la dueña y comprarían personas de oficinas cercanas.');
     await page.getByRole('button', { name: 'Guardar y continuar' }).click();
-    await expect(page.getByText(/habéis probado algo parecido/i)).toBeVisible();
-    await page.getByLabel('Tu respuesta').fill('Nunca hemos probado ese servicio.');
-    await page.getByRole('button', { name: 'Guardar y continuar' }).click();
+    await expect(page.getByText('Esto ya aparece en lo que contaste')).toBeVisible();
+    await expect(page.getByText(/habéis probado algo parecido/i)).toHaveCount(0);
+    await page.getByRole('button', { name: 'Sí, conservar esta información' }).click();
+    await expect(page.getByText(/ya podemos revisar el contexto/i)).toBeVisible();
     await page.getByRole('button', { name: 'Revisar contexto' }).click();
     await page.getByRole('button', { name: 'Estoy de acuerdo, confirmar contexto' }).click();
     await page.getByRole('button', { name: 'Estoy de acuerdo, continuar al objetivo' }).click();
