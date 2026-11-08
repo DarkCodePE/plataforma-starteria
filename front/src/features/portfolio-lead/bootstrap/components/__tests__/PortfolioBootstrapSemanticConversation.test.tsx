@@ -159,4 +159,54 @@ describe('PortfolioBootstrapSemanticConversation', () => {
     expect(screen.getByRole('button', { name: 'Enviar respuesta' })).toBeDisabled();
     expect(onSubmit).not.toHaveBeenCalled();
   });
+  it('KAN-251 helps explain and structure an answer without making up facts or sending a turn', async () => {
+    const user = userEvent.setup();
+    const submit = vi.fn().mockResolvedValue(null);
+    render(<PortfolioBootstrapSemanticConversation {...props({ onSubmit: submit })} />);
+
+    await user.click(screen.getByRole('button', { name: 'Ayúdame a redactar' }));
+    const help = screen.getByRole('region', { name: 'Ayuda para redactar' });
+    expect(help).toHaveTextContent('¿Qué situación concreta os gustaría mejorar primero?');
+    expect(help).toHaveTextContent('Puedes contar un ejemplo real');
+    expect(submit).not.toHaveBeenCalled();
+    expect(screen.getByLabelText('Tu respuesta')).toHaveValue('');
+
+    await user.click(screen.getByRole('button', { name: '¿Qué significa esta pregunta?' }));
+    const explanation = screen.getByRole('region', { name: 'Explicación de la pregunta' });
+    expect(explanation).toHaveTextContent('Me ayuda a preparar el objetivo sin asumir áreas ni métricas.');
+    expect(submit).not.toHaveBeenCalled();
+  });
+
+  it('KAN-251 offers an editable unknown response but never submits or confirms it on click', async () => {
+    const user = userEvent.setup();
+    const submit = vi.fn().mockResolvedValue(null);
+    render(<PortfolioBootstrapSemanticConversation {...props({ onSubmit: submit })} />);
+    await user.click(screen.getByRole('button', { name: 'No lo sé todavía' }));
+    expect(screen.getByLabelText('Tu respuesta')).toHaveValue('No lo sé todavía.');
+    expect(submit).not.toHaveBeenCalled();
+    await user.click(screen.getByRole('button', { name: 'Enviar respuesta' }));
+    expect(submit).toHaveBeenCalledOnce();
+    expect(submit).toHaveBeenCalledWith('No lo sé todavía.');
+  });
+
+  it('KAN-251 reveals only real, quoted user evidence and does not manufacture a prompt', async () => {
+    const user = userEvent.setup();
+    const submit = vi.fn().mockResolvedValue(null);
+    render(<PortfolioBootstrapSemanticConversation {...props({ onSubmit: submit })} />);
+    await user.click(screen.getByRole('button', { name: 'Ver contexto guardado' }));
+    const source = screen.getByRole('region', { name: 'Contexto guardado verificable' });
+    expect(source).toHaveTextContent('nunca hemos probado pedidos a oficinas');
+    expect(source).not.toHaveTextContent('62%');
+    expect(submit).not.toHaveBeenCalled();
+  });
+
+  it('KAN-251 exposes a provisional progress summary without treating facts as confirmed', () => {
+    render(<PortfolioBootstrapSemanticConversation {...props()} />);
+    const summary = screen.getByRole('region', { name: 'Claridad ganada' });
+    expect(summary).toHaveTextContent('1 hecho observado');
+    expect(summary).toHaveTextContent('1 dato pendiente');
+    expect(summary).toHaveTextContent('Pendiente de confirmación humana');
+    expect(screen.getByRole('region', { name: 'Hechos observados' })).toHaveTextContent('pilot experience');
+  });
+
 });
