@@ -568,7 +568,9 @@ fallback: guidedContextQuestion remains LEGACY_COMPAT exclusively when SEMANTIC_
 feature_flag: SEMANTIC_E1_ENABLED=false by default; true only in the explicit authenticated E2E composition
 test_provider: deterministic network-free adapter requires NODE_ENV=test and existing PORTFOLIO_ENTRY_E2E_TEST=true; no provider key or live inference
 scope_excluded: Core/Prisma/Steps/E5-E7/Handoff/Lab/Fab changes; canonical concept projection; secrets; infrastructure; paid inference; merge; deploy
-local_evidence: focused frontend 35/35 PASS; runtime composition 3/3 PASS; authenticated KAN-246 E2E 1/1 PASS over disposable PostgreSQL; KAN-241 flag-OFF E2E 1/1 PASS over disposable PostgreSQL; lint PASS; typecheck:front PASS; build PASS; git diff --check PASS
+implementation_commits: f9a76f1 (client/hook/conversation/runtime/E2E); eb60673 (persisted retryable recovery); 57564be (semantic conflict reconciliation and bounded polling); 4d8eade (successful retry clears local error)
+independent_review: R3 APPROVED on 4d8eadeaa04335e18adffe1faa44ec32edd024e0 after four rounds; retry persistence, VERSION/QUESTION conflict reconciliation, bounded 202 polling and error-to-success UX findings resolved; no blocking findings remain
+local_evidence: focused frontend 47/47 PASS; runtime composition 3/3 PASS; authenticated KAN-246 E2E 1/1 PASS over disposable PostgreSQL; KAN-241 flag-OFF E2E 1/1 PASS over disposable PostgreSQL; full backend and frontend suites PASS; lint PASS; typecheck:front PASS; build PASS; git diff --check PASS
 known_baseline_blocker: required backend typecheck still fails with inherited TS2740 at portfolio-entry-runtime/__tests__/critical-synthesis-reasoning.test.ts:11; HEAD and origin/main blob are identical (93bee03d5133bed32ea7ce949e168e621d5a4476)
 authority_gap: automatic ledger-to-ContextPayload projection remains deliberately unimplemented and needs its own governed backend contract if later required
 guardrail: Proceed YES only for the client/hook/conversation/manual review/test perimeter; Proceed NO for the excluded scope
