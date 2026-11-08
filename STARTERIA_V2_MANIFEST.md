@@ -582,6 +582,32 @@ petición ni por una configuración productiva y el flag continúa apagado fuera
 
 ---
 
+## Slice PORTFOLIO_LEAD_OVERVIEW_FIRST_RESUME (KAN-250)
+
+**Registrado:** 2026-11-08, PR #274 sobre `main@1e2dfa874c72f16bc2d0d78b9d92f99408834f94`.
+
+```text
+slice_id: PORTFOLIO_LEAD_OVERVIEW_FIRST_RESUME
+task: KAN-250
+ux_reference: STARTERIA_PORTFOLIO_LEAD_COPILOT_FIRST_v1.0.html (prototipo de interacción, sin IA real)
+authority: KAN-250 + Portfolio Home read model + Authority Map + Core factual v0.2
+status: IMPLEMENTED_IN_PR_PENDING_CI_AND_INDEPENDENT_REVIEW
+source_baseline: main@1e2dfa874c72f16bc2d0d78b9d92f99408834f94
+user_entry: /portfolio/inicio renders Portfolio Overview by default regardless of incomplete Bootstrap
+resumption: read-only GET /portfolio-bootstrap/sessions/resumable scoped to current owner and organization, unfinished only, latest 5
+human_action: resume exact session by bootstrapSessionId; create a direct session only after CTA
+source_transparency: session and ContextReview version/time/category, never invent external prompt or chat turns
+visual_direction: HTML v1.0 navy/lavender/white tokens adapted to existing Tailwind and V2 accessibility
+preserved: entry continuation, 114F, explicit assignment URLs, existing GET sessions/current, CAS, human confirmation, canonical gates
+legacy_dependency: implicit auto-resume/direct-create no longer invoked on ordinary Inicio
+limits: not a full Copilot turn history; semantic E1 remains OFF by default; no live model or fictitious data
+tests: owner-scoped service unit; router; RTL Home/Overview; KAN-212/222/240/241/246 explicit navigation regressions
+scope_excluded: Core, migrations, Steps, Fab, notifications, paid AI, provider switches, PR merge/CD
+follow_up: KAN-251 conversational E1 and phased live-IA governance; UI-only E5-E7 remains to certify
+```
+
+---
+
 ## Slice PORTFOLIO_LEAD_E1_PROVISIONAL_CONTEXT_PROJECTION (KAN-247)
 
 **Registrado:** 2026-11-08 sobre `main@2ab78569d5559f19cd1bbb1e861efe0cc532c890`.
