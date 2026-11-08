@@ -582,6 +582,32 @@ petición ni por una configuración productiva y el flag continúa apagado fuera
 
 ---
 
+## Slice PORTFOLIO_LEAD_E1_SEMANTIC_COPILOT_FIRST_UX (KAN-251)
+
+**Registrado:** 2026-11-09, PR #275 apilado sobre PR #274 (KAN-250), **sin merge ni deploy**.
+
+```text
+slice_id: PORTFOLIO_LEAD_E1_SEMANTIC_COPILOT_FIRST_UX
+task: KAN-251
+ux_reference: STARTERIA_PORTFOLIO_LEAD_COPILOT_FIRST_v1.0.html (mock de interacción, no backend)
+authority: Core factual v0.2 + KAN-244/245/246/247 + KAN-251 + Authority Map
+owner: PortfolioBootstrapSemanticConversation frontend
+status: IMPLEMENTED_IN_STACKED_PR_UNVERIFIED
+base_pr: 274 (KAN-250; Overview-first). Do not merge before its base.
+pr: 275
+semantic_flag: SEMANTIC_E1_ENABLED=false remains default; no provider activation
+inputs: server-owned activeQuestion, recap, reasonToAsk, facts/evidence, hypotheses, dispositions, turn ledger
+human_controls: writing guidance (not generated reply), show server reason, editable unknown, show verified user quotes
+human_boundary: no submit until explicit action; ContextReview remains only human confirmation for E1 -> E2
+outputs: question-centered dialogue, provenance and chronological turns, provisional clarity summary
+preserves: tenant/permissions, CAS/idempotency, existing success/error/processing states and downstream steps
+excludes: a live AI promise, new reasoning server, automatic draft writes, strategic KPIs invented, Step/Project creation, Core changes
+tests: semantic conversation Vitest KAN-246+251; CI required; targeted Playwright needed for accepted UI
+followup: KAN-251 semantic provider rollout gate and deeper adaptive UX; E2 Objective parity is separate downstream slice
+```
+
+---
+
 ## Slice PORTFOLIO_LEAD_OVERVIEW_FIRST_RESUME (KAN-250)
 
 **Registrado:** 2026-11-08, PR #274 sobre `main@1e2dfa874c72f16bc2d0d78b9d92f99408834f94`.
