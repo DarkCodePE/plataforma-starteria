@@ -33,18 +33,26 @@ const localStorageDir = path.join(
 const baseURL = process.env.E2E_BASE_URL || `http://${frontendHost}:${frontendPort}`;
 const backendHealthURL = process.env.E2E_BACKEND_HEALTH_URL || `http://${backendHost}:${backendPort}/api/health`;
 const fullStackPortfolioEntryFlag = '--portfolio-entry-full-stack-test';
+const semanticE1TestFlag = '--portfolio-semantic-e1-test';
 const postgresConfirmationIntegrationFlag = '--portfolio-entry-postgres-confirmation-test';
-const fullStackPortfolioEntry = process.argv.slice(2).includes(fullStackPortfolioEntryFlag);
+const semanticE1Test = process.argv.slice(2).includes(semanticE1TestFlag);
+const fullStackPortfolioEntry = process.argv.slice(2).includes(fullStackPortfolioEntryFlag) || semanticE1Test;
 const postgresConfirmationIntegration = process.argv.slice(2).includes(postgresConfirmationIntegrationFlag);
 const playwrightArgs = process.argv.slice(2).filter((argument) =>
-  argument !== fullStackPortfolioEntryFlag && argument !== postgresConfirmationIntegrationFlag,
+  argument !== fullStackPortfolioEntryFlag
+  && argument !== semanticE1TestFlag
+  && argument !== postgresConfirmationIntegrationFlag,
 );
 if (fullStackPortfolioEntry && !playwrightArgs.some((argument) =>
   argument.includes('portfolio-entry-live-understanding.integration.spec.ts')
   || argument.includes('portfolio-entry-conversion.spec.ts')
-  || argument.includes('portfolio-setup-home-handoff-141.integration.spec.ts'))
+  || argument.includes('portfolio-setup-home-handoff-141.integration.spec.ts')
+  || argument.includes('kan246-e1-semantic-conversation.spec.ts'))
 ) {
   throw new Error(`${fullStackPortfolioEntryFlag} requires a full-stack Portfolio Entry Playwright spec.`);
+}
+if (semanticE1Test && !playwrightArgs.some((argument) => argument.includes('kan246-e1-semantic-conversation.spec.ts'))) {
+  throw new Error(`${semanticE1TestFlag} requires the KAN-246 semantic E1 Playwright spec.`);
 }
 if (postgresConfirmationIntegration && (playwrightArgs.length > 0 || fullStackPortfolioEntry)) {
   throw new Error(`${postgresConfirmationIntegrationFlag} runs alone without Playwright specs.`);
@@ -230,6 +238,7 @@ async function main() {
     AUTH_DISABLE_WAITLIST: process.env.AUTH_DISABLE_WAITLIST || 'true',
     AUTH_RATE_LIMIT_DISABLED: process.env.AUTH_RATE_LIMIT_DISABLED || 'true',
     PORTFOLIO_ENTRY_RUNTIME_MODE: process.env.PORTFOLIO_ENTRY_RUNTIME_MODE || 'deterministic',
+    SEMANTIC_E1_ENABLED: semanticE1Test ? 'true' : 'false',
     ...(fullStackPortfolioEntry ? {
       PORTFOLIO_ENTRY_E2E_TEST: 'true',
       PORTFOLIO_ENTRY_API_KEY: '',

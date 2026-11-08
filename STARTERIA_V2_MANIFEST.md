@@ -546,6 +546,42 @@ explícita sobre turnos semánticos durables antes de tests o código de FASE B.
 
 ---
 
+## Slice PORTFOLIO_LEAD_E1_SEMANTIC_LOOP_C (KAN-246)
+
+**Registrado:** 2026-11-08 sobre `main@e89d740444c9c1b20755229edc0042e2aae34005`,
+después del merge de KAN-245/B2 por PR #267 y bajo la autorización KAN-242#10748.
+
+```text
+slice_id: PORTFOLIO_LEAD_E1_SEMANTIC_LOOP_C
+technical_task: KAN-246
+phase: C implemented for review; rollout remains disabled
+baseline: main@e89d740444c9c1b20755229edc0042e2aae34005
+depends_on: KAN-244 semantic persistence; KAN-245 semantic orchestrator; KAN-241 flag-OFF fallback
+authority: KAN-242#10748; KAN-246; docs/implementation/portfolio-bootstrap-e1-semantic-loop-phase-a-v0.1.md; Core v0.2
+logic_status: ACTIVE_V2_SLICE
+implementation_status: IMPLEMENTED_AWAITING_PR_CI
+visual_status: CONVERSATIONAL_E1_IMPLEMENTED
+semantic_behavior: session-scoped transcript, one backend-driven question with recap/reason, evidence-bound facts, separate hypotheses/dispositions, bounded 202 polling and stable retry idempotency
+canonical_boundary: PortfolioBootstrapContextReview remains the only confirmed E1 synthesis; ledger concepts are not projected into canonical fields by React
+advancement_boundary: semantic convergence never unlocks E2; only persisted human ContextReview confirmation enables E1→E2, preserving E1→E2→E3
+fallback: guidedContextQuestion remains LEGACY_COMPAT exclusively when SEMANTIC_E1_ENABLED=false
+feature_flag: SEMANTIC_E1_ENABLED=false by default; true only in the explicit authenticated E2E composition
+test_provider: deterministic network-free adapter requires NODE_ENV=test and existing PORTFOLIO_ENTRY_E2E_TEST=true; no provider key or live inference
+scope_excluded: Core/Prisma/Steps/E5-E7/Handoff/Lab/Fab changes; canonical concept projection; secrets; infrastructure; paid inference; merge; deploy
+implementation_commits: f9a76f1 (client/hook/conversation/runtime/E2E); eb60673 (persisted retryable recovery); 57564be (semantic conflict reconciliation and bounded polling); 4d8eade (successful retry clears local error)
+independent_review: R3 APPROVED on 4d8eadeaa04335e18adffe1faa44ec32edd024e0 after four rounds; retry persistence, VERSION/QUESTION conflict reconciliation, bounded 202 polling and error-to-success UX findings resolved; no blocking findings remain
+local_evidence: focused frontend 47/47 PASS; runtime composition 3/3 PASS; authenticated KAN-246 E2E 1/1 PASS over disposable PostgreSQL; KAN-241 flag-OFF E2E 1/1 PASS over disposable PostgreSQL; full backend and frontend suites PASS; lint PASS; typecheck:front PASS; build PASS; git diff --check PASS
+known_baseline_blocker: required backend typecheck still fails with inherited TS2740 at portfolio-entry-runtime/__tests__/critical-synthesis-reasoning.test.ts:11; HEAD and origin/main blob are identical (93bee03d5133bed32ea7ce949e168e621d5a4476)
+authority_gap: automatic ledger-to-ContextPayload projection remains deliberately unimplemented and needs its own governed backend contract if later required
+guardrail: Proceed YES only for the client/hook/conversation/manual review/test perimeter; Proceed NO for the excluded scope
+```
+
+La interfaz presenta interpretación y procedencia sin convertir hipótesis o desconocidos en hechos.
+La síntesis canónica se redacta y confirma por separado; el fake E2E no es seleccionable por una
+petición ni por una configuración productiva y el flag continúa apagado fuera del harness explícito.
+
+---
+
 ## Slice PORTFOLIO_LEAD_INTAKE_NAVIGATION_G2A (KAN-209 / KAN-212)
 
 **Registrado:** 2026-11-03 por HU KAN-209 y aprobación funcional KAN-210 `RESUELTO`; preparación técnica acotada en KAN-212.

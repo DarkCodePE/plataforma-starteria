@@ -21,6 +21,17 @@ vi.mock('../../../features/portfolio-lead/bootstrap/state/usePortfolioBootstrapC
   }),
 }));
 
+vi.mock('../../../features/portfolio-lead/bootstrap/state/usePortfolioBootstrapSemantic', () => ({
+  usePortfolioBootstrapSemantic: () => ({
+    snapshot: { enabled: false, state: null, turns: [] },
+    status: 'ready',
+    error: null,
+    pendingInputText: null,
+    submit: vi.fn(),
+    retry: vi.fn(),
+  }),
+}));
+
 vi.mock('../../../features/portfolio-lead/bootstrap/services/portfolioBootstrapClient', () => ({
   createOrReusePortfolioBootstrapSession: (...args: unknown[]) => createOrReuse(...args),
   createOrReuseDirectPortfolioBootstrapSession: (...args: unknown[]) => createDirect(...args),
