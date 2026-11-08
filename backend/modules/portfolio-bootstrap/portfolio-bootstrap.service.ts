@@ -285,6 +285,7 @@ export class PortfolioBootstrapService {
     updatedAt: string;
     contextVersion: number | null;
     contextUpdatedAt: string | null;
+    contextStatus: 'draft' | 'confirmed' | null;
   }>> {
     if (!can(input.permissions, 'portfolio:read')) {
       throw AppError.forbidden('No tienes permiso para consultar este Portfolio.', 'PORTFOLIO_BOOTSTRAP_READ_FORBIDDEN');
@@ -308,7 +309,7 @@ export class PortfolioBootstrapService {
         id: true, status: true, bootstrapPhase: true,
         sourceContinuationId: true, createdAt: true, updatedAt: true,
         anchor: { select: { outcomeStatement: true, contextSummary: true } },
-        contextReview: { select: { version: true, updatedAt: true, draftJson: true } },
+        contextReview: { select: { status: true, version: true, updatedAt: true, draftJson: true } },
       },
     });
     return rows.map((row: any) => {
@@ -331,6 +332,7 @@ export class PortfolioBootstrapService {
         updatedAt: row.updatedAt.toISOString(),
         contextVersion: row.contextReview?.version ?? null,
         contextUpdatedAt: row.contextReview?.updatedAt?.toISOString() ?? null,
+        contextStatus: row.contextReview?.status ?? null,
       };
     });
   }

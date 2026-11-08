@@ -391,6 +391,7 @@ export type PortfolioResumableSession = {
   updatedAt: string;
   contextVersion: number | null;
   contextUpdatedAt: string | null;
+  contextStatus: 'draft' | 'confirmed' | null;
 };
 
 /** Read-only, owner-scoped overview. Never provisions a Bootstrap session. */

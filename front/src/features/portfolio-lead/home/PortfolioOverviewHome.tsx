@@ -160,7 +160,7 @@ export function PortfolioOverviewHome({
               </p>
               <p className="mt-1 text-xs text-[#6c7695]">
                 {session.contextVersion
-                  ? `Borrador de contexto v${session.contextVersion} · actualizado ${resumeDateLabel(session.contextUpdatedAt ?? session.updatedAt)}`
+                  ? `${session.contextStatus === 'confirmed' ? 'Contexto confirmado' : 'Borrador de contexto'} v${session.contextVersion} · actualizado ${resumeDateLabel(session.contextUpdatedAt ?? session.updatedAt)}`
                   : `Sesión actualizada ${resumeDateLabel(session.updatedAt)}`}
                 {' · '}La información pendiente se revisará antes de confirmar.
               </p>

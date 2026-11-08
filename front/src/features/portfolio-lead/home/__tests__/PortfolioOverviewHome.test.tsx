@@ -59,7 +59,7 @@ describe('PortfolioOverviewHome', () => {
         bootstrapPhase: 'B1_ANCHOR', status: 'awaiting_anchor_review',
         source: 'direct', createdAt: '2026-11-07T10:00:00.000Z',
         updatedAt: '2026-11-08T10:00:00.000Z',
-        contextVersion: 3, contextUpdatedAt: '2026-11-08T12:00:00.000Z',
+        contextVersion: 3, contextUpdatedAt: '2026-11-08T12:00:00.000Z', contextStatus: 'draft',
       }]}
       onResumeSession={resume}
     />);
