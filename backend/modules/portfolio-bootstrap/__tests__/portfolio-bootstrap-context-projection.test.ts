@@ -96,6 +96,24 @@ describe('KAN-247 governed E1 context proposal projection', () => {
       { ...base, turnId: 'turn-a', value: 'yes', evidenceRefs: [{ kind: 'user_input', quote: 'Nunca hemos probado un piloto.' }] }])).proposals).toEqual([]);
   });
 
+  it('does not revive a pilot fact after an explicit semantic unknown or not-applicable disposition', () => {
+    const fact = {
+      conceptId: 'pilot_experience', value: 'none', provenance: 'user_declared',
+      status: 'observed', turnId: 'turn-a', semanticVersion: 1,
+      evidenceRefs: [{ kind: 'user_input', quote: 'Nunca hemos probado algo parecido.' }],
+    };
+    for (const disposition of ['unknown', 'not_applicable']) {
+      const output = buildContextProjection({
+        review: review('Evaluamos nuevas oportunidades.'),
+        semantic: {
+          state: { factLedger: [fact], dispositions: [{ conceptId: 'pilot_experience', disposition }] },
+          turns: [{ id: 'turn-a', inputText: 'Nunca hemos probado algo parecido.' }],
+        },
+      });
+      expect(output.proposals).toEqual([]);
+    }
+  });
+
   it('does not create a proposal without a versioned ContextReview', () => {
     expect(buildContextProjection({ review: null }).proposals).toEqual([]);
   });

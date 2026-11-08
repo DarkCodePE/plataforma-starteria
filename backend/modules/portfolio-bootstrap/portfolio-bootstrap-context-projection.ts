@@ -27,6 +27,7 @@ type CandidateReview = {
 };
 type CandidateSemantic = {
   state: {
+    dispositions?: Array<{ conceptId: string; disposition: string }>;
     factLedger: Array<{
       conceptId: string;
       value: unknown;
@@ -110,6 +111,8 @@ export function buildContextProjection(input: {
 
   const semantic = input.semantic;
   if (!semantic?.state) return output([]);
+  if (semantic.state.dispositions?.some((item) => item.conceptId === 'pilot_experience'
+    && (item.disposition === 'unknown' || item.disposition === 'not_applicable'))) return output([]);
   const relevant = semantic.state.factLedger.filter((fact) => fact.conceptId === 'pilot_experience'
     && fact.status !== 'retracted' && fact.provenance === 'user_declared');
   // Distinct or conflicting readings should be clarified, never silently chosen.
