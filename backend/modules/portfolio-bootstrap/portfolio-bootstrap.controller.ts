@@ -82,7 +82,50 @@ export class PortfolioBootstrapController {
       };
       const review = await this.contextService.getContext(access);
       const semantic = await this.semanticService.getState(access);
-      res.json({ success: true, data: buildContextProjection({ review, semantic }) });
+      // Only pass the exact, read-only fields used by the projection.
+      // This keeps governed DTOs independent from the candidate input contract
+      // without casts or changes to canonical persistence.
+      const projectionInput = {
+        review: review ? {
+          id: review.id,
+          sessionId: review.sessionId,
+          version: review.version,
+          draft: {
+            situation: {
+              value: review.draft.situation.value,
+              provenance: review.draft.situation.provenance,
+              sourceRef: review.draft.situation.sourceRef
+                ? { kind: review.draft.situation.sourceRef.kind }
+                : undefined,
+            },
+            pilotExperience: { value: review.draft.pilotExperience.value },
+            gaps: review.draft.gaps,
+          },
+        } : null,
+        semantic: {
+          state: semantic.state ? {
+            dispositions: semantic.state.dispositions.map((item) => ({
+              conceptId: item.conceptId,
+              disposition: item.disposition,
+            })),
+            factLedger: semantic.state.factLedger.map((fact) => ({
+              conceptId: fact.conceptId,
+              value: fact.value,
+              provenance: fact.provenance,
+              status: fact.status,
+              turnId: fact.turnId,
+              semanticVersion: fact.semanticVersion,
+              evidenceRefs: fact.evidenceRefs.map((ref) => (
+                ref.kind === 'user_input'
+                  ? { kind: ref.kind, quote: ref.quote }
+                  : { kind: ref.kind }
+              )),
+            })),
+          } : null,
+          turns: semantic.turns.map((turn) => ({ id: turn.id, inputText: turn.inputText })),
+        },
+      } satisfies Parameters<typeof buildContextProjection>[0];
+      res.json({ success: true, data: buildContextProjection(projectionInput) });
     } catch (error) { next(error); }
   };
 
