@@ -86,6 +86,40 @@ describeIntegration('KAN-221 Portfolio Bootstrap context persistence', () => {
     expect(await (prisma as any).portfolioBootstrapContextOperation.count()).toBe(1);
   });
 
+  it('accepts a proposed quote only after an explicit user save, preserving historical source and CAS', async () => {
+    await seed();
+    const app = makeApp(userId);
+    const candidate = {
+      ...context('Somos una cafetería. Nunca hemos probado desayunos para llevar.'),
+      pilotExperience: { value: null, provenance: 'unknown' },
+    };
+    await request(app).put(`${base}/draft`).set('Idempotency-Key', 'kan247-source')
+      .send({ expectedVersion: 0, context: candidate, sourceCompanyContext: null }).expect(200);
+    const output = (await request(app).get(`${base}/proposals`).expect(200)).body.data;
+    const selected = output.proposals[0];
+    const accepted = {
+      ...candidate,
+      pilotExperience: { value: selected.value, provenance: 'user_declared', sourceRef: selected.sourceRef },
+    };
+    const saved = await request(app).put(`${base}/draft`).set('Idempotency-Key', 'kan247-accept')
+      .send({ expectedVersion: 1, context: accepted, sourceCompanyContext: null }).expect(200);
+    expect(saved.body.data).toMatchObject({ version: 2, status: 'draft', draft: { pilotExperience: {
+      value: selected.value, sourceRef: selected.sourceRef,
+    } } });
+    await request(app).post(`${base}/confirm`).set('Idempotency-Key', 'kan247-confirm')
+      .send({ expectedVersion: 2 }).expect(200);
+
+    await request(app).put(`${base}/draft`).set('Idempotency-Key', 'kan247-stale')
+      .send({ expectedVersion: 1, context: accepted, sourceCompanyContext: null }).expect(409);
+    const tampered = { ...accepted, pilotExperience: {
+      ...accepted.pilotExperience, sourceRef: { ...selected.sourceRef, quote: 'Nunca hemos probado otra cosa.' },
+      value: 'Nunca hemos probado otra cosa.',
+    } };
+    await request(app).put(`${base}/draft`).set('Idempotency-Key', 'kan247-forged')
+      .send({ expectedVersion: 3, context: tampered, sourceCompanyContext: null }).expect(422);
+    expect(await (prisma as any).portfolioBootstrapContextReviewVersion.count()).toBe(3);
+  });
+
   it('returns 404 for a foreign owner and leaves no receipt', async () => {
     await seed();
     await request(makeApp(otherUserId)).put(`${base}/draft`).set('Idempotency-Key', 'foreign')
