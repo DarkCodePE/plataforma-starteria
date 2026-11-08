@@ -215,6 +215,32 @@ describe('PortfolioBootstrapSemanticOrchestratorService', () => {
     }));
   });
 
+  it('does not count unknown anchor and direction dispositions as sufficient evidence', async () => {
+    const store = fakeStore();
+    const model = fakeModel({
+      facts: [], hypotheses: [],
+      dispositions: [
+        {
+          conceptId: 'situation', disposition: 'unknown', provenance: 'user_declared',
+          evidenceRefs: [{ kind: 'user_input', quote: 'no sé la situación' }],
+        },
+        {
+          conceptId: 'stakeholder', disposition: 'unknown', provenance: 'user_declared',
+          evidenceRefs: [{ kind: 'user_input', quote: 'ni a quién afecta' }],
+        },
+      ],
+      questionPlan: null,
+      readyForHumanReview: true, reason: 'El proveedor propone revisar con incógnitas.',
+    });
+
+    await new PortfolioBootstrapSemanticOrchestratorService(store, model, config)
+      .processTurn(command('No sé la situación ni a quién afecta.'));
+
+    expect(store.completeInference).toHaveBeenCalledWith(expect.objectContaining({
+      convergence: expect.objectContaining({ status: 'budget_checkpoint' }),
+    }));
+  });
+
   it('blocks plural formal-department questions for an explicit no-departments disposition but preserves corporate questions', async () => {
     const smallStore = fakeStore();
     const smallModel = fakeModel({
@@ -262,6 +288,31 @@ describe('PortfolioBootstrapSemanticOrchestratorService', () => {
     expect(model.generate).toHaveBeenCalledOnce();
     expect(store.completeInference).toHaveBeenCalledWith(expect.objectContaining({
       status: 'failed_retryable', error: { code: 'provider_unavailable', retryable: true },
+    }));
+  });
+
+  it('budgets the complete serialized prompt, confirmed context and accumulated ledger', async () => {
+    const store = fakeStore();
+    vi.mocked(store.getInferenceContext).mockResolvedValue({
+      state: null,
+      confirmedContext: {
+        version: 4,
+        context: { notes: 'contexto '.repeat(400) },
+        provenance: [],
+      },
+    });
+    const model = fakeModelFailure();
+    const service = new PortfolioBootstrapSemanticOrchestratorService(store, model, {
+      ...config,
+      maxInputTokens: 200,
+    });
+
+    await service.processTurn(command('Turno corto.'));
+
+    expect(model.generate).not.toHaveBeenCalled();
+    expect(store.completeInference).toHaveBeenCalledWith(expect.objectContaining({
+      status: 'failed_terminal',
+      error: { code: 'input_budget_exceeded', retryable: false },
     }));
   });
 

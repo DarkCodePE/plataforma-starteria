@@ -153,12 +153,29 @@ export class PortfolioBootstrapSemanticOrchestratorService {
       })
     );
     const execution = emptyExecution();
-    if (estimateTokens(input.inputText) > this.config.maxInputTokens) {
+    const state = before.state;
+    const userPayload = {
+      rawInput: input.inputText,
+      answeredQuestionId: input.answeredQuestionId,
+      activeQuestion: state?.activeQuestion ?? null,
+      semanticState: state ? {
+        factLedger: state.factLedger,
+        hypotheses: state.hypotheses,
+        dispositions: state.dispositions,
+        answeredGaps: state.answeredGaps,
+        questionHistory: state.questionHistory,
+        questionBudget: state.questionBudget,
+      } : null,
+      confirmedContext: before.confirmedContext,
+      remainingQuestionBudget: remainingQuestionBudget(state, this.config.questionLimit),
+    };
+    const serializedModelInput = `${SEMANTIC_E1_SYSTEM_PROMPT}\n${JSON.stringify(userPayload)}`;
+    if (estimateTokens(serializedModelInput) > this.config.maxInputTokens) {
       return {
         processing: false,
         result: await complete(failedTurn({
           code: 'input_budget_exceeded', retryable: false,
-          reason: 'El turno supera el presupuesto de entrada configurado.', execution,
+          reason: 'El prompt, contexto y estado superan el presupuesto de entrada configurado.', execution,
         })),
       };
     }
@@ -171,8 +188,6 @@ export class PortfolioBootstrapSemanticOrchestratorService {
         })),
       };
     }
-
-    const state = before.state;
     let modelResult;
     let logicalCalls = 0;
     try {
@@ -180,21 +195,7 @@ export class PortfolioBootstrapSemanticOrchestratorService {
       logicalCalls += 1;
       modelResult = await withDeadline(this.model.generate({
         systemPrompt: SEMANTIC_E1_SYSTEM_PROMPT,
-        userPayload: {
-          rawInput: input.inputText,
-          answeredQuestionId: input.answeredQuestionId,
-          activeQuestion: state?.activeQuestion ?? null,
-          semanticState: state ? {
-            factLedger: state.factLedger,
-            hypotheses: state.hypotheses,
-            dispositions: state.dispositions,
-            answeredGaps: state.answeredGaps,
-            questionHistory: state.questionHistory,
-            questionBudget: state.questionBudget,
-          } : null,
-          confirmedContext: before.confirmedContext,
-          remainingQuestionBudget: remainingQuestionBudget(state, this.config.questionLimit),
-        },
+        userPayload,
         outputSchema: portfolioBootstrapSemanticInferenceSchema,
         metadata: { provider: 'configured', model: 'configured', seed_support: 'not_requested' },
         limits: { maxOutputTokens: this.config.maxOutputTokens },
@@ -354,7 +355,7 @@ function applyDeterministicPolicy(input: {
     resolves: [...new Set(candidateResolves)],
   } : null;
   const questionBudget = { limit, used: currentBudget.used + (emittedQuestion ? 1 : 0) };
-  const sufficientForReview = hasSufficientEvidenceForHumanReview(input.state, facts, dispositions);
+  const sufficientForReview = hasSufficientEvidenceForHumanReview(input.state, facts);
   const convergence = emittedQuestion ? {
     status: 'question_required' as const,
     reason: input.inference.reason,
@@ -514,13 +515,10 @@ function questionGroundedForBusiness(
 function hasSufficientEvidenceForHumanReview(
   state: SemanticStateDto | null,
   facts: SemanticInference['facts'],
-  dispositions: SemanticInference['dispositions'],
 ): boolean {
   const resolved = new Set([
     ...(state?.factLedger ?? []).filter((fact) => fact.status !== 'retracted').map((fact) => fact.conceptId),
-    ...(state?.dispositions ?? []).map((item) => item.conceptId),
     ...facts.filter((fact) => fact.status !== 'retracted').map((fact) => fact.conceptId),
-    ...dispositions.map((item) => item.conceptId),
   ]);
   const hasAnchor = ['situation', 'opportunity', 'decision', 'problem'].some((concept) => resolved.has(concept));
   const hasDirection = ['area', 'stakeholder', 'desired_outcome', 'objective', 'direction']
