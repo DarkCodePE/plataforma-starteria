@@ -1,12 +1,13 @@
 import express, { type RequestHandler } from 'express';
 import { PrismaClient } from '@prisma/client';
 import request from 'supertest';
-import { afterAll, afterEach, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, describe, expect, it, vi } from 'vitest';
 import { permissionsForRoles } from '../../../shared/authz/permissions';
 import { errorHandler } from '../../../shared/errors/error-handler';
 import { buildPortfolioBootstrapRouter } from '../portfolio-bootstrap.router';
 import { PortfolioBootstrapSemanticService } from '../portfolio-bootstrap-semantic.service';
-import { companyEntryFingerprint } from '../portfolio-bootstrap-context.service';
+import { PortfolioBootstrapSemanticOrchestratorService } from '../portfolio-bootstrap-semantic-orchestrator.service';
+import { canonicalContextHash, companyEntryFingerprint } from '../portfolio-bootstrap-context.service';
 
 const describeIntegration = process.env.PORTFOLIO_BOOTSTRAP_DB_INTEGRATION === '1' ? describe : describe.skip;
 const prisma = new PrismaClient();
@@ -77,6 +78,98 @@ describeIntegration('KAN-244 E1 semantic persistence', () => {
       .rejects.toMatchObject({ statusCode: 409, code: 'PORTFOLIO_SEMANTIC_IDEMPOTENCY_CONFLICT' });
     await expect(service.appendTurn(command({ idempotencyKey: 'stale-key', expectedVersion: 0 })))
       .rejects.toMatchObject({ statusCode: 409, code: 'PORTFOLIO_SEMANTIC_VERSION_CONFLICT' });
+  });
+
+  it('claims the raw turn durably before inference and lets only one concurrent caller spend', async () => {
+    await seed();
+    const service = new PortfolioBootstrapSemanticService(prisma);
+    const inputText = 'Somos una cafetería y nunca hemos probado pedidos a oficinas.';
+    const requestHash = canonicalContextHash({ expectedVersion: 0, inputText, answeredQuestionId: null });
+    const claimInput = {
+      sessionId, authenticatedUserId: userId, permissions,
+      idempotencyKey: 'orchestrated-turn', requestHash, expectedVersion: 0,
+      inputText, answeredQuestionId: null, leaseMs: 60_000,
+    };
+
+    const claims = await Promise.all([service.claimInference(claimInput), service.claimInference(claimInput)]);
+    expect(claims.filter((claim) => claim.claimed)).toHaveLength(1);
+    const winner = claims.find((claim) => claim.claimed)!;
+    expect(winner.result.turn).toMatchObject({
+      status: 'failed_retryable', inputText,
+      error: { code: 'inference_pending', retryable: true },
+    });
+    expect(await (prisma as any).portfolioBootstrapSemanticTurn.count()).toBe(1);
+
+    const completed = await service.completeInference({
+      ...command({
+        idempotencyKey: 'orchestrated-turn',
+        expectedVersion: winner.result.state.version,
+        facts: [fact('pilot_experience', 'nunca hemos probado pedidos a oficinas')],
+        answeredGaps: ['pilot_experience'],
+      }),
+      requestHash,
+    });
+    expect(completed.turn).toMatchObject({ id: winner.result.turn.id, status: 'completed', attempt: 2 });
+    expect(completed.state.answeredGaps).toEqual(['pilot_experience']);
+
+    const replay = await service.claimInference(claimInput);
+    expect(replay).toEqual({ claimed: false, result: completed });
+    expect(await (prisma as any).portfolioBootstrapSemanticTurn.count()).toBe(1);
+  });
+
+  it('runs the cafeteria B2 path with one fake structured call and creates no canonical work objects', async () => {
+    await seed();
+    const store = new PortfolioBootstrapSemanticService(prisma);
+    const generated = {
+      facts: [fact('pilot_experience', 'nunca hemos probado pedidos a oficinas')],
+      hypotheses: [], dispositions: [],
+      questionPlan: {
+        question: '¿Qué situación concreta queréis mejorar primero?',
+        reasonToAsk: 'Permite iniciar E2 sin inventar una métrica ni un departamento.',
+        resolves: ['situation'],
+      },
+      readyForHumanReview: false,
+      reason: 'Falta una situación prioritaria concreta.',
+    };
+    const generate = vi.fn().mockResolvedValue({
+      provider_raw: generated, parsed_output: generated, validated_output: generated, schema_errors: [],
+      execution_metadata: {
+        call_id: 'fake-call', purpose: 'bootstrap_semantic_turn', provider: 'fake-provider', model: 'fixture',
+        seed_support: 'not_requested', duration_ms: 14, retry_count: 0,
+        usage: { input_tokens: 30, output_tokens: 20, total_tokens: 50 }, fallback_used: false,
+      },
+    });
+    const orchestrator = new PortfolioBootstrapSemanticOrchestratorService(store, { generate }, {
+      maxInputTokens: 2_000, maxOutputTokens: 800, maxCallsPerTurn: 1, timeoutMs: 5_000,
+      questionLimit: 3, circuitBreakerFailureThreshold: 3, circuitBreakerCooldownMs: 30_000,
+    });
+    const before = {
+      projects: await prisma.project.count(),
+      steps: await prisma.step.count(),
+      assignments: await prisma.portfolioHandoffAssignment.count(),
+    };
+
+    const output = await orchestrator.processTurn({
+      sessionId, authenticatedUserId: userId, permissions,
+      idempotencyKey: 'cafeteria-b2', expectedVersion: 0,
+      inputText: 'Somos una cafetería pequeña y nunca hemos probado pedidos a oficinas.',
+      answeredQuestionId: null,
+    });
+
+    expect(generate).toHaveBeenCalledOnce();
+    expect(generate.mock.calls[0][0]).toMatchObject({
+      limits: { maxOutputTokens: 800 },
+      userPayload: { confirmedContext: { version: 1, context: { legacy: true } } },
+    });
+    expect(output.result.state.answeredGaps).toContain('pilot_experience');
+    expect(output.result.state.activeQuestion?.resolves).toEqual(['situation']);
+    expect(output.result.state.activeQuestion?.resolves).not.toContain('pilot_experience');
+    expect(output.result.turn.execution).toMatchObject({ inputTokens: 30, outputTokens: 20, totalTokens: 50 });
+    expect({
+      projects: await prisma.project.count(),
+      steps: await prisma.step.count(),
+      assignments: await prisma.portfolioHandoffAssignment.count(),
+    }).toEqual(before);
   });
 
   it('hides foreign sessions and requires portfolio capability for read and write', async () => {

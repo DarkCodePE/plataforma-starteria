@@ -87,6 +87,15 @@ export interface SemanticTurnResult {
   turn: SemanticTurnDto;
 }
 
+type AppendSemanticTurnInput = {
+  sessionId: string;
+  authenticatedUserId: string;
+  permissions: ReadonlySet<Permission>;
+  idempotencyKey: string;
+  requestHash?: string;
+  replaceFailedRetryable?: boolean;
+} & PortfolioBootstrapSemanticTurnInput;
+
 export function emptySemanticStateProjection(): SemanticStateProjection {
   return {
     factLedger: [], hypotheses: [], dispositions: [], answeredGaps: [],
@@ -189,12 +198,89 @@ export class PortfolioBootstrapSemanticService {
     };
   }
 
-  async appendTurn(input: {
+  async getInferenceContext(input: {
+    sessionId: string;
+    authenticatedUserId: string;
+    permissions: ReadonlySet<Permission>;
+  }): Promise<{
+    state: SemanticStateDto | null;
+    confirmedContext: { version: number; context: unknown; provenance: unknown } | null;
+  }> {
+    const snapshot = await this.getState(input);
+    const review = await (this.prisma as any).portfolioBootstrapContextReview.findUnique({
+      where: { bootstrapSessionId: input.sessionId },
+      select: {
+        version: true,
+        confirmedSnapshotJson: true,
+        confirmedProvenanceJson: true,
+      },
+    });
+    return {
+      state: snapshot.state,
+      confirmedContext: review?.confirmedSnapshotJson ? {
+        version: review.version,
+        context: review.confirmedSnapshotJson,
+        provenance: review.confirmedProvenanceJson ?? null,
+      } : null,
+    };
+  }
+
+  async appendTurn(input: AppendSemanticTurnInput): Promise<SemanticTurnResult> {
+    return (await this.appendTurnDetailed(input)).result;
+  }
+
+  async claimInference(input: {
     sessionId: string;
     authenticatedUserId: string;
     permissions: ReadonlySet<Permission>;
     idempotencyKey: string;
-  } & PortfolioBootstrapSemanticTurnInput): Promise<SemanticTurnResult> {
+    requestHash: string;
+    expectedVersion: number;
+    inputText: string;
+    answeredQuestionId: string | null;
+    leaseMs: number;
+  }): Promise<{ claimed: boolean; result: SemanticTurnResult }> {
+    const pending = (expectedVersion: number): AppendSemanticTurnInput => ({
+      sessionId: input.sessionId,
+      authenticatedUserId: input.authenticatedUserId,
+      permissions: input.permissions,
+      idempotencyKey: input.idempotencyKey,
+      requestHash: input.requestHash,
+      expectedVersion,
+      inputText: input.inputText,
+      status: 'failed_retryable',
+      facts: [], hypotheses: [], dispositions: [], answeredGaps: [], answeredQuestionId: null,
+      emittedQuestion: null,
+      convergence: { status: 'provider_retryable_failure', reason: 'Inferencia en curso.' },
+      questionBudget: { limit: null, used: 0 },
+      error: { code: 'inference_pending', retryable: true },
+      execution: {
+        provider: null, model: null, durationMs: 0,
+        inputTokens: 0, outputTokens: 0, totalTokens: 0, retryCount: 0, fallbackUsed: false,
+      },
+    });
+    const initial = await this.appendTurnDetailed(pending(input.expectedVersion));
+    if (initial.wrote) return { claimed: true, result: initial.result };
+    if (initial.result.turn.status !== 'failed_retryable') return { claimed: false, result: initial.result };
+    const pendingAge = Date.now() - new Date(initial.result.turn.createdAt).getTime();
+    if (initial.result.turn.error?.code === 'inference_pending' && pendingAge < input.leaseMs) {
+      return { claimed: false, result: initial.result };
+    }
+    const reclaimed = await this.appendTurnDetailed({
+      ...pending(initial.result.state.version),
+      replaceFailedRetryable: true,
+    });
+    return { claimed: reclaimed.wrote, result: reclaimed.result };
+  }
+
+  async completeInference(input: AppendSemanticTurnInput & { requestHash: string }): Promise<SemanticTurnResult> {
+    return (await this.appendTurnDetailed({ ...input, replaceFailedRetryable: true })).result;
+  }
+
+  private async appendTurnDetailed(input: AppendSemanticTurnInput): Promise<{
+    result: SemanticTurnResult;
+    wrote: boolean;
+  }> {
     if (!input.idempotencyKey.trim()) {
       throw AppError.badRequest('Falta Idempotency-Key.', 'PORTFOLIO_SEMANTIC_IDEMPOTENCY_REQUIRED');
     }
@@ -213,7 +299,7 @@ export class PortfolioBootstrapSemanticService {
       error: input.error,
       execution: input.execution,
     });
-    const payloadHash = canonicalContextHash(parsed);
+    const payloadHash = input.requestHash ?? canonicalContextHash(parsed);
     const write = () => this.prisma.$transaction(async (tx) => {
       const db = tx as any;
       const session = await this.requireOwnedSession(db, input.sessionId, input.authenticatedUserId);
@@ -222,7 +308,10 @@ export class PortfolioBootstrapSemanticService {
       let existingTurn = state
         ? await this.findTurnByKey(db, state.id, input.idempotencyKey)
         : null;
-      if (existingTurn?.payloadHash === payloadHash) return existingTurn.responseJson as SemanticTurnResult;
+      if (existingTurn?.payloadHash === payloadHash
+        && !(input.replaceFailedRetryable && existingTurn.status === 'failed_retryable')) {
+        return { result: existingTurn.responseJson as SemanticTurnResult, wrote: false };
+      }
       if (!state) {
         if (parsed.expectedVersion !== 0) throw this.versionConflict();
         const empty = emptySemanticStateProjection();
@@ -241,7 +330,10 @@ export class PortfolioBootstrapSemanticService {
         } });
       }
       existingTurn = existingTurn ?? await this.findTurnByKey(db, state.id, input.idempotencyKey);
-      if (existingTurn?.payloadHash === payloadHash) return existingTurn.responseJson as SemanticTurnResult;
+      if (existingTurn?.payloadHash === payloadHash
+        && !(input.replaceFailedRetryable && existingTurn.status === 'failed_retryable')) {
+        return { result: existingTurn.responseJson as SemanticTurnResult, wrote: false };
+      }
       if (existingTurn && (existingTurn.status !== 'failed_retryable' || existingTurn.inputText !== parsed.inputText)) {
         throw AppError.conflict('Idempotency-Key reutilizada para otro turno lógico.', 'PORTFOLIO_SEMANTIC_IDEMPOTENCY_CONFLICT');
       }
@@ -384,13 +476,13 @@ export class PortfolioBootstrapSemanticService {
         resourceId: turnId,
         details: { sessionId: session.id, semanticVersion, status: parsed.status },
       } });
-      return response;
+      return { result: response, wrote: true };
     }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable, timeout: 10_000 });
 
     try {
       return await this.withSerializableRetry(write);
     } catch (error) {
-      return this.reconcileWriteConflict(input, payloadHash, error);
+      return { result: await this.reconcileWriteConflict(input, payloadHash, error), wrote: false };
     }
   }
 

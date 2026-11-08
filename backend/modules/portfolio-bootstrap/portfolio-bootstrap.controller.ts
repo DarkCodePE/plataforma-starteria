@@ -5,6 +5,11 @@ import type { PortfolioOrganizationService } from './portfolio-organization.serv
 import type { PortfolioSetupCompletionService } from './portfolio-setup-completion.service';
 import type { PortfolioBootstrapContextService } from './portfolio-bootstrap-context.service';
 import type { PortfolioBootstrapSemanticService } from './portfolio-bootstrap-semantic.service';
+import type { PortfolioBootstrapSemanticOrchestratorService } from './portfolio-bootstrap-semantic-orchestrator.service';
+import {
+  portfolioBootstrapSemanticTurnRequestSchema,
+  semanticE1Enabled,
+} from './portfolio-bootstrap-semantic.schemas';
 import {
   analyzeBodySchema,
   advancementConditionParamsSchema,
@@ -38,7 +43,33 @@ export class PortfolioBootstrapController {
     private readonly completionService: PortfolioSetupCompletionService,
     private readonly contextService: PortfolioBootstrapContextService,
     private readonly semanticService: PortfolioBootstrapSemanticService,
+    private readonly semanticOrchestrator: PortfolioBootstrapSemanticOrchestratorService,
   ) {}
+
+  submitSemanticTurn = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      if (!req.user?.id) throw AppError.unauthorized('No autorizado.', 'PORTFOLIO_BOOTSTRAP_AUTH_REQUIRED');
+      if (!semanticE1Enabled()) {
+        throw new AppError(503, 'La interpretación semántica E1 no está habilitada.', 'PORTFOLIO_SEMANTIC_DISABLED');
+      }
+      const idempotencyKey = req.get('Idempotency-Key') ?? '';
+      if (!idempotencyKey.trim()) {
+        throw AppError.badRequest('Falta Idempotency-Key.', 'PORTFOLIO_SEMANTIC_IDEMPOTENCY_REQUIRED');
+      }
+      const { sessionId } = bootstrapSessionParamsSchema.parse(req.params);
+      const body = portfolioBootstrapSemanticTurnRequestSchema.parse(req.body);
+      const output = await this.semanticOrchestrator.processTurn({
+        sessionId,
+        authenticatedUserId: req.user.id,
+        permissions: req.user.permissions,
+        idempotencyKey,
+        expectedVersion: body.expectedVersion,
+        inputText: body.inputText,
+        answeredQuestionId: body.answeredQuestionId,
+      });
+      res.status(output.processing ? 202 : 200).json({ success: true, data: output.result });
+    } catch (error) { next(error); }
+  };
 
   getSemanticContext = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {

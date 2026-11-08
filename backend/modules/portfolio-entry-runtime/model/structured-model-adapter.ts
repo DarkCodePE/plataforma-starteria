@@ -8,6 +8,9 @@ export type StructuredModelGenerateInput<T> = {
   providerJsonSchema?: unknown;
   preserveProviderNulls?: boolean;
   metadata: LiveCandidateMetadata;
+  limits?: {
+    maxOutputTokens?: number;
+  };
   call: {
     call_id: string;
     purpose: ModelExecutionPurpose;

@@ -7,6 +7,8 @@ import { PortfolioOrganizationService } from './portfolio-organization.service';
 import { PortfolioSetupCompletionService } from './portfolio-setup-completion.service';
 import { PortfolioBootstrapContextService } from './portfolio-bootstrap-context.service';
 import { PortfolioBootstrapSemanticService } from './portfolio-bootstrap-semantic.service';
+import { PortfolioBootstrapSemanticOrchestratorService } from './portfolio-bootstrap-semantic-orchestrator.service';
+import { createPortfolioBootstrapSemanticOrchestrator } from './portfolio-bootstrap-semantic-runtime';
 
 export interface PortfolioBootstrapRouterDeps {
   authenticate?: RequestHandler;
@@ -15,17 +17,20 @@ export interface PortfolioBootstrapRouterDeps {
   completionService?: PortfolioSetupCompletionService;
   contextService?: PortfolioBootstrapContextService;
   semanticService?: PortfolioBootstrapSemanticService;
+  semanticOrchestrator?: PortfolioBootstrapSemanticOrchestratorService;
 }
 
 export function buildPortfolioBootstrapRouter(deps: PortfolioBootstrapRouterDeps = {}): Router {
   const router = Router();
   const auth = deps.authenticate ?? authenticate;
+  const semanticService = deps.semanticService ?? new PortfolioBootstrapSemanticService(prisma);
   const controller = new PortfolioBootstrapController(
     deps.service ?? new PortfolioBootstrapService(prisma),
     deps.organizationService ?? new PortfolioOrganizationService(prisma),
     deps.completionService ?? new PortfolioSetupCompletionService(prisma),
     deps.contextService ?? new PortfolioBootstrapContextService(prisma),
-    deps.semanticService ?? new PortfolioBootstrapSemanticService(prisma),
+    semanticService,
+    deps.semanticOrchestrator ?? createPortfolioBootstrapSemanticOrchestrator(semanticService),
   );
 
   router.post('/sessions/direct', auth, controller.createOrReuseDirect);
@@ -36,6 +41,7 @@ export function buildPortfolioBootstrapRouter(deps: PortfolioBootstrapRouterDeps
   router.get('/sessions/:sessionId', auth, controller.getSession);
   router.get('/sessions/:sessionId/context', auth, controller.getContext);
   router.get('/sessions/:sessionId/context/semantic', auth, controller.getSemanticContext);
+  router.post('/sessions/:sessionId/context/semantic/turns', auth, controller.submitSemanticTurn);
   router.put('/sessions/:sessionId/context/draft', auth, controller.saveContextDraft);
   router.post('/sessions/:sessionId/context/confirm', auth, controller.confirmContext);
   router.post('/sessions/:sessionId/complete-setup', auth, controller.completeSetup);

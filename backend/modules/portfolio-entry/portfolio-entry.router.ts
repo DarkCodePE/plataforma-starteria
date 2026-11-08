@@ -24,6 +24,7 @@ import {
   LivePortfolioEntryAgentAdapter,
   loadCriticalSynthesisProviderConfig,
   loadPortfolioEntryProviderConfig,
+  loadPortfolioEntryFallbackProviderConfig,
   ResilientStructuredModelAdapter,
   portfolioEntryLiveHealth,
   loadResolvedPromptManifest,
@@ -310,26 +311,11 @@ export function configuredLiveUnderstandingSynthesizer(): PortfolioEntryLiveUnde
 
 function createResilientModel(primaryConfig: ReturnType<typeof loadPortfolioEntryProviderConfig>) {
   const primary = new FetchStructuredModelAdapter(primaryConfig);
-  const fallback = loadFallbackProviderConfig();
+  const fallback = loadPortfolioEntryFallbackProviderConfig();
   return new ResilientStructuredModelAdapter(
     primary,
     fallback ? new FetchStructuredModelAdapter({ ...fallback, reasoningEffort: primaryConfig.reasoningEffort }) : undefined,
   );
-}
-
-function loadFallbackProviderConfig() {
-  const env = process.env;
-  const apiKey = env.PORTFOLIO_ENTRY_FALLBACK_API_KEY?.trim();
-  if (!apiKey) return undefined;
-  const provider = (env.PORTFOLIO_ENTRY_FALLBACK_PROVIDER?.trim() || 'deepseek_responses') as 'openai_responses' | 'deepseek_responses';
-  if (provider !== 'openai_responses' && provider !== 'deepseek_responses') return undefined;
-  return {
-    provider,
-    model: env.PORTFOLIO_ENTRY_FALLBACK_MODEL?.trim() || (provider === 'openai_responses' ? 'gpt-4o-mini' : 'deepseek-chat'),
-    apiKey,
-    baseUrl: (env.PORTFOLIO_ENTRY_FALLBACK_BASE_URL?.trim() || (provider === 'openai_responses' ? 'https://api.openai.com/v1' : 'https://api.deepseek.com')).replace(/\/$/, ''),
-    timeoutMs: Number(env.PORTFOLIO_ENTRY_FALLBACK_TIMEOUT_MS || 30_000),
-  };
 }
 
 function createLiveCandidate(

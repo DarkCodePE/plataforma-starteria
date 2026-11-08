@@ -48,6 +48,14 @@ const contextService = {
   confirm: vi.fn(),
 };
 
+const semanticService = {
+  getState: vi.fn(),
+};
+
+const semanticOrchestrator = {
+  processTurn: vi.fn(),
+};
+
 let currentUser: any;
 
 const fakeAuthenticate: RequestHandler = (req: any, _res, next) => {
@@ -64,6 +72,8 @@ function makeApp() {
     organizationService: organizationService as any,
     completionService: completionService as any,
     contextService: contextService as any,
+    semanticService: semanticService as any,
+    semanticOrchestrator: semanticOrchestrator as any,
   }));
   app.use(errorHandler);
   return app;
@@ -127,6 +137,55 @@ describe('portfolio-bootstrap router', () => {
     contextService.getContext.mockResolvedValue(null);
     contextService.saveDraft.mockResolvedValue({ id: 'context-1', status: 'draft', version: 1 });
     contextService.confirm.mockResolvedValue({ id: 'context-1', status: 'confirmed', version: 2 });
+    semanticService.getState.mockResolvedValue({ enabled: true, state: null, turns: [] });
+    semanticOrchestrator.processTurn.mockResolvedValue({
+      processing: false,
+      result: { state: { version: 2 }, turn: { id: 'turn-1', status: 'completed' } },
+    });
+    vi.stubEnv('SEMANTIC_E1_ENABLED', 'true');
+  });
+
+  it('submits one authenticated semantic turn without accepting model facts from the client', async () => {
+    const response = await request(makeApp())
+      .post('/api/v1/portfolio-bootstrap/sessions/bs-1/context/semantic/turns')
+      .set('Idempotency-Key', 'semantic-turn-1')
+      .send({
+        expectedVersion: 0,
+        inputText: 'Somos una cafetería y nunca hemos probado pedidos a oficinas.',
+        answeredQuestionId: null,
+      })
+      .expect(200);
+
+    expect(response.body.data.turn.status).toBe('completed');
+    expect(semanticOrchestrator.processTurn).toHaveBeenCalledWith(expect.objectContaining({
+      sessionId: 'bs-1', authenticatedUserId: 'portfolio-lead-1',
+      idempotencyKey: 'semantic-turn-1', expectedVersion: 0,
+      inputText: 'Somos una cafetería y nunca hemos probado pedidos a oficinas.',
+    }));
+  });
+
+  it('keeps semantic inference fail-closed while the rollout flag is off', async () => {
+    vi.stubEnv('SEMANTIC_E1_ENABLED', 'false');
+
+    await request(makeApp())
+      .post('/api/v1/portfolio-bootstrap/sessions/bs-1/context/semantic/turns')
+      .set('Idempotency-Key', 'semantic-turn-disabled')
+      .send({ expectedVersion: 0, inputText: 'Texto suficiente.', answeredQuestionId: null })
+      .expect(503);
+
+    expect(semanticOrchestrator.processTurn).not.toHaveBeenCalled();
+  });
+
+  it('requires idempotency and rejects client-supplied semantic facts', async () => {
+    const path = '/api/v1/portfolio-bootstrap/sessions/bs-1/context/semantic/turns';
+    await request(makeApp()).post(path)
+      .send({ expectedVersion: 0, inputText: 'Texto suficiente.', answeredQuestionId: null })
+      .expect(400);
+    await request(makeApp()).post(path)
+      .set('Idempotency-Key', 'semantic-turn-untrusted')
+      .send({ expectedVersion: 0, inputText: 'Texto suficiente.', answeredQuestionId: null, facts: [] })
+      .expect(400);
+    expect(semanticOrchestrator.processTurn).not.toHaveBeenCalled();
   });
 
   it('reads, drafts and confirms E1 context through the authenticated additive API', async () => {

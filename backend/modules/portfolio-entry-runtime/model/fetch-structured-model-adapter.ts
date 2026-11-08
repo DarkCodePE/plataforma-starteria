@@ -84,6 +84,7 @@ export class FetchStructuredModelAdapter implements StructuredModelAdapter {
             provider: { require_parameters: true },
           } : {}),
           ...(this.config.temperature !== undefined ? { temperature: this.config.temperature } : {}),
+          ...(input.limits?.maxOutputTokens !== undefined ? { max_output_tokens: input.limits.maxOutputTokens } : {}),
           input: [
             { role: 'system', content: input.systemPrompt },
             { role: 'user', content: JSON.stringify(input.userPayload) },
