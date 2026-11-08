@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { AlertTriangle, ArrowRight, BriefcaseBusiness, CheckSquare, Gauge, Sparkles } from 'lucide-react';
 import type { PortfolioHomeReadModel } from '../../../app/services/portfolioService';
+import type { PortfolioResumableSession } from '../bootstrap/services/portfolioBootstrapClient';
 
 type Props = {
   model: PortfolioHomeReadModel;
@@ -8,6 +9,13 @@ type Props = {
   onOpenAdditionalFront: () => void;
   openingAdditionalFront?: boolean;
   copilotAvailable?: boolean;
+  onStartOpportunity?: () => void;
+  startingOpportunity?: boolean;
+  resumableSessions?: PortfolioResumableSession[];
+  resumableStatus?: 'loading' | 'ready' | 'error';
+  resumableError?: string | null;
+  onRetryResumable?: () => void;
+  onResumeSession?: (sessionId: string) => void;
 };
 
 type OverviewItem = { key: string; title: string; detail: string };
@@ -29,6 +37,13 @@ export function PortfolioOverviewHome({
   onOpenAdditionalFront,
   openingAdditionalFront = false,
   copilotAvailable = false,
+  onStartOpportunity,
+  startingOpportunity = false,
+  resumableSessions = [],
+  resumableStatus = 'ready',
+  resumableError = null,
+  onRetryResumable,
+  onResumeSession,
 }: Props) {
   const fronts = model.strategicUnits ?? [];
   const linkedInitiatives = fronts.flatMap((front) => front.challenges.flatMap((challenge) => challenge.initiatives));
@@ -87,19 +102,72 @@ export function PortfolioOverviewHome({
     ?? 'No hay una intervención persistida pendiente ahora.';
 
   return <div className="mx-auto max-w-[1500px] space-y-5 px-4 py-5 sm:px-6 lg:px-8" data-testid="portfolio-overview-home">
-    <header data-testid="portfolio-overview-header" className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm md:p-7 lg:flex lg:items-center lg:justify-between lg:gap-6">
+    <header data-testid="portfolio-overview-header" className="rounded-2xl border border-[#e4e7f0] bg-white p-5 shadow-sm md:p-7 lg:flex lg:items-center lg:justify-between lg:gap-6">
       <div className="max-w-3xl">
         <p className="text-xs font-bold uppercase tracking-[0.16em] text-violet-700">Portfolio Overview</p>
         <h1 className="mt-2 text-2xl font-semibold tracking-tight text-slate-950 md:text-3xl">¿Qué necesita tu atención para mover el negocio?</h1>
         <p className="mt-2 text-sm leading-6 text-slate-600">Una lectura ejecutiva de objetivo, frentes, retos, Projects, encargos y decisiones persistidas.</p>
       </div>
       <div className="mt-4 flex w-full flex-col gap-2 sm:w-auto sm:flex-row lg:mt-0 lg:shrink-0">
-        <button type="button" disabled={openingAdditionalFront} onClick={onOpenAdditionalFront} className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-slate-950 px-4 py-2.5 text-sm font-semibold text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-950 disabled:opacity-60 sm:w-auto">
-          <span aria-hidden="true">+</span>{openingAdditionalFront ? 'Abriendo…' : 'Crear nuevo frente estratégico'}<ArrowRight aria-hidden="true" size={16} />
-        </button>
+        {fronts.length > 0 ? (
+          <button type="button" disabled={openingAdditionalFront} onClick={onOpenAdditionalFront} className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-[#171b36] px-4 py-2.5 text-sm font-semibold text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 disabled:opacity-60 sm:w-auto">
+            <span aria-hidden="true">+</span>{openingAdditionalFront ? 'Abriendo…' : 'Crear nuevo frente estratégico'}<ArrowRight aria-hidden="true" size={16} />
+          </button>
+        ) : resumableStatus === 'ready' && resumableSessions.length === 0 && onStartOpportunity ? (
+          <button type="button" disabled={startingOpportunity} onClick={onStartOpportunity} className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-[#6446c0] px-4 py-2.5 text-sm font-semibold text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 disabled:opacity-60 sm:w-auto">
+            <Sparkles size={17} />{startingOpportunity ? 'Abriendo…' : 'Preparar nueva oportunidad'}<ArrowRight aria-hidden="true" size={16}/>
+          </button>
+        ) : null}
         {copilotAvailable ? <button type="button" onClick={onOpenCopilot} className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-violet-200 bg-violet-50 px-4 py-2.5 text-sm font-semibold text-violet-950 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-800 sm:w-auto"><Sparkles size={17} />Abrir Copilot de portafolio</button> : null}
       </div>
     </header>
+
+    <section aria-label="Procesos en curso" data-testid="portfolio-resumable-workspaces" className="rounded-2xl border border-[#e4e7f0] bg-white p-5 shadow-sm md:p-6">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <p className="text-xs font-extrabold uppercase tracking-[0.14em] text-[#6446c0]">Tu espacio de trabajo</p>
+          <h2 className="mt-1 text-lg font-semibold text-[#182246]">Preparaciones y conversaciones</h2>
+          <p className="mt-1 text-sm text-[#6c7695]">Retoma donde lo dejaste. Abrir Inicio no crea ni modifica ninguna iniciativa.</p>
+        </div>
+        <span className="rounded-full bg-[#f3eefc] px-3 py-1.5 text-xs font-bold text-[#493297]">
+          {resumableStatus === 'ready' ? `${resumableSessions.length} en preparación` : 'Comprobando'}
+        </span>
+      </div>
+      {resumableStatus === 'loading' ? (
+        <p role="status" className="mt-5 rounded-xl bg-[#f6f7fc] p-4 text-sm text-[#6c7695]">Recuperando tus procesos guardados…</p>
+      ) : resumableStatus === 'error' ? (
+        <div role="alert" className="mt-5 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+          <p>{resumableError ?? 'No se pudieron recuperar tus procesos.'} No se ha creado otro espacio.</p>
+          {onRetryResumable ? <button type="button" onClick={onRetryResumable} className="mt-2 rounded-lg border border-amber-300 bg-white px-3 py-2 font-semibold">Reintentar consulta</button> : null}
+        </div>
+      ) : resumableSessions.length === 0 ? (
+        <div className="mt-5 rounded-xl border border-dashed border-[#cdd5e7] bg-[#fbfcff] p-5">
+          <p className="font-semibold text-[#182246]">No hay preparaciones pendientes</p>
+          <p className="mt-1 text-sm text-[#6c7695]">Cuando inicies una conversación o un nuevo espacio desde aquí, podrás regresar y continuar sin perder su contexto.</p>
+        </div>
+      ) : (
+        <div className="mt-5 grid gap-3 md:grid-cols-2">
+          {resumableSessions.map((session) => (
+            <article key={session.sessionId} className="rounded-xl border border-[#decfff] bg-[#f9f6ff] p-4" data-testid="portfolio-resumable-session">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="rounded-md bg-[#e8ddff] px-2 py-1 text-[11px] font-bold text-[#493297]">En progreso</span>
+                <span className="text-xs text-[#6c7695]">{resumablePhaseName(session.bootstrapPhase)}</span>
+              </div>
+              <h3 className="mt-3 text-base font-semibold text-[#182246]">{session.title}</h3>
+              <p className="mt-2 text-xs text-[#6c7695]">
+                {session.source === 'entry_continuation' ? 'Continuación desde entrada anterior' : 'Iniciado desde Portfolio Lead'}
+                {' · '}Sesión creada {resumeDateLabel(session.createdAt)}
+              </p>
+              <p className="mt-1 text-xs text-[#6c7695]">Actualización de la sesión: {resumeDateLabel(session.updatedAt)}. Los datos se revisarán antes de confirmar.</p>
+              <button type="button" onClick={() => onResumeSession?.(session.sessionId)} disabled={!onResumeSession}
+                className="mt-4 inline-flex items-center gap-2 rounded-lg bg-[#6446c0] px-4 py-2.5 text-sm font-bold text-white disabled:opacity-50">
+                Retomar este espacio <ArrowRight aria-hidden="true" size={16}/>
+              </button>
+            </article>
+          ))}
+        </div>
+      )}
+    </section>
 
     <section className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)]" aria-label="Objetivo y señal">
       <article className="rounded-2xl bg-slate-950 p-5 text-white shadow-sm md:p-7">
@@ -221,6 +289,25 @@ export function PortfolioOverviewHome({
       </section> : null}
     </section>
   </div>;
+}
+
+function resumablePhaseName(phase: string): string {
+  const names: Record<string, string> = {
+    B0_CONTINUE: 'Punto de partida',
+    B1_ANCHOR: 'Contexto y objetivo',
+    B2_WORK_INTAKE: 'Incorporar trabajo',
+    B3_PROVISIONAL_STRUCTURING: 'Análisis en preparación',
+    B4_MATERIAL_REVIEW: 'Revisión de propuestas',
+    B5_FIRST_READING: 'Primera lectura',
+  };
+  return names[phase] ?? 'Preparación en curso';
+}
+
+function resumeDateLabel(iso: string): string {
+  const date = new Date(iso);
+  return Number.isNaN(date.getTime())
+    ? 'sin fecha verificable'
+    : date.toLocaleDateString('es-ES', { day: '2-digit', month: 'short', year: 'numeric' });
 }
 
 function buildOperationalRows(model: PortfolioHomeReadModel, initiatives: Array<PortfolioHomeReadModel['strategicUnits'][number]['challenges'][number]['initiatives'][number] | PortfolioHomeReadModel['independentInitiatives'][number]>): OperationalRow[] {
