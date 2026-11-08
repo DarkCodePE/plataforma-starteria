@@ -61,6 +61,17 @@ function explicitNoPilotQuote(input: string): string | null {
   return clause.length <= 1_000 ? clause : null;
 }
 
+function representsNoPriorPilot(value: unknown): boolean {
+  if (value === false) return true;
+  if (typeof value === 'string') {
+    const normalized = value.trim().toLowerCase();
+    return ['none', 'no_pilot', 'not_tested', 'no pilot'].includes(normalized)
+      || explicitNoPilotQuote(value) === value;
+  }
+  return Boolean(value && typeof value === 'object'
+    && (value as { kind?: unknown }).kind === 'none');
+}
+
 function proposal(
   sessionId: string,
   value: string,
@@ -118,6 +129,9 @@ export function buildContextProjection(input: {
   // Distinct or conflicting readings should be clarified, never silently chosen.
   if (relevant.length !== 1) return output([]);
   const fact = relevant[0];
+  // A grounded quote is necessary but not sufficient if the model value
+  // contradicts the user's explicit negative statement.
+  if (!representsNoPriorPilot(fact.value)) return output([]);
   const evidence = fact.evidenceRefs.filter((ref) => ref.kind === 'user_input' && typeof ref.quote === 'string');
   if (evidence.length !== 1) return output([]);
   const quote = evidence[0].quote!;

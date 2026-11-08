@@ -96,6 +96,20 @@ describe('KAN-247 governed E1 context proposal projection', () => {
       { ...base, turnId: 'turn-a', value: 'yes', evidenceRefs: [{ kind: 'user_input', quote: 'Nunca hemos probado un piloto.' }] }])).proposals).toEqual([]);
   });
 
+  it('rejects a semantically contradictory model value even if its quote is grounded', () => {
+    expect(buildContextProjection({
+      review: review('Queremos ampliar servicios.'),
+      semantic: {
+        state: { factLedger: [{
+          conceptId: 'pilot_experience', value: true, provenance: 'user_declared', status: 'observed',
+          turnId: 'turn-a', semanticVersion: 1,
+          evidenceRefs: [{ kind: 'user_input', quote: 'Nunca hemos probado una versión previa.' }],
+        }] },
+        turns: [{ id: 'turn-a', inputText: 'Nunca hemos probado una versión previa.' }],
+      },
+    }).proposals).toEqual([]);
+  });
+
   it('does not revive a pilot fact after an explicit semantic unknown or not-applicable disposition', () => {
     const fact = {
       conceptId: 'pilot_experience', value: 'none', provenance: 'user_declared',
