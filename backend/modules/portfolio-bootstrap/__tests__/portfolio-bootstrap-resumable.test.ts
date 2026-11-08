@@ -13,6 +13,7 @@ describe('KAN-250 — resumable Bootstrap for Overview', () => {
       createdAt: new Date('2026-11-07T10:00:00.000Z'),
       updatedAt: new Date('2026-11-08T11:00:00.000Z'),
       anchor: { outcomeStatement: 'Resultado de negocio por definir', contextSummary: 'Necesitamos mejorar el servicio.' },
+      contextReview: { version: 2, updatedAt: new Date('2026-11-08T12:00:00.000Z'), draftJson: { situation: { value: 'Una cafetería quiere mejorar los pedidos.' } } },
     }]);
     const prisma = { user: { findUnique }, portfolioBootstrapSession: { findMany } };
     const result = await new PortfolioBootstrapService(prisma as any).listResumable({
@@ -20,9 +21,10 @@ describe('KAN-250 — resumable Bootstrap for Overview', () => {
     });
 
     expect(result).toEqual([{
-      sessionId: 'bs-ongoing', title: 'Necesitamos mejorar el servicio.',
+      sessionId: 'bs-ongoing', title: 'Una cafetería quiere mejorar los pedidos.',
       bootstrapPhase: 'B1_ANCHOR', status: 'awaiting_anchor_review', source: 'direct',
       createdAt: '2026-11-07T10:00:00.000Z', updatedAt: '2026-11-08T11:00:00.000Z',
+      contextVersion: 2, contextUpdatedAt: '2026-11-08T12:00:00.000Z',
     }]);
     expect(findMany).toHaveBeenCalledWith(expect.objectContaining({
       where: {
