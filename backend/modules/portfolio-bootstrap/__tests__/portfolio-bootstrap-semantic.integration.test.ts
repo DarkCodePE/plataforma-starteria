@@ -6,6 +6,7 @@ import { permissionsForRoles } from '../../../shared/authz/permissions';
 import { errorHandler } from '../../../shared/errors/error-handler';
 import { buildPortfolioBootstrapRouter } from '../portfolio-bootstrap.router';
 import { PortfolioBootstrapSemanticService } from '../portfolio-bootstrap-semantic.service';
+import { companyEntryFingerprint } from '../portfolio-bootstrap-context.service';
 
 const describeIntegration = process.env.PORTFOLIO_BOOTSTRAP_DB_INTEGRATION === '1' ? describe : describe.skip;
 const prisma = new PrismaClient();
@@ -109,6 +110,75 @@ describeIntegration('KAN-244 E1 semantic persistence', () => {
     });
     expect(await (prisma as any).portfolioBootstrapSemanticTurn.count()).toBe(1);
   });
+
+  it('retries a failed logical turn under the same identity without duplicating it', async () => {
+    await seed();
+    const service = new PortfolioBootstrapSemanticService(prisma);
+    const failure = command({
+      idempotencyKey: 'logical-turn', status: 'failed_retryable', facts: [], hypotheses: [], answeredGaps: [],
+      emittedQuestion: null, convergence: { status: 'provider_retryable_failure', reason: 'timeout' },
+      error: { code: 'provider_timeout', retryable: true },
+    });
+    const failed = await service.appendTurn(failure);
+    const recovered = await service.appendTurn(command({
+      idempotencyKey: 'logical-turn', expectedVersion: failed.state.version,
+      facts: [fact('pilot_experience', 'nunca hemos probado pedidos a oficinas')],
+      answeredGaps: ['pilot_experience'], error: null,
+    }));
+    expect(recovered.turn.id).toBe(failed.turn.id);
+    expect(recovered.turn).toMatchObject({ status: 'completed', attempt: 2 });
+    expect(recovered.state.version).toBe(2);
+    expect(await (prisma as any).portfolioBootstrapSemanticTurn.count()).toBe(1);
+    expect((await (prisma as any).portfolioBootstrapSemanticTurn.findUnique({ where: { id: recovered.turn.id } })).attemptsJson)
+      .toHaveLength(1);
+    expect(await service.appendTurn(command({
+      idempotencyKey: 'logical-turn', expectedVersion: failed.state.version,
+      facts: [fact('pilot_experience', 'nunca hemos probado pedidos a oficinas')],
+      answeredGaps: ['pilot_experience'], error: null,
+    }))).toEqual(recovered);
+  });
+
+  it('validates historical ContextReview and tenant-bound Company evidence before persistence', async () => {
+    await seed();
+    const service = new PortfolioBootstrapSemanticService(prisma);
+    await prisma.portfolioBootstrapContextReviewVersion.create({ data: {
+      reviewId: (await prisma.portfolioBootstrapContextReview.findUniqueOrThrow({ where: { bootstrapSessionId: sessionId } })).id,
+      version: 1, action: 'confirmed', actorUserId: userId,
+      snapshotJson: { context: { situation: { value: 'Cafetería local', provenance: 'user_declared' } }, status: 'confirmed' },
+    } });
+    const contextFact = {
+      conceptId: 'situation', value: 'Cafetería local', provenance: 'source_extracted',
+      evidenceRefs: [{ kind: 'context_review_field', reviewVersion: 1, fieldPath: 'situation.value' }],
+      confidence: 1, status: 'observed',
+    };
+    expect((await service.appendTurn(command({ facts: [contextFact], answeredGaps: ['situation'] }))).state.version).toBe(1);
+
+    await expect(service.appendTurn(command({
+      idempotencyKey: 'stale-context-ref', expectedVersion: 1,
+      facts: [{ ...contextFact, evidenceRefs: [{ kind: 'context_review_field', reviewVersion: 999, fieldPath: 'situation.value' }] }],
+    }))).rejects.toMatchObject({ statusCode: 422, code: 'PORTFOLIO_SEMANTIC_EVIDENCE_INVALID' });
+
+    const foreignOrg = await prisma.organization.create({ data: { id: 'kan244-foreign-org', name: 'Foreign', slug: 'kan244-foreign-org' } });
+    const foreignCompany = await prisma.company.create({ data: {
+      id: 'kan244-foreign-company', name: 'Foreign company', slug: 'kan244-foreign-company', sector: 'Other', country: 'ES',
+      scope: 'ORGANIZATION', organizationId: foreignOrg.id,
+    } });
+    const entry = {
+      dimension: 'IDENTITY', fieldKey: 'purpose', value: { text: 'Foreign' }, sourceType: 'USER_INPUT', sourceId: null,
+      confidence: 1, verificationStatus: 'USER_CONFIRMED', updatedAt: '2026-11-08T00:00:00.000Z',
+    };
+    const version = await prisma.companyContextVersion.create({ data: {
+      id: 'kan244-foreign-version', companyId: foreignCompany.id, versionNumber: 1, status: 'PUBLISHED',
+      snapshotJson: { entries: [entry] }, createdByUserId: otherUserId, publishedByUserId: otherUserId, publishedAt: new Date(),
+    } });
+    await expect(service.appendTurn(command({
+      idempotencyKey: 'foreign-company-ref', expectedVersion: 1,
+      facts: [{
+        conceptId: 'purpose', value: 'Foreign', provenance: 'source_extracted', confidence: 1, status: 'observed',
+        evidenceRefs: [{ kind: 'company_context_entry', companyId: foreignCompany.id, versionId: version.id, entryFingerprint: companyEntryFingerprint(entry) }],
+      }],
+    }))).rejects.toMatchObject({ statusCode: 404, code: 'COMPANY_NOT_FOUND' });
+  });
 });
 
 function command(overrides: Record<string, unknown> = {}) {
@@ -181,4 +251,5 @@ async function cleanup() {
   await prisma.portfolioBootstrapSession.deleteMany({ where: { id: sessionId } });
   await prisma.user.deleteMany({ where: { id: { in: [userId, otherUserId] } } });
   await prisma.organization.deleteMany({ where: { id: organizationId } });
+  await prisma.organization.deleteMany({ where: { id: 'kan244-foreign-org' } });
 }

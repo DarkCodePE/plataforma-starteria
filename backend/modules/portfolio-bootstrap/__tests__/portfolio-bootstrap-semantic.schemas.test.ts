@@ -76,6 +76,25 @@ describe('Portfolio Bootstrap E1 semantic contracts', () => {
     expect(() => portfolioBootstrapSemanticTurnInputSchema.parse({ ...failed, facts: validTurn().facts })).toThrow();
   });
 
+  it('correlates provenance with evidence and constrains terminal failures to a safety stop', () => {
+    const incompatible = validTurn() as any;
+    incompatible.facts[0] = {
+      ...incompatible.facts[0],
+      provenance: 'source_extracted',
+      evidenceRefs: [{ kind: 'user_input', quote: 'nunca hemos probado pedidos a oficinas' }],
+    };
+    expect(() => portfolioBootstrapSemanticTurnInputSchema.parse(incompatible)).toThrow(/procedencia/i);
+
+    const terminal = {
+      ...validTurn(), status: 'failed_terminal' as const,
+      facts: [], hypotheses: [], answeredGaps: [], emittedQuestion: null,
+      convergence: { status: 'ready_for_human_review' as const, reason: 'incorrect' },
+      questionBudget: { limit: null, used: 0 },
+      error: { code: 'unsafe_output', retryable: false },
+    };
+    expect(() => portfolioBootstrapSemanticTurnInputSchema.parse(terminal)).toThrow(/terminal/i);
+  });
+
   it('keeps the semantic runtime feature flag fail-closed by default', () => {
     expect(semanticE1Enabled({})).toBe(false);
     expect(semanticE1Enabled({ SEMANTIC_E1_ENABLED: 'false' })).toBe(false);

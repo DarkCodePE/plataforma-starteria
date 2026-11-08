@@ -84,6 +84,46 @@ describe('Portfolio Bootstrap E1 semantic projection', () => {
       questionBudget: { limit: null, used: 0 },
     }, { turnId: 'turn-invalid', semanticVersion: 1 })).toThrowError(/desconocido/i);
   });
+
+  it('retracts a previously answered gap when the user later declares it unknown', () => {
+    const current = { ...emptySemanticStateProjection(), answeredGaps: ['formal_area'] };
+    const next = applySemanticTurnProjection(current, {
+      status: 'completed', facts: [], hypotheses: [], dispositions: [{
+        conceptId: 'formal_area', disposition: 'unknown', provenance: 'user_declared',
+        evidenceRefs: [{ kind: 'user_input', quote: 'En realidad no lo sé' }],
+      }], answeredGaps: [], answeredQuestionId: null, emittedQuestion: null,
+      convergence: { status: 'ready_for_human_review', reason: 'Se explicita la incertidumbre.' },
+      questionBudget: { limit: null, used: 0 },
+    }, { turnId: 'turn-correction', semanticVersion: 2 });
+    expect(next.answeredGaps).toEqual([]);
+  });
+
+  it('rejects historical semantic repeats, unresolved question replacement and client budget tampering', () => {
+    const historical = { ...question('situation'), id: 'question-old', turnId: 'turn-old', semanticVersion: 1 };
+    const current = {
+      ...emptySemanticStateProjection(),
+      questionHistory: [historical],
+      activeQuestion: question('stakeholder'),
+      questionBudget: { limit: 3, used: 2 },
+    };
+    const base = {
+      status: 'completed' as const, facts: [], hypotheses: [], dispositions: [], answeredGaps: [],
+      answeredQuestionId: current.activeQuestion.id,
+      convergence: { status: 'question_required' as const, reason: 'Falta una cuestión.' },
+      questionBudget: { limit: 3, used: 3 },
+    };
+    expect(() => applySemanticTurnProjection(current, {
+      ...base, emittedQuestion: { ...question('situation'), id: 'question-new-id' },
+    }, { turnId: 'turn-repeat', semanticVersion: 2 })).toThrowError(/presentada|repite/i);
+
+    expect(() => applySemanticTurnProjection(current, {
+      ...base, answeredQuestionId: null, emittedQuestion: question('area'),
+    }, { turnId: 'turn-replace', semanticVersion: 2 })).toThrowError(/activa/i);
+
+    expect(() => applySemanticTurnProjection(current, {
+      ...base, emittedQuestion: question('area'), questionBudget: { limit: 3, used: 2 },
+    }, { turnId: 'turn-budget', semanticVersion: 2 })).toThrowError(/presupuesto/i);
+  });
 });
 
 function fact(conceptId: string, value: string) {
