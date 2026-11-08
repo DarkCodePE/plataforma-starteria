@@ -236,7 +236,7 @@ export function PortfolioBootstrapContextConversation({
     () => guidedContextQuestion(draft, { hasPendingCorrection: review?.hasPendingCorrection }),
     [draft, review?.hasPendingCorrection],
   );
-  const projectedPilot = projection?.reviewVersion === review?.version
+  const projectedPilot = projection && review && projection.reviewVersion === review.version
     ? projection.proposals.find((item) => item.targetField === 'pilotExperience') ?? null
     : null;
   const proposalToReview = projectedPilot?.id === rejectedProposalId ? null : projectedPilot;

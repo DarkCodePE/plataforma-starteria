@@ -67,6 +67,22 @@ describe('KAN-247 E1 review of grounded provisional proposals', () => {
     });
   });
 
+  it('renders the initial E1 conversation safely before any review or projection exists', () => {
+    render(<PortfolioBootstrapContextConversation
+      operationScope="new-empty-session"
+      review={null}
+      status="ready"
+      error={null}
+      onSaveDraft={vi.fn()}
+      onConfirm={vi.fn()}
+      onRetry={vi.fn()}
+      onContinue={vi.fn()}
+      enableContextProjection
+    />);
+    expect(screen.getByText('Cuéntame qué está ocurriendo')).toBeInTheDocument();
+    expect(fetchProposals).not.toHaveBeenCalled();
+  });
+
   it('does not re-ask the cafe pilot after showing its sourced quote; saves only on explicit acceptance', async () => {
     const user = userEvent.setup();
     const save = vi.fn().mockResolvedValue(undefined);
