@@ -113,6 +113,16 @@ export const portfolioBootstrapSemanticTurnInputSchema = z.object({
 }).strict().superRefine((turn, context) => {
   const normalizedInput = normalizeEvidence(turn.inputText);
   for (const [factIndex, fact] of turn.facts.entries()) {
+    const incompatibleEvidence = fact.evidenceRefs.findIndex((ref) => fact.provenance === 'user_declared'
+      ? ref.kind !== 'user_input'
+      : ref.kind === 'user_input');
+    if (incompatibleEvidence >= 0) {
+      context.addIssue({
+        code: 'custom',
+        path: ['facts', factIndex, 'evidenceRefs', incompatibleEvidence],
+        message: 'La procedencia del hecho no coincide con el tipo de evidencia.',
+      });
+    }
     for (const [refIndex, ref] of fact.evidenceRefs.entries()) {
       if (ref.kind === 'user_input' && !normalizedInput.includes(normalizeEvidence(ref.quote))) {
         context.addIssue({
@@ -134,8 +144,14 @@ export const portfolioBootstrapSemanticTurnInputSchema = z.object({
   if (turn.status === 'failed_terminal' && (!turn.error || turn.error.retryable)) {
     context.addIssue({ code: 'custom', message: 'El fallo terminal requiere un error no retryable.' });
   }
+  if (turn.status === 'failed_terminal' && turn.convergence.status !== 'safety_stop') {
+    context.addIssue({ code: 'custom', message: 'El fallo terminal sólo puede converger en safety_stop.' });
+  }
   if (turn.status === 'completed' && turn.error) {
     context.addIssue({ code: 'custom', path: ['error'], message: 'Un turno completado no contiene error.' });
+  }
+  if (turn.status === 'completed' && ['provider_retryable_failure', 'safety_stop'].includes(turn.convergence.status)) {
+    context.addIssue({ code: 'custom', message: 'Un turno completado no puede declarar convergencia de fallo.' });
   }
   if (turn.emittedQuestion && turn.convergence.status !== 'question_required') {
     context.addIssue({ code: 'custom', message: 'Sólo question_required puede emitir una pregunta.' });

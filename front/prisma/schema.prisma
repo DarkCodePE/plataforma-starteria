@@ -3428,10 +3428,13 @@ model PortfolioBootstrapSemanticTurn {
   totalTokens         Int
   retryCount          Int                                  @default(0)
   fallbackUsed        Boolean                              @default(false)
+  attempt             Int                                  @default(1)
+  attemptsJson        Json                                 @default("[]")
   idempotencyKeyHash  String
   payloadHash         String
   responseJson        Json
   createdAt           DateTime                             @default(now())
+  updatedAt           DateTime                             @updatedAt
 
   semanticState PortfolioBootstrapSemanticState @relation(fields: [semanticStateId], references: [id], onDelete: Cascade)
   organization  Organization?                   @relation("PortfolioBootstrapSemanticTurnOrganization", fields: [organizationId], references: [id], onDelete: Restrict)

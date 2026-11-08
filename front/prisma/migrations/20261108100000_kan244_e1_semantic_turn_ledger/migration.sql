@@ -51,10 +51,13 @@ CREATE TABLE "PortfolioBootstrapSemanticTurn" (
   "totalTokens" INTEGER NOT NULL,
   "retryCount" INTEGER NOT NULL DEFAULT 0,
   "fallbackUsed" BOOLEAN NOT NULL DEFAULT false,
+  "attempt" INTEGER NOT NULL DEFAULT 1,
+  "attemptsJson" JSONB NOT NULL DEFAULT '[]',
   "idempotencyKeyHash" TEXT NOT NULL,
   "payloadHash" TEXT NOT NULL,
   "responseJson" JSONB NOT NULL,
   "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  "updatedAt" TIMESTAMP(3) NOT NULL,
 
   CONSTRAINT "PortfolioBootstrapSemanticTurn_pkey" PRIMARY KEY ("id")
 );

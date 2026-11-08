@@ -42,7 +42,9 @@ describeIntegration('KAN-244 E1 semantic persistence', () => {
   it('resolves multiple cross-field gaps, retires one question and converges on the next version', async () => {
     await seed();
     const service = new PortfolioBootstrapSemanticService(prisma);
-    const first = await service.appendTurn(command({ emittedQuestion: question('situation') }));
+    const first = await service.appendTurn(command({
+      emittedQuestion: question('situation'), questionBudget: { limit: 3, used: 1 },
+    }));
     const second = await service.appendTurn(command({
       expectedVersion: first.state.version, idempotencyKey: 'turn-2',
       inputText: 'Somos tres personas, no tenemos departamentos y nunca hicimos un piloto.',
@@ -120,22 +122,22 @@ describeIntegration('KAN-244 E1 semantic persistence', () => {
       error: { code: 'provider_timeout', retryable: true },
     });
     const failed = await service.appendTurn(failure);
-    const recovered = await service.appendTurn(command({
+    const retry = command({
       idempotencyKey: 'logical-turn', expectedVersion: failed.state.version,
       facts: [fact('pilot_experience', 'nunca hemos probado pedidos a oficinas')],
       answeredGaps: ['pilot_experience'], error: null,
-    }));
+    });
+    const [recovered, concurrentReplay] = await Promise.all([
+      service.appendTurn(retry), service.appendTurn(retry),
+    ]);
+    expect(concurrentReplay).toEqual(recovered);
     expect(recovered.turn.id).toBe(failed.turn.id);
     expect(recovered.turn).toMatchObject({ status: 'completed', attempt: 2 });
     expect(recovered.state.version).toBe(2);
     expect(await (prisma as any).portfolioBootstrapSemanticTurn.count()).toBe(1);
     expect((await (prisma as any).portfolioBootstrapSemanticTurn.findUnique({ where: { id: recovered.turn.id } })).attemptsJson)
       .toHaveLength(1);
-    expect(await service.appendTurn(command({
-      idempotencyKey: 'logical-turn', expectedVersion: failed.state.version,
-      facts: [fact('pilot_experience', 'nunca hemos probado pedidos a oficinas')],
-      answeredGaps: ['pilot_experience'], error: null,
-    }))).toEqual(recovered);
+    expect(await service.appendTurn(retry)).toEqual(recovered);
   });
 
   it('validates historical ContextReview and tenant-bound Company evidence before persistence', async () => {
@@ -192,7 +194,7 @@ function command(overrides: Record<string, unknown> = {}) {
     convergence: emitsQuestion
       ? { status: 'question_required', reason: 'Existe un gap material.' }
       : { status: 'ready_for_human_review', reason: 'Suficiente para revisar.' },
-    questionBudget: { limit: null, used: 0 }, error: null,
+    questionBudget: { limit: null, used: emitsQuestion ? 1 : 0 }, error: null,
     execution: { provider: 'test-double', model: 'fixture', durationMs: 10, inputTokens: 5, outputTokens: 5, totalTokens: 10, retryCount: 0, fallbackUsed: false },
     ...overrides,
   } as any;
@@ -249,6 +251,8 @@ async function seed() {
 async function cleanup() {
   await prisma.auditLog.deleteMany({ where: { resource: { in: ['PortfolioBootstrapSemanticState', 'PortfolioBootstrapSemanticTurn'] } } });
   await prisma.portfolioBootstrapSession.deleteMany({ where: { id: sessionId } });
+  await prisma.companyContextVersion.deleteMany({ where: { companyId: 'kan244-foreign-company' } });
+  await prisma.company.deleteMany({ where: { id: 'kan244-foreign-company' } });
   await prisma.user.deleteMany({ where: { id: { in: [userId, otherUserId] } } });
   await prisma.organization.deleteMany({ where: { id: organizationId } });
   await prisma.organization.deleteMany({ where: { id: 'kan244-foreign-org' } });
