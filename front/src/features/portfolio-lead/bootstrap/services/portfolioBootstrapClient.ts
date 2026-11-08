@@ -381,6 +381,28 @@ export async function createOrReusePortfolioBootstrapSession(
   }
 }
 
+export type PortfolioResumableSession = {
+  sessionId: string;
+  title: string;
+  bootstrapPhase: string;
+  status: string;
+  source: 'direct' | 'entry_continuation';
+  createdAt: string;
+  updatedAt: string;
+};
+
+/** Read-only, owner-scoped overview. Never provisions a Bootstrap session. */
+export async function getResumablePortfolioBootstrapSessions(): Promise<PortfolioResumableSession[]> {
+  try {
+    const { data } = await api.get<ApiResponse<PortfolioResumableSession[]>>(
+      '/portfolio-bootstrap/sessions/resumable',
+    );
+    return data.data;
+  } catch (err) {
+    throw new PortfolioBootstrapClientError(parseApiError(err));
+  }
+}
+
 /** Opens the existing provisional bootstrap workflow from normal Portfolio Lead entry. */
 export async function createOrReuseDirectPortfolioBootstrapSession(): Promise<PortfolioBootstrapResponse> {
   try {
