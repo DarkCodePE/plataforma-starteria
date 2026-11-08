@@ -1,13 +1,61 @@
 # KAN-242 FASE A — Auditoría y contrato propuesto del loop semántico E1
 
-**Estado:** `AUDIT_COMPLETE / CONTRACT_PROPOSED / IMPLEMENTATION_BLOCKED_PENDING_SCOPE`
+**Estado:** `PHASE_A_COMPLETE / B_C_SCOPE_AUTHORIZED / B0_RECONCILED`
 
 **Baseline auditada:** `main@afe81709fbb057d7d66d95581c995698985bf340`
 
 **Fecha:** 2026-11-08
 
-**Alcance:** auditoría y diseño. No autoriza cambios de frontend, backend, API, Prisma,
-Core, prompts, proveedor o runtime IA.
+**Alcance original:** auditoría y diseño. La autorización posterior de Fases B/C no cambia
+la evidencia de Fase A; su perímetro técnico reconciliado se registra a continuación.
+
+## 0. Reconciliación KAN-243 posterior a Fase A
+
+KAN-242#10748 autoriza expresamente Fases B/C y KAN-242#10781 aclara que el estado
+`IMPLEMENTATION_NOT_AUTHORIZED` de la fotografía Fase A fue superseded. La autorización queda
+condicionada a guardrail V2 positivo, tests-first, feature flag OFF, consumo live deshabilitado y
+revisión independiente. No autoriza merge, deploy, infraestructura, secretos ni compras IA.
+
+Decisiones cerradas para B1:
+
+- semantic owner exclusivo: `Portfolio Bootstrap E1`, separado de Portfolio Entry;
+- `PortfolioBootstrapContextReview` continúa como snapshot canónico confirmado;
+- persistencia aditiva de un agregado semántico por sesión y turnos/eventos versionados;
+- facts requieren evidence refs y provenance; hipótesis permanecen separadas;
+- `answered_gaps` resuelve conceptos cross-field y una pregunta puede resolver varios gaps;
+- una única pregunta activa, estado de convergencia y presupuesto configurable, sin fijar cifras
+  nuevas por código;
+- CAS, idempotencia, owner/tenant y reentrada son server-authoritative;
+- errores retryable conservan el turno original y no producen síntesis ni avance E2;
+- métricas duration/tokens/retry/fallback se persisten, sin ejecutar inferencia live en B1;
+- `SEMANTIC_E1_ENABLED=false` por defecto y fail-closed.
+
+Contrato técnico B1:
+
+```text
+PortfolioBootstrapSemanticState (1 por BootstrapSession)
+  version + factLedger + hypotheses + answeredGaps
+  activeQuestion + convergence + questionBudget
+
+PortfolioBootstrapSemanticTurn (N por BootstrapSession)
+  semanticVersion + actor + organization + input
+  facts + hypotheses + answeredGaps + question state + convergence
+  status/error + idempotency request hash
+  duration + input/output/total tokens + retry/fallback/provider/model
+```
+
+La escritura queda en un servicio backend interno para que B2 sea el único productor de output
+semántico validado. B1 expone lectura owner-scoped; no acepta facts arbitrarios desde el navegador.
+El endpoint de inferencia y el provider se implementan únicamente en KAN-245/B2.
+
+Reconciliación de autoridad:
+
+- Core v0.2 INV-03/04/05 se preserva: IA propone, estado oficial estructurado/versionado y claims
+  con provenance/evidence;
+- ADR-002 continúa limitado a Portfolio Entry; sólo se reutilizan patrones técnicos;
+- no cambia Core, Steps, Handoff, entidades canónicas ni autoridad humana;
+- la extensión Prisma es expand-only, nullable/JSON donde corresponde, sin backfill ni modificación
+  de filas legacy.
 
 ## 1. Resultado ejecutivo
 

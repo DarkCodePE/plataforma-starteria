@@ -511,28 +511,30 @@ de confirmación ya autorizada; revisar E1 no altera el avance persistido ni hab
 ```text
 slice_id: PORTFOLIO_LEAD_E1_SEMANTIC_LOOP_PHASE_A
 technical_task: KAN-242
-phase: A — audit and functional/technical contract only
+phase: A complete; B0 reconciled; B1 implementation authorized
 baseline: main@afe81709fbb057d7d66d95581c995698985bf340
 depends_on: PORTFOLIO_LEAD_G1_ADAPTIVE_CONTEXT_BRIDGE; PORTFOLIO_LEAD_G1_ADAPTIVE_CONTEXT_UX_REMEDIATION
 authority: KAN-242 FASE A; docs/STARTERIA_AUTHORITY.md; factual Core v0.2; ADR-002 read as Portfolio Entry-only evidence
-logic_status: PROPOSED_FOR_HUMAN_CONFIRMATION
-implementation_status: NOT_AUTHORIZED
+logic_status: ACTIVE_V2_SLICE (KAN-242#10748/#10781)
+implementation_status: B1_AUTHORIZED_NOT_IMPLEMENTED
 visual_status: NOT_APPLICABLE_PHASE_A
 evidence_status: AUDIT_COMPLETE_CONTRACT_PROPOSED
-semantic_owner: UNRESOLVED — Bootstrap E1 retains context ownership; reuse of Portfolio Entry infrastructure requires explicit bounded-context adaptation
+semantic_owner: Portfolio Bootstrap E1 exclusively; Portfolio Entry remains a separate bounded context
 current_behavior: deterministic four-field Bootstrap conversation with regex copy adaptation, persisted E1 review/snapshot, CAS/idempotency and human confirmation
 target_behavior_proposed: semantic narrative interpretation with evidence-bound facts, separate hypotheses, cross-field resolutions, one recap+reason+question, durable history, convergence and interpretative synthesis before human E1→E2 confirmation
 implemented_reuse_candidate: Portfolio Entry structured adapter, prompt-manifest pattern, question normalization, previous_questions/answered_gaps concepts, safety and execution-observability patterns
 authority_boundary: ADR-002 and Portfolio Entry skills/prompts do not authorize Bootstrap runtime; skills v0.1 remain proposed and prompt v0.2 execution is confined to Entry
-material_dependency: additive backend/API contract and persistence decision; likely Prisma if durable semantic turn history/model execution linkage is required
+material_dependency: RESOLVED_FOR_B1 — additive semantic state/turn persistence, internal write service and owner-scoped read API; ContextReview remains canonical snapshot
 provider_policy: reuse only already configured provider/fallback; no new key/provider/environment/purchase; deterministic fallback may not impersonate semantic inference
 cost_latency_status: UNKNOWN_BLOCKING_ROLLOUT — duration exists, but durable usage/retry/fallback accounting is incomplete; benchmark and budget approval required
-phase_a_allowed: STARTERIA_V2_MANIFEST.md; docs/implementation/portfolio-bootstrap-e1-semantic-loop-phase-a-v0.1.md; Jira KAN-242 audit/design record
-excluded: frontend/backend/API/Prisma/Core/prompts/provider/runtime changes; secrets; infrastructure; AI spend; implementation PR; merge; deploy
-stop_conditions: implementation before semantic owner, E1 budget, persistence, provider SLO/cost and backend/API/IA authority are approved; any Core/cardinality change without ADR
-guardrail: V2_CHANGE_GUARDRAIL_CHECK Proceed YES only for Phase A documentation and Jira; Proceed NO for product/runtime code
-next_gate: human confirmation of scope/dependencies followed by separately authorized contract/backend and frontend subtasks
+phase_b1_allowed: additive Prisma migration/models; Bootstrap E1 semantic schemas/service/read API; tests/unit/router/PostgreSQL; duration/token/retry/fallback persistence; configurable budget contract; feature flag OFF; docs/Jira/CI
+excluded: live inference; provider calls; prompts/planner/verifier runtime (KAN-245); frontend/chat/E2E UX (KAN-246); Portfolio Entry semantic authority; Core/Steps/Handoff; secrets; infrastructure; AI spend; merge; deploy
+stop_conditions: any public API accepting untrusted semantic facts; ContextReview replacement; cross-tenant read/write; live call; non-additive migration; Core/cardinality change
+guardrail: KAN-243 must emit Proceed YES for the exact B1 perimeter before tests/product code; B2/C require their own scoped execution
+next_gate: KAN-244 tests-first, disposable PostgreSQL, regression, independent review and CI/PR
 audit_artifact: docs/implementation/portfolio-bootstrap-e1-semantic-loop-phase-a-v0.1.md
+authorization: KAN-242#10748 + clarification #10781; no repeat functional approval required
+feature_flag: SEMANTIC_E1_ENABLED=false by default; B1 performs no live inference
 ```
 
 El audit diferencia la conversación Bootstrap implementada del runtime Portfolio Entry: la primera
