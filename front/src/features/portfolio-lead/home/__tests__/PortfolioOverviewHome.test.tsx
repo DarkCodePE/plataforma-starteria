@@ -49,6 +49,28 @@ describe('PortfolioOverviewHome', () => {
     expect(screen.getAllByText('Sin datos').length).toBeGreaterThanOrEqual(2);
   });
 
+  it('KAN-250 shows a resumable context card and only resumes when the user clicks', () => {
+    const resume = vi.fn();
+    render(<PortfolioOverviewHome
+      model={model as any} onOpenCopilot={vi.fn()} onOpenAdditionalFront={vi.fn()}
+      resumableStatus="ready"
+      resumableSessions={[{
+        sessionId: 'saved-1', title: 'Una cafetería quiere ampliar sus pedidos.',
+        bootstrapPhase: 'B1_ANCHOR', status: 'awaiting_anchor_review',
+        source: 'direct', createdAt: '2026-11-07T10:00:00.000Z',
+        updatedAt: '2026-11-08T10:00:00.000Z',
+        contextVersion: 3, contextUpdatedAt: '2026-11-08T12:00:00.000Z',
+      }]}
+      onResumeSession={resume}
+    />);
+    expect(screen.getByRole('heading', { name: 'Preparaciones y conversaciones' })).toBeInTheDocument();
+    expect(screen.getByText('Una cafetería quiere ampliar sus pedidos.')).toBeInTheDocument();
+    expect(screen.getByText(/Borrador de contexto v3/i)).toBeInTheDocument();
+    expect(resume).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'Retomar este espacio' }));
+    expect(resume).toHaveBeenCalledExactlyOnceWith('saved-1');
+  });
+
   it('opens another contextual front from an explicit action', () => {
     const onOpenAdditionalFront = vi.fn();
     render(<PortfolioOverviewHome model={model as any} onOpenCopilot={vi.fn()} onOpenAdditionalFront={onOpenAdditionalFront} />);
