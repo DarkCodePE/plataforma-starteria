@@ -319,14 +319,25 @@ export class PortfolioBootstrapContextService {
     const reconcilable = code === 'P2002' || code === 'PORTFOLIO_CONTEXT_VERSION_CONFLICT'
       || isRetryableContextWriteConflict(error);
     if (!reconcilable) throw error;
-    return this.prisma.$transaction(async (tx) => {
-      const db = tx as any;
-      const session = await this.requireOwnedSession(db, input.sessionId, input.authenticatedUserId);
-      await this.authorize(db, session, input.authenticatedUserId, input.permissions, 'portfolio:write');
-      const replay = await this.replay(db, session.id, operation, input.idempotencyKey, payloadHash);
+    // A concurrent identical command can still be committing its receipt after our
+    // Serializable transaction loses the race. Re-read a bounded number of times
+    // before reporting a true CAS conflict; never create another review/version.
+    // replay() also rejects reusing the same key with a different payload.
+    const maxReceiptReads = 8;
+    for (let attempt = 0; attempt < maxReceiptReads; attempt += 1) {
+      const replay = await this.prisma.$transaction(async (tx) => {
+        const db = tx as any;
+        const session = await this.requireOwnedSession(db, input.sessionId, input.authenticatedUserId);
+        await this.authorize(db, session, input.authenticatedUserId, input.permissions, 'portfolio:write');
+        return this.replay(db, session.id, operation, input.idempotencyKey, payloadHash);
+      }, { isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted, timeout: 10_000 });
       if (replay) return replay;
-      throw this.versionConflict();
-    }, { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead, timeout: 10_000 });
+      if (attempt < maxReceiptReads - 1) {
+        // Avoid a hot polling loop when the winning transaction has not committed.
+        await new Promise((resolve) => setTimeout(resolve, Math.min(10 * 2 ** attempt, 160)));
+      }
+    }
+    throw this.versionConflict();
   }
 
   private async toDto(db: any, review: any, inspectDrift = true): Promise<ContextReviewDto> {
