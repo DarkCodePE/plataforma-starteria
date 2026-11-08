@@ -68,7 +68,8 @@ describe('PortfolioOverviewHome', () => {
     expect(screen.getByText(/Borrador de contexto v3/i)).toBeInTheDocument();
     expect(resume).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole('button', { name: 'Retomar este espacio' }));
-    expect(resume).toHaveBeenCalledExactlyOnceWith('saved-1');
+    expect(resume).toHaveBeenCalledTimes(1);
+    expect(resume).toHaveBeenCalledWith('saved-1');
   });
 
   it('opens another contextual front from an explicit action', () => {

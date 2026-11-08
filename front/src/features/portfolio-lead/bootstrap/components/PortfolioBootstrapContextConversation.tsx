@@ -366,7 +366,7 @@ export function PortfolioBootstrapContextConversation({
         <section aria-label="Origen del contexto guardado" data-testid="portfolio-context-source"
           className="rounded-xl border border-[#e4e7f0] bg-[#fbfcff] p-4">
           <div className="flex flex-wrap items-center gap-2">
-            <span className="rounded-md bg-[#f3eefc] px-2 py-1 text-xs font-bold text-[#493297]">Borrador recuperado</span>
+            <span className="rounded-md bg-[#f3eefc] px-2 py-1 text-xs font-bold text-[#493297]">{review.status === 'confirmed' ? 'Contexto confirmado' : 'Borrador recuperado'}</span>
             <span className="text-xs font-medium text-[#6c7695]">Versión {review.version}</span>
             {review.updatedAt && !Number.isNaN(Date.parse(review.updatedAt)) ? (
               <span className="text-xs text-[#6c7695]">Actualizado {new Date(review.updatedAt).toLocaleString('es-ES', { dateStyle: 'medium', timeStyle: 'short' })}</span>
