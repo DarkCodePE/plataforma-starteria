@@ -12,6 +12,14 @@ No debe leerse como runtime productivo certificado por defecto. La presencia de 
 
 La autoridad actual permite cambios frontend de producto solo cuando exista decision explicita y documentada de slice, con alcance acotado y sin modificar Core, AI, permisos, esquemas, rutas ni semantica de producto salvo autorizacion especifica. DS-05 y DS-06 son evidencia documental de pilotos frontend autorizados por slice.
 
+## KAN-247 — Estado E1 después de KAN-248 (2026-11-08)
+
+Baseline integrada: `main@2ab78569d5559f19cd1bbb1e861efe0cc532c890` (KAN-248 #271 fusionado, CI #42511467700 SUCCESS).
+KAN-247 (PR #272) permanece en rama de implementación, **no fusionado**. La proyección backend de una negación explícita y un fact semántico grounded ofrece candidata con cita histórica; la interfaz requiere aceptación humana para guardar el borrador y una segunda confirmación de ContextReview para desbloquear E2. Se han añadido pruebas unitarias, PostgreSQL, RTL y el cambio del E2E KAN-240 para exigir cero repreguntas. **Ejecución KAN-240 dirigida y revisión independiente todavía pendientes**; el CI inicial mostró un crash por `projection=null`, corregido con test de regresión en la rama.
+
+Trazabilidad del journey (implementado/API/browser/pending): `docs/implementation/STARTERIA_PORTFOLIO_E2E_TRACEABILITY_POST_KAN248_v0.1.md`.
+No considerar E5–E7 UI-only, Owner→Steps, Step4→Decision/benefits o delivery Fab certificados por el test híbrido KAN-240. Flag semántico OFF y Lab únicamente solicitud/contacto donde corresponda.
+
 ## Starteria V2 — baseline de reconciliación
 
 Starteria se encuentra actualmente en proceso explicito de consolidacion hacia V2.

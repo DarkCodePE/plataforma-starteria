@@ -14,6 +14,8 @@ export type PortfolioBootstrapContextFieldProvenance =
 export type PortfolioBootstrapContextSourceRef =
   | { kind: 'user_input' | 'decision_brief' }
   | { kind: 'copilot_inference' | 'copilot_suggestion'; reference?: string }
+  | { kind: 'context_narrative_quote'; reviewId: string; reviewVersion: number; fieldPath: 'situation'; quote: string }
+  | { kind: 'semantic_fact_quote'; turnId: string; semanticVersion: number; quote: string }
   | {
       kind: 'company_context_entry';
       dimension: string;
@@ -87,6 +89,20 @@ export function createEmptyPortfolioBootstrapContext(): PortfolioBootstrapContex
   };
 }
 
+export type PortfolioBootstrapContextProposal = {
+  id: string;
+  targetField: 'pilotExperience';
+  value: string;
+  status: 'UNREVIEWED';
+  sourceKind: 'persisted_user_narrative' | 'semantic_fact';
+  sourceRef: Extract<PortfolioBootstrapContextSourceRef, { kind: 'context_narrative_quote' | 'semantic_fact_quote' }>;
+};
+
+export type PortfolioBootstrapContextProjection = {
+  reviewVersion: number | null;
+  proposals: PortfolioBootstrapContextProposal[];
+};
+
 export class PortfolioBootstrapContextClientError extends Error {
   constructor(public readonly apiError: AuthError) {
     super(apiError.message);
@@ -118,6 +134,15 @@ export function getPortfolioBootstrapContext(sessionId: string): Promise<Portfol
     `/portfolio-bootstrap/sessions/${encodeURIComponent(sessionId)}/context`,
     { timeout: PORTFOLIO_CONTEXT_REQUEST_TIMEOUT_MS },
   ), 'Tiempo de espera agotado al cargar el contexto.');
+}
+
+export function getPortfolioBootstrapContextProposals(
+  sessionId: string,
+): Promise<PortfolioBootstrapContextProjection> {
+  return contextRequest(() => api.get<ApiResponse<PortfolioBootstrapContextProjection>>(
+    `/portfolio-bootstrap/sessions/${encodeURIComponent(sessionId)}/context/proposals`,
+    { timeout: PORTFOLIO_CONTEXT_REQUEST_TIMEOUT_MS },
+  ), 'Tiempo de espera agotado al revisar hechos ya declarados.');
 }
 
 export function savePortfolioBootstrapContextDraft(

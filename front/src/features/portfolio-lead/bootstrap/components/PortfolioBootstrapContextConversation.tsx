@@ -4,8 +4,10 @@ import type {
   PortfolioBootstrapContextField,
   PortfolioBootstrapContextPayload,
   PortfolioBootstrapContextReview,
+  PortfolioBootstrapContextProjection,
+  PortfolioBootstrapContextProposal,
 } from '../services/portfolioBootstrapContextClient';
-import { createEmptyPortfolioBootstrapContext } from '../services/portfolioBootstrapContextClient';
+import { createEmptyPortfolioBootstrapContext, getPortfolioBootstrapContextProposals } from '../services/portfolioBootstrapContextClient';
 import type { PortfolioBootstrapSemanticSnapshot } from '../services/portfolioBootstrapSemanticClient';
 import type { PortfolioBootstrapContextStatus } from '../state/usePortfolioBootstrapContext';
 import type { PortfolioBootstrapSemanticStatus } from '../state/usePortfolioBootstrapSemantic';
@@ -175,6 +177,7 @@ export function PortfolioBootstrapContextConversation({
   onRetry,
   onContinue,
   semantic,
+  enableContextProjection = false,
 }: {
   operationScope: string;
   review: PortfolioBootstrapContextReview | null;
@@ -185,6 +188,7 @@ export function PortfolioBootstrapContextConversation({
   onRetry: () => Promise<unknown>;
   onContinue: () => void;
   semantic?: PortfolioBootstrapSemanticController;
+  enableContextProjection?: boolean;
 }) {
   const persistedDraft = review?.draft ?? createEmptyPortfolioBootstrapContext();
   const [draft, setDraft] = useState<PortfolioBootstrapContextPayload>(persistedDraft);
@@ -196,6 +200,10 @@ export function PortfolioBootstrapContextConversation({
   const summaryRef = useRef<HTMLElement>(null);
   const disclosureRef = useRef<HTMLButtonElement>(null);
   const operationEpoch = useRef(0);
+  const [projection, setProjection] = useState<PortfolioBootstrapContextProjection | null>(null);
+  const [projectionError, setProjectionError] = useState(false);
+  const [rejectedProposalId, setRejectedProposalId] = useState<string | null>(null);
+
   useEffect(() => {
     setDraft(persistedDraft);
     setDirty(false);
@@ -210,10 +218,30 @@ export function PortfolioBootstrapContextConversation({
   useEffect(() => {
     if (summaryOpen) summaryRef.current?.focus();
   }, [summaryOpen]);
+  useEffect(() => {
+    let active = true;
+    setProjection(null);
+    setProjectionError(false);
+    setRejectedProposalId(null);
+    if (!enableContextProjection || !review?.draft.situation.value) return () => { active = false; };
+    void getPortfolioBootstrapContextProposals(operationScope).then((result) => {
+      if (active) setProjection(result);
+    }).catch(() => {
+      if (active) setProjectionError(true);
+    });
+    return () => { active = false; };
+  }, [operationScope, review?.id, review?.version, semantic?.snapshot?.state?.version, enableContextProjection]);
+
   const question = useMemo(
     () => guidedContextQuestion(draft, { hasPendingCorrection: review?.hasPendingCorrection }),
     [draft, review?.hasPendingCorrection],
   );
+  const projectedPilot = projection && review && projection.reviewVersion === review.version
+    ? projection.proposals.find((item) => item.targetField === 'pilotExperience') ?? null
+    : null;
+  const proposalToReview = projectedPilot?.id === rejectedProposalId ? null : projectedPilot;
+  const awaitingPilotProjection = Boolean(enableContextProjection && review?.draft.situation.value
+    && question.field === 'pilotExperience' && !projectionError && projection?.reviewVersion !== review?.version);
   const busy = localBusy || status === 'saving' || status === 'confirming' || status === 'loading';
   const sourceCompany = review?.draftSourceCompanyContext ?? review?.sourceCompanyContext ?? null;
 
@@ -268,6 +296,20 @@ export function PortfolioBootstrapContextConversation({
     if (!question.field || !answer.trim() || busy) return;
     await saveConversationTurn(replaceField(draft, question.field, answer));
   };
+  const acceptPilotProposal = async (proposal: PortfolioBootstrapContextProposal) => {
+    if (busy) return;
+    const next: PortfolioBootstrapContextPayload = {
+      ...draft,
+      pilotExperience: {
+        value: proposal.value,
+        provenance: 'user_declared',
+        sourceRef: proposal.sourceRef,
+      },
+      gaps: withoutFieldDisposition(draft.gaps, 'pilotExperience'),
+    };
+    // Human acceptance is explicit; this remains a draft until confirmContext.
+    await saveConversationTurn(next);
+  };
   const saveDisposition = async (disposition: ContextDisposition) => {
     if (!question.field || busy) return;
     await saveConversationTurn(markField(draft, question.field, disposition));
@@ -312,6 +354,7 @@ export function PortfolioBootstrapContextConversation({
           onConfirm={onConfirm}
           onRetry={onRetry}
           onContinue={onContinue}
+          proposal={proposalToReview}
         />
       </PortfolioBootstrapSemanticConversation>
     );
@@ -331,9 +374,34 @@ export function PortfolioBootstrapContextConversation({
 
       <section className="rounded-xl border border-violet-200 bg-violet-50 p-4">
         <p className="text-xs font-bold uppercase tracking-[0.14em] text-violet-700">Contexto empresarial</p>
-        <h3 className="mt-2 text-lg font-semibold text-violet-950">{question.title}</h3>
-        <p className="mt-1 text-sm text-violet-900">{question.help}</p>
-        {question.field ? (
+        <h3 className="mt-2 text-lg font-semibold text-violet-950">
+          {awaitingPilotProjection ? 'Revisando lo que ya compartiste…'
+            : proposalToReview && question.field === 'pilotExperience' ? 'Esto ya aparece en lo que contaste'
+            : question.title}
+        </h3>
+        <p className="mt-1 text-sm text-violet-900">{awaitingPilotProjection
+          ? 'Comprobamos primero si el relato ya incluye una respuesta para no repetirla.'
+          : proposalToReview && question.field === 'pilotExperience'
+            ? 'Esta es una propuesta respaldada por una cita. Puedes aceptarla o corregirla, y confirmarás el contexto después.'
+            : question.help}</p>
+        {awaitingPilotProjection ? (
+          <p role="status" className="mt-3 text-sm text-violet-900">Verificando declaraciones previas…</p>
+        ) : proposalToReview && question.field === 'pilotExperience' ? (
+          <div className="mt-4 rounded-lg border border-violet-200 bg-white p-4">
+            <p className="text-sm text-slate-800">{proposalToReview.sourceRef.quote}</p>
+            <p className="mt-2 text-xs text-slate-500">Provisional · fuente histórica versionada · pendiente de revisión</p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <button type="button" disabled={busy} onClick={() => void acceptPilotProposal(proposalToReview)}
+                className="rounded-lg bg-violet-700 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">
+                Sí, conservar esta información
+              </button>
+              <button type="button" disabled={busy} onClick={() => setRejectedProposalId(proposalToReview.id)}
+                className="rounded-lg border border-violet-300 bg-white px-4 py-2 text-sm font-semibold text-violet-900">
+                Prefiero corregirla
+              </button>
+            </div>
+          </div>
+        ) : question.field ? (
           <>
             <label className="mt-4 block text-sm font-semibold text-slate-800">
               Tu respuesta
@@ -414,6 +482,7 @@ export function PortfolioBootstrapContextConversation({
 }
 
 function SemanticContextReviewPanel({
+  proposal,
   operationScope,
   review,
   status,
@@ -423,6 +492,7 @@ function SemanticContextReviewPanel({
   onRetry,
   onContinue,
 }: {
+  proposal?: PortfolioBootstrapContextProposal | null;
   operationScope: string;
   review: PortfolioBootstrapContextReview | null;
   status: PortfolioBootstrapContextStatus;
@@ -495,6 +565,22 @@ function SemanticContextReviewPanel({
       <p className="mt-1 text-sm text-slate-600">
         Revisa y redacta el ContextReview. Starteria no convierte automáticamente conceptos del ledger en estos campos.
       </p>
+      {proposal && !draft.pilotExperience.value ? (
+        <section aria-label="Propuesta de experiencia previa" className="mt-4 rounded-lg border border-violet-200 bg-violet-50 p-3">
+          <p className="font-semibold text-violet-950">Posible información ya declarada</p>
+          <p className="mt-1 text-sm text-violet-900">{proposal.sourceRef.quote}</p>
+          <p className="mt-1 text-xs text-violet-800">Propuesta sin confirmar · fuente versionada</p>
+          <button type="button" disabled={contextBusy} className="mt-2 rounded-lg bg-violet-700 px-3 py-2 text-sm font-semibold text-white disabled:opacity-50"
+            onClick={() => {
+              setDraft((current) => ({
+                ...current,
+                pilotExperience: { value: proposal.value, provenance: 'user_declared', sourceRef: proposal.sourceRef },
+                gaps: withoutFieldDisposition(current.gaps, 'pilotExperience'),
+              }));
+              setDirty(true);
+            }}>Incorporar a mi borrador</button>
+        </section>
+      ) : null}
       <div className="mt-4 grid gap-4 md:grid-cols-2">
         {CONTEXT_FIELDS.map((field) => (
           <label key={field} className="text-sm font-semibold text-slate-800">

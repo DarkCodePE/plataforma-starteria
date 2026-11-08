@@ -104,6 +104,7 @@ export class PortfolioBootstrapContextService {
       if (replay) return replay;
 
       const source = await this.validateSource(db, session, input.authenticatedUserId, input.sourceCompanyContext ?? null, input.context, true);
+      await this.validateProjectedQuoteRefs(db, session, input.context);
       const current = await db.portfolioBootstrapContextReview.findUnique({ where: { bootstrapSessionId: session.id } });
       let review: any;
       if (!current) {
@@ -171,6 +172,7 @@ export class PortfolioBootstrapContextService {
         versionNumber: current.sourceCompanyContextVersionNumber,
       } : null;
       await this.validateSource(db, session, input.authenticatedUserId, source, current.draftJson, true);
+      await this.validateProjectedQuoteRefs(db, session, current.draftJson as PortfolioBootstrapContextPayload);
       const nextVersion = current.version + 1;
       const confirmedAt = new Date();
       const changed = await db.portfolioBootstrapContextReview.updateMany({
@@ -268,6 +270,55 @@ export class PortfolioBootstrapContextService {
       }
     }
     return source;
+  }
+
+  private async validateProjectedQuoteRefs(
+    db: any,
+    session: { id: string },
+    context: PortfolioBootstrapContextPayload,
+  ): Promise<void> {
+    const invalid = () => new AppError(
+      422, 'La referencia de una propuesta de contexto no coincide con evidencia histórica.',
+      'PORTFOLIO_CONTEXT_PROJECTION_EVIDENCE_INVALID',
+    );
+    for (const field of this.fields(context)) {
+      const ref = field.sourceRef;
+      if (!ref || (ref.kind !== 'context_narrative_quote' && ref.kind !== 'semantic_fact_quote')) continue;
+      if (field.provenance !== 'user_declared' || field.value !== ref.quote) throw invalid();
+
+      if (ref.kind === 'context_narrative_quote') {
+        const review = await db.portfolioBootstrapContextReview.findUnique({
+          where: { bootstrapSessionId: session.id }, select: { id: true },
+        });
+        if (!review || review.id !== ref.reviewId) throw invalid();
+        const historical = await db.portfolioBootstrapContextReviewVersion.findUnique({
+          where: { reviewId_version: { reviewId: review.id, version: ref.reviewVersion } },
+          select: { snapshotJson: true },
+        });
+        const situation = (historical?.snapshotJson as any)?.context?.situation?.value;
+        if (typeof situation !== 'string' || !situation.includes(ref.quote)) throw invalid();
+        continue;
+      }
+
+      const state = await db.portfolioBootstrapSemanticState.findUnique({
+        where: { bootstrapSessionId: session.id }, select: { id: true },
+      });
+      if (!state) throw invalid();
+      const turn = await db.portfolioBootstrapSemanticTurn.findFirst({
+        where: { id: ref.turnId, semanticStateId: state.id, semanticVersion: ref.semanticVersion, status: 'completed' },
+        select: { inputText: true, factsJson: true },
+      });
+      const grounded = (Array.isArray(turn?.factsJson) ? turn.factsJson : []).some((fact: any) => (
+        fact.conceptId === 'pilot_experience'
+        && fact.status !== 'retracted'
+        && fact.provenance === 'user_declared'
+        && Array.isArray(fact.evidenceRefs)
+        && fact.evidenceRefs.some((evidence: any) => (
+          evidence.kind === 'user_input' && evidence.quote === ref.quote
+        ))
+      ));
+      if (!turn || !turn.inputText.includes(ref.quote) || !grounded) throw invalid();
+    }
   }
 
   private fields(context: any): any[] {

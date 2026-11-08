@@ -561,6 +561,7 @@ function PortfolioCopilotWorkspace({
                 onRetry={onRetryContext}
                 onContinue={() => setSelectedStage(1)}
                 semantic={semantic}
+                enableContextProjection
               />
             ) : null}
             {stage === 1 ? <FrozenObjectiveConversation projection={projection} onSave={onUpdateAnchor} onConfirm={confirmObjective} /> : null}

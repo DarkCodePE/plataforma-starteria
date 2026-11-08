@@ -40,6 +40,7 @@ export function buildPortfolioBootstrapRouter(deps: PortfolioBootstrapRouterDeps
   router.post('/sessions/from-portfolio-setup-continuity', auth, controller.createOrReuseFromPortfolioSetup);
   router.get('/sessions/:sessionId', auth, controller.getSession);
   router.get('/sessions/:sessionId/context', auth, controller.getContext);
+  router.get('/sessions/:sessionId/context/proposals', auth, controller.getContextProposals);
   router.get('/sessions/:sessionId/context/semantic', auth, controller.getSemanticContext);
   router.post('/sessions/:sessionId/context/semantic/turns', auth, controller.submitSemanticTurn);
   router.put('/sessions/:sessionId/context/draft', auth, controller.saveContextDraft);

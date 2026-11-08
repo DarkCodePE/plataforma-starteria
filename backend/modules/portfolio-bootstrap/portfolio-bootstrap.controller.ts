@@ -6,6 +6,7 @@ import type { PortfolioSetupCompletionService } from './portfolio-setup-completi
 import type { PortfolioBootstrapContextService } from './portfolio-bootstrap-context.service';
 import type { PortfolioBootstrapSemanticService } from './portfolio-bootstrap-semantic.service';
 import type { PortfolioBootstrapSemanticOrchestratorService } from './portfolio-bootstrap-semantic-orchestrator.service';
+import { buildContextProjection } from './portfolio-bootstrap-context-projection';
 import {
   portfolioBootstrapSemanticTurnRequestSchema,
   semanticE1Enabled,
@@ -68,6 +69,20 @@ export class PortfolioBootstrapController {
         answeredQuestionId: body.answeredQuestionId,
       });
       res.status(output.processing ? 202 : 200).json({ success: true, data: output.result });
+    } catch (error) { next(error); }
+  };
+
+  getContextProposals = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      if (!req.user?.id) throw AppError.unauthorized('No autorizado.', 'PORTFOLIO_BOOTSTRAP_AUTH_REQUIRED');
+      const { sessionId } = bootstrapSessionParamsSchema.parse(req.params);
+      // Both reads enforce the same owner/tenant access as the governed E1 sources.
+      const access = {
+        sessionId, authenticatedUserId: req.user.id, permissions: req.user.permissions,
+      };
+      const review = await this.contextService.getContext(access);
+      const semantic = await this.semanticService.getState(access);
+      res.json({ success: true, data: buildContextProjection({ review, semantic }) });
     } catch (error) { next(error); }
   };
 
