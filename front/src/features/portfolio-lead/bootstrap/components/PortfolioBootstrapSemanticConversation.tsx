@@ -42,6 +42,9 @@ export function PortfolioBootstrapSemanticConversation({
   const [localError, setLocalError] = useState<string | null>(null);
   const state = snapshot?.state ?? null;
   const busy = status === 'loading' || status === 'submitting' || status === 'processing';
+  const reviewConvergence = state && !state.activeQuestion && status !== 'error'
+    && state.convergence.status !== 'provider_retryable_failure'
+    && state.convergence.status !== 'safety_stop';
 
   useEffect(() => {
     if (pendingInputText !== null) setInputText(pendingInputText);
@@ -90,7 +93,7 @@ export function PortfolioBootstrapSemanticConversation({
           <h3 className="mt-2 text-lg font-semibold text-violet-950">{state.activeQuestion.question}</h3>
           <p className="mt-2 text-sm text-violet-900"><span className="font-semibold">Para qué:</span> {state.activeQuestion.reasonToAsk}</p>
         </section>
-      ) : state ? (
+      ) : reviewConvergence ? (
         <section className="rounded-xl border border-emerald-200 bg-emerald-50 p-4" aria-label="Convergencia semántica">
           <h3 className="font-semibold text-emerald-950">El contexto está listo para revisión humana</h3>
           <p className="mt-1 text-sm text-emerald-900">{state.convergence.reason}</p>

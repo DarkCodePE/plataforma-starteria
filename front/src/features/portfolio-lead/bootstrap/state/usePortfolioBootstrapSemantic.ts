@@ -151,17 +151,54 @@ export function usePortfolioBootstrapSemantic(sessionId: string | null) {
           pending.idempotencyKey,
         );
         if (epoch !== sessionEpoch.current || pending.sessionId !== sessionRef.current) return null;
+        const merged = mergeTurn(snapshot, response.result);
         setSnapshot((current) => mergeTurn(current, response.result));
         if (response.processing) {
           setStatus('processing');
           return poll(pending.sessionId, response.result.turn.id, epoch);
         }
+        if (response.result.turn.status !== 'completed') {
+          const failureMessage = response.result.turn.convergence.reason
+            || 'No pudimos completar la interpretación semántica.';
+          pendingTurn.current = response.result.turn.error?.retryable ? pending : null;
+          setPendingInputText(pending.input.inputText);
+          setStatus('error');
+          setError(failureMessage);
+          throw new Error(failureMessage);
+        }
         pendingTurn.current = null;
         setPendingInputText(null);
         setStatus('ready');
-        return mergeTurn(snapshot, response.result);
+        return merged;
       } catch (caught) {
         if (epoch !== sessionEpoch.current || pending.sessionId !== sessionRef.current) return null;
+        if (caught instanceof PortfolioBootstrapSemanticClientError
+          && caught.apiError.code === 'PORTFOLIO_SEMANTIC_VERSION_CONFLICT') {
+          let latest: PortfolioBootstrapSemanticSnapshot;
+          try {
+            latest = await getPortfolioBootstrapSemanticContext(pending.sessionId);
+          } catch (reconciliationError) {
+            setStatus('error');
+            setError(message(reconciliationError));
+            throw reconciliationError;
+          }
+          if (epoch !== sessionEpoch.current || pending.sessionId !== sessionRef.current) return null;
+          const normalized = applySnapshot(latest);
+          const reconciled: PendingTurn = {
+            ...pending,
+            input: {
+              ...pending.input,
+              expectedVersion: normalized.state?.version ?? 0,
+              answeredQuestionId: normalized.state?.activeQuestion?.id ?? null,
+            },
+          };
+          pendingTurn.current = reconciled;
+          setPendingInputText(reconciled.input.inputText);
+          const conflictMessage = 'La conversación cambió mientras respondías. Hemos recuperado la versión actual; reintenta el mismo turno.';
+          setStatus('error');
+          setError(conflictMessage);
+          throw new Error(conflictMessage);
+        }
         setStatus('error');
         setError(message(caught));
         throw caught;
@@ -171,7 +208,7 @@ export function usePortfolioBootstrapSemantic(sessionId: string | null) {
     })();
     inFlight.current = operation;
     return operation;
-  }, [poll, snapshot]);
+  }, [applySnapshot, poll, snapshot]);
 
   const submit = useCallback((inputText: string) => {
     if (inFlight.current) return inFlight.current;

@@ -18,6 +18,7 @@ vi.mock('../../services/portfolioBootstrapSemanticClient', async () => {
   };
 });
 
+import { PortfolioBootstrapSemanticClientError } from '../../services/portfolioBootstrapSemanticClient';
 import { usePortfolioBootstrapSemantic } from '../usePortfolioBootstrapSemantic';
 
 function state(version: number, activeQuestion: { id: string; recap: string; question: string; reasonToAsk: string; resolves: string[] } | null = null) {
@@ -49,6 +50,8 @@ function turn(id: string, semanticVersion: number, status: 'completed' | 'failed
 describe('usePortfolioBootstrapSemantic', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    getSemantic.mockReset();
+    submitTurn.mockReset();
     let keyIndex = 0;
     vi.stubGlobal('crypto', { randomUUID: vi.fn(() => keys[keyIndex++] ?? `semantic-key-${keyIndex}`) });
   });
@@ -99,6 +102,61 @@ describe('usePortfolioBootstrapSemantic', () => {
     expect(submitTurn).toHaveBeenCalledTimes(2);
     expect(submitTurn.mock.calls[0]?.[2]).toBe(submitTurn.mock.calls[1]?.[2]);
     expect(submitTurn.mock.calls[1]?.[1]).toMatchObject({ expectedVersion: 1, answeredQuestionId: 'question-1' });
+  });
+
+  it('KAN-246 R3 keeps a persisted retryable failure visible and retries the same logical turn', async () => {
+    getSemantic.mockResolvedValue({ enabled: true, state: state(0), turns: [] });
+    const failed = {
+      ...turn('failed', 1, 'failed_retryable'),
+      error: { code: 'provider_unavailable', retryable: true },
+      convergence: { status: 'provider_retryable_failure', reason: 'El proveedor no está disponible temporalmente.' },
+    } as const;
+    submitTurn
+      .mockResolvedValueOnce({ processing: false, result: { state: { ...state(1), convergence: failed.convergence }, turn: failed } })
+      .mockResolvedValueOnce({ processing: false, result: { state: state(1), turn: turn('done', 1) } });
+    const { result } = renderHook(() => usePortfolioBootstrapSemantic('session-1'));
+    await waitFor(() => expect(result.current.status).toBe('ready'));
+
+    await act(async () => { await result.current.submit('Relato conservado').catch(() => undefined); });
+    expect(result.current.status).toBe('error');
+    expect(result.current.error).toContain('proveedor no está disponible');
+    expect(result.current.pendingInputText).toBe('Relato conservado');
+    await act(async () => { await result.current.retry(); });
+
+    expect(submitTurn).toHaveBeenCalledTimes(2);
+    expect(submitTurn.mock.calls[0]?.[2]).toBe(submitTurn.mock.calls[1]?.[2]);
+    expect(result.current.status).toBe('ready');
+    expect(result.current.pendingInputText).toBeNull();
+  });
+
+  it('KAN-246 R3 reconciles a semantic version conflict before retry without losing input', async () => {
+    const oldQuestion = { id: 'question-old', recap: 'Anterior', question: '¿Anterior?', reasonToAsk: 'Anterior', resolves: ['old'] };
+    const currentQuestion = { id: 'question-current', recap: 'Actual', question: '¿Actual?', reasonToAsk: 'Actual', resolves: ['current'] };
+    getSemantic
+      .mockResolvedValueOnce({ enabled: true, state: state(1, oldQuestion), turns: [] })
+      .mockResolvedValueOnce({ enabled: true, state: state(2, currentQuestion), turns: [turn('other', 2)] });
+    submitTurn
+      .mockRejectedValueOnce(new PortfolioBootstrapSemanticClientError({
+        code: 'PORTFOLIO_SEMANTIC_VERSION_CONFLICT',
+        message: 'La versión semántica cambió.',
+      }))
+      .mockResolvedValueOnce({ processing: false, result: { state: state(3), turn: turn('done', 3) } });
+    const { result } = renderHook(() => usePortfolioBootstrapSemantic('session-1'));
+    await waitFor(() => expect(result.current.status).toBe('ready'));
+
+    await act(async () => { await result.current.submit('Respuesta que no se pierde').catch(() => undefined); });
+    expect(getSemantic).toHaveBeenCalledTimes(2);
+    expect(result.current.pendingInputText).toBe('Respuesta que no se pierde');
+    expect(result.current.snapshot?.state?.version).toBe(2);
+    await act(async () => { await result.current.retry(); });
+
+    expect(submitTurn).toHaveBeenCalledTimes(2);
+    expect(submitTurn.mock.calls[0]?.[2]).toBe(submitTurn.mock.calls[1]?.[2]);
+    expect(submitTurn.mock.calls[1]?.[1]).toMatchObject({
+      expectedVersion: 2,
+      answeredQuestionId: 'question-current',
+      inputText: 'Respuesta que no se pierde',
+    });
   });
 
   it('KAN-246 S2 polls a 202 response within the configured limit and settles from persisted state', async () => {

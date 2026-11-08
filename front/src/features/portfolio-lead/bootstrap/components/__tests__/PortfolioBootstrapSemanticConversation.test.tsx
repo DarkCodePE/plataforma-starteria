@@ -110,6 +110,26 @@ describe('PortfolioBootstrapSemanticConversation', () => {
     expect(screen.getByRole('button', { name: 'Reintentar el mismo turno' })).toBeEnabled();
   });
 
+  it('KAN-246 R3 never presents a persisted provider failure as ready for human review', () => {
+    const failed = snapshot();
+    failed.state = failed.state ? {
+      ...failed.state,
+      activeQuestion: null,
+      convergence: { status: 'provider_retryable_failure', reason: 'Proveedor no disponible.' },
+    } : null;
+    render(<PortfolioBootstrapSemanticConversation {...props({
+      snapshot: failed,
+      status: 'error',
+      error: 'Proveedor no disponible. Reintenta el mismo turno.',
+      pendingInputText: 'Relato conservado',
+    })} />);
+
+    expect(screen.queryByRole('region', { name: 'Convergencia semántica' })).not.toBeInTheDocument();
+    expect(screen.queryByText('El contexto está listo para revisión humana')).not.toBeInTheDocument();
+    expect(screen.getByRole('alert')).toHaveTextContent('Proveedor no disponible');
+    expect(screen.getByLabelText('Tu respuesta')).toHaveValue('Relato conservado');
+  });
+
   it('KAN-246 S3 guards empty and oversized input at the interaction boundary', async () => {
     const user = userEvent.setup();
     const onSubmit = vi.fn().mockResolvedValue(null);
