@@ -40,6 +40,24 @@ describeIntegration('KAN-244 E1 semantic persistence', () => {
       .toMatchObject({ version: 1, status: 'confirmed', confirmedSnapshotJson: { legacy: true } });
   });
 
+  it('feeds inference the exact confirmed history version while a later correction remains draft', async () => {
+    await seed();
+    const review = await prisma.portfolioBootstrapContextReview.update({
+      where: { bootstrapSessionId: sessionId },
+      data: { version: 2, status: 'draft', draftJson: { legacy: false, corrected: true } },
+    });
+    await prisma.portfolioBootstrapContextReviewVersion.create({ data: {
+      reviewId: review.id, version: 2, action: 'draft_saved', actorUserId: userId,
+      snapshotJson: { context: { legacy: false, corrected: true }, provenance: [], status: 'draft' },
+    } });
+
+    const inference = await new PortfolioBootstrapSemanticService(prisma).getInferenceContext({
+      sessionId, authenticatedUserId: userId, permissions,
+    });
+
+    expect(inference.confirmedContext).toEqual({ version: 1, context: { legacy: true }, provenance: [] });
+  });
+
   it('resolves multiple cross-field gaps, retires one question and converges on the next version', async () => {
     await seed();
     const service = new PortfolioBootstrapSemanticService(prisma);
@@ -114,6 +132,43 @@ describeIntegration('KAN-244 E1 semantic persistence', () => {
 
     const replay = await service.claimInference(claimInput);
     expect(replay).toEqual({ claimed: false, result: completed });
+    expect(await (prisma as any).portfolioBootstrapSemanticTurn.count()).toBe(1);
+  });
+
+  it('renews the claim lease when reclaiming an old failed turn so a delayed inference cannot spend twice', async () => {
+    await seed();
+    const service = new PortfolioBootstrapSemanticService(prisma);
+    const inputText = 'Turno antiguo reintentable.';
+    const requestHash = canonicalContextHash({ expectedVersion: 0, inputText, answeredQuestionId: null });
+    const initialClaim = await service.claimInference({
+      sessionId, authenticatedUserId: userId, permissions,
+      idempotencyKey: 'old-retry', requestHash, expectedVersion: 0,
+      inputText, answeredQuestionId: null, leaseMs: 60_000,
+    });
+    const failed = await service.completeInference({
+      ...command({
+        idempotencyKey: 'old-retry', inputText, expectedVersion: initialClaim.result.state.version,
+        status: 'failed_retryable', facts: [], hypotheses: [], dispositions: [], answeredGaps: [],
+        emittedQuestion: null, convergence: { status: 'provider_retryable_failure', reason: 'Timeout previo.' },
+        error: { code: 'provider_timeout', retryable: true },
+      }),
+      requestHash,
+    });
+    await (prisma as any).portfolioBootstrapSemanticTurn.update({
+      where: { id: failed.turn.id },
+      data: { createdAt: new Date('2026-01-01T00:00:00.000Z'), updatedAt: new Date('2026-01-01T00:00:00.000Z') },
+    });
+    const claimInput = {
+      sessionId, authenticatedUserId: userId, permissions,
+      idempotencyKey: 'old-retry', requestHash, expectedVersion: 0,
+      inputText, answeredQuestionId: null, leaseMs: 60_000,
+    };
+
+    const first = await service.claimInference(claimInput);
+    const whileDelayed = await service.claimInference(claimInput);
+
+    expect(first.claimed).toBe(true);
+    expect(whileDelayed).toMatchObject({ claimed: false, result: { turn: { error: { code: 'inference_pending' } } } });
     expect(await (prisma as any).portfolioBootstrapSemanticTurn.count()).toBe(1);
   });
 
@@ -236,17 +291,27 @@ describeIntegration('KAN-244 E1 semantic persistence', () => {
   it('validates historical ContextReview and tenant-bound Company evidence before persistence', async () => {
     await seed();
     const service = new PortfolioBootstrapSemanticService(prisma);
-    await prisma.portfolioBootstrapContextReviewVersion.create({ data: {
-      reviewId: (await prisma.portfolioBootstrapContextReview.findUniqueOrThrow({ where: { bootstrapSessionId: sessionId } })).id,
-      version: 1, action: 'confirmed', actorUserId: userId,
-      snapshotJson: { context: { situation: { value: 'Cafetería local', provenance: 'user_declared' } }, status: 'confirmed' },
-    } });
+    await prisma.portfolioBootstrapContextReviewVersion.update({
+      where: { reviewId_version: {
+        reviewId: (await prisma.portfolioBootstrapContextReview.findUniqueOrThrow({ where: { bootstrapSessionId: sessionId } })).id,
+        version: 1,
+      } },
+      data: { snapshotJson: {
+        context: { situation: { value: 'Cafetería local', provenance: 'user_declared' } },
+        provenance: [], status: 'confirmed',
+      } },
+    });
     const contextFact = {
       conceptId: 'situation', value: 'Cafetería local', provenance: 'source_extracted',
       evidenceRefs: [{ kind: 'context_review_field', reviewVersion: 1, fieldPath: 'situation.value' }],
       confidence: 1, status: 'observed',
     };
     expect((await service.appendTurn(command({ facts: [contextFact], answeredGaps: ['situation'] }))).state.version).toBe(1);
+
+    await expect(service.appendTurn(command({
+      idempotencyKey: 'mismatched-context-value', expectedVersion: 1,
+      facts: [{ ...contextFact, value: 'Valor inventado' }],
+    }))).rejects.toMatchObject({ statusCode: 422, code: 'PORTFOLIO_SEMANTIC_EVIDENCE_INVALID' });
 
     await expect(service.appendTurn(command({
       idempotencyKey: 'stale-context-ref', expectedVersion: 1,
@@ -334,10 +399,14 @@ async function seed() {
     } });
   }
   await prisma.portfolioBootstrapSession.create({ data: { id: sessionId, userId, organizationId } });
-  await prisma.portfolioBootstrapContextReview.create({ data: {
+  const review = await prisma.portfolioBootstrapContextReview.create({ data: {
     bootstrapSessionId: sessionId, status: 'confirmed', version: 1,
     draftJson: { legacy: true }, confirmedSnapshotJson: { legacy: true }, provenanceJson: [], confirmedProvenanceJson: [],
     confirmedBy: userId, confirmedAt: new Date(),
+  } });
+  await prisma.portfolioBootstrapContextReviewVersion.create({ data: {
+    reviewId: review.id, version: 1, action: 'confirmed', actorUserId: userId,
+    snapshotJson: { context: { legacy: true }, provenance: [], status: 'confirmed' },
   } });
 }
 

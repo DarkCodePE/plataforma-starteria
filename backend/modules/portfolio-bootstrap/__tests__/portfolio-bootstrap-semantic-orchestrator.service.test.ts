@@ -170,6 +170,196 @@ describe('PortfolioBootstrapSemanticOrchestratorService', () => {
       convergence: expect.objectContaining({ status: 'budget_checkpoint' }),
     }));
   });
+
+  it('does not trust provider convergence when accumulated evidence is empty or only partial', async () => {
+    const emptyStore = fakeStore();
+    const emptyModel = fakeModel({
+      facts: [], hypotheses: [], dispositions: [], questionPlan: null,
+      readyForHumanReview: true, reason: 'El proveedor dice que basta.',
+    });
+    await new PortfolioBootstrapSemanticOrchestratorService(emptyStore, emptyModel, config)
+      .processTurn(command('Quiero explorar una idea.'));
+    expect(emptyStore.completeInference).toHaveBeenCalledWith(expect.objectContaining({
+      convergence: expect.objectContaining({ status: 'budget_checkpoint' }),
+    }));
+
+    const partialStore = fakeStore();
+    const partialModel = fakeModel({
+      facts: [fact('situation', 'Hay colas', 'Hay colas')],
+      hypotheses: [], dispositions: [], questionPlan: null,
+      readyForHumanReview: true, reason: 'El proveedor dice que basta.',
+    });
+    await new PortfolioBootstrapSemanticOrchestratorService(partialStore, partialModel, config)
+      .processTurn(command('Hay colas.'));
+    expect(partialStore.completeInference).toHaveBeenCalledWith(expect.objectContaining({
+      convergence: expect.objectContaining({ status: 'budget_checkpoint' }),
+    }));
+  });
+
+  it('allows review only after an evidence-bound anchor and direction are accumulated', async () => {
+    const store = fakeStore(semanticState({
+      factLedger: [{
+        ...fact('situation', 'Hay colas', 'Hay colas'), turnId: 'turn-0', semanticVersion: 1,
+      }],
+      answeredGaps: ['situation'],
+    }));
+    const model = fakeModel({
+      facts: [fact('stakeholder', 'clientes del mediodía', 'clientes del mediodía')],
+      hypotheses: [], dispositions: [], questionPlan: null,
+      readyForHumanReview: true, reason: 'Hay situación y dirección suficientes para revisión humana.',
+    });
+    await new PortfolioBootstrapSemanticOrchestratorService(store, model, config)
+      .processTurn(command('Afecta a los clientes del mediodía.'));
+    expect(store.completeInference).toHaveBeenCalledWith(expect.objectContaining({
+      convergence: expect.objectContaining({ status: 'ready_for_human_review' }),
+    }));
+  });
+
+  it('blocks plural formal-department questions for an explicit no-departments disposition but preserves corporate questions', async () => {
+    const smallStore = fakeStore();
+    const smallModel = fakeModel({
+      facts: [], hypotheses: [],
+      dispositions: [{
+        conceptId: 'organization_structure', disposition: 'not_applicable', provenance: 'user_declared',
+        evidenceRefs: [{ kind: 'user_input', quote: 'negocio sin departamentos formales' }],
+      }],
+      questionPlan: {
+        question: '¿Qué departamentos formales asumirán el trabajo?',
+        reasonToAsk: 'Necesito identificar las áreas formales responsables.',
+        resolves: ['organization_owners'],
+      },
+      readyForHumanReview: false, reason: 'Falta responsable.',
+    });
+    await new PortfolioBootstrapSemanticOrchestratorService(smallStore, smallModel, config)
+      .processTurn(command('Somos un negocio sin departamentos formales.'));
+    expect(smallStore.completeInference).toHaveBeenCalledWith(expect.objectContaining({ emittedQuestion: null }));
+
+    const corporateStore = fakeStore();
+    const corporateModel = fakeModel({
+      facts: [fact('business_profile', 'empresa corporativa', 'empresa corporativa')],
+      hypotheses: [], dispositions: [],
+      questionPlan: {
+        question: '¿Qué departamentos formales asumirán el trabajo?',
+        reasonToAsk: 'Necesito identificar las áreas formales responsables.',
+        resolves: ['organization_owners'],
+      },
+      readyForHumanReview: false, reason: 'Falta responsable.',
+    });
+    await new PortfolioBootstrapSemanticOrchestratorService(corporateStore, corporateModel, config)
+      .processTurn(command('Somos una empresa corporativa con departamentos formales.'));
+    expect(corporateStore.completeInference).toHaveBeenCalledWith(expect.objectContaining({
+      emittedQuestion: expect.objectContaining({ resolves: ['organization_owners'] }),
+    }));
+  });
+
+  it('enforces the total provider deadline and records a retryable safe failure', async () => {
+    const store = fakeStore();
+    const model: StructuredModelAdapter = { generate: vi.fn(() => new Promise<never>(() => undefined)) };
+    const service = new PortfolioBootstrapSemanticOrchestratorService(store, model, { ...config, timeoutMs: 10 });
+
+    await service.processTurn(command('Necesitamos entender una situación.'));
+
+    expect(model.generate).toHaveBeenCalledOnce();
+    expect(store.completeInference).toHaveBeenCalledWith(expect.objectContaining({
+      status: 'failed_retryable', error: { code: 'provider_unavailable', retryable: true },
+    }));
+  });
+
+  it('scores 5/5 fixture-conditional semantic decisions without network or live spend', async () => {
+    const cases = [
+      {
+        id: 'cafeteria-negative-pilot',
+        input: 'Somos una cafetería y nunca hemos probado pedidos a oficinas.',
+        output: {
+          facts: [fact('pilot_experience', 'none', 'nunca hemos probado pedidos a oficinas')],
+          hypotheses: [], dispositions: [],
+          questionPlan: { question: '¿Qué situación queréis mejorar?', reasonToAsk: 'Falta el foco.', resolves: ['situation'] },
+          readyForHumanReview: false, reason: 'Falta situación.',
+        },
+        passes: (turn: any) => turn.answeredGaps.includes('pilot_experience')
+          && turn.emittedQuestion?.resolves.join('|') === 'situation',
+      },
+      {
+        id: 'multi-concept',
+        input: 'Queremos reducir colas para clientes del mediodía.',
+        output: {
+          facts: [
+            fact('situation', 'reducir colas', 'reducir colas'),
+            fact('stakeholder', 'clientes del mediodía', 'clientes del mediodía'),
+          ],
+          hypotheses: [], dispositions: [], questionPlan: null,
+          readyForHumanReview: true, reason: 'Suficiente para revisión.',
+        },
+        passes: (turn: any) => turn.answeredGaps.length === 2
+          && turn.convergence.status === 'ready_for_human_review',
+      },
+      {
+        id: 'corporate-formal-structure',
+        input: 'Somos una empresa corporativa con departamentos formales.',
+        output: {
+          facts: [fact('business_profile', 'corporate', 'empresa corporativa')],
+          hypotheses: [], dispositions: [],
+          questionPlan: {
+            question: '¿Qué departamentos formales asumirán el trabajo?',
+            reasonToAsk: 'Identificar áreas responsables.', resolves: ['organization_owners'],
+          },
+          readyForHumanReview: false, reason: 'Falta responsable.',
+        },
+        passes: (turn: any) => turn.emittedQuestion?.resolves.join('|') === 'organization_owners',
+      },
+      {
+        id: 'unknown-retires-question',
+        input: 'No sé cómo se organizaría.',
+        output: {
+          facts: [], hypotheses: [],
+          dispositions: [{
+            conceptId: 'organization_structure', disposition: 'unknown', provenance: 'user_declared',
+            evidenceRefs: [{ kind: 'user_input', quote: 'No sé' }],
+          }],
+          questionPlan: {
+            question: '¿Cómo se organizaría?', reasonToAsk: 'Completar estructura.', resolves: ['organization_structure'],
+          },
+          readyForHumanReview: false, reason: 'Incógnita declarada.',
+        },
+        passes: (turn: any) => turn.emittedQuestion === null && turn.dispositions[0]?.disposition === 'unknown',
+      },
+      {
+        id: 'no-invention',
+        input: 'Somos una cafetería.',
+        output: {
+          facts: [fact('team_size', '50', 'somos 50 personas')],
+          hypotheses: [], dispositions: [], questionPlan: null,
+          readyForHumanReview: true, reason: 'Suficiente.',
+        },
+        passes: (turn: any) => turn.status === 'failed_retryable'
+          && turn.error?.code === 'semantic_output_invalid' && turn.facts.length === 0,
+      },
+    ];
+    const results: Array<{ id: string; passed: boolean }> = [];
+    for (const fixture of cases) {
+      const store = fakeStore();
+      await new PortfolioBootstrapSemanticOrchestratorService(store, fakeModel(fixture.output), config)
+        .processTurn(command(fixture.input));
+      results.push({
+        id: fixture.id,
+        passed: fixture.passes(vi.mocked(store.completeInference).mock.calls[0][0]),
+      });
+    }
+
+    expect({
+      measurementScope: 'fixture_conditional',
+      networkCalls: 0,
+      cases: results.length,
+      passed: results.filter((result) => result.passed).length,
+      results,
+    }).toEqual({
+      measurementScope: 'fixture_conditional',
+      networkCalls: 0,
+      cases: 5,
+      passed: 5,
+      results: cases.map((fixture) => ({ id: fixture.id, passed: true })),
+    });
+  });
 });
 
 function command(inputText: string, expectedVersion = 0) {
@@ -239,7 +429,8 @@ function turnResult(status: 'completed' | 'failed_retryable' | 'failed_terminal'
 
 function fact(conceptId: string, value: string, quote: string) {
   return {
-    conceptId, value, provenance: 'user_declared', evidenceRefs: [{ kind: 'user_input', quote }],
-    confidence: 1, status: 'observed',
+    conceptId, value, provenance: 'user_declared' as const,
+    evidenceRefs: [{ kind: 'user_input' as const, quote }],
+    confidence: 1, status: 'observed' as const,
   };
 }

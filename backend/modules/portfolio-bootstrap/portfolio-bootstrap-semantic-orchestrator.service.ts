@@ -134,7 +134,7 @@ export class PortfolioBootstrapSemanticOrchestratorService {
     const claim = await this.store.claimInference({
       ...input,
       requestHash,
-      leaseMs: this.config.timeoutMs * 2,
+      leaseMs: this.config.timeoutMs + 10_000,
     });
     if (!claim.claimed) {
       return {
@@ -174,8 +174,11 @@ export class PortfolioBootstrapSemanticOrchestratorService {
 
     const state = before.state;
     let modelResult;
+    let logicalCalls = 0;
     try {
-      modelResult = await this.model.generate({
+      if (logicalCalls >= this.config.maxCallsPerTurn) throw new Error('Semantic logical call budget exhausted.');
+      logicalCalls += 1;
+      modelResult = await withDeadline(this.model.generate({
         systemPrompt: SEMANTIC_E1_SYSTEM_PROMPT,
         userPayload: {
           rawInput: input.inputText,
@@ -200,7 +203,7 @@ export class PortfolioBootstrapSemanticOrchestratorService {
           purpose: 'bootstrap_semantic_turn',
           turn_index: input.expectedVersion + 1,
         },
-      });
+      }), this.config.timeoutMs);
     } catch {
       this.recordFailure();
       return {
@@ -331,7 +334,12 @@ function applyDeterministicPolicy(input: {
     sameConceptSet(question.resolves, candidateResolves)
   ));
   const unsafeQuestion = input.inference.questionPlan
-    ? !questionGroundedForBusiness(input.inference.questionPlan, input.rawInput)
+    ? !questionGroundedForBusiness(
+      input.inference.questionPlan as { question: string; reasonToAsk: string },
+      input.rawInput,
+      dispositions,
+      input.state,
+    )
     : false;
   const canAsk = Boolean(input.inference.questionPlan)
     && candidateResolves.length > 0
@@ -346,16 +354,19 @@ function applyDeterministicPolicy(input: {
     resolves: [...new Set(candidateResolves)],
   } : null;
   const questionBudget = { limit, used: currentBudget.used + (emittedQuestion ? 1 : 0) };
+  const sufficientForReview = hasSufficientEvidenceForHumanReview(input.state, facts, dispositions);
   const convergence = emittedQuestion ? {
     status: 'question_required' as const,
     reason: input.inference.reason,
-  } : input.inference.readyForHumanReview ? {
+  } : input.inference.readyForHumanReview && sufficientForReview ? {
     status: 'ready_for_human_review' as const,
     reason: input.inference.reason,
   } : {
     status: 'budget_checkpoint' as const,
     reason: unsafeQuestion
       ? 'La pregunta propuesta no superó el guardrail de proporcionalidad y no invención.'
+      : input.inference.readyForHumanReview && !sufficientForReview
+      ? 'La salida no reúne todavía evidencia suficiente de situación y dirección para revisión humana.'
       : candidateResolves.length === 0 || repeated
       ? 'La pregunta propuesta repetía o reabría conceptos ya tratados; se requiere revisión humana.'
       : 'Se alcanzó el presupuesto de preguntas configurado.',
@@ -402,7 +413,7 @@ function groundedRecap(
     .filter((quote): quote is string => quote !== null)
     .filter((quote, index, all) => all.indexOf(quote) === index)
     .slice(0, 3);
-  const evidence = quotes.length ? quotes.join(' ') : rawInput.trim().slice(0, 700);
+  const evidence = (quotes.length ? quotes.join(' ') : rawInput.trim()).slice(0, 940);
   return `Entiendo: «${evidence}»`;
 }
 
@@ -481,12 +492,52 @@ function sameConceptSet(left: string[], right: string[]): boolean {
 function questionGroundedForBusiness(
   plan: { question: string; reasonToAsk: string },
   rawInput: string,
+  dispositions: SemanticInference['dispositions'],
+  state: SemanticStateDto | null,
 ): boolean {
   const normalize = (value: string) => value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
   const raw = normalize(rawInput);
   const proposed = normalize(`${plan.question} ${plan.reasonToAsk}`);
+  const organizationNotApplicable = [
+    ...(state?.dispositions ?? []),
+    ...dispositions,
+  ].some((item) => item.disposition === 'not_applicable'
+    && /^(organization_structure|departments|formal_departments)$/.test(item.conceptId));
+  const explicitNoDepartments = /\b(sin|no (?:tenemos|hay|contamos con))\s+(?:los\s+)?departamentos?(?:\s+formales?)?\b/.test(raw);
   const microbusiness = /\b(cafeteria|microempresa|negocio pequeno|empresa pequena)\b|\bsomos\s+\d+\b/.test(raw);
-  if (microbusiness && /\b(departamento formal|organigrama|area formal|equipo formal)\b/.test(proposed)) return false;
+  const asksFormalStructure = /\b(departamentos? formales?|organigramas?|areas? formales?|equipos? formales?)\b/.test(proposed);
+  if ((organizationNotApplicable || explicitNoDepartments || microbusiness) && asksFormalStructure) return false;
   const rawNumbers = new Set(raw.match(/\b\d+(?:[.,]\d+)?\b/g) ?? []);
   return (proposed.match(/\b\d+(?:[.,]\d+)?\b/g) ?? []).every((number) => rawNumbers.has(number));
+}
+
+function hasSufficientEvidenceForHumanReview(
+  state: SemanticStateDto | null,
+  facts: SemanticInference['facts'],
+  dispositions: SemanticInference['dispositions'],
+): boolean {
+  const resolved = new Set([
+    ...(state?.factLedger ?? []).filter((fact) => fact.status !== 'retracted').map((fact) => fact.conceptId),
+    ...(state?.dispositions ?? []).map((item) => item.conceptId),
+    ...facts.filter((fact) => fact.status !== 'retracted').map((fact) => fact.conceptId),
+    ...dispositions.map((item) => item.conceptId),
+  ]);
+  const hasAnchor = ['situation', 'opportunity', 'decision', 'problem'].some((concept) => resolved.has(concept));
+  const hasDirection = ['area', 'stakeholder', 'desired_outcome', 'objective', 'direction']
+    .some((concept) => resolved.has(concept));
+  return hasAnchor && hasDirection;
+}
+
+async function withDeadline<T>(operation: Promise<T>, timeoutMs: number): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      operation,
+      new Promise<T>((_resolve, reject) => {
+        timer = setTimeout(() => reject(new Error('Semantic provider deadline exceeded.')), timeoutMs);
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
 }

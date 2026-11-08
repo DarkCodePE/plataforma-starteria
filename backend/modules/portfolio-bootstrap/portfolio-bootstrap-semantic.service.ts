@@ -209,18 +209,22 @@ export class PortfolioBootstrapSemanticService {
     const snapshot = await this.getState(input);
     const review = await (this.prisma as any).portfolioBootstrapContextReview.findUnique({
       where: { bootstrapSessionId: input.sessionId },
-      select: {
-        version: true,
-        confirmedSnapshotJson: true,
-        confirmedProvenanceJson: true,
-      },
+      select: { id: true },
     });
+    const confirmedVersion = review ? await (this.prisma as any).portfolioBootstrapContextReviewVersion.findFirst({
+      where: { reviewId: review.id, action: 'confirmed' },
+      orderBy: { version: 'desc' },
+      select: { version: true, snapshotJson: true },
+    }) : null;
+    const confirmedSnapshot = confirmedVersion?.snapshotJson as {
+      status?: unknown; context?: unknown; provenance?: unknown;
+    } | null;
     return {
       state: snapshot.state,
-      confirmedContext: review?.confirmedSnapshotJson ? {
-        version: review.version,
-        context: review.confirmedSnapshotJson,
-        provenance: review.confirmedProvenanceJson ?? null,
+      confirmedContext: confirmedVersion && confirmedSnapshot?.status === 'confirmed' ? {
+        version: confirmedVersion.version,
+        context: confirmedSnapshot.context,
+        provenance: confirmedSnapshot.provenance ?? null,
       } : null,
     };
   }
@@ -262,7 +266,11 @@ export class PortfolioBootstrapSemanticService {
     const initial = await this.appendTurnDetailed(pending(input.expectedVersion));
     if (initial.wrote) return { claimed: true, result: initial.result };
     if (initial.result.turn.status !== 'failed_retryable') return { claimed: false, result: initial.result };
-    const pendingAge = Date.now() - new Date(initial.result.turn.createdAt).getTime();
+    const persistedTurn = await (this.prisma as any).portfolioBootstrapSemanticTurn.findUnique({
+      where: { id: initial.result.turn.id },
+      select: { updatedAt: true },
+    });
+    const pendingAge = Date.now() - new Date(persistedTurn?.updatedAt ?? initial.result.turn.createdAt).getTime();
     if (initial.result.turn.error?.code === 'inference_pending' && pendingAge < input.leaseMs) {
       return { claimed: false, result: initial.result };
     }
@@ -308,6 +316,9 @@ export class PortfolioBootstrapSemanticService {
       let existingTurn = state
         ? await this.findTurnByKey(db, state.id, input.idempotencyKey)
         : null;
+      if (existingTurn && input.requestHash && existingTurn.payloadHash !== payloadHash) {
+        throw AppError.conflict('Idempotency-Key reutilizada con otro payload.', 'PORTFOLIO_SEMANTIC_IDEMPOTENCY_CONFLICT');
+      }
       if (existingTurn?.payloadHash === payloadHash
         && !(input.replaceFailedRetryable && existingTurn.status === 'failed_retryable')) {
         return { result: existingTurn.responseJson as SemanticTurnResult, wrote: false };
@@ -330,6 +341,9 @@ export class PortfolioBootstrapSemanticService {
         } });
       }
       existingTurn = existingTurn ?? await this.findTurnByKey(db, state.id, input.idempotencyKey);
+      if (existingTurn && input.requestHash && existingTurn.payloadHash !== payloadHash) {
+        throw AppError.conflict('Idempotency-Key reutilizada con otro payload.', 'PORTFOLIO_SEMANTIC_IDEMPOTENCY_CONFLICT');
+      }
       if (existingTurn?.payloadHash === payloadHash
         && !(input.replaceFailedRetryable && existingTurn.status === 'failed_retryable')) {
         return { result: existingTurn.responseJson as SemanticTurnResult, wrote: false };
@@ -587,15 +601,20 @@ export class PortfolioBootstrapSemanticService {
         select: { id: true },
       });
       if (!review) throw this.invalidEvidence('No existe el ContextReview citado.');
-      for (const ref of contextRefs) {
-        if (ref.kind !== 'context_review_field') continue;
-        const historical = await db.portfolioBootstrapContextReviewVersion.findUnique({
-          where: { reviewId_version: { reviewId: review.id, version: ref.reviewVersion } },
-          select: { snapshotJson: true },
-        });
-        const context = (historical?.snapshotJson as any)?.context;
-        if (!historical || !hasOwnPath(context, ref.fieldPath)) {
-          throw this.invalidEvidence('La referencia a ContextReview no coincide con el snapshot histórico.');
+      for (const fact of facts) {
+        for (const ref of fact.evidenceRefs) {
+          if (ref.kind !== 'context_review_field') continue;
+          const historical = await db.portfolioBootstrapContextReviewVersion.findUnique({
+            where: { reviewId_version: { reviewId: review.id, version: ref.reviewVersion } },
+            select: { action: true, snapshotJson: true },
+          });
+          const snapshot = historical?.snapshotJson as { status?: unknown; context?: unknown } | undefined;
+          const evidenceValue = ownPathValue(snapshot?.context, ref.fieldPath);
+          if (!historical || historical.action !== 'confirmed' || snapshot?.status !== 'confirmed'
+            || evidenceValue === MISSING_PATH
+            || canonicalContextHash(evidenceValue) !== canonicalContextHash(fact.value)) {
+            throw this.invalidEvidence('La referencia a ContextReview no coincide con un valor del snapshot confirmado.');
+          }
         }
       }
     }
@@ -722,13 +741,15 @@ function equivalentResolves(left: PortfolioBootstrapSemanticQuestion, right: Por
   return [...new Set(left.resolves)].sort().join('|') === [...new Set(right.resolves)].sort().join('|');
 }
 
-function hasOwnPath(value: unknown, path: string): boolean {
+const MISSING_PATH = Symbol('missing_path');
+
+function ownPathValue(value: unknown, path: string): unknown | typeof MISSING_PATH {
   const forbidden = new Set(['__proto__', 'prototype', 'constructor']);
   let current: unknown = value;
   for (const segment of path.split('.')) {
     if (!segment || forbidden.has(segment) || !current || typeof current !== 'object'
-      || !Object.prototype.hasOwnProperty.call(current, segment)) return false;
+      || !Object.prototype.hasOwnProperty.call(current, segment)) return MISSING_PATH;
     current = (current as Record<string, unknown>)[segment];
   }
-  return current !== undefined;
+  return current === undefined ? MISSING_PATH : current;
 }
