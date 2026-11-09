@@ -283,6 +283,42 @@ describe('KAN-253 B3 user-governed E2 ledger experience', () => {
     } finally { vi.unstubAllEnvs(); }
   });
 
+  it('opens the human review automatically after the server ends its questions', async () => {
+    vi.stubEnv('VITE_PORTFOLIO_GOAL_E2_MULTI_TURN_UI_ENABLED', 'true');
+    vi.stubEnv('VITE_PORTFOLIO_GOAL_E2_CHECKPOINT_UI_ENABLED', 'true');
+    try {
+      const user = userEvent.setup();
+      getPlan.mockResolvedValueOnce(plan).mockResolvedValueOnce({
+        ...plan, activeQuestion: null, status: 'ready_for_human_review',
+      });
+      const onSave = vi.fn();
+      render(<PortfolioGoalLedgerConversation {...props({ onSave })} />);
+      await screen.findByText('¿Qué cambio quieres validar?');
+      await user.type(screen.getByLabelText('Tu respuesta de Objetivo'), firstTurn.inputText);
+      await user.click(screen.getByRole('button', { name: 'Guardar respuesta provisional' }));
+      expect(await screen.findByRole('region', { name: 'Revisión completa del objetivo' })).toBeVisible();
+      expect(screen.getByText(/Ya tenemos las respuestas necesarias para revisar el objetivo/)).toBeVisible();
+      const review = screen.getByRole('region', { name: 'Revisión completa del objetivo' });
+      expect(within(review).getByRole('button', { name: 'Aplicar decisiones al borrador' })).toBeDisabled();
+      expect(applyCheckpoint).not.toHaveBeenCalled();
+      expect(onSave).not.toHaveBeenCalled();
+    } finally { vi.unstubAllEnvs(); }
+  });
+
+  it('shows unresolved review on reentry without auto-accepting any response', async () => {
+    vi.stubEnv('VITE_PORTFOLIO_GOAL_E2_MULTI_TURN_UI_ENABLED', 'true');
+    vi.stubEnv('VITE_PORTFOLIO_GOAL_E2_CHECKPOINT_UI_ENABLED', 'true');
+    try {
+      getPlan.mockResolvedValue({ ...plan, activeQuestion: null, status: 'ready_for_human_review' });
+      getTurns.mockResolvedValue({ version: 1, turns: [firstTurn] });
+      render(<PortfolioGoalLedgerConversation {...props()} />);
+      expect(await screen.findByRole('region', { name: 'Revisión completa del objetivo' })).toBeVisible();
+      expect(screen.getByText(/Ya tenemos las respuestas necesarias para revisar el objetivo/)).toBeVisible();
+      expect(submit).not.toHaveBeenCalled();
+      expect(applyCheckpoint).not.toHaveBeenCalled();
+    } finally { vi.unstubAllEnvs(); }
+  });
+
   it('preserves the saved provisional turn when fetching next question fails', async () => {
     vi.stubEnv('VITE_PORTFOLIO_GOAL_E2_MULTI_TURN_UI_ENABLED', 'true');
     try {
