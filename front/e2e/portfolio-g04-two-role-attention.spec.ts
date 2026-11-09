@@ -42,6 +42,7 @@ test.describe('G04 — certified two-role AttentionItem journey', () => {
   test.afterAll(async () => { await prisma.$disconnect(); });
 
   test('equipo abre → Portfolio Lead responde y resuelve → equipo recupera historia; permisos, CAS e idempotencia', async ({ browser }) => {
+    test.setTimeout(120_000); // Two complete browser sessions plus CAS and persisted reentry.
     const api = await pwRequest.newContext({ baseURL });
     const owner = await createIdentity(api, 'owner');
     const lead = await createIdentity(api, 'lead');
