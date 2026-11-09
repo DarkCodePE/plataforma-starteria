@@ -1426,6 +1426,7 @@ model PortfolioAttentionEvent {
   nextOwnerId     String?
   note            String?
   idempotencyKey  String              @unique
+  payloadHash     String
   createdAt       DateTime            @default(now())
 
   @@index([attentionItemId, createdAt])
