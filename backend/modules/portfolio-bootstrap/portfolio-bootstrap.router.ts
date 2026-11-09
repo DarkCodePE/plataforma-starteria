@@ -45,6 +45,7 @@ export function buildPortfolioBootstrapRouter(deps: PortfolioBootstrapRouterDeps
   router.get('/sessions/:sessionId', auth, controller.getSession);
   router.get('/sessions/:sessionId/objective/plan', auth, controller.getGoalQuestionPlan);
   router.get('/sessions/:sessionId/objective/turns', auth, controller.getGoalTurns);
+  router.get('/sessions/:sessionId/objective/conversation-context', auth, controller.getGoalConversationContext);
   router.post('/sessions/:sessionId/objective/turns', auth, controller.appendGoalTurn);
   router.get('/sessions/:sessionId/context', auth, controller.getContext);
   router.get('/sessions/:sessionId/context/proposals', auth, controller.getContextProposals);
