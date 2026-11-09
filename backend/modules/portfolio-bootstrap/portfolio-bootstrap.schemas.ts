@@ -100,6 +100,8 @@ export const confirmPortfolioBootstrapContextBodySchema = z.object({
 }).strict();
 
 export const updateAnchorBodySchema = z.object({
+  /** Optional compare-and-set for explicit E2 ledger incorporation; legacy callers stay compatible. */
+  expectedVersion: z.number().int().min(1).optional(),
   outcomeStatement: z.string().min(1).optional(),
   contextSummary: z.string().min(1).nullable().optional(),
   decisionToEnable: z.string().min(1).nullable().optional(),

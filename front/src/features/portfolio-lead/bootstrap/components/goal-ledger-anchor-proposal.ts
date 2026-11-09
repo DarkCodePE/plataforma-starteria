@@ -80,6 +80,7 @@ export function createGoalLedgerAnchorProposal(
     goalLedgerAcceptedTurnIds: [...acceptedIds(anchor.sourceRefs), turn.id],
   };
   const result: UpdatePortfolioBootstrapAnchorInput = {
+    expectedVersion: anchor.version,
     sourceRefs: { ...sourceRefs, objectiveConversation: conversationNext },
   };
   if (turn.field === 'outcomeStatement') {

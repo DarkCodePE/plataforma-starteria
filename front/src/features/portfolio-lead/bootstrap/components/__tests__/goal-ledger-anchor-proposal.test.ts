@@ -29,6 +29,7 @@ const turn: PortfolioGoalTurn = {
 describe('KAN-253 B3 E2 ledger → Anchor review-only projection', () => {
   it('adds exact source receipt while preserving prior responses, with no invented KPI', () => {
     const result = createGoalLedgerAnchorProposal(anchor, turn);
+    expect(result.expectedVersion).toBe(anchor.version);
     expect(result.outcomeStatement).toBe(turn.inputText);
     expect(result.businessSignalValue).toBeUndefined();
     expect(result).not.toHaveProperty('decisionToEnable');
