@@ -7,6 +7,8 @@ import { PortfolioHomeReadService } from './portfolio-home.read-service';
 import { ChallengeSplitService } from './challenge-split.service';
 import { ChallengeCoverageReadService } from './challenge-coverage.read-service';
 import { PortfolioCapacityReadService } from './portfolio-capacity.read-service';
+import { PortfolioAttentionWorkflowService } from './portfolio-attention-workflow.service';
+import { createPortfolioAttentionSchema, portfolioAttentionActionSchema } from './portfolio-attention.schemas';
 import { resolvePortfolioScope } from './portfolio-scope';
 import { requirePortfolioResource } from './portfolio-resource-guard';
 import type { AuthenticatedRequest } from '../../shared/types/auth.types';
@@ -39,6 +41,7 @@ const controller = new PortfolioController(service, homeReadService);
 const challengeSplit = new ChallengeSplitService(prisma);
 const challengeCoverage = new ChallengeCoverageReadService(prisma);
 const portfolioCapacity = new PortfolioCapacityReadService(prisma);
+const attentionWorkflow = new PortfolioAttentionWorkflowService(prisma);
 
 // F-03: además del permiso global, cada escritura por ID comprueba que el recurso sea de una
 // organización de quien escribe (portfolio-resource-guard.ts).
@@ -62,6 +65,39 @@ portfolioRouter.get('/home', requirePermission('portfolio:read'), controller.get
 // Las lecturas se quedan SIN gate a propósito: `AppLayout` llama a
 // `GET /initiatives/:projectId/meta` para todo usuario autenticado, así que cerrarlas
 // rompería a los participantes. Deuda declarada en el `scope_out` de la feature.
+
+// G04: audited initiative attention workflow. Resource scope and write permission
+// are mandatory. Owner-team submission through a dedicated Step surface is a
+// separate authorization gate; these Portfolio Lead routes do not bypass it.
+portfolioRouter.get('/initiatives/:projectId/attention-items',
+  requirePermission('portfolio:read'), initiative(), async (req, res, next) => {
+    try { res.json({ success: true, data: await attentionWorkflow.list(req.params.projectId) }); }
+    catch (error) { next(error); }
+  });
+
+portfolioRouter.post('/initiatives/:projectId/attention-items',
+  requirePermission('portfolio:write'), initiative(), validate(createPortfolioAttentionSchema),
+  async (req, res, next) => {
+    try {
+      const actor = (req as AuthenticatedRequest).user!.id;
+      const key = req.header('Idempotency-Key') ?? '';
+      const data = await attentionWorkflow.create(req.params.projectId, actor, key, req.body);
+      res.status(201).json({ success: true, data });
+    } catch (error) { next(error); }
+  });
+
+portfolioRouter.post('/initiatives/:projectId/attention-items/:attentionId/actions',
+  requirePermission('portfolio:write'), initiative(), validate(portfolioAttentionActionSchema),
+  async (req, res, next) => {
+    try {
+      const actor = (req as AuthenticatedRequest).user!.id;
+      const key = req.header('Idempotency-Key') ?? '';
+      const data = await attentionWorkflow.act(
+        req.params.projectId, req.params.attentionId, actor, key, req.body,
+      );
+      res.json({ success: true, data });
+    } catch (error) { next(error); }
+  });
 
 // ─── Strategic Fronts ─────────────────────────────────────────────────────────
 portfolioRouter.get('/strategic-fronts', controller.listStrategicFronts);
