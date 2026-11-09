@@ -24,6 +24,9 @@ export function buildProvisionalGoalQuestionPlan(input: {
   const conversation = object(sourceRefs.objectiveConversation);
   const acceptedRaw = conversation.goalLedgerAcceptedTurnIds;
   const accepted = new Set(Array.isArray(acceptedRaw) ? acceptedRaw.filter((id): id is string => typeof id === 'string') : []);
+  const rejectedRaw = conversation.goalLedgerRejectedTurnIds;
+  const rejected = new Set(Array.isArray(rejectedRaw)
+    ? rejectedRaw.filter((id): id is string => typeof id === 'string') : []);
   const unknownRaw = conversation.unknownFields;
   const unknown = new Set<GoalField>(Array.isArray(unknownRaw)
     ? fields.filter((field) => unknownRaw.includes(field)) : []);
@@ -33,7 +36,8 @@ export function buildProvisionalGoalQuestionPlan(input: {
     if (!fields.includes(turn.field as GoalField) || turn.sessionId !== sessionId
       || turn.anchorVersion !== anchor.version
       || contextReview?.status !== 'confirmed' || turn.contextReviewVersion !== contextReview.version
-      || superseded.has(turn.id) || turn.disposition === 'retracted' || accepted.has(turn.id)) continue;
+      || superseded.has(turn.id) || turn.disposition === 'retracted'
+      || accepted.has(turn.id) || rejected.has(turn.id)) continue;
     newestByField.set(turn.field as GoalField, turn);
   }
   for (const [field, turn] of newestByField) {
