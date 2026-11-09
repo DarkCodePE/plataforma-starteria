@@ -103,6 +103,8 @@ export function PortfolioGoalLedgerConversation({ anchor, canConfirm, onSave, on
   const [applyingCheckpoint, setApplyingCheckpoint] = useState(false);
   const [checkpointApplied, setCheckpointApplied] = useState(false);
   const pendingKeyRef = useRef<string | null>(null);
+  const reviewHeadingRef = useRef<HTMLHeadingElement | null>(null);
+  const [focusReviewAfterAnswer, setFocusReviewAfterAnswer] = useState(false);
   const lockRef = useRef(false);
 
   const reload = useCallback(async () => {
@@ -139,6 +141,14 @@ export function PortfolioGoalLedgerConversation({ anchor, canConfirm, onSave, on
   }, [anchor.bootstrapSessionId, anchor.version]);
 
   useEffect(() => { void reload(); }, [reload]);
+  useEffect(() => {
+    // Move keyboard focus only after the user's last answer opens review.
+    // On page reentry do not steal focus from navigation or other controls.
+    if (focusReviewAfterAnswer && showGoalReview && plan && !plan.activeQuestion && loadStatus === 'ready') {
+      reviewHeadingRef.current?.focus();
+      setFocusReviewAfterAnswer(false);
+    }
+  }, [focusReviewAfterAnswer, showGoalReview, plan, loadStatus]);
   useEffect(() => {
     // A refreshed canonical Anchor starts a fresh review surface.
     setCheckpointApplied(false);
@@ -221,6 +231,7 @@ export function PortfolioGoalLedgerConversation({ anchor, canConfirm, onSave, on
           setPlan(nextPlan);
           if (!nextPlan.activeQuestion && checkpointUiEnabled) {
             setShowGoalReview(true);
+            setFocusReviewAfterAnswer(true);
           }
           setNotice(nextPlan.activeQuestion
             ? 'Respuesta registrada sin incorporarla. Puedes continuar conversando o revisar lo acumulado.'
@@ -367,8 +378,10 @@ export function PortfolioGoalLedgerConversation({ anchor, canConfirm, onSave, on
             ) : null}
             {multiTurnUiEnabled && hasPendingReviews ? (
               <div role="status" className="rounded-xl border border-[#d9caff] bg-white p-4 text-sm text-[#493297]">
-                <p className="font-semibold">{reviewCount} respuestas provisionales pendientes de revisión.</p>
-                <p className="mt-1">Puedes continuar con la siguiente pregunta. Ninguna respuesta ha modificado el objetivo.</p>
+                <p className="font-semibold">{reviewCount} {reviewCount === 1 ? 'respuesta provisional pendiente' : 'respuestas provisionales pendientes'} de revisión.</p>
+                <p className="mt-1">{activeQuestion
+                  ? 'Puedes continuar con la siguiente pregunta o revisar lo acumulado.'
+                  : 'Ya no hay preguntas pendientes. Revisa tus respuestas para decidir cuáles incorporar.'} Ninguna respuesta ha modificado el objetivo.</p>
                 <button type="button" onClick={() => setShowGoalReview(true)}
                   className="mt-2 rounded-lg border border-[#d9caff] px-3 py-2 text-xs font-semibold">
                   Revisar respuestas acumuladas
@@ -535,6 +548,7 @@ export function PortfolioGoalLedgerConversation({ anchor, canConfirm, onSave, on
         ) : null}
         {showGoalReview ? (
           <section id="e2-goal-review" aria-label="Revisión completa del objetivo" className="space-y-3 rounded-lg border border-[#e4e7f0] bg-[#fbfcff] p-3">
+            <h4 ref={reviewHeadingRef} tabIndex={-1} className="text-sm font-semibold text-[#182246] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#6446c0]">Revisión de tus respuestas</h4>
             <p className="text-xs text-[#6c7695]">Esta vista no confirma nada. Compara los valores del borrador con las respuestas todavía pendientes de tu decisión.</p>
             {checkpointUiEnabled && openCheckpointTurns.length > 0 ? (
               <section aria-label="Decisiones sobre respuestas provisionales" className="space-y-3 rounded-lg border border-[#d9caff] bg-white p-3">
