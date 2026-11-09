@@ -10,6 +10,7 @@ import type { PortfolioBootstrapGoalTurnService } from './portfolio-bootstrap-go
 import { portfolioBootstrapGoalTurnBodySchema } from './portfolio-bootstrap-goal-turn.schemas';
 import { buildContextProjection } from './portfolio-bootstrap-context-projection';
 import { buildGoalQuestionPlan } from './portfolio-bootstrap-goal-question-planner';
+import { buildProvisionalGoalQuestionPlan } from './portfolio-bootstrap-goal-provisional-planner';
 import { buildE2ConversationContext } from './portfolio-bootstrap-e2-conversation-context';
 import {
   portfolioBootstrapSemanticTurnRequestSchema,
@@ -158,7 +159,7 @@ export class PortfolioBootstrapController {
       // An E1 correction not yet reconfirmed is not a safe source for new E2 questions.
       const confirmedContext = review?.status === 'confirmed' && !review.hasPendingCorrection
         ? review : null;
-      const plan = buildGoalQuestionPlan({
+      const planInput = {
         sessionId,
         anchor: {
           id: session.anchor.id,
@@ -179,7 +180,13 @@ export class PortfolioBootstrapController {
             situation: { value: confirmedContext.effectiveContext.situation.value },
           } : null,
         } : null,
-      });
+      };
+      const multiTurnEnabled = process.env.PORTFOLIO_GOAL_E2_MULTI_TURN_ENABLED === 'true'
+        && process.env.PORTFOLIO_GOAL_E2_LEDGER_ENABLED === 'true';
+      const turns = multiTurnEnabled ? await this.goalTurnService.getTurns(access) : null;
+      const plan = multiTurnEnabled && turns
+        ? buildProvisionalGoalQuestionPlan({ ...planInput, turns: turns.turns })
+        : buildGoalQuestionPlan(planInput);
       res.json({ success: true, data: plan });
     } catch (err) { next(err); }
   };
