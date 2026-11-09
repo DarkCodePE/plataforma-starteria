@@ -1,5 +1,5 @@
 import type { PortfolioBootstrapAnchor, PortfolioGoalTurn } from '../services/portfolioBootstrapClient';
-import { isGoalLedgerTurnAccepted } from './goal-ledger-anchor-proposal';
+import { isGoalLedgerTurnResolved } from './goal-ledger-anchor-proposal';
 
 /** Read-only representation of the four business fields, not a confirmation or write command. */
 export const goalReviewFields = [
@@ -25,7 +25,7 @@ export function buildGoalReviewRows(anchor: PortfolioBootstrapAnchor, turns: Por
     .sort((a, b) => b.version - a.version);
   return goalReviewFields.map(({ key, label }) => {
     const current = anchor[key]?.trim() || '';
-    const candidate = currentTurns.find((turn) => turn.field === key && !isGoalLedgerTurnAccepted(anchor.sourceRefs, turn.id)) ?? null;
+    const candidate = currentTurns.find((turn) => turn.field === key && !isGoalLedgerTurnResolved(anchor.sourceRefs, turn.id)) ?? null;
     const pending = candidate && candidate.anchorVersion === anchor.version;
     const isUnknown = candidate?.disposition === 'unknown' || candidate?.disposition === 'not_applicable';
     return {
