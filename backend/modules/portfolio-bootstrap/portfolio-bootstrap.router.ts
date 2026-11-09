@@ -55,6 +55,7 @@ export function buildPortfolioBootstrapRouter(deps: PortfolioBootstrapRouterDeps
   router.post('/sessions/:sessionId/context/confirm', auth, controller.confirmContext);
   router.post('/sessions/:sessionId/complete-setup', auth, controller.completeSetup);
   router.patch('/sessions/:sessionId/anchor', auth, controller.updateAnchor);
+  router.post('/sessions/:sessionId/objective/checkpoint', auth, controller.applyGoalCheckpoint);
   router.post('/sessions/:sessionId/anchor/confirm', auth, controller.confirmAnchor);
   router.post('/sessions/:sessionId/work-items/paste', auth, controller.pasteWorkItems);
   router.post('/sessions/:sessionId/work-items/manual', auth, controller.addManualWorkItem);
