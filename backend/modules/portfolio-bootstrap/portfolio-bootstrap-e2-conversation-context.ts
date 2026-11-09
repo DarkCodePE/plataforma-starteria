@@ -10,7 +10,7 @@ export type E2ConversationContext = {
   anchorVersion: number;
   ledgerVersion: number;
   confirmedE1: { reviewId: string; version: number; situation: string } | null;
-  confirmedAnchor: {
+  anchorDraft: {
     outcomeStatement: string | null;
     contextSummary: string | null;
     decisionToEnable: string | null;
@@ -65,7 +65,7 @@ export function buildE2ConversationContext(input: {
     confirmedE1: confirmedE1?.status === 'confirmed' && confirmedE1.situation?.trim()
       ? { reviewId: confirmedE1.id, version: confirmedE1.version, situation: confirmedE1.situation.trim() }
       : null,
-    confirmedAnchor: {
+    anchorDraft: {
       outcomeStatement: anchor.outcomeStatement,
       contextSummary: anchor.contextSummary,
       decisionToEnable: anchor.decisionToEnable,
