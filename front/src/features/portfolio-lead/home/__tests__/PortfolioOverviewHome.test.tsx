@@ -220,6 +220,13 @@ describe('PortfolioOverviewHome', () => {
     expect(details).toHaveAttribute('aria-expanded', 'true');
     expect(within(table).getByText('lead-a')).toBeInTheDocument();
     expect(within(table).getByText('Fuente y procedencia:')).toBeInTheDocument();
+
+    // G04: the searchbox promises owner/actor lookup, not only title and state.
+    fireEvent.change(screen.getByRole('searchbox', { name: 'Filtrar trabajo y encargos' }), { target: { value: 'lead-a' } });
+    expect(within(table).getByText('Tercera iniciativa sin activar')).toBeInTheDocument();
+    expect(within(table).getByText('Onboarding guiado')).toBeInTheDocument();
+    fireEvent.change(screen.getByRole('searchbox', { name: 'Filtrar trabajo y encargos' }), { target: { value: 'unassigned-actor-not-present' } });
+    expect(within(table).queryByText('Tercera iniciativa sin activar')).not.toBeInTheDocument();
   });
 
   it('G5-CA02/CA03 keeps sent, accepted, started, rejected and Lab notification as distinct factual rows', () => {
