@@ -582,6 +582,32 @@ petición ni por una configuración productiva y el flag continúa apagado fuera
 
 ---
 
+## Slice PORTFOLIO_E2_GOAL_TURN_LEDGER (KAN-253 B2)
+
+**Registro:** 2026-11-09. Baseline main@f9c093255be7d901ccc1bce6689e08532df05b53, CI #42543901999 SUCCESS.
+
+```text
+slice_id: PORTFOLIO_E2_GOAL_TURN_LEDGER_B2
+task: KAN-253 B2
+authority: Core factual v0.2 + Authority Map + ADR-010 candidate (NOT APPROVED)
+status: PROPOSED_RUNTIME_IN_PR_PENDING_ADR_DB_TYPECHECK_REVIEW
+source_of_truth: provisional GoalTurn ledger, not canonical PortfolioAnchor
+persistence: additive PortfolioBootstrapGoalTurn, unique session/version + session/idempotency
+api: GET/POST /portfolio-bootstrap/sessions/:sessionId/objective/turns
+gate: PORTFOLIO_GOAL_E2_LEDGER_ENABLED=false by default
+versioning: expectedVersion + expectedAnchorVersion + expectedContextReviewVersion
+scope: session owner/tenant and Portfolio read/write permission
+provenance: immutable literal user_input, provisional; append correction via supersedesTurnId
+output: turn receipt and ordered history; no Anchor update or automatic convergence
+tests: schema, service, router; optional PostgreSQL disposable E2E gated by env
+unproven: full DB tests, backend typecheck, independent review, ADR ratification
+excluded: Core, E1 semantic, Steps, live AI, paid tokens, auto canonicalization, activation
+follow_up: B3 UX/persistence reconciliation and B4 governed model inference
+documentation: docs/implementation/KAN-253_E2_GOAL_TURN_LEDGER_B2_v0.1.md
+```
+
+---
+
 ## Slice PORTFOLIO_E2_GOAL_QUESTION_PLAN_READ_MODEL (KAN-253 B1)
 
 **Registro:** 2026-11-09. Baseline `main@ea2b8c82d98c48824570cd8b68024a66e9e54bc5`, PR #277 (abierto, no deploy).

@@ -20,6 +20,12 @@ KAN-247 (PR #272) permanece en rama de implementación, **no fusionado**. La pro
 Trazabilidad del journey (implementado/API/browser/pending): `docs/implementation/STARTERIA_PORTFOLIO_E2E_TRACEABILITY_POST_KAN248_v0.1.md`.
 No considerar E5–E7 UI-only, Owner→Steps, Step4→Decision/benefits o delivery Fab certificados por el test híbrido KAN-240. Flag semántico OFF y Lab únicamente solicitud/contacto donde corresponda.
 
+## KAN-253 B2 — Ledger provisional de turnos E2 (PR propuesto, no desplegado)
+
+B1 (PR #277) fusionado a main@f9c093255be7d901ccc1bce6689e08532df05b53, CI main #42543901999 SUCCESS. B2 agrega en una nueva rama el modelo Prisma aditivo `PortfolioBootstrapGoalTurn`, migración 20261109100000, GET/POST de turnos en un estado provisional separado del Anchor, y guardrail de flag `PORTFOLIO_GOAL_E2_LEDGER_ENABLED=false`. Los turnos E2 solo recogen declaraciones literales, correcciones y desconocidos mediante idempotencia y versionado; nunca confirman el objetivo ni desbloquean E3.
+
+ADR-010 está expresamente PROPUESTO y requiere ratificación antes del merge/migración. Tests de schema/unit/router y DB desechable están añadidos, pero la ejecución real/typecheck/revisión siguen pendientes de evidenciar. No se ha activado IA live ni modificado el modo semántico E1. Contrato: `docs/implementation/KAN-253_E2_GOAL_TURN_LEDGER_B2_v0.1.md`.
+
 ## KAN-253 — Goal Question Planner B1 para E2 (PR #277, no fusionado)
 
 Baseline factual `main@ea2b8c82d98c48824570cd8b68024a66e9e54bc5`: KAN-250/251/252 integrados, CI postmerge #42540652194 SUCCESS. Producción no acreditada para esos commits (último CD observado anterior).
