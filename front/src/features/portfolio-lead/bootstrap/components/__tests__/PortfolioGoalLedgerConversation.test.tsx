@@ -249,6 +249,52 @@ describe('KAN-253 B3 user-governed E2 ledger experience', () => {
     expect(submit).not.toHaveBeenCalled();
   });
 
+  it('continues to the next server-issued question without incorporating provisional answers when opt-in is on', async () => {
+    vi.stubEnv('VITE_PORTFOLIO_GOAL_E2_MULTI_TURN_UI_ENABLED', 'true');
+    try {
+      const user = userEvent.setup();
+      const secondPlan = {
+        ...plan,
+        activeQuestion: {
+          ...plan.activeQuestion!,
+          id: 'q-2-ledger1',
+          field: 'decisionToEnable' as const,
+          question: '¿Qué decisión te gustaría poder tomar?',
+        },
+      };
+      getPlan.mockResolvedValueOnce(plan).mockResolvedValueOnce(secondPlan);
+      const onSave = vi.fn();
+      const onConfirm = vi.fn();
+      render(<PortfolioGoalLedgerConversation {...props({ onSave, onConfirm })} />);
+      await screen.findByText('¿Qué cambio quieres validar?');
+      await user.type(screen.getByLabelText('Tu respuesta de Objetivo'), firstTurn.inputText);
+      await user.click(screen.getByRole('button', { name: 'Guardar respuesta provisional' }));
+      expect(await screen.findByText('¿Qué decisión te gustaría poder tomar?')).toBeVisible();
+      expect(screen.getByText(/1 respuestas provisionales pendientes/)).toBeVisible();
+      expect(screen.getByLabelText('Tu respuesta de Objetivo')).toBeEnabled();
+      await user.click(screen.getByRole('button', { name: 'Revisar respuestas acumuladas' }));
+      const review = screen.getByRole('region', { name: 'Revisión completa del objetivo' });
+      expect(within(review).queryByRole('button', { name: 'Incorporar este cambio' })).not.toBeInTheDocument();
+      expect(onSave).not.toHaveBeenCalled();
+      expect(onConfirm).not.toHaveBeenCalled();
+    } finally { vi.unstubAllEnvs(); }
+  });
+
+  it('preserves the saved provisional turn when fetching next question fails', async () => {
+    vi.stubEnv('VITE_PORTFOLIO_GOAL_E2_MULTI_TURN_UI_ENABLED', 'true');
+    try {
+      const user = userEvent.setup();
+      getPlan.mockResolvedValueOnce(plan).mockRejectedValueOnce(new Error('backend unavailable'));
+      render(<PortfolioGoalLedgerConversation {...props()} />);
+      await screen.findByText('¿Qué cambio quieres validar?');
+      await user.type(screen.getByLabelText('Tu respuesta de Objetivo'), firstTurn.inputText);
+      await user.click(screen.getByRole('button', { name: 'Guardar respuesta provisional' }));
+      expect(await screen.findByRole('button', { name: 'Recuperar conversación' })).toBeVisible();
+      expect(screen.getByText(/Tu respuesta se registró/)).toBeVisible();
+      expect(screen.getByText(firstTurn.inputText, { selector: 'article p' })).toBeVisible();
+    } finally { vi.unstubAllEnvs(); }
+  });
+
   it('reenters with an unincorporated turn and does not repeat the question or write', async () => {
     getTurns.mockResolvedValue({ version: 1, turns: [firstTurn] });
     render(<PortfolioGoalLedgerConversation {...props()} />);
