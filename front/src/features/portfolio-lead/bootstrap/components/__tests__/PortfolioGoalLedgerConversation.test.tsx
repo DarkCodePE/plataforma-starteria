@@ -354,6 +354,12 @@ describe('KAN-253 B3 user-governed E2 ledger experience', () => {
       await user.click(screen.getByRole('button', { name: /Revisar objetivo completo/ }));
       const review = screen.getByRole('region', { name: 'Revisión completa del objetivo' });
       const button = within(review).getByRole('button', { name: 'Aplicar decisiones al borrador' });
+      const outcomeComparison = within(review).getByLabelText('Comparación de Resultado esperado');
+      expect(within(outcomeComparison).getByText(anchor.outcomeStatement)).toBeVisible();
+      expect(within(outcomeComparison).getByText(firstTurn.inputText)).toBeVisible();
+      const decisionComparison = within(review).getByLabelText('Comparación de Decisión a habilitar');
+      expect(within(decisionComparison).getByText('Sin definir')).toBeVisible();
+      expect(within(decisionComparison).getByText('Decidir si lanzar una prueba.')).toBeVisible();
       expect(button).toBeDisabled();
       await user.click(within(within(review).getByRole('group', { name: 'Resultado esperado' }))
         .getByRole('radio', { name: 'Incorporar' }));
@@ -372,6 +378,30 @@ describe('KAN-253 B3 user-governed E2 ledger experience', () => {
       expect(onCheckpointApplied).toHaveBeenCalledTimes(1);
       expect(onSave).not.toHaveBeenCalled();
       expect(onConfirm).not.toHaveBeenCalled();
+    } finally { vi.unstubAllEnvs(); }
+  });
+
+  it('makes uncertainty explicit in the before-after checkpoint and never invents a KPI', async () => {
+    vi.stubEnv('VITE_PORTFOLIO_GOAL_E2_MULTI_TURN_UI_ENABLED', 'true');
+    vi.stubEnv('VITE_PORTFOLIO_GOAL_E2_CHECKPOINT_UI_ENABLED', 'true');
+    try {
+      const user = userEvent.setup();
+      getTurns.mockResolvedValue({
+        version: 1,
+        turns: [{
+          ...firstTurn, field: 'businessSignalValue', inputText: 'No lo sé todavía.',
+          disposition: 'unknown',
+        }],
+      });
+      render(<PortfolioGoalLedgerConversation {...props()} />);
+      await screen.findByText('¿Qué cambio quieres validar?');
+      await user.click(screen.getByRole('button', { name: /Revisar objetivo completo/ }));
+      const review = screen.getByRole('region', { name: 'Revisión completa del objetivo' });
+      const comparison = within(review).getByLabelText('Comparación de KPI o señal');
+      expect(within(comparison).getByText('Sin definir')).toBeVisible();
+      expect(within(comparison).getByText('Se registrará como pendiente / desconocido')).toBeVisible();
+      expect(within(review).getByText(/Incorporarlo registra esa incertidumbre, no una cifra/)).toBeVisible();
+      expect(applyCheckpoint).not.toHaveBeenCalled();
     } finally { vi.unstubAllEnvs(); }
   });
 

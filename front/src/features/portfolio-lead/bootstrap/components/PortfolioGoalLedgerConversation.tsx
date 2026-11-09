@@ -539,11 +539,34 @@ export function PortfolioGoalLedgerConversation({ anchor, canConfirm, onSave, on
             {checkpointUiEnabled && openCheckpointTurns.length > 0 ? (
               <section aria-label="Decisiones sobre respuestas provisionales" className="space-y-3 rounded-lg border border-[#d9caff] bg-white p-3">
                 <h4 className="text-sm font-semibold text-[#182246]">Decide qué incorporar al borrador</h4>
-                <p className="text-xs text-[#6c7695]">Revisa cada respuesta vigente. Aceptar conserva su texto; descartar no cambia ese campo. Ninguna elección se aplica hasta que pulses el botón final.</p>
+                <p className="text-xs text-[#6c7695]">Compara el objetivo actual con lo que quedaría si incorporas cada respuesta. «No incorporar» conserva el valor actual; ninguna elección se aplica hasta que pulses el botón final.</p>
                 {openCheckpointTurns.map((turn) => (
                   <fieldset key={turn.id} className="rounded-lg border border-[#e4e7f0] p-3">
                     <legend className="text-xs font-semibold text-[#493297]">{goalFieldLabels[turn.field as GoalField] ?? 'Dato por revisar'}</legend>
-                    <p className="whitespace-pre-wrap text-sm text-[#182246]">{turn.inputText}</p>
+                    {(() => {
+                      const change = pendingChangePreview(anchor, turn);
+                      return (
+                        <div className="mt-2 grid gap-2 sm:grid-cols-2" aria-label={`Comparación de ${change.label}`}>
+                          <div className="rounded-lg bg-[#f7f7fc] p-3">
+                            <p className="text-xs font-semibold text-[#586582]">Valor actual</p>
+                            <p className="mt-1 whitespace-pre-wrap text-sm text-[#182246]">{change.current}</p>
+                          </div>
+                          <div className="rounded-lg bg-[#f5f0ff] p-3">
+                            <p className="text-xs font-semibold text-[#493297]">Si decides incorporar</p>
+                            <p className="mt-1 whitespace-pre-wrap text-sm text-[#182246]">{change.proposed}</p>
+                          </div>
+                        </div>
+                      );
+                    })()}
+                    {turn.disposition !== 'user_declared' ? (
+                      <p className="mt-2 text-xs text-[#6c7695]">
+                        {turn.disposition === 'unknown'
+                          ? 'Has indicado que todavía no conoces este dato.'
+                          : 'Has indicado que este dato no aplica.'}
+                        {' '}Incorporarlo registra esa incertidumbre, no una cifra, meta o resultado confirmado.
+                      </p>
+                    ) : null}
+                    <p className="mt-2 whitespace-pre-wrap text-xs text-[#586582]">Tu respuesta original: {turn.inputText}</p>
                     <div className="mt-2 flex flex-wrap gap-4 text-xs">
                       <label className="inline-flex items-center gap-2">
                         <input type="radio" name={`checkpoint-${turn.id}`} checked={checkpointChoices[turn.id] === 'accept'}
