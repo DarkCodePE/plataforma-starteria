@@ -273,7 +273,7 @@ describe('KAN-253 B3 user-governed E2 ledger experience', () => {
       await user.type(screen.getByLabelText('Tu respuesta de Objetivo'), firstTurn.inputText);
       await user.click(screen.getByRole('button', { name: 'Guardar respuesta provisional' }));
       expect(await screen.findByText('¿Qué decisión te gustaría poder tomar?')).toBeVisible();
-      expect(screen.getByText(/1 respuestas provisionales pendientes/)).toBeVisible();
+      expect(screen.getByText(/1 respuesta provisional pendiente/)).toBeVisible();
       expect(screen.getByLabelText('Tu respuesta de Objetivo')).toBeEnabled();
       await user.click(screen.getByRole('button', { name: 'Revisar respuestas acumuladas' }));
       const review = screen.getByRole('region', { name: 'Revisión completa del objetivo' });
@@ -297,7 +297,9 @@ describe('KAN-253 B3 user-governed E2 ledger experience', () => {
       await user.type(screen.getByLabelText('Tu respuesta de Objetivo'), firstTurn.inputText);
       await user.click(screen.getByRole('button', { name: 'Guardar respuesta provisional' }));
       expect(await screen.findByRole('region', { name: 'Revisión completa del objetivo' })).toBeVisible();
+      await waitFor(() => expect(screen.getByRole('heading', { name: 'Revisión de tus respuestas' })).toHaveFocus());
       expect(screen.getByText(/Ya tenemos las respuestas necesarias para revisar el objetivo/)).toBeVisible();
+      expect(screen.getByText(/Ya no hay preguntas pendientes/)).toBeVisible();
       const review = screen.getByRole('region', { name: 'Revisión completa del objetivo' });
       expect(within(review).getByRole('button', { name: 'Aplicar decisiones al borrador' })).toBeDisabled();
       expect(applyCheckpoint).not.toHaveBeenCalled();
@@ -314,6 +316,8 @@ describe('KAN-253 B3 user-governed E2 ledger experience', () => {
       render(<PortfolioGoalLedgerConversation {...props()} />);
       expect(await screen.findByRole('region', { name: 'Revisión completa del objetivo' })).toBeVisible();
       expect(screen.getByText(/Ya tenemos las respuestas necesarias para revisar el objetivo/)).toBeVisible();
+      // Reentering should not forcibly steal keyboard focus.
+      expect(screen.getByRole('heading', { name: 'Revisión de tus respuestas' })).not.toHaveFocus();
       expect(submit).not.toHaveBeenCalled();
       expect(applyCheckpoint).not.toHaveBeenCalled();
     } finally { vi.unstubAllEnvs(); }
