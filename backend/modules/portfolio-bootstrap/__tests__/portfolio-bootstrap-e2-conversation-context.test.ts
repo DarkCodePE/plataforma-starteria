@@ -29,12 +29,12 @@ describe('KAN-253 B4-A — E2 provenance-safe read context', () => {
       turns: [turn('t2', 2), turn('t1', 1)],
     });
     expect(result.confirmedE1).toEqual({ reviewId: 'r1', version: 2, situation: 'Empresa SaaS B2B.' });
-    expect(result.confirmedAnchor.outcomeStatement).toBe('Mejorar retención');
+    expect(result.anchorDraft.outcomeStatement).toBe('Mejorar retención');
     expect(result.activeProvisional).toEqual([
       expect.objectContaining({ turnId: 't1', reviewStatus: 'incorporated', source: 'user_input' }),
       expect.objectContaining({ turnId: 't2', reviewStatus: 'unreviewed', source: 'user_input' }),
     ]);
-    expect(result.confirmedAnchor.decisionToEnable).toBeNull();
+    expect(result.anchorDraft.decisionToEnable).toBeNull();
     expect(result.ledgerVersion).toBe(2);
   });
 
@@ -63,7 +63,7 @@ describe('KAN-253 B4-A — E2 provenance-safe read context', () => {
     expect(result.activeProvisional[0]).toMatchObject({
       reviewStatus: 'stale_anchor', disposition: 'unknown', literalAnswer: 'No lo sé todavía.',
     });
-    expect(result.confirmedAnchor.decisionToEnable).toBeNull();
+    expect(result.anchorDraft.decisionToEnable).toBeNull();
   });
 
   it('handles empty inputs without inventing data', () => {
