@@ -28,6 +28,8 @@ type Props = {
 
 type InteractionState = 'loading' | 'ready' | 'error';
 type GoalDisposition = 'user_declared' | 'unknown' | 'not_applicable';
+// Experimental UI only. The backend must independently enable PORTFOLIO_GOAL_E2_MULTI_TURN_ENABLED.
+const multiTurnUiEnabled = import.meta.env.VITE_PORTFOLIO_GOAL_E2_MULTI_TURN_UI_ENABLED === 'true';
 
 function toError(error: unknown): string {
   return error instanceof Error && error.message.trim()
@@ -131,8 +133,10 @@ export function PortfolioGoalLedgerConversation({ anchor, canConfirm, onSave, on
   const legacy = legacyAnswerTexts(anchor.sourceRefs);
   const reviewRows = buildGoalReviewRows(anchor, turns);
   const reviewCount = reviewRows.filter((row) => row.status === 'pending_review').length;
-  const canWrite = Boolean(activeQuestion && !pending && !stalePending && !awaitingAnchorRefresh && !busy && plan?.status !== 'blocked');
-  const isCorrecting = Boolean(pending && editingPending);
+  const hasPendingReviews = reviewCount > 0;
+  const canWrite = Boolean(activeQuestion && !stalePending && !awaitingAnchorRefresh && !busy
+    && plan?.status !== 'blocked' && (multiTurnUiEnabled || !pending));
+  const isCorrecting = Boolean(!multiTurnUiEnabled && pending && editingPending);
 
   async function saveTurn(event: React.FormEvent) {
     event.preventDefault();
@@ -171,7 +175,25 @@ export function PortfolioGoalLedgerConversation({ anchor, canConfirm, onSave, on
       setDisposition('user_declared');
       setEditingPending(false);
       pendingKeyRef.current = null;
-      setNotice('Respuesta guardada como provisional. Revisa si quieres incorporarla al borrador.');
+      if (multiTurnUiEnabled) {
+        // The server owns the next question and includes the new ledger version in its ID.
+        // Never synthesize the next question on the client.
+        try {
+          const nextPlan = await getPortfolioBootstrapGoalQuestionPlan(anchor.bootstrapSessionId);
+          if (nextPlan.sessionId !== anchor.bootstrapSessionId || nextPlan.anchorVersion !== anchor.version) {
+            throw new Error('La sesión cambió mientras se generaba la siguiente pregunta.');
+          }
+          setPlan(nextPlan);
+          setNotice(nextPlan.activeQuestion
+            ? 'Respuesta registrada sin incorporarla. Puedes continuar conversando o revisar lo acumulado.'
+            : 'Conversación lista para revisión. Tus respuestas siguen sin incorporarse.');
+        } catch (cause) {
+          setPlan(null);
+          setError(`Tu respuesta se registró, pero no pudimos recuperar la siguiente pregunta. Pulsa «Recuperar conversación». ${toError(cause)}`);
+        }
+      } else {
+        setNotice('Respuesta guardada como provisional. Revisa si quieres incorporarla al borrador.');
+      }
     } catch (cause) {
       setError(toError(cause));
       // Keep exact input and idempotency key for the explicit retry action.
@@ -273,6 +295,22 @@ export function PortfolioGoalLedgerConversation({ anchor, canConfirm, onSave, on
                 </ul>
               </details>
             ) : null}
+            {multiTurnUiEnabled && hasPendingReviews ? (
+              <div role="status" className="rounded-xl border border-[#d9caff] bg-white p-4 text-sm text-[#493297]">
+                <p className="font-semibold">{reviewCount} respuestas provisionales pendientes de revisión.</p>
+                <p className="mt-1">Puedes continuar con la siguiente pregunta. Ninguna respuesta ha modificado el objetivo.</p>
+                <button type="button" onClick={() => setShowGoalReview(true)}
+                  className="mt-2 rounded-lg border border-[#d9caff] px-3 py-2 text-xs font-semibold">
+                  Revisar respuestas acumuladas
+                </button>
+              </div>
+            ) : null}
+            {multiTurnUiEnabled && !plan ? (
+              <button type="button" disabled={busy} onClick={() => void reload()}
+                className="rounded-lg border border-[#d9caff] bg-white px-3 py-2 text-sm font-semibold text-[#493297]">
+                Recuperar conversación
+              </button>
+            ) : null}
             {activeQuestion ? (
               <section aria-label="Pregunta de Objetivo" className="rounded-2xl border border-[#decfff] border-l-[3px] border-l-[#7b59d3] bg-[#f5f0ff] p-4">
                 <p className="text-xs font-bold uppercase tracking-wide text-[#6446c0]">Siguiente pregunta</p>
@@ -295,7 +333,7 @@ export function PortfolioGoalLedgerConversation({ anchor, canConfirm, onSave, on
                 {plan?.reason ?? 'La ficha está pendiente de revisión humana.'}
               </div>
             )}
-            {pending && !isAccepted(pending) && !editingPending ? (
+            {pending && !isAccepted(pending) && !editingPending && !multiTurnUiEnabled ? (
               <section className="rounded-xl border border-[#d9caff] bg-white p-4">
                 <h3 className="font-semibold text-[#182246]">Respuesta guardada, pendiente de revisión</h3>
                 <p className="mt-2 text-sm text-[#6c7695]">No se ha modificado el objetivo. Puedes incorporarla o corregirla antes de seguir.</p>
@@ -407,6 +445,11 @@ export function PortfolioGoalLedgerConversation({ anchor, canConfirm, onSave, on
       <aside className="min-w-0 space-y-3 rounded-xl border border-[#e4e7f0] bg-white p-4" aria-label="Ficha provisional de E2">
         <p className="text-xs font-bold uppercase tracking-wider text-[#6446c0]">Ficha estratégica · provisional</p>
         <h3 className="text-lg font-semibold text-[#182246]">Lo que estamos construyendo</h3>
+        {multiTurnUiEnabled ? (
+          <p className="rounded-lg border border-[#d9caff] bg-[#f5f0ff] p-3 text-xs text-[#493297]">
+            Modo experimental: conversación consecutiva. Las respuestas siguen provisionales; la aceptación agrupada aún no está habilitada.
+          </p>
+        ) : null}
         <button type="button" aria-expanded={showGoalReview} aria-controls="e2-goal-review"
           onClick={() => setShowGoalReview((value) => !value)}
           className="w-full rounded-lg border border-[#d9caff] bg-[#f5f0ff] px-3 py-2 text-left text-sm font-semibold text-[#493297]">
@@ -426,7 +469,7 @@ export function PortfolioGoalLedgerConversation({ anchor, canConfirm, onSave, on
                 </p>
                 <p className="mt-2 whitespace-pre-wrap text-xs text-[#182246]"><strong>Actual:</strong> {row.current}</p>
                 {row.proposed !== null ? <p className="mt-2 whitespace-pre-wrap text-xs text-[#493297]"><strong>Propuesto:</strong> {row.proposed}</p> : null}
-                {row.status === 'pending_review' && pending?.id === row.turnId ? (
+                {row.status === 'pending_review' && pending?.id === row.turnId && !multiTurnUiEnabled ? (
                   <div className="mt-3 flex flex-wrap gap-2">
                     <button type="button" disabled={busy || isAccepted(pending)}
                       onClick={() => void incorporate(pending)}
@@ -447,7 +490,9 @@ export function PortfolioGoalLedgerConversation({ anchor, canConfirm, onSave, on
               </article>
             ))}
             <p className="text-xs text-[#6c7695]">
-              Solo las respuestas vigentes pueden incorporarse desde aquí. No se aplican cambios en lote: cada incorporación exige tu acción y la confirmación final del objetivo es independiente.
+              {multiTurnUiEnabled
+                ? 'Este es un checkpoint de revisión sin escrituras. La aceptación conjunta requiere una operación de backend validada; ninguna respuesta se incorporará automáticamente.'
+                : 'Solo las respuestas vigentes pueden incorporarse desde aquí. No se aplican cambios en lote: cada incorporación exige tu acción y la confirmación final del objetivo es independiente.'}
             </p>
           </section>
         ) : null}
@@ -470,7 +515,7 @@ export function PortfolioGoalLedgerConversation({ anchor, canConfirm, onSave, on
           </p>
           <p className="mt-1">{snapshot?.turns.length ?? 0} respuestas registradas. Los datos no confirmados no se convierten automáticamente en resultados de negocio.</p>
         </div>
-        {canConfirm && !pending && !stalePending ? (
+        {canConfirm && !pending && !stalePending && !hasPendingReviews ? (
           <button type="button" onClick={() => void confirm()} disabled={busy}
             className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-[#182246] px-3 py-2.5 text-sm font-semibold text-white disabled:opacity-50">
             <CheckCircle2 size={16} /> {confirming ? 'Confirmando…' : 'Confirmar objetivo y continuar'} <ArrowRight size={16} />
