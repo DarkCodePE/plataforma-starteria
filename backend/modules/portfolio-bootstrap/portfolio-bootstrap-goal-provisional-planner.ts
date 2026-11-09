@@ -31,8 +31,9 @@ export function buildProvisionalGoalQuestionPlan(input: {
   const newestByField = new Map<GoalField, GoalTurnDto>();
   for (const turn of ordered) {
     if (!fields.includes(turn.field as GoalField) || turn.sessionId !== sessionId
-      || turn.anchorVersion !== anchor.version || superseded.has(turn.id)
-      || turn.disposition === 'retracted' || accepted.has(turn.id)) continue;
+      || turn.anchorVersion !== anchor.version
+      || contextReview?.status !== 'confirmed' || turn.contextReviewVersion !== contextReview.version
+      || superseded.has(turn.id) || turn.disposition === 'retracted' || accepted.has(turn.id)) continue;
     newestByField.set(turn.field as GoalField, turn);
   }
   for (const [field, turn] of newestByField) {
