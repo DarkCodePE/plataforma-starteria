@@ -46,6 +46,9 @@ describe('PortfolioOverviewHome', () => {
     expect(screen.getByRole('heading', { name: 'Qué falta' })).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'Próxima intervención' })).toBeInTheDocument();
     expect(screen.getByText('1 iniciativa activa', { exact: false })).toBeInTheDocument();
+    const operationalTable = screen.getByRole('table', { name: 'Seguimiento operativo del portafolio' });
+    expect(within(operationalTable).getByText('Owner no disponible')).toBeInTheDocument();
+    expect(within(operationalTable).queryByText('Owner canónico')).not.toBeInTheDocument();
     expect(screen.getAllByText('Sin datos').length).toBeGreaterThanOrEqual(2);
   });
 
