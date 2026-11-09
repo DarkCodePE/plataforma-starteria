@@ -191,6 +191,87 @@ describeDb('KAN-253 B2 goal turn ledger with disposable PostgreSQL', () => {
     }
   });
 
+  it('E1 confirmed -> four E2 provisional answers -> human checkpoint -> confirmed Anchor -> E3 no-work intake', async () => {
+    process.env.PORTFOLIO_GOAL_E2_MULTI_TURN_ENABLED = 'true';
+    process.env.PORTFOLIO_GOAL_E2_CHECKPOINT_ENABLED = 'true';
+    try {
+      await seed();
+      const client = app(userId);
+      const root = base.replace('/objective/turns', '');
+      const answers = [
+        { field: 'outcomeStatement', value: 'Validar el servicio de desayunos para oficinas próximas.' },
+        { field: 'decisionToEnable', value: 'Decidir si lanzar una prueba controlada del servicio.' },
+        { field: 'contextSummary', value: 'Cafetería pequeña, cuatro personas y sin iniciativas actuales.' },
+        { field: 'businessSignalValue', value: 'Cantidad de pedidos de desayuno de oficinas cercanas.' },
+      ];
+      const receiptIds: string[] = [];
+      for (const [index, answer] of answers.entries()) {
+        const planResponse = await request(client).get(root + '/objective/plan').expect(200);
+        expect(planResponse.body.data.activeQuestion?.field).toBe(answer.field);
+        expect(planResponse.body.data.activeQuestion?.id).toContain(`-ledger${index}`);
+        const posted = await request(client).post(base)
+          .set('Idempotency-Key', `e2-e3-handoff-turn-${index}`)
+          .send({
+            expectedVersion: index,
+            expectedAnchorVersion: 1,
+            expectedContextReviewVersion: 1,
+            questionId: planResponse.body.data.activeQuestion.id,
+            inputText: answer.value,
+            disposition: 'user_declared',
+            supersedesTurnId: null,
+          }).expect(200);
+        receiptIds.push(posted.body.data.turn.id);
+      }
+      const stop = await request(client).get(root + '/objective/plan').expect(200);
+      expect(stop.body.data.activeQuestion).toBeNull();
+      expect(stop.body.data.status).toBe('ready_for_human_review');
+
+      const before = await prisma.portfolioAnchor.findUnique({ where: { id: anchorId } });
+      expect(before?.status).toBe('anchor_insufficient');
+      expect(before?.version).toBe(1);
+
+      const checkpoint = await request(client).post(root + '/objective/checkpoint')
+        .send({
+          expectedAnchorVersion: 1,
+          expectedLedgerVersion: 4,
+          expectedContextReviewVersion: 1,
+          decisions: receiptIds.map(turnId => ({ turnId, action: 'accept' })),
+        }).expect(200);
+      expect(checkpoint.body.data.anchor).toMatchObject({
+        status: 'anchor_sufficient',
+        version: 2,
+        outcomeStatement: answers[0].value,
+        decisionToEnable: answers[1].value,
+        contextSummary: answers[2].value,
+        businessSignalValue: answers[3].value,
+      });
+      expect(checkpoint.body.data.anchor.confirmedBy).toBeNull();
+      const ledger = await request(client).get(base).expect(200);
+      expect(ledger.body.data.version).toBe(4);
+      expect(ledger.body.data.turns).toHaveLength(4);
+
+      const confirmed = await request(client).post(root + '/anchor/confirm').send({}).expect(200);
+      expect(confirmed.body.data.anchor).toMatchObject({
+        status: 'anchor_confirmed', version: 3, confirmedBy: userId,
+      });
+      const intake = await request(client).post(root + '/work-items/none').send({}).expect(200);
+      expect(intake.body.data).toMatchObject({
+        sessionId, existingWorkStatus: 'no_existing_work', items: [],
+      });
+      const resumed = await request(client).get(root).expect(200);
+      expect(resumed.body.data.bootstrapSession).toMatchObject({
+        existingWorkStatus: 'no_existing_work',
+        bootstrapPhase: 'B3_PROVISIONAL_STRUCTURING',
+      });
+      expect(resumed.body.data.anchor).toMatchObject({
+        status: 'anchor_confirmed', outcomeStatement: answers[0].value,
+      });
+    } finally {
+      delete process.env.PORTFOLIO_GOAL_E2_MULTI_TURN_ENABLED;
+      delete process.env.PORTFOLIO_GOAL_E2_CHECKPOINT_ENABLED;
+    }
+  });
+
   it('persists one provisional turn and returns it on reentry without changing Anchor', async () => {
     await seed();
     const before = await prisma.portfolioAnchor.findUnique({ where: { id: anchorId } });
