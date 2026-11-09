@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildGoalQuestionPlan } from '../portfolio-bootstrap-goal-question-planner';
+import { buildGoalQuestionPlan, type GoalPlanContextReview } from '../portfolio-bootstrap-goal-question-planner';
 
 const baseAnchor = {
   id: 'anchor-1', version: 3, status: 'anchor_insufficient',
@@ -9,7 +9,7 @@ const baseAnchor = {
   sourceRefs: [],
 };
 
-const confirmedE1 = {
+const confirmedE1: GoalPlanContextReview = {
   id: 'review-1', status: 'confirmed', version: 4,
   effectiveContext: {
     situation: {
