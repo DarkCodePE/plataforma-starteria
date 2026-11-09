@@ -594,8 +594,14 @@ function FrozenContextConversation(props: React.ComponentProps<typeof PortfolioB
 function FrozenObjectiveConversation({ projection, onSave, onConfirm }: { projection: BootstrapProjection; onSave: (input: UpdatePortfolioBootstrapAnchorInput) => Promise<void>; onConfirm: () => Promise<void> }) {
   const anchor = projection.anchor;
   return <>
-    <AssistantBubble>He recibido tu contexto inicial. No voy a inventar KPIs o causas. <b>Conversaremos para aclarar el resultado de negocio, su contexto y la decisión que necesitas tomar.</b> Si algo no lo sabes, quedará pendiente.</AssistantBubble>
-    {anchor.contextSummary ? <UserBubble>{anchor.contextSummary}</UserBubble> : null}
+    <AssistantBubble>Partimos de la información disponible en este espacio. <b>Aclararemos el resultado de negocio y la decisión que quieres habilitar</b> sin inventar KPIs ni causas. Puedes dejar incertidumbres abiertas.</AssistantBubble>
+    {anchor.contextSummary ? (
+      <section aria-label="Referencia disponible del objetivo" className="rounded-xl border border-[#dce6f7] bg-[#edf2fb] p-4 text-sm text-[#344d80]">
+        <p className="text-xs font-semibold uppercase tracking-wide">Contexto disponible · referencia, no turno de conversación</p>
+        <p className="mt-2">{anchor.contextSummary}</p>
+        <p className="mt-2 text-xs">Fuente: Anchor de la sesión · estado {statusLabel(anchor.status)}. El origen específico requiere verificar sourceRefs; este texto no implica una intervención nueva del usuario.</p>
+      </section>
+    ) : null}
     <FocusedQuestion eyebrow="Alinear con negocio" title="Primero entendamos el objetivo, antes de diseñar trabajo" help="Una conversación breve para construir una ficha estratégica útil; no un formulario de ocho campos." />
     <ObjectiveConversation anchor={anchor} onSave={onSave} canConfirm={projection.canConfirm} onConfirm={onConfirm} />
   </>;
