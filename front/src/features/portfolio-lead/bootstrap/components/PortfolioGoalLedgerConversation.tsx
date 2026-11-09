@@ -321,7 +321,18 @@ export function PortfolioGoalLedgerConversation({ anchor, canConfirm, onSave, on
             ) : null}
             {stalePending ? (
               <div role="alert" className="rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900">
-                Una respuesta pendiente pertenece a otra versión del objetivo. No se incorporará automáticamente. Recarga y revisa los cambios antes de continuar.
+                <p>Una respuesta pendiente pertenece a una versión anterior del objetivo. No se incorporará automáticamente.</p>
+                <p className="mt-2 text-sm">La respuesta sigue en el historial. Recupera el estado actual para revisar si necesitas volver a responder o utiliza la preparación guiada.</p>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <button type="button" disabled={busy} onClick={() => void reload()}
+                    className="rounded-lg border border-amber-300 bg-white px-3 py-2 text-xs font-semibold">
+                    Recuperar estado actual
+                  </button>
+                  <button type="button" disabled={busy} onClick={onUseGuided}
+                    className="rounded-lg border border-amber-300 bg-white px-3 py-2 text-xs font-semibold">
+                    Usar preparación guiada
+                  </button>
+                </div>
               </div>
             ) : null}
             {activeQuestion && (canWrite || isCorrecting) ? (
@@ -329,7 +340,13 @@ export function PortfolioGoalLedgerConversation({ anchor, canConfirm, onSave, on
                 <label className="block text-sm font-semibold text-[#182246]">
                   Tu respuesta de Objetivo
                   <textarea value={answer} maxLength={2_000} rows={3} disabled={busy}
-                    onChange={(event) => { setAnswer(event.target.value); pendingKeyRef.current = null; }}
+                    onChange={(event) => {
+                      setAnswer(event.target.value);
+                      // A manually edited answer is a declaration, not an unknown/not-applicable marker.
+                      // The user can explicitly select those dispositions again below.
+                      setDisposition('user_declared');
+                      pendingKeyRef.current = null;
+                    }}
                     placeholder="Describe lo que quieres conseguir; puedes dejar algo como desconocido"
                     className="mt-2 w-full rounded-lg border border-[#dbe0ef] px-3 py-2 font-normal disabled:opacity-50" />
                 </label>
@@ -351,7 +368,11 @@ export function PortfolioGoalLedgerConversation({ anchor, canConfirm, onSave, on
                     Cancelar corrección
                   </button>
                 ) : null}
-                <p className="text-xs text-[#6c7695]">Tipo: {disposition === 'unknown' ? 'desconocido' : disposition === 'not_applicable' ? 'no aplicable' : 'declaración propia'}. Guardar aquí no confirma ni actualiza automáticamente el Anchor.</p>
+                <p role="status" className="text-xs text-[#6c7695]">
+                  Se guardará como {disposition === 'unknown' ? 'información que aún no conoces' : disposition === 'not_applicable' ? 'información que no aplica' : 'tu respuesta declarada'}.
+                  {isCorrecting ? ' Esta corrección conservará la versión anterior en el historial.' : ''}
+                  {' '}No cambiará el objetivo hasta que revises y aceptes su incorporación.
+                </p>
                 <button type="submit" disabled={busy || !answer.trim()} className="rounded-lg bg-[#6446c0] px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50">
                   {submitting ? 'Guardando…' : 'Guardar respuesta provisional'}
                 </button>
@@ -378,10 +399,12 @@ export function PortfolioGoalLedgerConversation({ anchor, canConfirm, onSave, on
             </div>
           ))}
         </dl>
-        <p className="text-xs text-[#6c7695]">
-          {snapshot?.turns.length ?? 0} respuestas registradas en el nuevo ledger.
-          No se infieren metas, costes ni resultados.
-        </p>
+        <div role="status" className="rounded-lg bg-[#f7f7fc] p-3 text-xs text-[#586582]">
+          <p className="font-semibold text-[#182246]">
+            {pending ? 'Una respuesta espera tu revisión' : stalePending ? 'Hay una respuesta de una versión anterior' : awaitingAnchorRefresh ? 'Cambio incorporado; recuperando ficha' : canConfirm ? 'Ficha lista para confirmar' : 'Ficha en construcción'}
+          </p>
+          <p className="mt-1">{snapshot?.turns.length ?? 0} respuestas registradas. Los datos no confirmados no se convierten automáticamente en resultados de negocio.</p>
+        </div>
         {canConfirm && !pending && !stalePending ? (
           <button type="button" onClick={() => void confirm()} disabled={busy}
             className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-[#182246] px-3 py-2.5 text-sm font-semibold text-white disabled:opacity-50">
