@@ -124,7 +124,7 @@ export class PortfolioBootstrapGoalTurnService {
       const existingTurns = multiTurnEnabled ? await db.portfolioBootstrapGoalTurn.findMany({
         where: { bootstrapSessionId: session.id }, orderBy: { turnVersion: 'asc' }, take: 10_000,
       }) : [];
-      const planInput = {
+      const planInput: Parameters<typeof buildGoalQuestionPlan>[0] = {
         sessionId: session.id,
         anchor: {
           id: anchor.id, version: anchor.version, status: anchor.status,
