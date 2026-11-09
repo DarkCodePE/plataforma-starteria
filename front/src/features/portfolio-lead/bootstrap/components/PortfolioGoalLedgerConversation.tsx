@@ -47,7 +47,8 @@ function legacyAnswerTexts(sourceRefs: unknown): string[] {
     return !entry.ledgerTurnId && typeof value === 'string' && value.trim() ? [value.slice(0, 2_000)] : [];
   });
 }
-const goalFieldLabels: Record<PortfolioGoalTurn['field'], string> = {
+type GoalField = 'outcomeStatement' | 'contextSummary' | 'decisionToEnable' | 'businessSignalValue';
+const goalFieldLabels: Record<GoalField, string> = {
   outcomeStatement: 'Resultado esperado',
   contextSummary: 'Contexto',
   decisionToEnable: 'Decisión a habilitar',
@@ -55,12 +56,16 @@ const goalFieldLabels: Record<PortfolioGoalTurn['field'], string> = {
 };
 
 function pendingChangePreview(anchor: PortfolioBootstrapAnchor, turn: PortfolioGoalTurn) {
-  const current = anchor[turn.field]?.trim() || 'Sin definir';
+  if (!Object.prototype.hasOwnProperty.call(goalFieldLabels, turn.field)) {
+    throw new Error('El campo propuesto no corresponde a un objetivo revisable.');
+  }
+  const field = turn.field as GoalField;
+  const current = anchor[field]?.trim() || 'Sin definir';
   const unknown = turn.disposition === 'unknown' || turn.disposition === 'not_applicable';
-  const proposed = unknown && turn.field === 'outcomeStatement'
+  const proposed = unknown && field === 'outcomeStatement'
     ? current
     : unknown ? 'Se registrará como pendiente / desconocido' : turn.inputText;
-  return { label: goalFieldLabels[turn.field], current, proposed, unknown };
+  return { label: goalFieldLabels[field], current, proposed, unknown };
 }
 
 function shownDate(value: string): string {
