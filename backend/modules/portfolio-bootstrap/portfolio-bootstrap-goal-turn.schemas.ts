@@ -13,7 +13,8 @@ export const portfolioBootstrapGoalTurnBodySchema = z.object({
   disposition: z.enum(['user_declared', 'unknown', 'not_applicable', 'retracted']),
   supersedesTurnId: z.string().trim().min(1).max(240).nullable().default(null),
 }).strict().superRefine((turn, context) => {
-  if (turn.disposition === 'unknown' && !/\b(no (?:lo )?s[eé]|desconozco|a[uú]n no|todav[ií]a no|no tengo claro)\b/i.test(turn.inputText)) {
+  const normalizedInput = turn.inputText.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  if (turn.disposition === 'unknown' && !/\b(no (?:lo )?se|desconozco|aun no|todavia no|no tengo claro)\b/i.test(normalizedInput)) {
     context.addIssue({
       code: 'custom', path: ['inputText'],
       message: 'Una respuesta marcada como desconocida debe declararlo explícitamente.',

@@ -28,6 +28,10 @@ function harness() {
     },
   };
   const mock = {
+    user: { findUnique: vi.fn(async () => ({ id: 'owner-1' })) },
+    organization: { findUnique: vi.fn(async () => ({ id: 'org-1' })) },
+    organizationMember: { findFirst: vi.fn(async () => ({ id: 'member-1' })) },
+    organizationPortfolioAccessGrant: { findFirst: vi.fn(async () => null) },
     portfolioBootstrapSession: {
       findFirst: vi.fn(async ({ where }: any) =>
         where.id === session.id && where.userId === session.userId ? session : null),
