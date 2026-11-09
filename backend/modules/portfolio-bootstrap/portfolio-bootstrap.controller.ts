@@ -82,6 +82,9 @@ export class PortfolioBootstrapController {
    */
   getGoalTurns = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
+      if (process.env.PORTFOLIO_GOAL_E2_LEDGER_ENABLED !== 'true') {
+        throw new AppError(503, 'El ledger E2 no está habilitado.', 'PORTFOLIO_GOAL_LEDGER_DISABLED');
+      }
       if (!req.user?.id) throw AppError.unauthorized('No autorizado.', 'PORTFOLIO_BOOTSTRAP_AUTH_REQUIRED');
       const { sessionId } = bootstrapSessionParamsSchema.parse(req.params);
       const data = await this.goalTurnService.getTurns({
@@ -93,6 +96,9 @@ export class PortfolioBootstrapController {
 
   appendGoalTurn = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
+      if (process.env.PORTFOLIO_GOAL_E2_LEDGER_ENABLED !== 'true') {
+        throw new AppError(503, 'El ledger E2 no está habilitado.', 'PORTFOLIO_GOAL_LEDGER_DISABLED');
+      }
       if (!req.user?.id) throw AppError.unauthorized('No autorizado.', 'PORTFOLIO_BOOTSTRAP_AUTH_REQUIRED');
       const { sessionId } = bootstrapSessionParamsSchema.parse(req.params);
       const body = portfolioBootstrapGoalTurnBodySchema.parse(req.body);

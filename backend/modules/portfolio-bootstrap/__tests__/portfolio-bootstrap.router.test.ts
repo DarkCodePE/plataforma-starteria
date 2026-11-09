@@ -87,6 +87,7 @@ function makeApp() {
 
 describe('portfolio-bootstrap router', () => {
   beforeEach(() => {
+    process.env.PORTFOLIO_GOAL_E2_LEDGER_ENABLED = 'true';
     vi.clearAllMocks();
     currentUser = {
       id: 'portfolio-lead-1',
@@ -338,6 +339,23 @@ describe('portfolio-bootstrap router', () => {
     expect(service.createOrReuseDirect).toHaveBeenCalledWith(expect.objectContaining({
       authenticatedUserId: 'portfolio-lead-1',
     }));
+  });
+
+  it('KAN-253 B2 refuses any ledger request while the rollout flag is off', async () => {
+    const original = process.env.PORTFOLIO_GOAL_E2_LEDGER_ENABLED;
+    process.env.PORTFOLIO_GOAL_E2_LEDGER_ENABLED = 'false';
+    try {
+      const response = await request(makeApp())
+        .get('/api/v1/portfolio-bootstrap/sessions/bs-1/objective/turns')
+        .expect(503);
+      expect(response.body.error.code).toBe('PORTFOLIO_GOAL_LEDGER_DISABLED');
+      expect(goalTurnService.getTurns).not.toHaveBeenCalled();
+      await request(makeApp()).post('/api/v1/portfolio-bootstrap/sessions/bs-1/objective/turns')
+        .set('Idempotency-Key', 'disabled').send({}).expect(503);
+      expect(goalTurnService.appendTurn).not.toHaveBeenCalled();
+    } finally {
+      process.env.PORTFOLIO_GOAL_E2_LEDGER_ENABLED = original;
+    }
   });
 
   it('KAN-253 B2 reads the E2 ledger without provisioning or changing the Anchor', async () => {
