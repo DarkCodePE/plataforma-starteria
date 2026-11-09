@@ -16,6 +16,8 @@ import { requireEntitlement } from '../billing/entitlement.middleware';
 import { requireProjectCapability, requireProjectTeamAccess } from './project-team-access';
 import { StepContextBuilder } from '../step-reasoning/context-builder';
 import { PrismaStepReasoningRepository } from '../step-reasoning/repository';
+import { PortfolioAttentionWorkflowService } from '../portfolio/portfolio-attention-workflow.service';
+import { createPortfolioAttentionSchema } from '../portfolio/portfolio-attention.schemas';
 import { StepReasoningService } from '../step-reasoning/service';
 import { StepReasoningController } from '../step-reasoning/controller';
 import { StepReasoningQaEligibility, validateStepReasoningRuntimeConfig } from '../step-reasoning/feature-flag';
@@ -24,6 +26,7 @@ validateStepReasoningRuntimeConfig();
 const service = new ProjectService(prisma);
 const controller = new ProjectController(service);
 const adaptiveCoreService = new AdaptiveCoreService(prisma);
+const portfolioAttention = new PortfolioAttentionWorkflowService(prisma);
 const adaptiveCoreController = new AdaptiveCoreController(adaptiveCoreService);
 const missionReview = new MissionReviewReadService(prisma);
 const stepReasoning = new StepReasoningController(
@@ -55,6 +58,22 @@ projectRouter.post(
   validate(createProjectSchema),
   controller.create,
 );
+// G04: active OWNER/EDITOR may report an initiative issue; they do not
+// inherit portfolio:write or permission to resolve/escalate its governance.
+projectRouter.get('/:id/attention-items', canRead, async (req, res, next) => {
+  try {
+    res.json({ success: true, data: await portfolioAttention.list(req.params.id) });
+  } catch (error) { next(error); }
+});
+projectRouter.post('/:id/attention-items', canWrite, validate(createPortfolioAttentionSchema),
+  async (req, res, next) => {
+    try {
+      const key = req.header('Idempotency-Key') ?? '';
+      const item = await portfolioAttention.create(req.params.id, (req as AuthenticatedRequest).user!.id, key, req.body);
+      res.status(201).json({ success: true, data: item });
+    } catch (error) { next(error); }
+  });
+
 projectRouter.get('/:id', canRead, controller.getById);
 projectRouter.patch('/:id', canWrite, validate(updateProjectSchema), controller.update);
 projectRouter.delete('/:id', canManage, controller.archive);
