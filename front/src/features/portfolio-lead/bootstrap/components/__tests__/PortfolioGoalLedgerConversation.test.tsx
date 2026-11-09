@@ -214,6 +214,41 @@ describe('KAN-253 B3 user-governed E2 ledger experience', () => {
     expect(screen.queryByRole('region', { name: 'Revisión completa del objetivo' })).not.toBeInTheDocument();
   });
 
+  it('adopts only the explicitly selected current proposal from consolidated review', async () => {
+    const user = userEvent.setup();
+    getTurns.mockResolvedValue({ version: 1, turns: [firstTurn] });
+    const onSave = vi.fn().mockResolvedValue(undefined);
+    const onConfirm = vi.fn();
+    render(<PortfolioGoalLedgerConversation {...props({ onSave, onConfirm })} />);
+    await screen.findByText('Respuesta guardada, pendiente de revisión');
+    await user.click(screen.getByRole('button', { name: /Revisar objetivo completo/ }));
+    const review = screen.getByRole('region', { name: 'Revisión completa del objetivo' });
+    expect(within(review).getByRole('button', { name: 'Incorporar este cambio' })).toBeEnabled();
+    expect(onSave).not.toHaveBeenCalled();
+    await user.click(within(review).getByRole('button', { name: 'Incorporar este cambio' }));
+    await waitFor(() => expect(onSave).toHaveBeenCalledTimes(1));
+    expect(onSave).toHaveBeenCalledWith(expect.objectContaining({
+      expectedVersion: anchor.version,
+      outcomeStatement: firstTurn.inputText,
+    }));
+    expect(onConfirm).not.toHaveBeenCalled();
+  });
+
+  it('lets the user correct a pending proposal from consolidated review without writing immediately', async () => {
+    const user = userEvent.setup();
+    getTurns.mockResolvedValue({ version: 1, turns: [firstTurn] });
+    const onSave = vi.fn();
+    render(<PortfolioGoalLedgerConversation {...props({ onSave })} />);
+    await screen.findByText('Respuesta guardada, pendiente de revisión');
+    await user.click(screen.getByRole('button', { name: /Revisar objetivo completo/ }));
+    await user.click(screen.getByRole('button', { name: 'Corregir propuesta' }));
+    expect(screen.getByRole('button', { name: 'Cancelar corrección' })).toBeVisible();
+    expect(screen.getByLabelText('Tu respuesta de Objetivo')).toHaveValue(firstTurn.inputText);
+    expect(screen.queryByRole('region', { name: 'Revisión completa del objetivo' })).not.toBeInTheDocument();
+    expect(onSave).not.toHaveBeenCalled();
+    expect(submit).not.toHaveBeenCalled();
+  });
+
   it('reenters with an unincorporated turn and does not repeat the question or write', async () => {
     getTurns.mockResolvedValue({ version: 1, turns: [firstTurn] });
     render(<PortfolioGoalLedgerConversation {...props()} />);

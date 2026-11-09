@@ -426,10 +426,28 @@ export function PortfolioGoalLedgerConversation({ anchor, canConfirm, onSave, on
                 </p>
                 <p className="mt-2 whitespace-pre-wrap text-xs text-[#182246]"><strong>Actual:</strong> {row.current}</p>
                 {row.proposed !== null ? <p className="mt-2 whitespace-pre-wrap text-xs text-[#493297]"><strong>Propuesto:</strong> {row.proposed}</p> : null}
+                {row.status === 'pending_review' && pending?.id === row.turnId ? (
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <button type="button" disabled={busy || isAccepted(pending)}
+                      onClick={() => void incorporate(pending)}
+                      className="rounded-lg bg-[#6446c0] px-3 py-2 text-xs font-semibold text-white disabled:opacity-50">
+                      Incorporar este cambio
+                    </button>
+                    <button type="button" disabled={busy} onClick={() => {
+                      setEditingPending(true);
+                      setAnswer(pending.inputText);
+                      setDisposition(pending.disposition === 'unknown' ? 'unknown' : pending.disposition === 'not_applicable' ? 'not_applicable' : 'user_declared');
+                      pendingKeyRef.current = null;
+                      setShowGoalReview(false);
+                    }} className="rounded-lg border border-[#d9caff] bg-white px-3 py-2 text-xs font-semibold text-[#493297]">
+                      Corregir propuesta
+                    </button>
+                  </div>
+                ) : null}
               </article>
             ))}
             <p className="text-xs text-[#6c7695]">
-              Para incorporar una respuesta usa su acción de revisión en la conversación. La confirmación del objetivo es posterior y requiere tu aprobación.
+              Solo las respuestas vigentes pueden incorporarse desde aquí. No se aplican cambios en lote: cada incorporación exige tu acción y la confirmación final del objetivo es independiente.
             </p>
           </section>
         ) : null}
