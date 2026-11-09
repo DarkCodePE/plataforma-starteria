@@ -1404,12 +1404,33 @@ model AttentionItem {
   resolvedAt      DateTime?
   createdAt       DateTime              @default(now())
   updatedAt       DateTime              @updatedAt
+  version         Int                   @default(0)
+  events          PortfolioAttentionEvent[]
 
   @@index([projectId])
   @@index([status])
   @@index([severity])
   @@index([ownerId])
   @@index([sourceRefId])
+}
+
+model PortfolioAttentionEvent {
+  id              String              @id @default(cuid())
+  attentionItemId String
+  attentionItem   AttentionItem       @relation(fields: [attentionItemId], references: [id], onDelete: Cascade)
+  actorId         String
+  action          String
+  beforeStatus    AttentionItemStatus?
+  afterStatus     AttentionItemStatus
+  previousOwnerId String?
+  nextOwnerId     String?
+  note            String?
+  idempotencyKey  String              @unique
+  payloadHash     String
+  createdAt       DateTime            @default(now())
+
+  @@index([attentionItemId, createdAt])
+  @@index([actorId])
 }
 
 model ImpactAssertion {

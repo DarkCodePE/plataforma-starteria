@@ -21,6 +21,7 @@ import { trackInitialReviewEvent } from '../../features/initiative-review/servic
 import { getActiveStepConfiguration } from '../../features/adaptive-core/domain/adaptiveCore';
 import type { AdaptiveInitiativeCore } from '../../features/adaptive-core/domain/types';
 import { getAdaptiveCore } from '../../features/adaptive-core/services/adaptiveCoreService';
+import { InitiativeAttentionReporter } from '../../features/initiative-attention/InitiativeAttentionReporter';
 
 const ROUTE_STEPS = [
   { n: 0, name: 'Ordenar contexto' },
@@ -306,6 +307,8 @@ export function InitiativeOverviewPage() {
           </div>
         )}
       </section>
+
+      {canEdit && projectId ? <InitiativeAttentionReporter projectId={projectId} /> : null}
 
       <div className="mt-8 flex flex-wrap gap-3">
         {started ? (

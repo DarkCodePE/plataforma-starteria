@@ -5,6 +5,10 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { InitiativeOverviewPage } from '../InitiativeOverviewPage';
 
+vi.mock('../../../features/initiative-attention/InitiativeAttentionReporter', () => ({
+  InitiativeAttentionReporter: () => <section data-testid="team-attention-reporter">Solicitudes y bloqueos</section>,
+}));
+
 const navigate = vi.fn();
 vi.mock('react-router', () => ({
   useParams: () => ({ projectId: 'p1' }),
