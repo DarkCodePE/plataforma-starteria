@@ -2,6 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { AlertTriangle, ArrowRight, BriefcaseBusiness, CheckSquare, Gauge, Sparkles } from 'lucide-react';
 import type { PortfolioHomeReadModel } from '../../../app/services/portfolioService';
 import type { PortfolioResumableSession } from '../bootstrap/services/portfolioBootstrapClient';
+import { PortfolioAttentionPanel } from './PortfolioAttentionPanel';
 
 type Props = {
   model: PortfolioHomeReadModel;
@@ -54,6 +55,18 @@ export function PortfolioOverviewHome({
   const [operationalFilter, setOperationalFilter] = useState('');
   const [expandedRow, setExpandedRow] = useState<string | null>(null);
   const operationalRows = useMemo(() => buildOperationalRows(model, initiatives), [model, initiatives]);
+  const governance = model.governance as {
+    portfolioLead?: { id?: string | null; name?: string | null; label?: string | null; email?: string | null; source?: string } | null;
+    initiativeOwners?: Array<{ id?: string | null; name?: string | null; label?: string | null; email?: string | null; source?: string }>;
+  };
+  const assigneeCandidates = [
+    governance.portfolioLead,
+    ...(governance.initiativeOwners ?? []),
+    ...initiatives.map((initiative) => initiative.owner),
+  ].filter((person): person is NonNullable<typeof person> => Boolean(person && person.source === 'canonical' && person.id));
+  const assignees = Array.from(new Map(assigneeCandidates.map((person) => [
+    person.id!, { id: person.id!, label: person.name?.trim() || person.label?.trim() || person.email?.trim() || person.id! },
+  ])).values());
   const visibleOperationalRows = operationalRows.filter((row) => {
     const needle = operationalFilter.trim().toLocaleLowerCase('es');
     return needle.length === 0 || [row.title, row.destination, row.status, row.nextAction, row.actor ?? '']
@@ -225,7 +238,11 @@ export function PortfolioOverviewHome({
             const detailId = `portfolio-operational-detail-${row.key.replace(/[^a-zA-Z0-9_-]/g, '-')}`;
             return <React.Fragment key={row.key}>
               <tr className="border-b border-slate-100 align-top last:border-0"><th scope="row" className="px-3 py-3 font-semibold text-slate-950">{row.title}</th><td className="px-3 py-3 text-slate-700">{row.destination}</td><td className="px-3 py-3"><span className="inline-flex rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-800">{row.status}</span></td><td className="px-3 py-3 text-slate-700">{row.nextAction}</td><td className="px-3 py-3"><button type="button" aria-expanded={expanded} aria-controls={detailId} onClick={() => setExpandedRow(expanded ? null : row.key)} className="min-h-11 rounded-lg px-2 font-semibold text-violet-800 underline-offset-4 hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2">{expanded ? 'Ocultar detalle' : `Ver detalle de ${row.title}`}</button></td></tr>
-              {expanded ? <tr id={detailId} className="border-b border-slate-200 bg-slate-50"><td colSpan={5} className="px-4 py-4 text-xs leading-5 text-slate-700"><div className="grid gap-1 sm:grid-cols-2"><p><strong>Actor:</strong> {row.actor ?? 'Sin datos'}</p><p><strong>Actualizado:</strong> {row.updatedAt ? formatDate(row.updatedAt) : 'Sin datos'}</p><p><strong>Fuente y procedencia:</strong> {formatTrace(row.provenance)}</p><p><strong>Evidencia/eventos:</strong> {row.evidence}</p><p><strong>Permiso:</strong> lectura del portafolio de la organización</p><p><strong>Siguiente paso:</strong> {row.nextAction}</p></div></td></tr> : null}
+              {expanded ? <tr id={detailId} className="border-b border-slate-200 bg-slate-50"><td colSpan={5} className="px-4 py-4 text-xs leading-5 text-slate-700"><div className="grid gap-1 sm:grid-cols-2"><p><strong>Actor:</strong> {row.actor ?? 'Sin datos'}</p><p><strong>Actualizado:</strong> {row.updatedAt ? formatDate(row.updatedAt) : 'Sin datos'}</p><p><strong>Fuente y procedencia:</strong> {formatTrace(row.provenance)}</p><p><strong>Evidencia/eventos:</strong> {row.evidence}</p><p><strong>Permiso:</strong> lectura del portafolio de la organización</p><p><strong>Siguiente paso:</strong> {row.nextAction}</p></div>
+                {row.key.startsWith('initiative-') ? (
+                  <PortfolioAttentionPanel key={row.key} projectId={row.key.slice('initiative-'.length)} assignees={assignees} />
+                ) : null}
+              </td></tr> : null}
             </React.Fragment>;
           })}</tbody>
         </table>
