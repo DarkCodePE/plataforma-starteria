@@ -544,7 +544,17 @@ export interface PortfolioHomeReadModel {
     blockers: Array<{ summary: string; severity: string | null; source: string }>;
   }>;
   attention: Array<{ type: string; summary: string; reason: string | null; severity: string | null; suggestedAction: string | null; entity: { type: string; id: string | null } }>;
-  pendingDecisions: Array<{ requestId: string; initiativeId: string; requestedDecision: string | null; status: string | null }>;
+  pendingDecisions: Array<{
+    decisionId?: string | null;
+    requestId: string;
+    initiativeId: string;
+    requestedDecision: string | null;
+    status: string | null;
+    recommendation?: unknown | null;
+    evidenceSummary?: unknown | null;
+    decisionAuthority?: { id?: string | null; name?: string | null; label?: string | null; email?: string | null; source: 'canonical' | 'legacy-derived' | 'unknown' } | null;
+    updatedAt?: string | null;
+  }>;
   recommendations: Array<{ recommendation: string; reason: string | null; source: string; uncertainty: string | null; requiresHumanConfirmation: true }>;
   handoffAssignments: Array<{ assignmentId: string; targetKind: string; challengeRef: string; initiativeRef: string | null; handoffState: string; deliveryStatus?: 'not_sent' | 'smtp_accepted' | 'failed'; latestDeliveryAttemptAt?: string | null; briefVersionId?: string | null; invitedEmail?: string | null; acceptedAt?: string | null; startedAt?: string | null; portfolioResponse?: string | null; rejectedAt?: string | null; lastMaterialEvent?: string | null; sourceEventRefs?: string[]; generatedAt?: string }>;
   labRequests?: Array<{ requestId: string; challengeId: string; briefVersionId: string; status: string; notificationStatus: string; createdAt: string; updatedAt: string }>;
