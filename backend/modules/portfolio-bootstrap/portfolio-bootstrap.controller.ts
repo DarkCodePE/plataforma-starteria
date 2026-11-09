@@ -7,7 +7,7 @@ import type { PortfolioBootstrapContextService } from './portfolio-bootstrap-con
 import type { PortfolioBootstrapSemanticService } from './portfolio-bootstrap-semantic.service';
 import type { PortfolioBootstrapSemanticOrchestratorService } from './portfolio-bootstrap-semantic-orchestrator.service';
 import type { PortfolioBootstrapGoalTurnService } from './portfolio-bootstrap-goal-turn.service';
-import { portfolioBootstrapGoalTurnBodySchema } from './portfolio-bootstrap-goal-turn.schemas';
+import { portfolioBootstrapGoalTurnBodySchema, portfolioGoalCheckpointSchema } from './portfolio-bootstrap-goal-turn.schemas';
 import { buildContextProjection } from './portfolio-bootstrap-context-projection';
 import { buildGoalQuestionPlan } from './portfolio-bootstrap-goal-question-planner';
 import { buildProvisionalGoalQuestionPlan } from './portfolio-bootstrap-goal-provisional-planner';
@@ -512,6 +512,18 @@ export class PortfolioBootstrapController {
     } catch (err) {
       next(err);
     }
+  };
+
+  applyGoalCheckpoint = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      if (!req.user?.id) throw AppError.unauthorized('No autorizado.', 'PORTFOLIO_BOOTSTRAP_AUTH_REQUIRED');
+      const { sessionId } = bootstrapSessionParamsSchema.parse(req.params);
+      const body = portfolioGoalCheckpointSchema.parse(req.body);
+      const data = await this.service.applyGoalCheckpoint({
+        sessionId, authenticatedUserId: req.user.id, permissions: req.user.permissions, body,
+      });
+      res.json({ success: true, data });
+    } catch (error) { next(error); }
   };
 
   confirmAnchor = async (req: Request, res: Response, next: NextFunction): Promise<void> => {

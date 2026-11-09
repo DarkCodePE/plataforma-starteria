@@ -171,6 +171,7 @@ export function PortfolioBootstrapHome({
       projection={projection}
       bootstrapPhase={data.bootstrapSession.bootstrapPhase}
       onUpdateAnchor={onUpdateAnchor}
+      onCheckpointApplied={onRetry}
       onConfirmAnchor={onConfirmAnchor}
       onPasteWorkItems={onPasteWorkItems}
       onUploadImportFile={onUploadImportFile}
@@ -316,6 +317,7 @@ function PortfolioCopilotWorkspace({
   projection,
   bootstrapPhase,
   onUpdateAnchor,
+  onCheckpointApplied,
   onConfirmAnchor,
   onPasteWorkItems,
   onUploadImportFile,
@@ -359,6 +361,7 @@ function PortfolioCopilotWorkspace({
   projection: BootstrapProjection;
   bootstrapPhase: PortfolioBootstrapResponse['bootstrapSession']['bootstrapPhase'];
   onUpdateAnchor: (input: UpdatePortfolioBootstrapAnchorInput) => Promise<void>;
+  onCheckpointApplied: () => void;
   onConfirmAnchor: () => Promise<void>;
   onPasteWorkItems: (text: string) => Promise<void>;
   onUploadImportFile: (file: File) => Promise<void>;
@@ -565,7 +568,7 @@ function PortfolioCopilotWorkspace({
                 enableContextProjection
               />
             ) : null}
-            {stage === 1 ? <FrozenObjectiveConversation projection={projection} onSave={onUpdateAnchor} onConfirm={confirmObjective} /> : null}
+            {stage === 1 ? <FrozenObjectiveConversation projection={projection} onSave={onUpdateAnchor} onConfirm={confirmObjective} onCheckpointApplied={onCheckpointApplied} /> : null}
             {stage === 2 ? <FrozenChatStage eyebrow="Incorporar iniciativas" title="¿Qué iniciativas existentes quieres que revisemos?" help="Puedes subir un archivo, pegar una lista o continuar sin iniciativas. No hay una respuesta obligatoria.">{runtimePanel}</FrozenChatStage> : null}
             {stage === 3 ? <FrozenChatStage eyebrow="Análisis explicable" title="¿Qué está contribuyendo, qué se solapa y qué requiere revisión?" help="Cada lectura conserva su fuente, evidencia, vacíos y estado de revisión humana.">{runtimePanel}</FrozenChatStage> : null}
             {stage === 4 ? <FrozenOrganizationStage projection={projection} proposal={organizationProposal} status={organizationStatus} error={organizationError} onSave={onSaveOrganizationProposal} onConfirm={onConfirmOrganizationProposal} onComplete={(confirmed) => { setConfirmedOrganization(confirmed); setSelectedStage(5); }} /> : null}
@@ -592,7 +595,7 @@ function FrozenContextConversation(props: React.ComponentProps<typeof PortfolioB
   return <PortfolioBootstrapContextConversation {...props} />;
 }
 
-function FrozenObjectiveConversation({ projection, onSave, onConfirm }: { projection: BootstrapProjection; onSave: (input: UpdatePortfolioBootstrapAnchorInput) => Promise<void>; onConfirm: () => Promise<void> }) {
+function FrozenObjectiveConversation({ projection, onSave, onConfirm, onCheckpointApplied }: { projection: BootstrapProjection; onSave: (input: UpdatePortfolioBootstrapAnchorInput) => Promise<void>; onConfirm: () => Promise<void>; onCheckpointApplied: () => void }) {
   const anchor = projection.anchor;
   const [useGuided, setUseGuided] = useState(false);
   // Both the frontend opt-in AND the backend's own ledger flag must be enabled.
@@ -616,6 +619,7 @@ function FrozenObjectiveConversation({ projection, onSave, onConfirm }: { projec
         canConfirm={projection.canConfirm}
         onConfirm={onConfirm}
         onUseGuided={() => setUseGuided(true)}
+        onCheckpointApplied={onCheckpointApplied}
       />
     ) : (
       <ObjectiveConversation anchor={anchor} onSave={onSave} canConfirm={projection.canConfirm} onConfirm={onConfirm} />

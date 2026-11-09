@@ -400,6 +400,24 @@ export type PortfolioGoalTurn = {
   createdAt: string;
 };
 export type PortfolioGoalTurnSnapshot = { version: number; turns: PortfolioGoalTurn[] };
+export type PortfolioGoalCheckpointInput = {
+  expectedAnchorVersion: number;
+  expectedLedgerVersion: number;
+  expectedContextReviewVersion: number;
+  decisions: Array<{ turnId: string; action: 'accept' | 'reject' }>;
+};
+
+export async function applyPortfolioBootstrapGoalCheckpoint(
+  sessionId: string, body: PortfolioGoalCheckpointInput,
+): Promise<PortfolioBootstrapResponse> {
+  try {
+    const { data } = await api.post<ApiResponse<PortfolioBootstrapResponse>>(
+      `/portfolio-bootstrap/sessions/${encodeURIComponent(sessionId)}/objective/checkpoint`, body,
+    );
+    return data.data;
+  } catch (err) { throw new PortfolioBootstrapClientError(parseApiError(err)); }
+}
+
 export type PortfolioGoalTurnInput = {
   expectedVersion: number;
   expectedAnchorVersion: number;
