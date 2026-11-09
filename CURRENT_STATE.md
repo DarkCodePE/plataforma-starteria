@@ -20,6 +20,12 @@ KAN-247 (PR #272) permanece en rama de implementación, **no fusionado**. La pro
 Trazabilidad del journey (implementado/API/browser/pending): `docs/implementation/STARTERIA_PORTFOLIO_E2E_TRACEABILITY_POST_KAN248_v0.1.md`.
 No considerar E5–E7 UI-only, Owner→Steps, Step4→Decision/benefits o delivery Fab certificados por el test híbrido KAN-240. Flag semántico OFF y Lab únicamente solicitud/contacto donde corresponda.
 
+## KAN-251 — Copilot-first semántico E1 (PR apilado, sin rollout)
+
+PR #275 `feat/KAN-251-semantic-copilot-ux` se basa en PR #274/KAN-250 aún abierto. La UX semántica E1 muestra turns reales, recap/pregunta/reasonToAsk del servidor, acciones de ayuda sin autosubmit, citas de usuario verificables y síntesis provisional de hechos/unknowns/hipótesis. Referencia de interacción: HTML Copilot-first v1.0 suministrado por el usuario; es un **mock simulado**, no motor generativo.
+
+`SEMANTIC_E1_ENABLED=false` mantiene el camino legacy guiado en producción hasta una activación gobernada y certificada; el PR no afirma que la experiencia adaptativa ya esté desplegada ni elimina la confirmación humana de ContextReview. Pendientes: CI final del HEAD, typecheck frontend dirigido, prueba Playwright autenticada y revisión independiente; luego orden de merge PR #274 → PR #275, sin despliegue automático.
+
 ## KAN-250 — Overview-first y recuperación de preparaciones (en PR, no desplegado)
 
 La observación en producción `main-1e2dfa8` mostró que Inicio abría una sesión E1 automáticamente y presentaba una síntesis sin procedencia visible. Se autorizó como slice separado KAN-250 la adaptación de UX desde el HTML v1.0, con modificación funcional explícita: Inicio abre Overview y las preparaciones se crean o retoman por acción humana.
