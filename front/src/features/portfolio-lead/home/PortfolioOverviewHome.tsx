@@ -56,7 +56,7 @@ export function PortfolioOverviewHome({
   const operationalRows = useMemo(() => buildOperationalRows(model, initiatives), [model, initiatives]);
   const visibleOperationalRows = operationalRows.filter((row) => {
     const needle = operationalFilter.trim().toLocaleLowerCase('es');
-    return needle.length === 0 || [row.title, row.destination, row.status, row.nextAction]
+    return needle.length === 0 || [row.title, row.destination, row.status, row.nextAction, row.actor ?? '']
       .some((value) => value.toLocaleLowerCase('es').includes(needle));
   });
   const challengeAssignments = assignments.filter((assignment) => assignment.targetKind === 'CHALLENGE');
