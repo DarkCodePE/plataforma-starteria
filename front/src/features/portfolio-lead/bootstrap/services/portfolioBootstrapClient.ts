@@ -381,6 +381,45 @@ export async function createOrReusePortfolioBootstrapSession(
   }
 }
 
+/** Read-only E2 goal question plan, not a confirmed business fact. */
+export type PortfolioGoalQuestionPlan = {
+  mode: 'deterministic_preview';
+  sessionId: string;
+  anchorVersion: number;
+  contextReviewVersion: number | null;
+  status: 'question_required' | 'review_required_with_unknowns' | 'ready_for_human_review' | 'blocked';
+  activeQuestion: null | {
+    id: string;
+    field: 'outcomeStatement' | 'contextSummary' | 'decisionToEnable' | 'businessSignalValue';
+    recap: string;
+    question: string;
+    reasonToAsk: string;
+    resolves: string[];
+    provenance: Array<{
+      kind: 'confirmed_context';
+      reviewId: string;
+      reviewVersion: number;
+      fieldPath: 'situation';
+      quote: string;
+    }>;
+  };
+  unknownFields: Array<'outcomeStatement' | 'contextSummary' | 'decisionToEnable' | 'businessSignalValue'>;
+  reason: string;
+};
+
+export async function getPortfolioBootstrapGoalQuestionPlan(
+  sessionId: string,
+): Promise<PortfolioGoalQuestionPlan> {
+  try {
+    const { data } = await api.get<ApiResponse<PortfolioGoalQuestionPlan>>(
+      `/portfolio-bootstrap/sessions/${encodeURIComponent(sessionId)}/objective/plan`,
+    );
+    return data.data;
+  } catch (err) {
+    throw new PortfolioBootstrapClientError(parseApiError(err));
+  }
+}
+
 export type PortfolioResumableSession = {
   sessionId: string;
   title: string;

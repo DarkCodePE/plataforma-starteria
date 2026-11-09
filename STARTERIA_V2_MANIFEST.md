@@ -582,6 +582,29 @@ petición ni por una configuración productiva y el flag continúa apagado fuera
 
 ---
 
+## Slice PORTFOLIO_E2_GOAL_QUESTION_PLAN_READ_MODEL (KAN-253 B1)
+
+**Registro:** 2026-11-09. Baseline `main@ea2b8c82d98c48824570cd8b68024a66e9e54bc5`, PR #277 (abierto, no deploy).
+
+```text
+slice_id: PORTFOLIO_E2_GOAL_QUESTION_PLAN_READ_MODEL
+task: KAN-253 B1
+owner: Portfolio Bootstrap E2 backend
+status: IMPLEMENTED_IN_PR_PENDING_TYPECHECK_CI_REVIEW
+authority: Core factual v0.2, Authority Map, KAN-252/253
+logic: deterministic_preview, pure read-only question proposal
+source: Anchor E2 + confirmed current E1 ContextReview effectiveContext; correction pending excluded
+API: GET /portfolio-bootstrap/sessions/:sessionId/objective/plan
+safety: authenticated tenant/owner access, known unknowns, no model-generated facts, no writes, no automatic gating
+preserves: existing E2 UI planner, anchor/save/confirm, ContextReview confirmation and E3 eligibility
+tests: goal-question-planner.test.ts 8 cases, portfolio-bootstrap.router.test.ts 2 cases, CI pending
+excluded: model live, schema/Prisma, E2 turn ledger mutation, automatic E2 confirmation, Step/Project creation, rollout/deploy
+followup: B2 versioned E2 semantic turn ledger and deterministic model harness; B3 UI opt-in; B4 governed provider rollout
+reference: docs/implementation/KAN-253_E2_GOAL_PLANNER_READ_MODEL_v0.1.md
+```
+
+---
+
 ## Slice PORTFOLIO_E2_OBJECTIVE_CONVERSATIONAL_UX (KAN-252)
 
 **Registrado:** 2026-11-09, PR #276 dependiente de PR #274. No fusionado ni desplegado.
