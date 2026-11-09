@@ -12,6 +12,7 @@ CREATE TABLE "PortfolioAttentionEvent" (
     "nextOwnerId" TEXT,
     "note" TEXT,
     "idempotencyKey" TEXT NOT NULL,
+    "payloadHash" TEXT NOT NULL,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT "PortfolioAttentionEvent_pkey" PRIMARY KEY ("id")
 );
