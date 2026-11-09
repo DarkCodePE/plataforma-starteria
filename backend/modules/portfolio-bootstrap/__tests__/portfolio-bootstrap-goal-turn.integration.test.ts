@@ -83,7 +83,9 @@ async function cleanup() {
 }
 
 describeDb('KAN-253 B2 goal turn ledger with disposable PostgreSQL', () => {
-  process.env.PORTFOLIO_GOAL_E2_LEDGER_ENABLED = 'true';
+  if (process.env.PORTFOLIO_GOAL_DB_INTEGRATION === '1') {
+    process.env.PORTFOLIO_GOAL_E2_LEDGER_ENABLED = 'true';
+  }
   afterEach(cleanup);
   afterAll(async () => { await cleanup(); await prisma.$disconnect(); });
 

@@ -55,7 +55,7 @@ export type GoalPlanContextReview = {
   status: 'draft' | 'confirmed';
   version: number;
   effectiveContext: {
-    situation?: { value?: string | null };
+    situation?: { value?: string | null; provenance?: string; sourceRef?: unknown };
   } | null;
 };
 
