@@ -127,7 +127,7 @@ test.describe('G04 — certified two-role AttentionItem journey', () => {
       const createdData = (await created.json()).data;
       const attentionId = createdData.id as string;
       expect(createdData.status).toBe('open');
-      await expect(ownerSection.getByText(reason)).toBeVisible();
+      await expect(ownerSection.getByText(reason).first()).toBeVisible();
       expect(await prisma.attentionItem.count({ where: { projectId: project.id } })).toBe(1);
       expect(await prisma.portfolioAttentionEvent.count({ where: { attentionItemId: attentionId } })).toBe(1);
 
@@ -171,7 +171,7 @@ test.describe('G04 — certified two-role AttentionItem journey', () => {
       // Owner can see actual human response on reentry, never just an inferred status.
       await ownerPage.reload();
       const ownerHistory = ownerPage.getByRole('region', { name: 'Solicitudes y bloqueos de mi iniciativa' });
-      await expect(ownerHistory.getByText(reason)).toBeVisible({ timeout: 20000 });
+      await expect(ownerHistory.getByText(reason).first()).toBeVisible({ timeout: 20000 });
       await ownerHistory.getByText(/Ver respuestas e historial/).click();
       await expect(ownerHistory.getByText(responseNote)).toBeVisible();
 
