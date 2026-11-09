@@ -54,6 +54,12 @@ suite('G04 AttentionItem: PostgreSQL governance and event history', () => {
       severity: 'high',
     });
     expect(replay.id).toBe(original.id);
+    await expect(service.create(projectId, leadId, 'g04-create-01', {
+      category: 'dependency', reason: 'Intento de reutilizar una clave con otro contenido.',
+      exitCondition: 'Recibir y verificar una integración operativa.',
+      nextAction: 'Asignar verificación al owner.',
+      severity: 'high',
+    })).rejects.toMatchObject({ code: 'ATTENTION_KEY_REUSED' });
     expect(original.status).toBe('open');
     expect(original.version).toBe(0);
 
@@ -102,6 +108,9 @@ suite('G04 AttentionItem: PostgreSQL governance and event history', () => {
         action: 'reopen', expectedVersion: 5, note: 'El proveedor volvió a interrumpir la integración.',
       });
       expect(idempotentReplay.version).toBe(6);
+      await expect(service.act(projectId, original.id, leadId, 'g04-reopen-01', {
+        action: 'reopen', expectedVersion: 5, note: 'Cambio distinto con la misma clave de operación.',
+      })).rejects.toMatchObject({ code: 'ATTENTION_KEY_REUSED' });
       expect(await prisma.portfolioAttentionEvent.count({ where: { attentionItemId: original.id } })).toBe(7);
     } finally { await fresh.$disconnect(); }
   });
