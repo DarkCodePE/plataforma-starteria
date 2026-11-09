@@ -627,6 +627,9 @@ export class PortfolioBootstrapService {
       if (anchor.status === 'anchor_confirmed') {
         throw AppError.conflict('El anchor confirmado no se actualiza silenciosamente.', 'PORTFOLIO_BOOTSTRAP_ANCHOR_ALREADY_CONFIRMED');
       }
+      if (input.body.expectedVersion !== undefined && input.body.expectedVersion !== anchor.version) {
+        throw AppError.conflict('El objetivo cambió. Recarga el borrador antes de incorporar esta respuesta.', 'PORTFOLIO_ANCHOR_VERSION_CONFLICT');
+      }
 
       await this.recordHistory(db, anchor, 'portfolio_anchor_updated', input.authenticatedUserId);
       const nextData = {
@@ -637,9 +640,7 @@ export class PortfolioBootstrapService {
         businessSignalValue: input.body.businessSignalValue === undefined ? anchor.businessSignalValue : input.body.businessSignalValue,
         sourceRefs: input.body.sourceRefs === undefined ? anchor.sourceRefs : input.body.sourceRefs as Prisma.InputJsonValue,
       };
-      const updated = await db.portfolioAnchor.update({
-        where: { id: anchor.id },
-        data: {
+      const updateData = {
           ...nextData,
           status: deriveAnchorStatus(nextData),
           // A Portfolio Lead declaration and a Copilot suggestion are not the
@@ -650,8 +651,26 @@ export class PortfolioBootstrapService {
           confirmedBy: null,
           confirmedAt: null,
           version: { increment: 1 },
-        },
-      });
+      };
+      let updated: any;
+      if (input.body.expectedVersion !== undefined) {
+        // Atomic CAS prevents another tab from silently replacing a newer
+        // provisional Anchor. A failed claim rolls back the audit history too.
+        const claimed = await db.portfolioAnchor.updateMany({
+          where: { id: anchor.id, version: input.body.expectedVersion },
+          data: updateData,
+        });
+        if (claimed.count !== 1) {
+          throw AppError.conflict('El objetivo cambió. Recarga antes de incorporar.', 'PORTFOLIO_ANCHOR_VERSION_CONFLICT');
+        }
+        updated = await db.portfolioAnchor.findUnique({ where: { id: anchor.id } });
+      } else {
+        // Legacy E2 callers retain their established write path.
+        updated = await db.portfolioAnchor.update({
+          where: { id: anchor.id },
+          data: updateData,
+        });
+      }
       const updatedSession = await db.portfolioBootstrapSession.update({
         where: { id: session.id },
         data: {
