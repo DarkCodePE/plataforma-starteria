@@ -63,6 +63,14 @@ test.describe('G04 — certified two-role AttentionItem journey', () => {
       { userId: lead.userId, organizationId: org.id, capability: 'portfolio:read' },
       { userId: lead.userId, organizationId: org.id, capability: 'portfolio:write' },
     ] });
+    // The first token was issued before granting Portfolio Lead authority.
+    // Reauthenticate so direct API checks use the same current claims as the UI.
+    const leadLogin = await api.post('/api/v1/auth/login', {
+      data: { email: lead.email, password: lead.password }, failOnStatusCode: false,
+    });
+    expect(leadLogin.status(), await leadLogin.text()).toBe(200);
+    const leadLoginData = (await leadLogin.json()).data;
+    lead.token = leadLoginData.tokens?.accessToken ?? leadLoginData.accessToken;
     const project = await prisma.project.create({
       data: { name: `Integración oficinas ${stamp}`, ownerId: owner.userId, organizationId: org.id,
         status: 'IN_PROGRESS', currentStep: 1 },
