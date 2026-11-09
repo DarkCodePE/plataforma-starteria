@@ -501,7 +501,9 @@ describe('PortfolioBootstrapHome — frozen Copilot-first composition', () => {
     fireEvent.click(screen.getByRole('button', { name: 'No lo sé todavía' }));
     await waitFor(() => expect(save).toHaveBeenCalledWith(expect.objectContaining({ sourceRefs: expect.objectContaining({ objectiveConversation: expect.objectContaining({ disposition: 'unknown', unknownFields: ['outcomeStatement'] }) }) })));
     expect(screen.getByText('¿Qué te gustaría poder decidir mejor cuando tengas más claridad sobre este objetivo?')).toBeInTheDocument();
-    expect(screen.getByText(/Aún no conocemos el resultado de negocio/i)).toBeInTheDocument();
+    expect(screen.getByRole('status')).toHaveTextContent('Aún no conocemos el resultado de negocio');
+    expect(within(screen.getByRole('region', { name: 'Historial del objetivo' }))
+      .getByText('Aún no conocemos el resultado de negocio.')).toBeInTheDocument();
   });
 
   it('reframes an irrelevant answer and makes a duplicate retry idempotent', async () => {
