@@ -88,6 +88,7 @@ export function PortfolioGoalLedgerConversation({ anchor, canConfirm, onSave, on
   const [editingPending, setEditingPending] = useState(false);
   const [incorporatedLocally, setIncorporatedLocally] = useState<string[]>([]);
   const [notice, setNotice] = useState<string | null>(null);
+  const [showFullHistory, setShowFullHistory] = useState(false);
   const pendingKeyRef = useRef<string | null>(null);
   const lockRef = useRef(false);
 
@@ -225,10 +226,27 @@ export function PortfolioGoalLedgerConversation({ anchor, canConfirm, onSave, on
         {loadStatus === 'ready' ? (
           <>
             <section role="region" aria-label="Historial de respuestas E2" className="space-y-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <h3 className="text-sm font-semibold text-[#182246]">Tu conversación</h3>
+                  <p className="text-xs text-[#6c7695]">
+                    {turns.filter((turn) => isAccepted(turn)).length} incorporadas · {turns.filter((turn) => superseded.has(turn.id)).length} corregidas · {turns.length} registradas
+                  </p>
+                </div>
+                {turns.length > 1 ? (
+                  <button type="button" aria-pressed={showFullHistory} onClick={() => setShowFullHistory((current) => !current)}
+                    className="rounded-lg border border-[#dce1ee] bg-white px-3 py-2 text-xs font-semibold text-[#493297]">
+                    {showFullHistory ? 'Ver conversación actual' : 'Ver historial completo'}
+                  </button>
+                ) : null}
+              </div>
               {turns.length === 0 ? (
                 <p className="rounded-xl border border-dashed border-[#d9dceb] bg-white p-4 text-sm text-[#6c7695]">Aún no hay turnos en este registro. Las respuestas antiguas se mantienen aparte.</p>
-              ) : turns.map((turn) => (
+              ) : turns.filter((turn) => showFullHistory || (!superseded.has(turn.id) && turn.disposition !== 'retracted')).map((turn) => (
                 <article key={turn.id} className="ml-auto max-w-[92%] rounded-2xl rounded-tr-sm bg-[#ede8fd] p-4 text-sm text-[#182246]">
+                  <p className="mb-2 text-xs font-semibold text-[#493297]">
+                    {superseded.has(turn.id) ? 'Versión corregida · solo historial' : turn.disposition === 'retracted' ? 'Respuesta retractada · solo historial' : isAccepted(turn) ? 'Incorporada al borrador' : turn.anchorVersion !== anchor.version ? 'De otra versión del objetivo' : 'Pendiente de tu revisión'}
+                  </p>
                   <p className="whitespace-pre-wrap">{turn.inputText}</p>
                   <p className="mt-2 text-xs text-[#6446c0]">
                     {turn.disposition === 'unknown' ? 'Desconocido declarado' : turn.disposition === 'not_applicable' ? 'No aplicable' : turn.disposition === 'retracted' ? 'Respuesta retractada' : 'Declarado por ti'}
@@ -239,6 +257,9 @@ export function PortfolioGoalLedgerConversation({ anchor, canConfirm, onSave, on
                 </article>
               ))}
             </section>
+            {!showFullHistory && turns.some((turn) => superseded.has(turn.id) || turn.disposition === 'retracted') ? (
+              <p className="text-xs text-[#6c7695]">Las respuestas corregidas o retractadas siguen disponibles en «Ver historial completo» y no se ocultan del registro.</p>
+            ) : null}
             {legacy.length > 0 ? (
               <details className="rounded-xl border border-[#dce1ee] bg-white p-3 text-sm">
                 <summary className="cursor-pointer font-semibold text-[#493297]">Respuestas anteriores a este modo</summary>

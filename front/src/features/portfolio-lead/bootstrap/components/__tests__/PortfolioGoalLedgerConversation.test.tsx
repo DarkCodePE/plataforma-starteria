@@ -156,6 +156,42 @@ describe('KAN-253 B3 user-governed E2 ledger experience', () => {
     expect(submit).not.toHaveBeenCalled();
   });
 
+  it('focuses the current conversation and lets the user inspect corrected history', async () => {
+    const user = userEvent.setup();
+    getTurns.mockResolvedValue({ version: 2, turns: [
+      firstTurn,
+      { ...firstTurn, id: 'turn-2', version: 2, inputText: 'Revisar pedidos a oficinas con menos alcance.',
+        supersedesTurnId: 'turn-1' },
+    ] });
+    render(<PortfolioGoalLedgerConversation {...props()} />);
+    const history = await screen.findByRole('region', { name: 'Historial de respuestas E2' });
+    expect(within(history).getByText('Revisar pedidos a oficinas con menos alcance.')).toBeVisible();
+    expect(within(history).queryByText('Validar pedidos a oficinas cercanas.')).not.toBeInTheDocument();
+    const toggle = screen.getByRole('button', { name: 'Ver historial completo' });
+    expect(toggle).toHaveAttribute('aria-pressed', 'false');
+    await user.click(toggle);
+    expect(within(history).getByText('Validar pedidos a oficinas cercanas.')).toBeVisible();
+    expect(within(history).getByText('Versión corregida · solo historial')).toBeVisible();
+    expect(screen.getByRole('button', { name: 'Ver conversación actual' })).toHaveAttribute('aria-pressed', 'true');
+    await user.click(screen.getByRole('button', { name: 'Ver conversación actual' }));
+    expect(within(history).queryByText('Validar pedidos a oficinas cercanas.')).not.toBeInTheDocument();
+    expect(submit).not.toHaveBeenCalled();
+  });
+
+  it('keeps legacy and retracted turns traceable without treating them as current answers', async () => {
+    getTurns.mockResolvedValue({ version: 2, turns: [
+      { ...firstTurn, disposition: 'retracted' },
+      { ...firstTurn, id: 'turn-2', version: 2, inputText: 'Respuesta vigente', supersedesTurnId: 'turn-1' },
+    ] });
+    render(<PortfolioGoalLedgerConversation {...props()} />);
+    expect(await screen.findByText('Respuesta vigente')).toBeVisible();
+    const history = screen.getByRole('region', { name: 'Historial de respuestas E2' });
+    expect(within(history).queryByText(firstTurn.inputText)).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Ver historial completo' }));
+    expect(within(history).getByText(firstTurn.inputText)).toBeInTheDocument();
+    expect(within(history).getByText('Versión corregida · solo historial')).toBeInTheDocument();
+  });
+
   it('reenters with an unincorporated turn and does not repeat the question or write', async () => {
     getTurns.mockResolvedValue({ version: 1, turns: [firstTurn] });
     render(<PortfolioGoalLedgerConversation {...props()} />);
