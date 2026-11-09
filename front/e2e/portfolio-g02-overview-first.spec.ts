@@ -207,6 +207,9 @@ test.describe('G02 authenticated overview-first and resumable Bootstrap', () => 
       await conversation.getByRole('button', { name: 'Confirmar objetivo y continuar' }).click();
       const finalConfirm = await finalConfirmResponse;
       expect(finalConfirm.status(), await finalConfirm.text()).toBe(200);
+      // The persisted progress is authoritative; reload is a supported reentry
+      // boundary and must restore the newly eligible E3 stage.
+      await page.reload();
       await expect(page.getByTestId('portfolio-bootstrap-work-intake')).toBeVisible({ timeout: 20000 });
       expect((await prisma.portfolioAnchor.findUniqueOrThrow({
         where: { bootstrapSessionId: sessionId },
