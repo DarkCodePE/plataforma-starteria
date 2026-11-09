@@ -325,6 +325,9 @@ jobs:
       - name: Install Playwright Chromium
         run: npx playwright install --with-deps chromium
 
+      - name: G04 - authenticated owner to Portfolio Lead attention certification
+        run: npm run test:e2e -- e2e/portfolio-g04-two-role-attention.spec.ts
+
       - name: KAN-212 G2-A V2_CONFORMANCE — authenticated navigation and reentry
         run: npm run test:e2e -- e2e/kan212-g2a-navigation.spec.ts
 
@@ -349,9 +352,6 @@ jobs:
       # Assignment or an accepted owner invitation.
       - name: G03 E3–E7 — browser and persisted handoff baseline
         run: npm run test:e2e -- e2e/kan240-e1-e7-delta.spec.ts
-
-      - name: G04 - authenticated owner to Portfolio Lead attention certification
-        run: npm run test:e2e -- e2e/portfolio-g04-two-role-attention.spec.ts
 
       - name: KAN-232 G5 - authenticated PostgreSQL Home certification (A/B/C)
         run: npm run test:e2e -- e2e/kan232-g5-home-final.spec.ts
