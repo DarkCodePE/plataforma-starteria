@@ -7,6 +7,7 @@ import type { PortfolioBootstrapContextService } from './portfolio-bootstrap-con
 import type { PortfolioBootstrapSemanticService } from './portfolio-bootstrap-semantic.service';
 import type { PortfolioBootstrapSemanticOrchestratorService } from './portfolio-bootstrap-semantic-orchestrator.service';
 import { buildContextProjection } from './portfolio-bootstrap-context-projection';
+import { buildGoalQuestionPlan } from './portfolio-bootstrap-goal-question-planner';
 import {
   portfolioBootstrapSemanticTurnRequestSchema,
   semanticE1Enabled,
@@ -70,6 +71,47 @@ export class PortfolioBootstrapController {
       });
       res.status(output.processing ? 202 : 200).json({ success: true, data: output.result });
     } catch (error) { next(error); }
+  };
+
+  /**
+   * Read-only E2 plan. Existing service access checks govern session and
+   * confirmed ContextReview ownership. No provider, updateAnchor or confirm.
+   */
+  getGoalQuestionPlan = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      if (!req.user?.id) throw AppError.unauthorized('No autorizado.', 'PORTFOLIO_BOOTSTRAP_AUTH_REQUIRED');
+      const { sessionId } = bootstrapSessionParamsSchema.parse(req.params);
+      const access = { sessionId, authenticatedUserId: req.user.id, permissions: req.user.permissions };
+      const session = await this.service.getSession(access);
+      if (!session.anchor) throw AppError.conflict('La sesión no tiene objetivo para revisar.', 'PORTFOLIO_GOAL_ANCHOR_MISSING');
+      const review = await this.contextService.getContext(access);
+      // An E1 correction not yet reconfirmed is not a safe source for new E2 questions.
+      const confirmedContext = review?.status === 'confirmed' && !review.hasPendingCorrection
+        ? review : null;
+      const plan = buildGoalQuestionPlan({
+        sessionId,
+        anchor: {
+          id: session.anchor.id,
+          version: session.anchor.version,
+          status: session.anchor.status,
+          outcomeStatement: session.anchor.outcomeStatement,
+          contextSummary: session.anchor.contextSummary,
+          decisionToEnable: session.anchor.decisionToEnable,
+          businessSignalValue: session.anchor.businessSignalValue,
+          businessSignalStatus: session.anchor.businessSignalStatus,
+          sourceRefs: session.anchor.sourceRefs,
+        },
+        contextReview: confirmedContext ? {
+          id: confirmedContext.id,
+          status: confirmedContext.status,
+          version: confirmedContext.version,
+          effectiveContext: confirmedContext.effectiveContext ? {
+            situation: { value: confirmedContext.effectiveContext.situation.value },
+          } : null,
+        } : null,
+      });
+      res.json({ success: true, data: plan });
+    } catch (err) { next(err); }
   };
 
   getContextProposals = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
