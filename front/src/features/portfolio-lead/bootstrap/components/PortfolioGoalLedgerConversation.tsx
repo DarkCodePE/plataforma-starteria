@@ -16,6 +16,7 @@ import {
   createGoalLedgerAnchorProposal,
   isGoalLedgerTurnAccepted,
 } from './goal-ledger-anchor-proposal';
+import { buildGoalReviewRows } from './goal-review-rows';
 
 type Props = {
   anchor: PortfolioBootstrapAnchor;
@@ -89,6 +90,7 @@ export function PortfolioGoalLedgerConversation({ anchor, canConfirm, onSave, on
   const [incorporatedLocally, setIncorporatedLocally] = useState<string[]>([]);
   const [notice, setNotice] = useState<string | null>(null);
   const [showFullHistory, setShowFullHistory] = useState(false);
+  const [showGoalReview, setShowGoalReview] = useState(false);
   const pendingKeyRef = useRef<string | null>(null);
   const lockRef = useRef(false);
 
@@ -127,6 +129,8 @@ export function PortfolioGoalLedgerConversation({ anchor, canConfirm, onSave, on
   const awaitingAnchorRefresh = Boolean(latest && latest.anchorVersion === anchor.version && isAccepted(latest));
   const busy = submitting || applying || confirming || loadStatus !== 'ready';
   const legacy = legacyAnswerTexts(anchor.sourceRefs);
+  const reviewRows = buildGoalReviewRows(anchor, turns);
+  const reviewCount = reviewRows.filter((row) => row.status === 'pending_review').length;
   const canWrite = Boolean(activeQuestion && !pending && !stalePending && !awaitingAnchorRefresh && !busy && plan?.status !== 'blocked');
   const isCorrecting = Boolean(pending && editingPending);
 
@@ -403,6 +407,32 @@ export function PortfolioGoalLedgerConversation({ anchor, canConfirm, onSave, on
       <aside className="min-w-0 space-y-3 rounded-xl border border-[#e4e7f0] bg-white p-4" aria-label="Ficha provisional de E2">
         <p className="text-xs font-bold uppercase tracking-wider text-[#6446c0]">Ficha estratégica · provisional</p>
         <h3 className="text-lg font-semibold text-[#182246]">Lo que estamos construyendo</h3>
+        <button type="button" aria-expanded={showGoalReview} aria-controls="e2-goal-review"
+          onClick={() => setShowGoalReview((value) => !value)}
+          className="w-full rounded-lg border border-[#d9caff] bg-[#f5f0ff] px-3 py-2 text-left text-sm font-semibold text-[#493297]">
+          {showGoalReview ? 'Ocultar revisión completa' : 'Revisar objetivo completo'}
+          <span className="ml-2 text-xs font-normal">{reviewCount} cambios pendientes</span>
+        </button>
+        {showGoalReview ? (
+          <section id="e2-goal-review" aria-label="Revisión completa del objetivo" className="space-y-3 rounded-lg border border-[#e4e7f0] bg-[#fbfcff] p-3">
+            <p className="text-xs text-[#6c7695]">Esta vista no confirma nada. Compara los valores del borrador con las respuestas todavía pendientes de tu decisión.</p>
+            {reviewRows.map((row) => (
+              <article key={row.key} className="rounded-lg border border-[#e4e7f0] bg-white p-3">
+                <p className="text-sm font-semibold text-[#182246]">{row.label}</p>
+                <p className="mt-1 text-xs text-[#586582]">
+                  {row.status === 'pending_review' ? 'Respuesta pendiente de incorporar' :
+                    row.status === 'outdated_response' ? 'Respuesta de versión anterior · requiere nueva revisión' :
+                    row.status === 'already_in_draft' ? 'Valor en el borrador actual' : 'Aún por definir'}
+                </p>
+                <p className="mt-2 whitespace-pre-wrap text-xs text-[#182246]"><strong>Actual:</strong> {row.current}</p>
+                {row.proposed !== null ? <p className="mt-2 whitespace-pre-wrap text-xs text-[#493297]"><strong>Propuesto:</strong> {row.proposed}</p> : null}
+              </article>
+            ))}
+            <p className="text-xs text-[#6c7695]">
+              Para incorporar una respuesta usa su acción de revisión en la conversación. La confirmación del objetivo es posterior y requiere tu aprobación.
+            </p>
+          </section>
+        ) : null}
         <dl className="space-y-3 text-sm">
           {[
             ['Resultado', anchor.outcomeStatement],

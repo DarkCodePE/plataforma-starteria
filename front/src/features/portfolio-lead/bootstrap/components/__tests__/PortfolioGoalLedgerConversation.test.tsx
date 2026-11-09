@@ -193,6 +193,27 @@ describe('KAN-253 B3 user-governed E2 ledger experience', () => {
     expect(within(history).getByText('Versión corregida · solo historial')).toBeInTheDocument();
   });
 
+  it('opens the full objective review with current and proposed values without writing', async () => {
+    const user = userEvent.setup();
+    getTurns.mockResolvedValue({ version: 1, turns: [firstTurn] });
+    const onSave = vi.fn();
+    const onConfirm = vi.fn();
+    render(<PortfolioGoalLedgerConversation {...props({ onSave, onConfirm })} />);
+    await screen.findByText('Respuesta guardada, pendiente de revisión');
+    const expand = screen.getByRole('button', { name: /Revisar objetivo completo/ });
+    expect(expand).toHaveAttribute('aria-expanded', 'false');
+    await user.click(expand);
+    const review = screen.getByRole('region', { name: 'Revisión completa del objetivo' });
+    expect(within(review).getByText('Resultado esperado')).toBeVisible();
+    expect(within(review).getByText(/Validar pedidos a oficinas cercanas/)).toBeVisible();
+    expect(within(review).getByText('Decisión que queremos habilitar')).toBeVisible();
+    expect(onSave).not.toHaveBeenCalled();
+    expect(onConfirm).not.toHaveBeenCalled();
+    expect(submit).not.toHaveBeenCalled();
+    await user.click(screen.getByRole('button', { name: /Ocultar revisión completa/ }));
+    expect(screen.queryByRole('region', { name: 'Revisión completa del objetivo' })).not.toBeInTheDocument();
+  });
+
   it('reenters with an unincorporated turn and does not repeat the question or write', async () => {
     getTurns.mockResolvedValue({ version: 1, turns: [firstTurn] });
     render(<PortfolioGoalLedgerConversation {...props()} />);
