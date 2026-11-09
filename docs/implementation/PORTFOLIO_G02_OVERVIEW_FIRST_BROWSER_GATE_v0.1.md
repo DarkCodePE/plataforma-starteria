@@ -31,3 +31,11 @@ TO-BE: CI protege Overview vacío y con trabajo persistido, con verificación cr
 - Revisión independiente del PR.
 - Se mantiene ADR-010 como PROPUESTO: no activar E2 multi-turn/checkpoint en producción.
 - G02 permanece IN_PROGRESS: faltan los recorridos auténticos E1/E2/E3 con flags ON en staging autorizado, 3 perfiles, tests de accesibilidad y checklist Nielsen H1–H10. Este test no acredita esas partes.
+
+## Gate nuevo E2 → E3 bajo banderas aisladas
+
+- Test Playwright contra browser+backend+PostgreSQL reales con identidad/tenant separados, sin proveedor IA.
+- E1 confirmado por API gobernada → retomar mediante UI → 4 respuestas provisionales mediante UI con pregunta server-owned, sin modificar Anchor → revisión acumulada → 4 elecciones humanas → una escritura checkpoint → Anchor suficiente/no confirmado → botón explícito confirmar → Anchor confirmado → E3 visible.
+- CI configura `PORTFOLIO_GOAL_E2_LEDGER_ENABLED`, `PORTFOLIO_GOAL_E2_MULTI_TURN_ENABLED`, `PORTFOLIO_GOAL_E2_CHECKPOINT_ENABLED` y sus banderas `VITE_` **solo en un paso E2E aislado**. No se activa esto en despliegue ni otros jobs.
+- Todo fallo del test es un bloqueo de aceptación (se corrige el recorrido o el harness, nunca se desactiva la prueba para marcar verde).
+- No sustituye la ratificación ADR-010 ni QA humano/usabilidad con los perfiles pyme/corporate. No habilitar producción.
