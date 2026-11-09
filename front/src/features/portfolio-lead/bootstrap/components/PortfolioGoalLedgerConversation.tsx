@@ -29,7 +29,6 @@ type Props = {
 type InteractionState = 'loading' | 'ready' | 'error';
 type GoalDisposition = 'user_declared' | 'unknown' | 'not_applicable';
 // Experimental UI only. The backend must independently enable PORTFOLIO_GOAL_E2_MULTI_TURN_ENABLED.
-const multiTurnUiEnabled = import.meta.env.VITE_PORTFOLIO_GOAL_E2_MULTI_TURN_UI_ENABLED === 'true';
 
 function toError(error: unknown): string {
   return error instanceof Error && error.message.trim()
@@ -79,6 +78,7 @@ function shownDate(value: string): string {
 }
 
 export function PortfolioGoalLedgerConversation({ anchor, canConfirm, onSave, onConfirm, onUseGuided }: Props) {
+  const multiTurnUiEnabled = import.meta.env.VITE_PORTFOLIO_GOAL_E2_MULTI_TURN_UI_ENABLED === 'true';
   const [plan, setPlan] = useState<PortfolioGoalQuestionPlan | null>(null);
   const [snapshot, setSnapshot] = useState<PortfolioGoalTurnSnapshot | null>(null);
   const [loadStatus, setLoadStatus] = useState<InteractionState>('loading');
