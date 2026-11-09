@@ -717,7 +717,12 @@ export class PortfolioBootstrapService {
       if (!anchor || ['anchor_confirmed', 'anchor_conflicting'].includes(anchor.status)) {
         throw AppError.conflict('El objetivo no está disponible para revisión conjunta.', 'PORTFOLIO_GOAL_ANCHOR_LOCKED');
       }
-      const review = session.contextReview;
+      // requireOwnedSession's standard include does not hydrate contextReview.
+      // Read the confirmed E1 record inside this same serializable transaction
+      // instead of treating an unselected relation as an unconfirmed context.
+      const review = await db.portfolioBootstrapContextReview.findUnique({
+        where: { bootstrapSessionId: session.id },
+      });
       if (!review || review.status !== 'confirmed' || !review.confirmedSnapshotJson) {
         throw AppError.conflict('El contexto E1 debe estar confirmado.', 'PORTFOLIO_GOAL_E1_CONTEXT_NOT_CONFIRMED');
       }
