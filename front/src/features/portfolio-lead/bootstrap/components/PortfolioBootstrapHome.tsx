@@ -14,6 +14,7 @@ import type {
   UpdatePortfolioBootstrapWorkItemInput,
 } from '../services/portfolioBootstrapClient';
 import { suggestPortfolioObjective } from '../services/portfolioObjectiveCopilotClient';
+import { PortfolioGoalLedgerConversation } from './PortfolioGoalLedgerConversation';
 import { ChallengeActivationBriefPanel, type ChallengeAssignmentTarget, type ChallengeBriefInheritedContext } from '../../challenge-activation-brief/ChallengeActivationBriefPanel';
 import { ChallengeAssignmentPreparationPanel } from '../../challenge-activation-brief/ChallengeAssignmentPreparationPanel';
 import { listActivationBriefs, type ActivationBrief } from '../../challenge-activation-brief/challengeActivationBriefClient';
@@ -593,6 +594,11 @@ function FrozenContextConversation(props: React.ComponentProps<typeof PortfolioB
 
 function FrozenObjectiveConversation({ projection, onSave, onConfirm }: { projection: BootstrapProjection; onSave: (input: UpdatePortfolioBootstrapAnchorInput) => Promise<void>; onConfirm: () => Promise<void> }) {
   const anchor = projection.anchor;
+  const [useGuided, setUseGuided] = useState(false);
+  // Both the frontend opt-in AND the backend's own ledger flag must be enabled.
+  // The backend rejects disabled reads with 503; the new UI fails closed and
+  // offers the historic guided flow instead of impersonating a semantic model.
+  const ledgerUiEnabled = import.meta.env.VITE_PORTFOLIO_GOAL_E2_LEDGER_UI_ENABLED === 'true';
   return <>
     <AssistantBubble>Partimos de la información disponible en este espacio. <b>Aclararemos el resultado de negocio y la decisión que quieres habilitar</b> sin inventar KPIs ni causas. Puedes dejar incertidumbres abiertas.</AssistantBubble>
     {anchor.contextSummary ? (
@@ -603,7 +609,17 @@ function FrozenObjectiveConversation({ projection, onSave, onConfirm }: { projec
       </section>
     ) : null}
     <FocusedQuestion eyebrow="Alinear con negocio" title="Primero entendamos el objetivo, antes de diseñar trabajo" help="Una conversación breve para construir una ficha estratégica útil; no un formulario de ocho campos." />
-    <ObjectiveConversation anchor={anchor} onSave={onSave} canConfirm={projection.canConfirm} onConfirm={onConfirm} />
+    {ledgerUiEnabled && !useGuided ? (
+      <PortfolioGoalLedgerConversation
+        anchor={anchor}
+        onSave={onSave}
+        canConfirm={projection.canConfirm}
+        onConfirm={onConfirm}
+        onUseGuided={() => setUseGuided(true)}
+      />
+    ) : (
+      <ObjectiveConversation anchor={anchor} onSave={onSave} canConfirm={projection.canConfirm} onConfirm={onConfirm} />
+    )}
   </>;
 }
 
