@@ -352,9 +352,12 @@ function buildOperationalRows(model: PortfolioHomeReadModel, initiatives: Array<
   const initiativeRows: OperationalRow[] = initiatives.map((initiative) => ({
     key: `initiative-${initiative.initiativeId}`,
     title: initiative.title ?? `Iniciativa ${initiative.initiativeId}`,
-    // The Home read model does not expose a canonical Project owner yet.
-    // Never present an unverified owner as a confirmed assignment.
-    destination: 'Owner no disponible',
+    // Portfolio Home already returns a canonical owner, but older/partial
+    // projections may not. Only show a name from a canonical source.
+    destination: initiative.owner?.source === 'canonical'
+      ? initiative.owner.name?.trim() || initiative.owner.label?.trim()
+        || initiative.owner.email?.trim() || initiative.owner.id?.trim() || 'Owner no disponible'
+      : 'Owner no disponible',
     status: initiative.activationVisibility === 'initiative_active' ? 'Iniciativa iniciada' : 'Iniciativa canónica',
     nextAction: 'Abrir Initiative Overview',
     actor: null,
