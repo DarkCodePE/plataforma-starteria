@@ -110,6 +110,23 @@ describe('PortfolioHomeReadService', () => {
     });
   });
 
+  it('G04 keeps open and acknowledged attention visible until it is resolved', async () => {
+    const withAttention = project({ attentionItems: [
+      { id: 'alert-open', reason: 'Falta acceso al proveedor', severity: 'high', status: 'open' },
+      { id: 'alert-ack', reason: 'Sponsor está revisando', severity: 'medium', status: 'acknowledged' },
+      { id: 'alert-resolved', reason: 'Bloqueo ya cerrado', severity: 'low', status: 'resolved' },
+      { id: 'alert-cancelled', reason: 'Aviso cancelado', severity: 'low', status: 'cancelled' },
+    ] });
+    const home = await new PortfolioHomeReadService(makePrisma([
+      front({ challenges: [challenge({ initiativeMetas: [initiativeMeta(withAttention)] })] }),
+    ])).getHome('lead-1');
+    const alerts = home.attention.map((item) => item.summary);
+    expect(alerts).toContain('Falta acceso al proveedor');
+    expect(alerts).toContain('Sponsor está revisando');
+    expect(alerts).not.toContain('Bloqueo ya cerrado');
+    expect(alerts).not.toContain('Aviso cancelado');
+  });
+
   it('returns a stable empty read model for an empty portfolio', async () => {
     const result = await new PortfolioHomeReadService(makePrisma()).getHome('user-1');
 
