@@ -95,12 +95,12 @@ test.describe('G02 authenticated overview-first and resumable Bootstrap', () => 
         constraints: [], assumptions: [], gaps: [],
       };
       const draft = await api.put(`/api/v1/portfolio-bootstrap/sessions/${sessionId}/context/draft`, {
-        headers: auth, data: { expectedVersion: 0, context, sourceCompanyContext: null },
+        headers: { ...auth, 'Idempotency-Key': `g02-context-draft:${sessionId}:v0` }, data: { expectedVersion: 0, context, sourceCompanyContext: null },
         failOnStatusCode: false,
       });
       expect(draft.status(), await draft.text()).toBe(200);
       const confirmation = await api.post(`/api/v1/portfolio-bootstrap/sessions/${sessionId}/context/confirm`, {
-        headers: auth, data: { expectedVersion: 1 }, failOnStatusCode: false,
+        headers: { ...auth, 'Idempotency-Key': `g02-context-confirm:${sessionId}:v1` }, data: { expectedVersion: 1 }, failOnStatusCode: false,
       });
       expect(confirmation.status(), await confirmation.text()).toBe(200);
 
