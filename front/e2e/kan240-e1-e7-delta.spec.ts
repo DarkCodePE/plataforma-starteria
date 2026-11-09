@@ -331,7 +331,11 @@ test.describe('KAN-240 delta E1→E7 sobre PostgreSQL desechable', () => {
     const challengeId = await materializeNoWorkOrganization(api, lead, session.id);
     const brief = await confirmBrief(api, lead, challengeId);
     await requestLabAndComplete(api, lead, session.id, challengeId, brief);
-    await page.reload();
+    // Completion occurred through the API in this test; the Bootstrap UI has
+    // not received a navigation event. Explicitly revisit Inicio to verify
+    // the persisted portfolio projection, rather than expecting reload of
+    // the still-open Bootstrap route to redirect on its own.
+    await page.goto('/portfolio/inicio');
     await expect(page.getByTestId('portfolio-overview-home')).toBeVisible({ timeout: 20_000 });
     await expect(page.getByText('Brief confirmado', { exact: true })).toBeVisible();
     await expect(page.getByText('Contacto pendiente', { exact: true }).first()).toBeVisible();

@@ -330,6 +330,12 @@ jobs:
           VITE_PORTFOLIO_GOAL_E2_CHECKPOINT_UI_ENABLED: 'true'
         run: npm run test:e2e -- e2e/portfolio-g02-overview-first.spec.ts --grep "E1 confirmado → conversación E2"
 
+      # G03: real authenticated E3/E4 and E1→E7→Home scenario.
+      # Existing lab request is contact-pending; do not treat it as a sent
+      # Assignment or an accepted owner invitation.
+      - name: G03 E3–E7 — browser and persisted handoff baseline
+        run: npm run test:e2e -- e2e/kan240-e1-e7-delta.spec.ts
+
       - name: KAN-232 G5 - authenticated PostgreSQL Home certification (A/B/C)
         run: npm run test:e2e -- e2e/kan232-g5-home-final.spec.ts
 
