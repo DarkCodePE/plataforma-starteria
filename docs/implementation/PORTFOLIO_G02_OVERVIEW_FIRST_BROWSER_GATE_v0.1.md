@@ -10,8 +10,9 @@ Nuevo `front/e2e/portfolio-g02-overview-first.spec.ts`, ejecutado en `.github/wo
 1. Usuario portfolio_lead real aislado y organización propia registrada por API/Prisma.
 2. **Sin proceso:** login UI → `/portfolio/inicio` → overview visible → estado sin preparaciones → CTA visible → recarga → **0** sesiones nuevas.
 3. **Con proceso:** crear sesión por API explícita → login UI → vista Overview con `Retomar este espacio` → recarga sin crear otra sesión → clic en Retomar → Bootstrap visible → sesión original intacta y número de sesiones inalterado.
-4. No utiliza simulaciones de los endpoints de negocio, ni screenshots como prueba de persistencia, ni altera los flags de IA.
-5. Navegador Chromium en CI con stack E2E de prueba aislado, no producción.
+4. **E1 → E2:** con la misma identidad/organización, crear sesión directa y confirmar el contexto E1 por API real; login y Retomar muestran la conversación E2, mantienen E3 bloqueado y no modifican el Anchor ni crean sesiones en recarga.
+5. No utiliza simulaciones de los endpoints de negocio, ni screenshots como prueba de persistencia, ni altera los flags de IA.
+6. Navegador Chromium en CI con stack E2E de prueba aislado, no producción.
 
 ## Evaluación Nielsen
 - H1 Visibilidad: Overview y estado de los procesos.
