@@ -77,6 +77,52 @@ test.describe('G02 authenticated overview-first and resumable Bootstrap', () => 
     } finally { await api.dispose(); }
   });
 
+  test('E1 confirmado retoma directamente en E2 sin crear otra sesión ni confirmar el objetivo', async ({ page }) => {
+    const api = await pwRequest.newContext({ baseURL });
+    try {
+      const lead = await registerLead(api, 'e1-e2');
+      const auth = { Authorization: `Bearer ${lead.token}` };
+      const direct = await api.post('/api/v1/portfolio-bootstrap/sessions/direct', {
+        headers: auth, data: {}, failOnStatusCode: false,
+      });
+      expect(direct.status(), await direct.text()).toBe(200);
+      const sessionId = (await direct.json()).data.bootstrapSession.id as string;
+      const context = {
+        situation: { value: 'Somos una cafetería que quiere entender la demanda de desayunos para oficinas.', provenance: 'user_declared', sourceRef: { kind: 'user_input' } },
+        area: { value: null, provenance: 'unknown' },
+        stakeholder: { value: null, provenance: 'unknown' },
+        pilotExperience: { value: null, provenance: 'unknown' },
+        constraints: [], assumptions: [], gaps: [],
+      };
+      const draft = await api.put(`/api/v1/portfolio-bootstrap/sessions/${sessionId}/context/draft`, {
+        headers: auth, data: { expectedVersion: 0, context, sourceCompanyContext: null },
+        failOnStatusCode: false,
+      });
+      expect(draft.status(), await draft.text()).toBe(200);
+      const confirmation = await api.post(`/api/v1/portfolio-bootstrap/sessions/${sessionId}/context/confirm`, {
+        headers: auth, data: { expectedVersion: 1 }, failOnStatusCode: false,
+      });
+      expect(confirmation.status(), await confirmation.text()).toBe(200);
+
+      const before = await prisma.portfolioAnchor.findUniqueOrThrow({ where: { bootstrapSessionId: sessionId } });
+      await loginBrowser(page, lead);
+      await expect(page.getByTestId('portfolio-resumable-session')).toHaveCount(1);
+      await page.getByRole('button', { name: 'Retomar este espacio' }).click();
+      await expect(page.getByTestId('portfolio-objective-conversation')).toBeVisible({ timeout: 20000 });
+      await expect(page.getByRole('button', { name: /3 Incorporación/i })).toBeDisabled();
+      expect(await prisma.portfolioAnchor.findUnique({ where: { bootstrapSessionId: sessionId } })).toEqual(before);
+
+      await page.reload();
+      await expect(page.getByTestId('portfolio-objective-conversation')).toBeVisible({ timeout: 20000 });
+      const review = await prisma.portfolioBootstrapContextReview.findUniqueOrThrow({
+        where: { bootstrapSessionId: sessionId },
+      });
+      expect(review.status).toBe('confirmed');
+      expect(await prisma.portfolioBootstrapSession.count({ where: { userId: lead.userId } })).toBe(1);
+      expect(await prisma.portfolioAnchor.findUnique({ where: { bootstrapSessionId: sessionId } })).toEqual(before);
+    } finally { await api.dispose(); }
+  });
+
   test('con proceso: Inicio muestra reentrada y solo abre el Bootstrap por acción explícita', async ({ page }) => {
     const api = await pwRequest.newContext({ baseURL });
     try {
