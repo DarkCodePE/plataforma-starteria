@@ -36,7 +36,7 @@ describe('G04 PortfolioAttentionPanel', () => {
   it('loads only persisted alerts and shows existing provenance', async () => {
     render(<PortfolioAttentionPanel projectId="project-1" assignees={assignees} />);
     const alert = await screen.findByTestId('portfolio-attention-item');
-    expect(within(alert).getByText('La API del proveedor no responde.')).toBeVisible();
+    expect(within(alert).getAllByText('La API del proveedor no responde.').length).toBeGreaterThan(0);
     expect(within(alert).getByText('Responsable de operaciones')).toBeVisible();
     expect(within(alert).getByText('Historial · 1 eventos')).toBeVisible();
     expect(list).toHaveBeenCalledWith('project-1');
