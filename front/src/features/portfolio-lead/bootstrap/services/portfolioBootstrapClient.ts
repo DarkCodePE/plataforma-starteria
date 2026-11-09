@@ -340,6 +340,7 @@ export type PortfolioOrganizationProposal = {
 };
 
 export type UpdatePortfolioBootstrapAnchorInput = {
+  expectedVersion?: number;
   outcomeStatement?: string;
   contextSummary?: string | null;
   decisionToEnable?: string | null;

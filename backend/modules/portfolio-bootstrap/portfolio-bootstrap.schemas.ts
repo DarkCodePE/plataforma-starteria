@@ -100,14 +100,16 @@ export const confirmPortfolioBootstrapContextBodySchema = z.object({
 }).strict();
 
 export const updateAnchorBodySchema = z.object({
+  /** Optional compare-and-set for explicit E2 ledger incorporation; legacy callers stay compatible. */
+  expectedVersion: z.number().int().min(1).optional(),
   outcomeStatement: z.string().min(1).optional(),
   contextSummary: z.string().min(1).nullable().optional(),
   decisionToEnable: z.string().min(1).nullable().optional(),
   businessSignalStatus: z.enum(['confirmed', 'proxy', 'suggested', 'unknown', 'conflicting']).optional(),
   businessSignalValue: z.string().min(1).nullable().optional(),
   sourceRefs: z.unknown().optional(),
-}).strict().refine((value) => Object.keys(value).length > 0, {
-  message: 'Debe enviar al menos un campo para actualizar.',
+}).strict().refine((value) => Object.keys(value).some((field) => field !== 'expectedVersion'), {
+  message: 'Debe enviar al menos un campo de negocio para actualizar.',
 });
 
 export const pasteWorkItemsBodySchema = z.object({

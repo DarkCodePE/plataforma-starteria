@@ -20,6 +20,12 @@ KAN-247 (PR #272) permanece en rama de implementación, **no fusionado**. La pro
 Trazabilidad del journey (implementado/API/browser/pending): `docs/implementation/STARTERIA_PORTFOLIO_E2E_TRACEABILITY_POST_KAN248_v0.1.md`.
 No considerar E5–E7 UI-only, Owner→Steps, Step4→Decision/benefits o delivery Fab certificados por el test híbrido KAN-240. Flag semántico OFF y Lab únicamente solicitud/contacto donde corresponda.
 
+## KAN-253 B3 — Reentrada y aceptación humana del ledger E2 (PR, sin CD)
+
+B2/PR #278 se fusionó en `main@82f06c1cf7a8fb30d5fa6c4ed6a5bcb583c32dbb` y su CI posterior #42548341856 pasó. **ADR-010 conserva estado PROPUESTO**, y no se ha verificado CD para esa versión. Ambas banderas del ledger E2 permanecen OFF por defecto.
+
+La rama KAN-253 B3 añade una conversación de Objetivo de lectura/reentrada y una separación explícita entre respuesta provisional y aceptación del borrador. La incorporación envía `expectedVersion` (CAS opcional para Anchor), además de `goalLedgerAcceptedTurnIds` y evidencia literal contrastada en backend. El legacy `ObjectiveConversation` sigue por defecto; ninguna aceptación o Step/Project es automática. CI / revisión independiente y pruebas UX reales siguen siendo gates de despliegue. Contrato: `docs/implementation/KAN-253_B3_E2_LEDGER_UX_v0.1.md`.
+
 ## KAN-253 B2 — Ledger provisional de turnos E2 (PR propuesto, no desplegado)
 
 B1 (PR #277) fusionado a main@f9c093255be7d901ccc1bce6689e08532df05b53, CI main #42543901999 SUCCESS. B2 agrega en una nueva rama el modelo Prisma aditivo `PortfolioBootstrapGoalTurn`, migración 20261109100000, GET/POST de turnos en un estado provisional separado del Anchor, y guardrail de flag `PORTFOLIO_GOAL_E2_LEDGER_ENABLED=false`. Los turnos E2 solo recogen declaraciones literales, correcciones y desconocidos mediante idempotencia y versionado; nunca confirman el objetivo ni desbloquean E3.

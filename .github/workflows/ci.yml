@@ -80,6 +80,9 @@ jobs:
       - name: KAN-253 B2 backend typecheck
         run: npm run typecheck:backend
 
+      - name: KAN-253 B3 frontend typecheck
+        run: npm run typecheck:front
+
 
       - name: Provision disposable database and apply repository migrations
         env:

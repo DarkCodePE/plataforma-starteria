@@ -582,6 +582,29 @@ petición ni por una configuración productiva y el flag continúa apagado fuera
 
 ---
 
+## Slice PORTFOLIO_E2_LEDGER_CONVERSATION_UI (KAN-253 B3)
+
+**Registro:** 2026-11-09, PR de UX separado; base main@82f06c1cf7a8fb30d5fa6c4ed6a5bcb583c32dbb. No desplegado.
+
+```text
+slice_id: PORTFOLIO_E2_LEDGER_CONVERSATION_UI_B3
+task: KAN-253 B3
+authority: Core v0.2, Authority Map, KAN-253, ADR-010 candidate NOT RATIFIED
+status: IMPLEMENTED_IN_PR_PENDING_CI_REVIEW_AND_AUTHORITY_RATIFICATION
+frontend_gate: VITE_PORTFOLIO_GOAL_E2_LEDGER_UI_ENABLED=false default
+backend_gate: PORTFOLIO_GOAL_E2_LEDGER_ENABLED=false default
+ui: server-backed E2 question + durable turns; explicit pending draft incorporation
+legacy: standard ObjectiveConversation remains default and available
+reentry: fetch goal question and turn ledger; keep old sourceRefs as separately labelled history
+human_gate: answer save does not mutate Anchor; incorporation requires user CTA; confirmAnchor remains separate
+security: CAS expectedVersion and verified DB receipt anchored to same session/version/exact quote
+tests: RTL flag, ledger conversation, pure proposal, PostgreSQL CAS/forged receipt, CI full
+excluded: Core mutation, new migrations, model-provider activation, cost secrets, Step/Project creation, CD
+documentation: docs/implementation/KAN-253_B3_E2_LEDGER_UX_v0.1.md
+```
+
+---
+
 ## Slice PORTFOLIO_E2_GOAL_TURN_LEDGER (KAN-253 B2)
 
 **Registro:** 2026-11-09. Baseline main@f9c093255be7d901ccc1bce6689e08532df05b53, CI #42543901999 SUCCESS.
@@ -590,7 +613,7 @@ petición ni por una configuración productiva y el flag continúa apagado fuera
 slice_id: PORTFOLIO_E2_GOAL_TURN_LEDGER_B2
 task: KAN-253 B2
 authority: Core factual v0.2 + Authority Map + ADR-010 candidate (NOT APPROVED)
-status: PROPOSED_RUNTIME_IN_PR_PENDING_ADR_DB_TYPECHECK_REVIEW
+status: MERGED_TO_MAIN_CI_SUCCESS_FLAG_OFF_ADR010_NOT_RATIFIED
 source_of_truth: provisional GoalTurn ledger, not canonical PortfolioAnchor
 persistence: additive PortfolioBootstrapGoalTurn, unique session/version + session/idempotency
 api: GET/POST /portfolio-bootstrap/sessions/:sessionId/objective/turns
