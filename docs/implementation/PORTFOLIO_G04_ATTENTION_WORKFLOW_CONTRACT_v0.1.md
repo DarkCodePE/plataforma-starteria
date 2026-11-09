@@ -26,6 +26,13 @@ TO-BE: Tabla de iniciativas → expandir detalle → panel de alertas con GET pe
 
 ## Guardrails
 - No se modifica el modelo de Step0–4, no se crea Assignment ni se inventa un KPI.
-- La primera API está autorizada para usuarios de portfolio:write. **Aún falta habilitar la creación desde una sesión de equipo/owner con permisos específicos**; no atribuir a un owner el permiso general de portafolio.
+- La API de Portfolio Lead usa portfolio:write. **El equipo OWNER/EDITOR activo puede abrir y consultar alertas por /projects/:id/attention-items**, protegido por project-team-access y organización; no recibe permiso de portafolio ni acceso a acciones de resolución. La interfaz de iniciativa muestra un formulario propio para comunicar bloqueos.
 - No cerrar G04 con este avance: faltan permisos para rol equipo, coordinación de notificaciones/contador en Home, caso de dos pestañas, validación de UX en navegador y QA real Nielsen H1–H10.
 - No fusionar ni desplegar migraciones productivas sin revisión y CI postmerge.
+
+## Handoff del equipo y estado ejecutivo
+- InitiativeOverviewPage integra `InitiativeAttentionReporter` para OWNER/EDITOR editables. El formulario exige motivo, condición de resolución, siguiente paso y prioridad, con idempotencia y recuperación; **no marca el Step como bloqueado automáticamente**.
+- Portfolio Home lee `AttentionItem` del Project. Esta entrega garantiza que tanto `open` como `acknowledged` siguen apareciendo como atención no resuelta; `resolved` y `cancelled` dejan de contarse como activas.
+- La notificación visual se basa en la proyección de atención de Home al recargar; no hay todavía push/email/notificación de campana en tiempo real.
+- El control de versión y el evento transaccional registran todo cambio de estado/owner, además de la respuesta humana.
+- Se añaden tests de la entrada de equipo y de la proyección de atención en Home. Persisten pendientes smoke autenticado navegando en ambos roles, accesibilidad con tres perfiles y validación de una solicitud real desde el equipo hasta su resolución en Portfolio Lead.
