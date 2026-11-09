@@ -155,7 +155,11 @@ describeDb('KAN-253 B2 goal turn ledger with disposable PostgreSQL', () => {
       const incomplete = await request(client).post(checkpointPath)
         .send({ ...body, decisions: [body.decisions[0]] }).expect(409);
       expect(incomplete.body.success).toBe(false);
-      await request(app(otherUserId)).post(checkpointPath).send(body).expect(404);
+      // Existing Bootstrap ownership contract returns 403 for a known session
+      // owned by another authenticated user; the command must remain write-denied.
+      const forbidden = await request(app(otherUserId))
+        .post(checkpointPath).send(body).expect(403);
+      expect(forbidden.body.success).toBe(false);
       expect((await prisma.portfolioAnchor.findUnique({ where: { id: anchorId } }))?.version).toBe(1);
 
       const result = await request(client).post(checkpointPath).send(body).expect(200);
