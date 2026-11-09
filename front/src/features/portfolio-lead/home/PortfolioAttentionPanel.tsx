@@ -39,7 +39,7 @@ function AttentionCard({ item, assignees, refresh }: {
   const [error, setError] = useState<string | null>(null);
   const [working, setWorking] = useState(false);
   const idemRef = useRef<string | null>(null);
-  const chosen = available.includes(action) ? action : available[0];
+  const chosen: PortfolioAttentionAction = available.includes(action) ? action : (available[0] ?? 'respond');
   const valid = chosen && (!requiresNote(chosen) || note.trim().length >= 8)
     && (!requiresAssignee(chosen) || Boolean(assigneeId));
   async function submit(event: React.FormEvent) {
