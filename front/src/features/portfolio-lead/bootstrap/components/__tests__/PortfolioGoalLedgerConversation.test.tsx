@@ -100,6 +100,33 @@ describe('KAN-253 B3 user-governed E2 ledger experience', () => {
     }));
   });
 
+  it('previews before and after without writing, and allows canceling a correction', async () => {
+    const user = userEvent.setup();
+    getTurns.mockResolvedValue({ version: 1, turns: [firstTurn] });
+    const onSave = vi.fn().mockResolvedValue(undefined);
+    render(<PortfolioGoalLedgerConversation {...props({ onSave })} />);
+    const preview = await screen.findByLabelText('Vista previa de cambios al objetivo');
+    expect(within(preview).getByText('Resultado de negocio por definir')).toBeVisible();
+    expect(within(preview).getByText('Validar pedidos a oficinas cercanas.')).toBeVisible();
+    expect(onSave).not.toHaveBeenCalled();
+    await user.click(screen.getByRole('button', { name: 'Corregir respuesta' }));
+    expect(screen.getByRole('button', { name: 'Cancelar corrección' })).toBeVisible();
+    await user.click(screen.getByRole('button', { name: 'Cancelar corrección' }));
+    expect(screen.getByRole('button', { name: 'Incorporar al borrador' })).toBeVisible();
+    expect(onSave).not.toHaveBeenCalled();
+    expect(submit).not.toHaveBeenCalled();
+  });
+
+  it('shows unknown as pending rather than overwriting the outcome', async () => {
+    getTurns.mockResolvedValue({ version: 1, turns: [{
+      ...firstTurn, inputText: 'No lo sé todavía.', disposition: 'unknown',
+    }] });
+    render(<PortfolioGoalLedgerConversation {...props()} />);
+    const preview = await screen.findByLabelText('Vista previa de cambios al objetivo');
+    expect(within(preview).getAllByText('Resultado de negocio por definir')).toHaveLength(2);
+    expect(within(preview).getByText(/conserva explícitamente la incertidumbre/)).toBeVisible();
+  });
+
   it('reenters with an unincorporated turn and does not repeat the question or write', async () => {
     getTurns.mockResolvedValue({ version: 1, turns: [firstTurn] });
     render(<PortfolioGoalLedgerConversation {...props()} />);
