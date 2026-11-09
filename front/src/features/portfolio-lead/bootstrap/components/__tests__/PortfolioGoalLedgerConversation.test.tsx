@@ -127,6 +127,35 @@ describe('KAN-253 B3 user-governed E2 ledger experience', () => {
     expect(within(preview).getByText(/conserva explícitamente la incertidumbre/)).toBeVisible();
   });
 
+  it('converts an unknown suggestion to a declared answer when the user edits it', async () => {
+    const user = userEvent.setup();
+    render(<PortfolioGoalLedgerConversation {...props()} />);
+    await screen.findByText('¿Qué cambio quieres validar?');
+    await user.click(screen.getByRole('button', { name: 'No lo sé todavía' }));
+    const field = screen.getByLabelText('Tu respuesta de Objetivo');
+    await user.clear(field);
+    await user.type(field, 'Quiero probar desayunos a oficinas cercanas.');
+    expect(screen.getByText(/Se guardará como tu respuesta declarada/)).toBeVisible();
+    await user.click(screen.getByRole('button', { name: 'Guardar respuesta provisional' }));
+    await waitFor(() => expect(submit).toHaveBeenCalledTimes(1));
+    expect(submit.mock.calls[0][1]).toMatchObject({
+      disposition: 'user_declared', inputText: 'Quiero probar desayunos a oficinas cercanas.',
+    });
+  });
+
+  it('offers recovery and guided fallback for a stale pending turn without writing', async () => {
+    getTurns.mockResolvedValue({ version: 1, turns: [{ ...firstTurn, anchorVersion: 1 }] });
+    const onUseGuided = vi.fn();
+    const onSave = vi.fn();
+    render(<PortfolioGoalLedgerConversation {...props({ onUseGuided, onSave })} />);
+    expect(await screen.findByText(/Una respuesta pendiente pertenece a una versión anterior/)).toBeVisible();
+    expect(screen.getByRole('button', { name: 'Recuperar estado actual' })).toBeEnabled();
+    await userEvent.click(screen.getByRole('button', { name: 'Usar preparación guiada' }));
+    expect(onUseGuided).toHaveBeenCalledTimes(1);
+    expect(onSave).not.toHaveBeenCalled();
+    expect(submit).not.toHaveBeenCalled();
+  });
+
   it('reenters with an unincorporated turn and does not repeat the question or write', async () => {
     getTurns.mockResolvedValue({ version: 1, turns: [firstTurn] });
     render(<PortfolioGoalLedgerConversation {...props()} />);
