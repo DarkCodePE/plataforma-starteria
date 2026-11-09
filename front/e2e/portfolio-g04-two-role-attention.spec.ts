@@ -75,6 +75,12 @@ test.describe('G04 — certified two-role AttentionItem journey', () => {
       data: { name: `Integración oficinas ${stamp}`, ownerId: owner.userId, organizationId: org.id,
         status: 'IN_PROGRESS', currentStep: 1 },
     });
+    // ProjectService.getProjectForRead requires an ACTIVE TeamMember record even
+    // for its canonical owner. Mirror the normal assignment acceptance path.
+    await prisma.teamMember.create({ data: {
+      projectId: project.id, userId: owner.userId, role: 'OWNER',
+      status: 'ACTIVE', modulePermissions: [], joinedAt: new Date(),
+    } });
     const ownerContext = await browser.newContext();
     const leadContext = await browser.newContext();
     const ownerPage = await ownerContext.newPage();
