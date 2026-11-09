@@ -40,8 +40,11 @@ function legacyAnswerTexts(sourceRefs: unknown): string[] {
   const previous = record(record(sourceRefs).objectiveConversation).turns;
   if (!Array.isArray(previous)) return [];
   return previous.flatMap((item) => {
-    const value = record(item).value;
-    return typeof value === 'string' && value.trim() ? [value.slice(0, 2_000)] : [];
+    const entry = record(item);
+    const value = entry.value;
+    // A newly accepted ledger receipt also exists in sourceRefs for legacy compatibility.
+    // Do not mislabel it as a pre-ledger historical response.
+    return !entry.ledgerTurnId && typeof value === 'string' && value.trim() ? [value.slice(0, 2_000)] : [];
   });
 }
 function shownDate(value: string): string {
@@ -91,12 +94,13 @@ export function PortfolioGoalLedgerConversation({ anchor, canConfirm, onSave, on
 
   const turns = snapshot?.turns ?? [];
   const latest = turns.at(-1) ?? null;
+  const superseded = new Set(turns.flatMap((turn) => turn.supersedesTurnId ? [turn.supersedesTurnId] : []));
   const isAccepted = (turn: PortfolioGoalTurn) =>
     isGoalLedgerTurnAccepted(anchor.sourceRefs, turn.id) || incorporatedLocally.includes(turn.id);
   const pending = [...turns].reverse().find((turn) =>
-    turn.anchorVersion === anchor.version && !isAccepted(turn) && turn.disposition !== 'retracted') ?? null;
+    turn.anchorVersion === anchor.version && !isAccepted(turn) && !superseded.has(turn.id) && turn.disposition !== 'retracted') ?? null;
   const stalePending = turns.find((turn) =>
-    turn.anchorVersion !== anchor.version && !isAccepted(turn)) ?? null;
+    turn.anchorVersion !== anchor.version && !isAccepted(turn) && !superseded.has(turn.id) && turn.disposition !== 'retracted') ?? null;
   const activeQuestion = plan?.activeQuestion ?? null;
   const busy = submitting || applying || confirming || loadStatus !== 'ready';
   const legacy = legacyAnswerTexts(anchor.sourceRefs);
