@@ -5,7 +5,8 @@
   | 'HYPOTHESIS_RESULT';
 
 export type ModelExecutionPurpose = 'analysis_turn' | 'handoff_generation' | 'technical_smoke'
-  | 'critical_situation_synthesis' | 'bootstrap_semantic_turn';
+  | 'critical_situation_synthesis' | 'bootstrap_semantic_turn'
+  | 'portfolio_e2_question_candidate';
 
 export type SeedSupport = 'provided' | 'unavailable' | 'not_requested';
 
