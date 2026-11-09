@@ -102,9 +102,10 @@ export function PortfolioGoalLedgerConversation({ anchor, canConfirm, onSave, on
   const stalePending = turns.find((turn) =>
     turn.anchorVersion !== anchor.version && !isAccepted(turn) && !superseded.has(turn.id) && turn.disposition !== 'retracted') ?? null;
   const activeQuestion = plan?.activeQuestion ?? null;
+  const awaitingAnchorRefresh = Boolean(latest && latest.anchorVersion === anchor.version && isAccepted(latest));
   const busy = submitting || applying || confirming || loadStatus !== 'ready';
   const legacy = legacyAnswerTexts(anchor.sourceRefs);
-  const canWrite = Boolean(activeQuestion && !pending && !stalePending && !busy && plan?.status !== 'blocked');
+  const canWrite = Boolean(activeQuestion && !pending && !stalePending && !awaitingAnchorRefresh && !busy && plan?.status !== 'blocked');
   const isCorrecting = Boolean(pending && editingPending);
 
   async function saveTurn(event: React.FormEvent) {
