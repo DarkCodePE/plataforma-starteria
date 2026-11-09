@@ -333,6 +333,57 @@ describe('portfolio-bootstrap router', () => {
     }));
   });
 
+  it('KAN-253 serves an owner-scoped, read-only E2 plan from confirmed E1 and Anchor', async () => {
+    service.getSession.mockResolvedValueOnce({
+      bootstrapSession: { id: 'bs-1' },
+      anchor: {
+        id: 'anchor-1', version: 2, status: 'anchor_insufficient',
+        outcomeStatement: 'Resultado de negocio por definir',
+        contextSummary: null, decisionToEnable: null, businessSignalStatus: 'unknown',
+        businessSignalValue: null, sourceRefs: [],
+      },
+    });
+    contextService.getContext.mockResolvedValueOnce({
+      id: 'review-1', status: 'confirmed', hasPendingCorrection: false, version: 4,
+      effectiveContext: { situation: { value: 'Somos una cafetería pequeña.' } },
+    });
+    const response = await request(makeApp())
+      .get('/api/v1/portfolio-bootstrap/sessions/bs-1/objective/plan')
+      .expect(200);
+    expect(response.body.data).toMatchObject({
+      sessionId: 'bs-1', mode: 'deterministic_preview',
+      anchorVersion: 2, contextReviewVersion: 4,
+      activeQuestion: {
+        field: 'outcomeStatement',
+        provenance: [{ kind: 'confirmed_context', reviewId: 'review-1', reviewVersion: 4 }],
+      },
+    });
+    expect(service.getSession).toHaveBeenCalledWith(expect.objectContaining({ sessionId: 'bs-1', authenticatedUserId: 'portfolio-lead-1' }));
+    expect(contextService.getContext).toHaveBeenCalledWith(expect.objectContaining({ sessionId: 'bs-1' }));
+    expect(service.updateAnchor).not.toHaveBeenCalled();
+    expect(service.confirmAnchor).not.toHaveBeenCalled();
+  });
+
+  it('KAN-253 never uses a ContextReview with pending correction as a confirmed source', async () => {
+    service.getSession.mockResolvedValueOnce({
+      bootstrapSession: { id: 'bs-1' },
+      anchor: {
+        id: 'anchor-1', version: 2, status: 'anchor_insufficient',
+        outcomeStatement: 'Resultado de negocio por definir',
+        contextSummary: null, decisionToEnable: null, businessSignalStatus: 'unknown',
+        businessSignalValue: null, sourceRefs: [],
+      },
+    });
+    contextService.getContext.mockResolvedValueOnce({
+      id: 'review-1', status: 'confirmed', hasPendingCorrection: true, version: 4,
+      effectiveContext: { situation: { value: 'Información en corrección.' } },
+    });
+    const result = await request(makeApp())
+      .get('/api/v1/portfolio-bootstrap/sessions/bs-1/objective/plan').expect(200);
+    expect(result.body.data.contextReviewVersion).toBeNull();
+    expect(result.body.data.activeQuestion.provenance).toEqual([]);
+  });
+
   it('KAN-250 reads resumable sessions without creating a new one', async () => {
     const result = await request(makeApp())
       .get('/api/v1/portfolio-bootstrap/sessions/resumable')
