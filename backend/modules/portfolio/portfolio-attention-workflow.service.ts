@@ -1,4 +1,5 @@
 import type { PrismaClient } from '@prisma/client';
+import { createHash } from 'node:crypto';
 import { AppError } from '../../shared/errors/AppError';
 import { AttentionWorkflowError, planAttentionTransition, type AttentionWorkflowAction, type AttentionWorkflowStatus } from './attention-workflow.policy';
 
@@ -12,6 +13,10 @@ type ActionInput = {
   assigneeId?: string;
   note?: string;
 };
+
+function fingerprint(input: unknown): string {
+  return createHash('sha256').update(JSON.stringify(input)).digest('hex');
+}
 
 function textField(value: string, label: string, min = 3, max = 2000): string {
   const v = value?.trim() ?? '';
@@ -48,12 +53,14 @@ export class PortfolioAttentionWorkflowService {
     const category = textField(input.category, 'Categoría', 3, 80);
     const exitCondition = textField(input.exitCondition, 'Condición de resolución');
     const nextAction = textField(input.nextAction, 'Siguiente acción');
+    const payloadHash = fingerprint({ projectId, actorId, category, reason, exitCondition, nextAction,
+      severity: input.severity ?? 'medium', ownerId: input.ownerId ?? null });
     if (input.ownerId) await this.assigneeBelongsToProject(projectId, input.ownerId);
     const existing = await this.db.portfolioAttentionEvent.findUnique({
       where: { idempotencyKey }, include: { attentionItem: true },
     });
     if (existing) {
-      if (existing.action !== 'create' || existing.attentionItem.projectId !== projectId || existing.actorId !== actorId) {
+      if (existing.action !== 'create' || existing.attentionItem.projectId !== projectId || existing.actorId !== actorId || existing.payloadHash !== payloadHash) {
         throw AppError.conflict('La clave de idempotencia ya pertenece a otra operación.', 'ATTENTION_KEY_REUSED');
       }
       return existing.attentionItem;
@@ -66,14 +73,14 @@ export class PortfolioAttentionWorkflowService {
           events: { create: {
             action: 'create', actorId, beforeStatus: null, afterStatus: 'open',
             previousOwnerId: null, nextOwnerId: input.ownerId ?? null,
-            note: reason, idempotencyKey,
+            note: reason, idempotencyKey, payloadHash,
           } },
         },
       });
     } catch (error: any) {
       if (error?.code === 'P2002') {
         const replay = await this.db.portfolioAttentionEvent.findUnique({ where: { idempotencyKey }, include: { attentionItem: true } });
-        if (replay?.action === 'create' && replay.actorId === actorId && replay.attentionItem.projectId === projectId) return replay.attentionItem;
+        if (replay?.action === 'create' && replay.actorId === actorId && replay.attentionItem.projectId === projectId && replay.payloadHash === payloadHash) return replay.attentionItem;
         throw AppError.conflict('La clave pertenece a otra operación.', 'ATTENTION_KEY_REUSED');
       }
       throw error;
@@ -85,13 +92,16 @@ export class PortfolioAttentionWorkflowService {
     if (!Number.isSafeInteger(input.expectedVersion) || input.expectedVersion < 0) {
       throw AppError.badRequest('Se requiere expectedVersion para evitar sobrescribir cambios.', 'ATTENTION_VERSION_REQUIRED');
     }
+    const payloadHash = fingerprint({ projectId, attentionItemId, actorId,
+      action: input.action, expectedVersion: input.expectedVersion,
+      assigneeId: input.assigneeId?.trim() || null, note: input.note?.trim() || null });
     if (input.assigneeId && ['assign', 'escalate'].includes(input.action)) {
       await this.assigneeBelongsToProject(projectId, input.assigneeId);
     }
     const existing = await this.db.portfolioAttentionEvent.findUnique({ where: { idempotencyKey }, include: { attentionItem: true } });
     if (existing) {
       if (existing.attentionItemId !== attentionItemId || existing.actorId !== actorId || existing.action !== input.action
-        || existing.attentionItem.projectId !== projectId) {
+        || existing.attentionItem.projectId !== projectId || existing.payloadHash !== payloadHash) {
         throw AppError.conflict('La clave pertenece a otra operación.', 'ATTENTION_KEY_REUSED');
       }
       return existing.attentionItem;
@@ -129,7 +139,7 @@ export class PortfolioAttentionWorkflowService {
           attentionItemId, actorId, action: change.event.action,
           beforeStatus: current.status, afterStatus: change.status,
           previousOwnerId: current.ownerId, nextOwnerId: change.ownerId,
-          note: change.event.note, idempotencyKey,
+          note: change.event.note, idempotencyKey, payloadHash,
         } });
         return tx.attentionItem.findUniqueOrThrow({ where: { id: attentionItemId } });
       });
@@ -137,7 +147,7 @@ export class PortfolioAttentionWorkflowService {
       if (error?.code === 'P2002') {
         const replay = await this.db.portfolioAttentionEvent.findUnique({ where: { idempotencyKey }, include: { attentionItem: true } });
         if (replay?.attentionItemId === attentionItemId && replay.actorId === actorId && replay.action === input.action
-          && replay.attentionItem.projectId === projectId) return replay.attentionItem;
+          && replay.attentionItem.projectId === projectId && replay.payloadHash === payloadHash) return replay.attentionItem;
         throw AppError.conflict('La clave pertenece a otra operación.', 'ATTENTION_KEY_REUSED');
       }
       throw error;
