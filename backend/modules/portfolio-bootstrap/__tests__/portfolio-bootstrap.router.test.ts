@@ -56,6 +56,10 @@ const semanticService = {
 const semanticOrchestrator = {
   processTurn: vi.fn(),
 };
+const goalTurnService = {
+  getTurns: vi.fn(),
+  appendTurn: vi.fn(),
+};
 
 let currentUser: any;
 
@@ -75,6 +79,7 @@ function makeApp() {
     contextService: contextService as any,
     semanticService: semanticService as any,
     semanticOrchestrator: semanticOrchestrator as any,
+    goalTurnService: goalTurnService as any,
   }));
   app.use(errorHandler);
   return app;
@@ -95,6 +100,8 @@ describe('portfolio-bootstrap router', () => {
     service.listResumable.mockResolvedValue([{ sessionId: 'bs-unfinished', title: 'Trabajo en preparación' }]);
     service.createOrReuseFromContinuation.mockResolvedValue({ bootstrapSession: { id: 'bs-1' }, anchor: { id: 'a-1' } });
     service.getSession.mockResolvedValue({ bootstrapSession: { id: 'bs-1' }, anchor: { id: 'a-1' } });
+    goalTurnService.getTurns.mockResolvedValue({ version: 0, turns: [] });
+    goalTurnService.appendTurn.mockResolvedValue({ version: 1, turn: { id: 'turn-1', field: 'outcomeStatement' } });
     service.updateAnchor.mockResolvedValue({ bootstrapSession: { id: 'bs-1' }, anchor: { id: 'a-1', status: 'anchor_sufficient' } });
     service.confirmAnchor.mockResolvedValue({ bootstrapSession: { id: 'bs-1' }, anchor: { id: 'a-1', status: 'anchor_confirmed' } });
     service.pasteWorkItems.mockResolvedValue({ sessionId: 'bs-1', existingWorkStatus: 'has_work', items: [{ id: 'wi-1' }] });
@@ -331,6 +338,53 @@ describe('portfolio-bootstrap router', () => {
     expect(service.createOrReuseDirect).toHaveBeenCalledWith(expect.objectContaining({
       authenticatedUserId: 'portfolio-lead-1',
     }));
+  });
+
+  it('KAN-253 B2 reads the E2 ledger without provisioning or changing the Anchor', async () => {
+    const response = await request(makeApp())
+      .get('/api/v1/portfolio-bootstrap/sessions/bs-1/objective/turns')
+      .expect(200);
+    expect(response.body.data).toEqual({ version: 0, turns: [] });
+    expect(goalTurnService.getTurns).toHaveBeenCalledWith(expect.objectContaining({
+      sessionId: 'bs-1', authenticatedUserId: 'portfolio-lead-1',
+    }));
+    expect(service.updateAnchor).not.toHaveBeenCalled();
+    expect(service.confirmAnchor).not.toHaveBeenCalled();
+  });
+
+  it('KAN-253 B2 writes a provisional answer with exact idempotency and expected versions', async () => {
+    const payload = {
+      expectedVersion: 0, expectedAnchorVersion: 1, expectedContextReviewVersion: null,
+      questionId: 'goal-preview-anchor-1-v1-outcomeStatement',
+      inputText: 'Queremos validar demanda sin inventar KPI.',
+      disposition: 'user_declared', supersedesTurnId: null,
+    };
+    const response = await request(makeApp())
+      .post('/api/v1/portfolio-bootstrap/sessions/bs-1/objective/turns')
+      .set('Idempotency-Key', 'goal-turn-intent-1')
+      .send(payload)
+      .expect(200);
+    expect(response.body.data.turn.field).toBe('outcomeStatement');
+    expect(goalTurnService.appendTurn).toHaveBeenCalledWith(expect.objectContaining({
+      authenticatedUserId: 'portfolio-lead-1',
+      idempotencyKey: 'goal-turn-intent-1',
+      body: payload,
+    }));
+    expect(service.updateAnchor).not.toHaveBeenCalled();
+    expect(service.confirmAnchor).not.toHaveBeenCalled();
+  });
+
+  it('KAN-253 B2 rejects a client-produced confirmed fact before calling the service', async () => {
+    await request(makeApp())
+      .post('/api/v1/portfolio-bootstrap/sessions/bs-1/objective/turns')
+      .set('Idempotency-Key', 'malicious')
+      .send({
+        expectedVersion: 0, expectedAnchorVersion: 1, expectedContextReviewVersion: null,
+        questionId: 'goal-q1', inputText: 'Tasa de conversión 90%',
+        disposition: 'confirmed', facts: [{ value: 90 }],
+      })
+      .expect(400);
+    expect(goalTurnService.appendTurn).not.toHaveBeenCalled();
   });
 
   it('KAN-253 serves an owner-scoped, read-only E2 plan from confirmed E1 and Anchor', async () => {
