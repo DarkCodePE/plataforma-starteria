@@ -103,6 +103,14 @@ jobs:
           PORTFOLIO_BOOTSTRAP_DB_INTEGRATION: '1'
         run: npm exec -- vitest run --config vitest.backend.config.ts ../backend/modules/portfolio-bootstrap/__tests__/portfolio-bootstrap-context.integration.test.ts ../backend/modules/portfolio-bootstrap/__tests__/portfolio-bootstrap-semantic.integration.test.ts ../backend/modules/portfolio-bootstrap/__tests__/portfolio-setup-completion.lab.integration.test.ts
 
+      # G04: owner-originated decision request, authority, idempotency,
+      # persistence and forbidden/unready states on disposable PostgreSQL.
+      - name: G04 DecisionRequest — governed persistence and authorization
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/starteria_e2e
+          R2_PERSISTENCE_E2E: '1'
+        run: npm exec -- vitest run --config vitest.backend.config.ts ../backend/modules/adaptive-core/__tests__/decision-request.e2e.test.ts
+
       - name: Run Portfolio Entry session repository PostgreSQL integration suite
         env:
           DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/starteria_e2e
