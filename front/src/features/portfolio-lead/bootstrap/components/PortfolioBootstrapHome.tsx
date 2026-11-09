@@ -594,8 +594,14 @@ function FrozenContextConversation(props: React.ComponentProps<typeof PortfolioB
 function FrozenObjectiveConversation({ projection, onSave, onConfirm }: { projection: BootstrapProjection; onSave: (input: UpdatePortfolioBootstrapAnchorInput) => Promise<void>; onConfirm: () => Promise<void> }) {
   const anchor = projection.anchor;
   return <>
-    <AssistantBubble>He recibido tu contexto inicial. No voy a inventar KPIs o causas. <b>Conversaremos para aclarar el resultado de negocio, su contexto y la decisión que necesitas tomar.</b> Si algo no lo sabes, quedará pendiente.</AssistantBubble>
-    {anchor.contextSummary ? <UserBubble>{anchor.contextSummary}</UserBubble> : null}
+    <AssistantBubble>Partimos de la información disponible en este espacio. <b>Aclararemos el resultado de negocio y la decisión que quieres habilitar</b> sin inventar KPIs ni causas. Puedes dejar incertidumbres abiertas.</AssistantBubble>
+    {anchor.contextSummary ? (
+      <section aria-label="Referencia disponible del objetivo" className="rounded-xl border border-[#dce6f7] bg-[#edf2fb] p-4 text-sm text-[#344d80]">
+        <p className="text-xs font-semibold uppercase tracking-wide">Contexto disponible · referencia, no turno de conversación</p>
+        <p className="mt-2">{anchor.contextSummary}</p>
+        <p className="mt-2 text-xs">Fuente: Anchor de la sesión · estado {statusLabel(anchor.status)}. El origen específico requiere verificar sourceRefs; este texto no implica una intervención nueva del usuario.</p>
+      </section>
+    ) : null}
     <FocusedQuestion eyebrow="Alinear con negocio" title="Primero entendamos el objetivo, antes de diseñar trabajo" help="Una conversación breve para construir una ficha estratégica útil; no un formulario de ocho campos." />
     <ObjectiveConversation anchor={anchor} onSave={onSave} canConfirm={projection.canConfirm} onConfirm={onConfirm} />
   </>;
@@ -3348,6 +3354,60 @@ function unknownObjectiveFields(sourceRefs: unknown): ObjectiveField[] {
   return Array.isArray(value) ? value.filter((field): field is ObjectiveField => field === 'outcomeStatement' || field === 'contextSummary' || field === 'decisionToEnable' || field === 'businessSignalValue') : [];
 }
 
+type PersistedObjectiveTurn = {
+  field: ObjectiveField;
+  value: string;
+  disposition: ObjectiveConversationDisposition;
+  recordedAt: string | null;
+};
+
+/** Only render the conversation entries that were actually saved in Anchor provenance. */
+function objectiveTurnHistory(sourceRefs: unknown): PersistedObjectiveTurn[] {
+  const raw = objectiveConversationMeta(sourceRefs).turns;
+  if (!Array.isArray(raw)) return [];
+  const fields: ObjectiveField[] = ['outcomeStatement', 'contextSummary', 'decisionToEnable', 'businessSignalValue'];
+  const dispositions: ObjectiveConversationDisposition[] = ['user_declared', 'ai_suggested', 'unknown', 'irrelevant', 'clarification'];
+  return raw.filter((value): value is Record<string, unknown> => Boolean(value)
+    && typeof value === 'object' && !Array.isArray(value))
+    .filter((value) => fields.includes(value.field as ObjectiveField)
+      && dispositions.includes(value.disposition as ObjectiveConversationDisposition)
+      && typeof value.value === 'string' && value.value.trim().length > 0)
+    .map((value) => ({
+      field: value.field as ObjectiveField,
+      value: String(value.value).slice(0, 2_000),
+      disposition: value.disposition as ObjectiveConversationDisposition,
+      recordedAt: typeof value.recordedAt === 'string' && !Number.isNaN(Date.parse(value.recordedAt))
+        ? value.recordedAt : null,
+    }));
+}
+
+function objectiveQuestionReason(question: ObjectiveQuestion): string {
+  if (question.key === 'businessSignalMeasure') {
+    return 'Distinguir número y porcentaje evita comparar indicadores diferentes sin su denominador.';
+  }
+  if (question.key === 'outcomeStatement') {
+    return 'Aclarar el resultado de negocio nos ayuda a orientar las decisiones sin saltar directamente a una solución.';
+  }
+  if (question.key === 'contextSummary') {
+    return 'Comprender cuándo ocurre, quién recibe el impacto y qué se conoce permite plantear un trabajo proporcionado.';
+  }
+  if (question.key === 'decisionToEnable') {
+    return 'Saber qué decisión quieres habilitar evita acumular iniciativas que no ayudan a elegir qué hacer después.';
+  }
+  if (question.key === 'businessSignalValue') {
+    return 'Una señal observable permite seguir el aprendizaje sin inventar una meta o atribuir beneficios que no conocemos.';
+  }
+  return 'La ficha provisional está disponible para revisión humana.';
+}
+
+function objectiveTurnLabel(disposition: ObjectiveConversationDisposition): string {
+  if (disposition === 'ai_suggested') return 'Sugerencia incorporada, por revisar';
+  if (disposition === 'unknown') return 'Desconocido declarado';
+  if (disposition === 'irrelevant') return 'Texto sin incorporar al objetivo';
+  if (disposition === 'clarification') return 'Aclaración registrada';
+  return 'Declarado en Portfolio Lead';
+}
+
 function nextObjectiveQuestion(anchor: PortfolioBootstrapAnchor): ObjectiveQuestion {
   const meta = objectiveConversationMeta(anchor.sourceRefs);
   if (meta.pendingClarification === 'businessSignalMeasure') {
@@ -3420,9 +3480,12 @@ function ObjectiveConversation({
   const [draft, setDraft] = useState(anchor);
   const [confirming, setConfirming] = useState(false);
   const [confirmationError, setConfirmationError] = useState<string | null>(null);
+  const [helpPanel, setHelpPanel] = useState<'reason' | 'context' | null>(null);
   const submittedAnswers = useRef(new Set<string>());
   useEffect(() => { setDraft(anchor); }, [anchor]);
   const question = nextObjectiveQuestion(draft);
+  const history = objectiveTurnHistory(draft.sourceRefs);
+  const questionReason = objectiveQuestionReason(question);
 
   const saveAnswer = async (value: string, unknown = false, origin: 'user_declared' | 'ai_suggested' = 'user_declared') => {
     if (question.key === 'complete') return;
@@ -3525,16 +3588,35 @@ function ObjectiveConversation({
   };
 
   return (
-    <section className="grid gap-4 rounded-xl border border-sky-200 bg-sky-50/50 p-4 lg:grid-cols-[minmax(0,1fr)_minmax(280px,0.8fr)]" data-testid="portfolio-objective-conversation">
+    <section className="grid gap-4 rounded-2xl border border-[#e4e7f0] bg-[#f6f7fc] p-4 lg:grid-cols-[minmax(0,1fr)_minmax(280px,0.8fr)]" data-testid="portfolio-objective-conversation">
       <div className="space-y-3" aria-label="Conversación de objetivo">
         <div>
-          <p className="text-xs font-bold uppercase tracking-wide text-sky-800">Copilot de Portfolio</p>
-          <h2 className="mt-1 text-lg font-semibold text-slate-950">Construyamos el objetivo paso a paso</h2>
-          <p className="mt-1 text-sm text-slate-700">Starteria recupera lo ya conocido, interpreta cada respuesta y pregunta solo por la siguiente incertidumbre material. No valida ni inventa datos.</p>
+          <p className="text-xs font-bold uppercase tracking-[0.1em] text-[#6446c0]">Alinear con el negocio · Objetivo</p>
+          <h2 className="mt-1 text-lg font-semibold text-[#182246]">Construyamos el objetivo paso a paso</h2>
+          <p className="mt-1 text-sm text-[#6c7695]">Avanzamos desde lo que está guardado. Las preguntas de E2 se basan en campos pendientes; todavía no son razonamiento semántico generativo.</p>
         </div>
-        <div className="rounded-lg border border-sky-100 bg-white p-3 text-sm text-slate-800">
-          <p className="font-semibold">Starteria</p>
-          <p className="mt-1">{question.prompt}</p>{question.help ? <p className="mt-2 text-xs text-slate-600">{question.help}</p> : null}
+        {history.length > 0 ? (
+          <section role="region" aria-label="Historial del objetivo" className="space-y-3">
+            {history.map((turn, index) => (
+              <article key={`${index}-${turn.field}-${turn.recordedAt ?? 'unknown'}`}
+                className="ml-auto max-w-[92%] rounded-2xl rounded-tr-sm bg-[#ede8fd] px-4 py-3 text-sm text-[#182246]">
+                <p className="text-xs font-semibold text-[#493297]">{objectiveQuestions[turn.field].label}</p>
+                <p className="mt-1 leading-6">{turn.value}</p>
+                <p className="mt-2 text-[11px] text-[#6c7695]">
+                  {objectiveTurnLabel(turn.disposition)}
+                  {turn.recordedAt ? ` · ${new Date(turn.recordedAt).toLocaleDateString('es-ES')}` : ' · fecha no disponible'}
+                  {' · '}Respuesta persistida, no conclusión automática
+                </p>
+              </article>
+            ))}
+          </section>
+        ) : null}
+        <div className="rounded-2xl rounded-tl-sm border border-[#decfff] border-l-[3px] border-l-[#7b59d3] bg-[#f5f0ff] p-4 text-sm text-[#182246]">
+          <p className="text-xs font-bold uppercase tracking-[0.1em] text-[#6446c0]">
+            {question.key === 'complete' ? 'Ficha lista para revisar' : 'Siguiente pregunta'}
+          </p>
+          <p className="mt-2 font-semibold">{question.prompt}</p>
+          {question.help ? <p className="mt-2 text-xs text-[#6d6097]">{question.help}</p> : null}
         </div>
         {question.key !== 'complete' ? <form
           className="space-y-2"
@@ -3567,8 +3649,30 @@ function ObjectiveConversation({
             <button type="button" disabled={saving} onClick={() => void saveAnswer(question.unknown, true)} className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 disabled:opacity-60">
               No lo sé todavía
             </button>
+            <button type="button" disabled={saving} onClick={() => setHelpPanel((current) => current === 'reason' ? null : 'reason')}
+              className="rounded-lg border border-[#d9caff] bg-white px-3 py-2 text-sm font-semibold text-[#493297] disabled:opacity-60">
+              ¿Por qué esta pregunta?
+            </button>
+            <button type="button" disabled={saving} onClick={() => setHelpPanel((current) => current === 'context' ? null : 'context')}
+              className="rounded-lg border border-[#d9caff] bg-white px-3 py-2 text-sm font-semibold text-[#493297] disabled:opacity-60">
+              Ver contexto disponible
+            </button>
           </div>
         </form> : null}
+        {helpPanel === 'reason' && question.key !== 'complete' ? (
+          <section role="region" aria-label="Motivo de la pregunta" className="rounded-xl border border-[#dce6f7] bg-[#edf2fb] p-4 text-sm text-[#344d80]">
+            <p className="font-semibold">Por qué nos ayuda</p>
+            <p className="mt-1">{questionReason}</p>
+            <p className="mt-2 text-xs">Es una explicación del flujo guiado E2, no una inferencia del motor de IA.</p>
+          </section>
+        ) : null}
+        {helpPanel === 'context' && question.key !== 'complete' ? (
+          <section role="region" aria-label="Contexto disponible para E2" className="rounded-xl border border-[#dce6f7] bg-[#edf2fb] p-4 text-sm text-[#344d80]">
+            <p className="font-semibold">Información disponible en el Anchor de esta sesión</p>
+            <p className="mt-2">{draft.contextSummary?.trim() || 'No hay un contexto guardado que podamos mostrar todavía.'}</p>
+            <p className="mt-2 text-xs">Estado: {statusLabel(draft.status)} · procedencia: {draft.provenanceStatus}. Esto no acredita un prompt externo ni una medición observada.</p>
+          </section>
+        ) : null}
         {suggestion ? (
           <div className="rounded-lg border border-sky-200 bg-white p-3 text-sm" data-testid="portfolio-objective-ai-suggestion">
             <p className="font-semibold text-sky-950">Sugerencia de Starteria</p>
@@ -3582,10 +3686,10 @@ function ObjectiveConversation({
         ) : null}
         {notice ? <p role="status" className="rounded-lg border border-sky-100 bg-white p-3 text-sm text-sky-950">{notice}</p> : null}
       </div>
-      <div className="rounded-lg border border-slate-200 bg-white p-4" data-testid="portfolio-objective-card" aria-label="Borrador del objetivo">
-        <p className="text-xs font-bold uppercase tracking-wide text-slate-500">Lo que estamos construyendo</p>
-        <h3 className="mt-1 text-base font-semibold text-slate-950">Borrador del objetivo</h3>
-        <p className="mt-1 text-sm text-slate-600">Se actualiza al enviar cada respuesta y permanece revisable por la persona.</p>
+      <div role="region" className="rounded-xl border border-[#e4e7f0] bg-white p-4" data-testid="portfolio-objective-card" aria-label="Borrador del objetivo">
+        <p className="text-xs font-bold uppercase tracking-wide text-[#6446c0]">Ficha estratégica provisional</p>
+        <h3 className="mt-1 text-base font-semibold text-[#182246]">Borrador del objetivo</h3>
+        <p className="mt-1 text-sm text-[#6c7695]">Se actualiza al guardar respuestas, conserva los pendientes y solo se confirma por una persona.</p>
         <dl className="mt-3 space-y-3 text-sm">
           <ObjectiveCardField label="Resultado" value={isPendingOutcome(draft.outcomeStatement) ? null : draft.outcomeStatement} />
           <ObjectiveCardField label="Contexto" value={draft.contextSummary} />
@@ -3595,6 +3699,12 @@ function ObjectiveConversation({
           <ObjectiveCardField label="Pendientes explícitos" value={unknownObjectiveFields(draft.sourceRefs).map((field) => objectiveQuestions[field].label).join(', ') || null} />
         </dl>
         <p className="mt-4 text-xs text-slate-600">Estado de revisión: {statusLabel(draft.status)}. Esta ficha no crea un frente, reto ni iniciativa.</p>
+        {history.length > 0 ? (
+          <p className="mt-2 rounded-lg border border-[#ceeae0] bg-[#eaf7f2] px-3 py-2 text-xs text-[#276b56]">
+            Claridad ganada: {history.length} {history.length === 1 ? 'respuesta registrada' : 'respuestas registradas'}.
+            Las cifras o datos que no aparecen en la fuente permanecen pendientes de validar.
+          </p>
+        ) : null}
         {canConfirm ? <button type="button" disabled={confirming} onClick={() => void confirmObjective()} className="mt-4 inline-flex items-center gap-2 rounded-lg bg-slate-950 px-4 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60"><CheckCircle2 size={16} />{confirming ? 'Confirmando objetivo…' : 'Confirmar este punto de partida y continuar'}</button> : <p className="mt-4 text-sm text-slate-600">Podrás confirmarlo cuando el borrador tenga información suficiente o los vacíos estén declarados.</p>}
         {confirmationError ? <p role="alert" className="mt-3 rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-900">{confirmationError}</p> : null}
         <div className="mt-3"><AnchorEditor anchor={draft} onSave={onSave} /></div>

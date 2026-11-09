@@ -389,6 +389,61 @@ describe('PortfolioBootstrapHome — frozen Copilot-first composition', () => {
     })));
   });
 
+  it('KAN-252 displays only persisted objective turns with answer origin and chronological order', () => {
+    const data = makeBootstrap('anchor_insufficient');
+    data.anchor!.outcomeStatement = 'Reducir abandono en los primeros 90 días.';
+    data.anchor!.contextSummary = 'Clientes nuevos SMB reportan dificultades de activación.';
+    data.anchor!.sourceRefs = {
+      objectiveConversation: {
+        turns: [
+          { field: 'outcomeStatement', value: 'Reducir abandono en los primeros 90 días.', disposition: 'user_declared', origin: 'PortfolioLead', recordedAt: '2026-11-07T10:00:00.000Z' },
+          { field: 'contextSummary', value: 'Clientes nuevos SMB reportan dificultades de activación.', disposition: 'ai_suggested', origin: 'PortfolioLead', recordedAt: '2026-11-07T10:01:00.000Z' },
+        ],
+      },
+    };
+    render(<PortfolioBootstrapHome {...objectiveProps({ data })} />);
+    const conversation = screen.getByRole('region', { name: 'Historial del objetivo' });
+    const first = within(conversation).getByText('Reducir abandono en los primeros 90 días.');
+    const second = within(conversation).getByText('Clientes nuevos SMB reportan dificultades de activación.');
+    expect(first.compareDocumentPosition(second) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(conversation).toHaveTextContent('Declarado en Portfolio Lead');
+    expect(conversation).toHaveTextContent('Sugerencia incorporada, por revisar');
+    expect(screen.getByRole('region', { name: 'Borrador del objetivo' })).toHaveTextContent('Pendiente');
+  });
+
+  it('KAN-252 exposes a truthful rationale and source context without writing or inventing prompt history', async () => {
+    const user = userEvent.setup();
+    const data = makeBootstrap('anchor_insufficient');
+    data.anchor!.contextSummary = 'Los pedidos desde oficinas cercanas aún no están validados.';
+    data.anchor!.outcomeStatement = 'Resultado de negocio por definir';
+    const save = vi.fn().mockResolvedValue(undefined);
+    render(<PortfolioBootstrapHome {...objectiveProps({ data, onUpdateAnchor: save })} />);
+    expect(screen.queryByRole('region', { name: 'Historial del objetivo' })).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: '¿Por qué esta pregunta?' }));
+    expect(screen.getByRole('region', { name: 'Motivo de la pregunta' })).toHaveTextContent('resultado de negocio');
+    await user.click(screen.getByRole('button', { name: 'Ver contexto disponible' }));
+    expect(screen.getByRole('region', { name: 'Contexto disponible para E2' }))
+      .toHaveTextContent('Los pedidos desde oficinas cercanas aún no están validados.');
+    expect(screen.queryByText('Prompt de diagnóstico externo recibido')).not.toBeInTheDocument();
+    expect(save).not.toHaveBeenCalled();
+  });
+
+  it('KAN-252 keeps unknown as an explicit persisted disposition and does not fabricate progress', async () => {
+    const save = vi.fn().mockResolvedValue(undefined);
+    const data = makeBootstrap('anchor_insufficient');
+    data.anchor!.outcomeStatement = 'Resultado de negocio por definir';
+    data.anchor!.contextSummary = 'Buscamos mejorar la cafetería.';
+    render(<PortfolioBootstrapHome {...objectiveProps({ data, onUpdateAnchor: save })} />);
+    await userEvent.setup().click(screen.getByRole('button', { name: 'No lo sé todavía' }));
+    await waitFor(() => expect(save).toHaveBeenCalledWith(expect.objectContaining({
+      sourceRefs: expect.objectContaining({
+        objectiveConversation: expect.objectContaining({ disposition: 'unknown', unknownFields: ['outcomeStatement'] }),
+      }),
+    })));
+    expect(screen.queryByText(/72 %|62 %/)).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Continuar a Incorporación' })).not.toBeInTheDocument();
+  });
+
   it('keeps Briefs and Assignment blocked before the explicit Organization transition', () => {
     const navigate = vi.fn();
     render(<PortfolioBootstrapHome {...props({ data: makeBootstrapWithProposedMutations(), onNavigate: navigate })} />);
@@ -410,7 +465,10 @@ describe('PortfolioBootstrapHome — frozen Copilot-first composition', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Enviar respuesta' }));
 
     await waitFor(() => expect(save).toHaveBeenCalledWith(expect.objectContaining({ outcomeStatement: 'Reducir el abandono durante la activación de nuevos clientes.' })));
-    expect(screen.getByText('Reducir el abandono durante la activación de nuevos clientes.')).toBeInTheDocument();
+    expect(within(screen.getByTestId('portfolio-objective-card'))
+      .getByText('Reducir el abandono durante la activación de nuevos clientes.')).toBeInTheDocument();
+    expect(within(screen.getByRole('region', { name: 'Historial del objetivo' }))
+      .getByText('Reducir el abandono durante la activación de nuevos clientes.')).toBeInTheDocument();
     expect(screen.getByText('¿Qué te gustaría poder decidir mejor cuando tengas más claridad sobre este objetivo?')).toBeInTheDocument();
     expect(screen.getByText(/He actualizado el borrador con tu respuesta/i)).toBeInTheDocument();
   });
@@ -443,7 +501,9 @@ describe('PortfolioBootstrapHome — frozen Copilot-first composition', () => {
     fireEvent.click(screen.getByRole('button', { name: 'No lo sé todavía' }));
     await waitFor(() => expect(save).toHaveBeenCalledWith(expect.objectContaining({ sourceRefs: expect.objectContaining({ objectiveConversation: expect.objectContaining({ disposition: 'unknown', unknownFields: ['outcomeStatement'] }) }) })));
     expect(screen.getByText('¿Qué te gustaría poder decidir mejor cuando tengas más claridad sobre este objetivo?')).toBeInTheDocument();
-    expect(screen.getByText(/Aún no conocemos el resultado de negocio/i)).toBeInTheDocument();
+    expect(screen.getByRole('status')).toHaveTextContent('Aún no conocemos el resultado de negocio');
+    expect(within(screen.getByRole('region', { name: 'Historial del objetivo' }))
+      .getByText('Aún no conocemos el resultado de negocio.')).toBeInTheDocument();
   });
 
   it('reframes an irrelevant answer and makes a duplicate retry idempotent', async () => {

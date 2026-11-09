@@ -582,6 +582,29 @@ petición ni por una configuración productiva y el flag continúa apagado fuera
 
 ---
 
+## Slice PORTFOLIO_E2_OBJECTIVE_CONVERSATIONAL_UX (KAN-252)
+
+**Registrado:** 2026-11-09, PR #276 dependiente de PR #274. No fusionado ni desplegado.
+
+```text
+slice_id: PORTFOLIO_E2_OBJECTIVE_CONVERSATIONAL_UX
+task: KAN-252
+authority: Core factual v0.2, Portfolio Bootstrap Anchor, KAN-250/251, Authority Map
+ux_reference: STARTERIA_PORTFOLIO_LEAD_COPILOT_FIRST_v1.0.html (solo interacción visual; no IA real)
+owner: PortfolioBootstrapHome ObjectiveConversation, frontend E2
+implementation_status: OPEN_PR_276_PENDING_CERTIFICATION
+base: feat/KAN-250-overview-first-copilot-ux (PR #274)
+input_source: Anchor sourceRefs.objectiveConversation.turns, persisted and versioned
+human_interaction: show saved turns with disposition/date; show question purpose and Anchor context on explicit request
+outputs: provisional objective card, outcome/context/business signal/conditions/decision/unknowns, without invented numbers
+preserves: updateAnchor, confirmAnchor, CAS/idempotency, E1/E2/E3 gates, tenant permission, AI provider defaults
+excluded: Core/Prisma changes, live semantic E2 reasoning, fabricated goals/metrics/steps, autofill without human action, merge/deploy
+test_scope: PortfolioBootstrapHome.test.tsx KAN-252, KAN-212/240 E2E, typecheck:front, CI + review
+documentation: docs/implementation/KAN-252_E2_OBJECTIVE_UX_PARITY_v0.1.md
+```
+
+---
+
 ## Slice PORTFOLIO_LEAD_E1_SEMANTIC_COPILOT_FIRST_UX (KAN-251)
 
 **Registrado:** 2026-11-09, PR #275 apilado sobre PR #274 (KAN-250), **sin merge ni deploy**.
