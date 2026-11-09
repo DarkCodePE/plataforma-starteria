@@ -314,6 +314,17 @@ export class PortfolioBootstrapController {
     }
   };
 
+  listResumable = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      if (!req.user?.id) throw AppError.unauthorized('No autorizado.', 'PORTFOLIO_BOOTSTRAP_AUTH_REQUIRED');
+      const data = await this.service.listResumable({
+        authenticatedUserId: req.user.id,
+        permissions: req.user.permissions,
+      });
+      res.json({ success: true, data });
+    } catch (err) { next(err); }
+  };
+
   getCurrent = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
       if (!req.user?.id) throw AppError.unauthorized('No autorizado.', 'PORTFOLIO_BOOTSTRAP_AUTH_REQUIRED');

@@ -32,12 +32,17 @@ async function registerLead(api: APIRequestContext, label: string) {
   return { email, password, userId, organizationId: organization.id, token: accessToken(await login.json()) };
 }
 
-async function loginUi(page: Page, lead: { email: string; password: string }) {
+async function loginUi(page: Page, lead: { email: string; password: string; userId?: string }) {
   await page.goto('/auth');
   await page.getByPlaceholder('tu@empresa.com').fill(lead.email);
   await page.locator('input[type="password"]').fill(lead.password);
   await page.getByRole('button', { name: 'Entrar' }).click();
   await expect(page).toHaveURL(/\/portfolio\/inicio/, { timeout: 20_000 });
+  await expect(page.getByTestId('portfolio-overview-home')).toBeVisible({ timeout: 20_000 });
+  if (lead.userId) {
+    expect(await prisma.portfolioBootstrapSession.count({ where: { userId: lead.userId } })).toBe(0);
+  }
+  await page.getByRole('button', { name: 'Preparar nueva oportunidad' }).click();
   await expect(page.getByText('Cuéntame qué está ocurriendo')).toBeVisible({ timeout: 20_000 });
 }
 
@@ -136,7 +141,12 @@ test.describe('KAN-222 G1 contextual Copilot V2_CONFORMANCE', () => {
     await page.getByRole('button', { name: /Contexto Revisado o completado/i }).click();
     await page.getByRole('button', { name: 'Revisar contexto' }).click();
     await expect(page.getByLabel('Situación actual')).toHaveValue('Corrección pendiente del contexto');
-    await expect(page.getByText('Contexto confirmado', { exact: true })).toBeVisible();
+    // The source badge and the confirmation status both say "Contexto confirmado".
+    // Assert each independently, keeping the confirmation and provenance checks.
+    await expect(page.getByRole('region', { name: 'Síntesis editable del contexto' })
+      .getByText('Contexto confirmado', { exact: true })).toBeVisible();
+    await expect(page.getByTestId('portfolio-context-source')
+      .getByText('Contexto confirmado', { exact: true })).toBeVisible();
     const finalReview = await prisma.portfolioBootstrapContextReview.findUniqueOrThrow({ where: { bootstrapSessionId: session.id } });
     expect(finalReview.confirmedSnapshotJson).toMatchObject({ situation: { value: 'Corrección pendiente del contexto' } });
     expect(finalReview.version).toBe(7);

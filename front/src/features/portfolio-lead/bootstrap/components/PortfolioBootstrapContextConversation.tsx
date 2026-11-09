@@ -362,6 +362,33 @@ export function PortfolioBootstrapContextConversation({
 
   return (
     <div className="space-y-5" data-testid="portfolio-context-conversation" aria-busy={busy}>
+      {review ? (
+        <section aria-label="Origen del contexto guardado" data-testid="portfolio-context-source"
+          className="rounded-xl border border-[#e4e7f0] bg-[#fbfcff] p-4">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="rounded-md bg-[#f3eefc] px-2 py-1 text-xs font-bold text-[#493297]">{review.status === 'confirmed' ? 'Contexto confirmado' : 'Borrador recuperado'}</span>
+            <span className="text-xs font-medium text-[#6c7695]">Versión {review.version}</span>
+            {review.updatedAt && !Number.isNaN(Date.parse(review.updatedAt)) ? (
+              <span className="text-xs text-[#6c7695]">Actualizado {new Date(review.updatedAt).toLocaleString('es-ES', { dateStyle: 'medium', timeStyle: 'short' })}</span>
+            ) : null}
+          </div>
+          <p className="mt-2 text-xs leading-5 text-[#6c7695]">
+            Esta información pertenece al contexto guardado de este espacio. No presupone un diagnóstico externo,
+            una conversación reciente ni una confirmación de los datos.
+            {review.draft.situation.sourceRef?.kind === 'user_input'
+              ? ' El origen disponible identifica una entrada de usuario, pero no un turno histórico individual.'
+              : ''}
+          </p>
+        </section>
+      ) : null}
+      {draft.situation.value ? (
+        <div className="flex justify-end" data-testid="portfolio-context-stored-statement">
+          <div className="max-h-40 max-w-[90%] overflow-auto rounded-2xl rounded-tr-sm bg-[#ede8fd] px-4 py-3 text-sm leading-6 text-[#182246]">
+            <p className="mb-1 text-[11px] font-bold uppercase tracking-wider text-[#6446c0]">Situación guardada · no es un historial de chat</p>
+            <p>{draft.situation.value}</p>
+          </div>
+        </div>
+      ) : null}
       {busy ? (
         <p role="status" className="rounded-lg border border-violet-100 bg-white p-3 text-sm font-medium text-violet-950">
           {status === 'loading'

@@ -49,8 +49,14 @@ async function loginUi(page: Page, lead: { email: string; password: string }, ex
   await page.locator('input[type="password"]').fill(lead.password);
   await page.getByRole('button', { name: 'Entrar' }).click();
   await expect(page).toHaveURL(/\/portfolio\/inicio/, { timeout: 20_000 });
+  await expect(page.getByTestId('portfolio-overview-home')).toBeVisible({ timeout: 20_000 });
   if (expectedStep) {
+    // No Bootstrap session exists yet: start only after a deliberate user click.
+    await page.getByRole('button', { name: 'Preparar nueva oportunidad' }).click();
     await expect(page.getByText(`Configurar con Copilot · ${expectedStep} de 7`)).toBeVisible({ timeout: 20_000 });
+  } else {
+    // The distribuidora already has a persisted unfinished context.
+    await page.getByRole('button', { name: 'Retomar este espacio' }).click();
   }
 }
 

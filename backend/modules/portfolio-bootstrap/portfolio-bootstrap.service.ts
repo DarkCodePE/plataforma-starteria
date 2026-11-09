@@ -268,11 +268,78 @@ export class PortfolioBootstrapService {
   ) {}
 
   /**
-   * Opens the existing Bootstrap workflow for an authenticated Portfolio Lead
-   * who arrived through the normal product route.  This is deliberately a
-   * provisional workspace: it creates neither a StrategicFront nor a
-   * Challenge nor an Initiative.  Those remain human-reviewed operations in
-   * their respective bounded contexts.
+   * Overview-only discovery. Unlike getCurrent(), this read includes E1/E2
+   * drafts without an organization materialization, but never creates a session.
+   * The owner and their current organization jointly scope every result.
+   */
+  async listResumable(input: {
+    authenticatedUserId: string;
+    permissions: ReadonlySet<Permission>;
+  }): Promise<Array<{
+    sessionId: string;
+    title: string;
+    bootstrapPhase: string;
+    status: string;
+    source: 'direct' | 'entry_continuation';
+    createdAt: string;
+    updatedAt: string;
+    contextVersion: number | null;
+    contextUpdatedAt: string | null;
+    contextStatus: 'draft' | 'confirmed' | null;
+  }>> {
+    if (!can(input.permissions, 'portfolio:read')) {
+      throw AppError.forbidden('No tienes permiso para consultar este Portfolio.', 'PORTFOLIO_BOOTSTRAP_READ_FORBIDDEN');
+    }
+    const db = this.prisma as any;
+    const actor = await db.user.findUnique({
+      where: { id: input.authenticatedUserId }, select: { organizationId: true },
+    });
+    if (!actor) throw AppError.unauthorized('No autorizado.', 'PORTFOLIO_BOOTSTRAP_AUTH_REQUIRED');
+
+    const rows = await db.portfolioBootstrapSession.findMany({
+      where: {
+        userId: input.authenticatedUserId,
+        organizationId: actor.organizationId,
+        status: { not: 'abandoned' },
+        setupCompletedAt: null,
+      },
+      orderBy: { updatedAt: 'desc' },
+      take: 5,
+      select: {
+        id: true, status: true, bootstrapPhase: true,
+        sourceContinuationId: true, createdAt: true, updatedAt: true,
+        anchor: { select: { outcomeStatement: true, contextSummary: true } },
+        contextReview: { select: { status: true, version: true, updatedAt: true, draftJson: true } },
+      },
+    });
+    return rows.map((row: any) => {
+      const outcome = row.anchor?.outcomeStatement?.trim();
+      const context = row.contextReview?.draftJson;
+      const draftSituation = context && typeof context === 'object' && !Array.isArray(context)
+        ? (context as { situation?: { value?: unknown } }).situation?.value
+        : null;
+      const savedSituation = typeof draftSituation === 'string' ? draftSituation.trim() : '';
+      const situation = savedSituation || row.anchor?.contextSummary?.trim();
+      const title = outcome && outcome !== 'Resultado de negocio por definir'
+        ? outcome : situation || 'Preparación de portafolio sin título confirmado';
+      return {
+        sessionId: row.id,
+        title: String(title).slice(0, 160),
+        bootstrapPhase: row.bootstrapPhase,
+        status: row.status,
+        source: row.sourceContinuationId ? 'entry_continuation' as const : 'direct' as const,
+        createdAt: row.createdAt.toISOString(),
+        updatedAt: row.updatedAt.toISOString(),
+        contextVersion: row.contextReview?.version ?? null,
+        contextUpdatedAt: row.contextReview?.updatedAt?.toISOString() ?? null,
+        contextStatus: row.contextReview?.status ?? null,
+      };
+    });
+  }
+
+  /**
+   * Explicit preparation action. Reuses only an unfinished direct session
+   * for the same owner and organization; does not canonicalize business work.
    */
   async createOrReuseDirect(input: {
     authenticatedUserId: string;
@@ -293,8 +360,10 @@ export class PortfolioBootstrapService {
       const existing = await db.portfolioBootstrapSession.findFirst({
         where: {
           userId: input.authenticatedUserId,
+          organizationId: actor.organizationId,
           sourceContinuationId: null,
           status: { not: 'abandoned' },
+          setupCompletedAt: null,
         },
         orderBy: { updatedAt: 'desc' },
         include: this.sessionInclude(),

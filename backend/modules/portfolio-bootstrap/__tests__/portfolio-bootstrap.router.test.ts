@@ -8,6 +8,7 @@ import { buildPortfolioBootstrapRouter } from '../portfolio-bootstrap.router';
 const service = {
   createOrReuseDirect: vi.fn(),
   getCurrent: vi.fn(),
+  listResumable: vi.fn(),
   createOrReuseFromContinuation: vi.fn(),
   getSession: vi.fn(),
   updateAnchor: vi.fn(),
@@ -91,6 +92,7 @@ describe('portfolio-bootstrap router', () => {
     };
     service.createOrReuseDirect.mockResolvedValue({ bootstrapSession: { id: 'bs-direct' }, anchor: { id: 'anchor-direct' } });
     service.getCurrent.mockResolvedValue({ bootstrapSession: { id: 'bs-current' }, anchor: { id: 'anchor-current' } });
+    service.listResumable.mockResolvedValue([{ sessionId: 'bs-unfinished', title: 'Trabajo en preparación' }]);
     service.createOrReuseFromContinuation.mockResolvedValue({ bootstrapSession: { id: 'bs-1' }, anchor: { id: 'a-1' } });
     service.getSession.mockResolvedValue({ bootstrapSession: { id: 'bs-1' }, anchor: { id: 'a-1' } });
     service.updateAnchor.mockResolvedValue({ bootstrapSession: { id: 'bs-1' }, anchor: { id: 'a-1', status: 'anchor_sufficient' } });
@@ -329,6 +331,15 @@ describe('portfolio-bootstrap router', () => {
     expect(service.createOrReuseDirect).toHaveBeenCalledWith(expect.objectContaining({
       authenticatedUserId: 'portfolio-lead-1',
     }));
+  });
+
+  it('KAN-250 reads resumable sessions without creating a new one', async () => {
+    const result = await request(makeApp())
+      .get('/api/v1/portfolio-bootstrap/sessions/resumable')
+      .expect(200);
+    expect(result.body.data).toEqual([{ sessionId: 'bs-unfinished', title: 'Trabajo en preparación' }]);
+    expect(service.listResumable).toHaveBeenCalledWith(expect.objectContaining({ authenticatedUserId: 'portfolio-lead-1' }));
+    expect(service.createOrReuseDirect).not.toHaveBeenCalled();
   });
 
   it('recovers the current Copilot workspace without provisioning another session', async () => {
