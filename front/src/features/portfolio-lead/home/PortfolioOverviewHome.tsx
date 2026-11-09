@@ -349,6 +349,20 @@ function buildOperationalRows(model: PortfolioHomeReadModel, initiatives: Array<
     evidence: assignment.lastMaterialEvent ?? `Assignment ${assignment.assignmentId}`,
     updatedAt: assignment.startedAt ?? assignment.acceptedAt ?? assignment.rejectedAt ?? assignment.latestDeliveryAttemptAt ?? assignment.generatedAt ?? null,
   }));
+  const decisionRows: OperationalRow[] = (model.pendingDecisions ?? []).map((request) => ({
+    key: `decision-${request.requestId}`,
+    title: request.requestedDecision?.trim() || `Decisión pendiente ${request.requestId}`,
+    destination: request.decisionAuthority?.source === 'canonical'
+      ? request.decisionAuthority.name?.trim() || request.decisionAuthority.label?.trim()
+        || request.decisionAuthority.email?.trim() || request.decisionAuthority.id?.trim() || 'Autoridad no disponible'
+      : 'Autoridad no disponible',
+    status: request.status === 'pending' ? 'Decisión pendiente' : request.status ?? 'Estado no disponible',
+    nextAction: 'Revisar decisión pendiente',
+    actor: null,
+    provenance: { source: 'DecisionRequest', requestId: request.requestId, initiativeId: request.initiativeId },
+    evidence: `Solicitud ${request.requestId} · Iniciativa ${request.initiativeId} · estado ${request.status ?? 'no disponible'}`,
+    updatedAt: request.updatedAt ?? null,
+  }));
   const initiativeRows: OperationalRow[] = initiatives.map((initiative) => ({
     key: `initiative-${initiative.initiativeId}`,
     title: initiative.title ?? `Iniciativa ${initiative.initiativeId}`,
@@ -376,7 +390,7 @@ function buildOperationalRows(model: PortfolioHomeReadModel, initiatives: Array<
     evidence: `Solicitud persistida · notificación ${request.notificationStatus}`,
     updatedAt: request.updatedAt,
   }));
-  return [...workRows, ...briefRows, ...assignmentRows, ...initiativeRows, ...labRows];
+  return [...decisionRows, ...workRows, ...briefRows, ...assignmentRows, ...initiativeRows, ...labRows];
 }
 
 function workItemStatusLabel(status: string): string {
