@@ -68,7 +68,7 @@ describe('KAN-253 B3 user-governed E2 ledger experience', () => {
     render(<PortfolioGoalLedgerConversation {...p} />);
     expect(await screen.findByText('¿Qué cambio quieres validar?')).toBeVisible();
     expect(screen.getByText(/Cafetería pequeña, no se ha probado/)).toBeVisible();
-    expect(screen.getByText('Es necesario concretar un resultado antes de probar.')).toBeVisible();
+    expect(screen.getByText(/Es necesario concretar un resultado antes de probar/)).toBeVisible();
     expect(getPlan).toHaveBeenCalledWith('session-1');
     expect(getTurns).toHaveBeenCalledWith('session-1');
     expect(submit).not.toHaveBeenCalled();

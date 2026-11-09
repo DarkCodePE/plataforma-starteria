@@ -332,9 +332,11 @@ export function PortfolioGoalLedgerConversation({ anchor, canConfirm, onSave, on
             <CheckCircle2 size={16} /> {confirming ? 'Confirmando…' : 'Confirmar objetivo y continuar'} <ArrowRight size={16} />
           </button>
         ) : <p className="text-xs text-[#6c7695]">La confirmación humana solo estará disponible cuando la ficha sea suficiente y no existan respuestas pendientes.</p>}
-        <button type="button" onClick={onUseGuided} className="inline-flex items-center gap-2 text-xs font-semibold text-[#493297]">
-          <RotateCcw size={14} /> Usar preparación guiada
-        </button>
+        {loadStatus === 'ready' ? (
+          <button type="button" onClick={onUseGuided} className="inline-flex items-center gap-2 text-xs font-semibold text-[#493297]">
+            <RotateCcw size={14} /> Usar preparación guiada
+          </button>
+        ) : null}
       </aside>
     </section>
   );
