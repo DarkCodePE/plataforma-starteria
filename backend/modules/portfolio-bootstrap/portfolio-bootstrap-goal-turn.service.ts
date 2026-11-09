@@ -112,7 +112,13 @@ export class PortfolioBootstrapGoalTurnService {
         'El Anchor cambió; recupera la pregunta vigente.',
         'PORTFOLIO_GOAL_ANCHOR_VERSION_CONFLICT',
       );
+      // Do not let this experimental write endpoint bypass the E1 human
+      // confirmation gate, even if an old Anchor already has values.
       const review = currentConfirmedE1(session.contextReview);
+      if (!review) throw AppError.conflict(
+        'Confirma primero el contexto E1 antes de registrar turnos de Objetivo.',
+        'PORTFOLIO_GOAL_E1_CONTEXT_NOT_CONFIRMED',
+      );
       const plan = buildGoalQuestionPlan({
         sessionId: session.id,
         anchor: {

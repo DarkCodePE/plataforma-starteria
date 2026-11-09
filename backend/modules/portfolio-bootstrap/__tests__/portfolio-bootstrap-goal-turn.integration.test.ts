@@ -71,7 +71,12 @@ async function seed() {
   } });
 }
 async function cleanup() {
-  await prisma.auditLog.deleteMany({ where: { resource: 'PortfolioBootstrapGoalTurn' } });
+  const recorded = await prisma.portfolioBootstrapGoalTurn.findMany({
+    where: { bootstrapSessionId: sessionId }, select: { id: true },
+  });
+  await prisma.auditLog.deleteMany({
+    where: { resource: 'PortfolioBootstrapGoalTurn', resourceId: { in: recorded.map((turn) => turn.id) } },
+  });
   await prisma.portfolioBootstrapSession.deleteMany({ where: { id: sessionId } });
   await prisma.user.deleteMany({ where: { id: { in: [userId, otherUserId] } } });
   await prisma.organization.deleteMany({ where: { id: organizationId } });

@@ -112,6 +112,15 @@ describe('KAN-253 B2 provisional durable goal turns', () => {
     expect(h.session.anchor.outcomeStatement).toBe('Resultado de negocio por definir');
   });
 
+  it('rejects an E1 draft or pending correction before allowing an E2 turn', async () => {
+    const h = harness();
+    h.session.contextReview.status = 'draft';
+    await expect(h.service.appendTurn({
+      ...access, idempotencyKey: 'e1-unconfirmed', body: makeBody({ expectedContextReviewVersion: null }) as any,
+    })).rejects.toMatchObject({ code: 'PORTFOLIO_GOAL_E1_CONTEXT_NOT_CONFIRMED' });
+    expect(h.mock.portfolioBootstrapGoalTurn.create).not.toHaveBeenCalled();
+  });
+
   it('rejects stale E1/Anchor and locked Anchor, never promoting a goal', async () => {
     const h = harness();
     await expect(h.service.appendTurn({ ...access, idempotencyKey: 'v-context',
