@@ -20,6 +20,12 @@ KAN-247 (PR #272) permanece en rama de implementación, **no fusionado**. La pro
 Trazabilidad del journey (implementado/API/browser/pending): `docs/implementation/STARTERIA_PORTFOLIO_E2E_TRACEABILITY_POST_KAN248_v0.1.md`.
 No considerar E5–E7 UI-only, Owner→Steps, Step4→Decision/benefits o delivery Fab certificados por el test híbrido KAN-240. Flag semántico OFF y Lab únicamente solicitud/contacto donde corresponda.
 
+## KAN-253 — Goal Question Planner B1 para E2 (PR #277, no fusionado)
+
+Baseline factual `main@ea2b8c82d98c48824570cd8b68024a66e9e54bc5`: KAN-250/251/252 integrados, CI postmerge #42540652194 SUCCESS. Producción no acreditada para esos commits (último CD observado anterior).
+
+KAN-253 B1 introduce en rama una API read-only de propuesta de pregunta E2 desde Anchor y E1 confirmado con fuente/versión. Un E1 no confirmado o pendiente de reconfirmación no se reutiliza. El modo es `deterministic_preview`: **no es todavía diálogo semántico IA ni sustituye el planner visual actual**. Confirmación humana y gates E2→E3 siguen iguales. PR #277 abierto; tests unit/router escritos, CI/typecheck/revisión pendientes. Detalles: `docs/implementation/KAN-253_E2_GOAL_PLANNER_READ_MODEL_v0.1.md`.
+
 ## KAN-252 — E2 Objetivo con historial de respuestas guardadas (PR #276)
 
 Implementación UX desde HTML v1.0, sobre PR #274 (que ya contiene merge de KAN-251), **no en main** al registrar. La respuesta de Objetivo persiste bajo Anchor `sourceRefs.objectiveConversation.turns` y ahora se reconstruye en UI con procedencia de respuesta/disposición y fecha, ayudas explícitas y ficha provisional. No se presenta el contexto heredado como turno nuevo.
