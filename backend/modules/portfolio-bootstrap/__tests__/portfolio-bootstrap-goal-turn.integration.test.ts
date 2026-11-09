@@ -121,6 +121,62 @@ describeDb('KAN-253 B2 goal turn ledger with disposable PostgreSQL', () => {
     expect(await prisma.portfolioBootstrapGoalTurn.count()).toBe(1);
   });
 
+  it('KAN-253 B3 accepts only a real E2 receipt matching the literal proposed value', async () => {
+    await seed();
+    const client = app(userId);
+    const saved = await request(client).post(base)
+      .set('Idempotency-Key', 'b3-verified-receipt')
+      .send(command()).expect(200);
+    const turn = saved.body.data.turn;
+    const sourceRefs = {
+      priorSourceRefs: [],
+      objectiveConversation: {
+        field: turn.field,
+        value: turn.inputText,
+        disposition: 'user_declared',
+        origin: 'PortfolioLead',
+        recordedAt: turn.createdAt,
+        unknownFields: [],
+        pendingClarification: null,
+        turns: [{
+          field: turn.field, value: turn.inputText,
+          disposition: 'user_declared', origin: 'PortfolioLead',
+          recordedAt: turn.createdAt, ledgerTurnId: turn.id,
+          ledgerVersion: turn.version, semanticDisposition: 'user_declared',
+        }],
+        goalLedgerAcceptedTurnIds: [turn.id],
+      },
+    };
+    const forged = await request(client)
+      .patch(`/api/v1/portfolio-bootstrap/sessions/${sessionId}/anchor`)
+      .send({
+        expectedVersion: 1, outcomeStatement: 'Un KPI que nadie dijo.',
+        sourceRefs,
+      }).expect(409);
+    expect(forged.body.error.code).toBe('PORTFOLIO_GOAL_RECEIPT_INVALID');
+    const unverified = await request(client)
+      .patch(`/api/v1/portfolio-bootstrap/sessions/${sessionId}/anchor`)
+      .send({
+        expectedVersion: 1, outcomeStatement: turn.inputText,
+        sourceRefs: { ...sourceRefs, objectiveConversation: {
+          ...sourceRefs.objectiveConversation, goalLedgerAcceptedTurnIds: ['other-tenant-turn'],
+        } },
+      }).expect(409);
+    expect(unverified.body.error.code).toBe('PORTFOLIO_GOAL_RECEIPT_INVALID');
+
+    const accepted = await request(client)
+      .patch(`/api/v1/portfolio-bootstrap/sessions/${sessionId}/anchor`)
+      .send({ expectedVersion: 1, outcomeStatement: turn.inputText, sourceRefs }).expect(200);
+    expect(accepted.body.data.anchor).toMatchObject({
+      outcomeStatement: turn.inputText, version: 2,
+      sourceRefs: { objectiveConversation: { goalLedgerAcceptedTurnIds: [turn.id] } },
+    });
+    const again = await request(client)
+      .patch(`/api/v1/portfolio-bootstrap/sessions/${sessionId}/anchor`)
+      .send({ expectedVersion: 1, outcomeStatement: turn.inputText, sourceRefs }).expect(409);
+    expect(again.body.error.code).toBe('PORTFOLIO_ANCHOR_VERSION_CONFLICT');
+  });
+
   it('KAN-253 B3 atomically accepts a specific Anchor version and rejects stale review', async () => {
     await seed();
     const client = app(userId);
