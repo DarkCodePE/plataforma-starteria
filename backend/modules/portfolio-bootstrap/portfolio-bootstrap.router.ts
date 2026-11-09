@@ -9,6 +9,7 @@ import { PortfolioBootstrapContextService } from './portfolio-bootstrap-context.
 import { PortfolioBootstrapSemanticService } from './portfolio-bootstrap-semantic.service';
 import { PortfolioBootstrapSemanticOrchestratorService } from './portfolio-bootstrap-semantic-orchestrator.service';
 import { createPortfolioBootstrapSemanticOrchestrator } from './portfolio-bootstrap-semantic-runtime';
+import { PortfolioBootstrapGoalTurnService } from './portfolio-bootstrap-goal-turn.service';
 
 export interface PortfolioBootstrapRouterDeps {
   authenticate?: RequestHandler;
@@ -18,6 +19,7 @@ export interface PortfolioBootstrapRouterDeps {
   contextService?: PortfolioBootstrapContextService;
   semanticService?: PortfolioBootstrapSemanticService;
   semanticOrchestrator?: PortfolioBootstrapSemanticOrchestratorService;
+  goalTurnService?: PortfolioBootstrapGoalTurnService;
 }
 
 export function buildPortfolioBootstrapRouter(deps: PortfolioBootstrapRouterDeps = {}): Router {
@@ -31,6 +33,7 @@ export function buildPortfolioBootstrapRouter(deps: PortfolioBootstrapRouterDeps
     deps.contextService ?? new PortfolioBootstrapContextService(prisma),
     semanticService,
     deps.semanticOrchestrator ?? createPortfolioBootstrapSemanticOrchestrator(semanticService),
+    deps.goalTurnService ?? new PortfolioBootstrapGoalTurnService(prisma),
   );
 
   router.post('/sessions/direct', auth, controller.createOrReuseDirect);
@@ -41,6 +44,8 @@ export function buildPortfolioBootstrapRouter(deps: PortfolioBootstrapRouterDeps
   router.post('/sessions/from-portfolio-setup-continuity', auth, controller.createOrReuseFromPortfolioSetup);
   router.get('/sessions/:sessionId', auth, controller.getSession);
   router.get('/sessions/:sessionId/objective/plan', auth, controller.getGoalQuestionPlan);
+  router.get('/sessions/:sessionId/objective/turns', auth, controller.getGoalTurns);
+  router.post('/sessions/:sessionId/objective/turns', auth, controller.appendGoalTurn);
   router.get('/sessions/:sessionId/context', auth, controller.getContext);
   router.get('/sessions/:sessionId/context/proposals', auth, controller.getContextProposals);
   router.get('/sessions/:sessionId/context/semantic', auth, controller.getSemanticContext);
