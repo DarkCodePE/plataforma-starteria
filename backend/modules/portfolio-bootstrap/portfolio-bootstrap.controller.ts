@@ -10,6 +10,7 @@ import type { PortfolioBootstrapGoalTurnService } from './portfolio-bootstrap-go
 import { portfolioBootstrapGoalTurnBodySchema } from './portfolio-bootstrap-goal-turn.schemas';
 import { buildContextProjection } from './portfolio-bootstrap-context-projection';
 import { buildGoalQuestionPlan } from './portfolio-bootstrap-goal-question-planner';
+import { buildE2ConversationContext } from './portfolio-bootstrap-e2-conversation-context';
 import {
   portfolioBootstrapSemanticTurnRequestSchema,
   semanticE1Enabled,
@@ -80,6 +81,42 @@ export class PortfolioBootstrapController {
    * Read-only E2 plan. Existing service access checks govern session and
    * confirmed ContextReview ownership. No provider, updateAnchor or confirm.
    */
+  /** B4-A: read-only, human-governed context for future semantic E2. */
+  getGoalConversationContext = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      if (process.env.PORTFOLIO_GOAL_E2_LEDGER_ENABLED !== 'true') {
+        throw new AppError(503, 'El ledger E2 no está habilitado.', 'PORTFOLIO_GOAL_LEDGER_DISABLED');
+      }
+      if (!req.user?.id) throw AppError.unauthorized('No autorizado.', 'PORTFOLIO_BOOTSTRAP_AUTH_REQUIRED');
+      const { sessionId } = bootstrapSessionParamsSchema.parse(req.params);
+      const access = { sessionId, authenticatedUserId: req.user.id, permissions: req.user.permissions };
+      const session = await this.service.getSession(access);
+      if (!session.anchor) throw AppError.conflict('La sesión no tiene objetivo para revisar.', 'PORTFOLIO_GOAL_ANCHOR_MISSING');
+      const review = await this.contextService.getContext(access);
+      const turns = await this.goalTurnService.getTurns(access);
+      const confirmedContext = review?.status === 'confirmed' && !review.hasPendingCorrection
+        ? review : null;
+      const data = buildE2ConversationContext({
+        anchor: {
+          version: session.anchor.version,
+          outcomeStatement: session.anchor.outcomeStatement,
+          contextSummary: session.anchor.contextSummary,
+          decisionToEnable: session.anchor.decisionToEnable,
+          businessSignalValue: session.anchor.businessSignalValue,
+          sourceRefs: session.anchor.sourceRefs,
+        },
+        confirmedE1: confirmedContext ? {
+          id: confirmedContext.id,
+          version: confirmedContext.version,
+          status: confirmedContext.status,
+          situation: confirmedContext.effectiveContext?.situation.value ?? null,
+        } : null,
+        turns: turns.turns,
+      });
+      res.json({ success: true, data });
+    } catch (error) { next(error); }
+  };
+
   getGoalTurns = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
       if (process.env.PORTFOLIO_GOAL_E2_LEDGER_ENABLED !== 'true') {
