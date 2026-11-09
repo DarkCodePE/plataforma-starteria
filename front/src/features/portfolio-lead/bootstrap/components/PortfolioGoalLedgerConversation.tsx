@@ -17,6 +17,8 @@ import {
 import {
   createGoalLedgerAnchorProposal,
   isGoalLedgerTurnAccepted,
+  isGoalLedgerTurnRejected,
+  isGoalLedgerTurnResolved,
 } from './goal-ledger-anchor-proposal';
 import { buildGoalReviewRows } from './goal-review-rows';
 
@@ -130,10 +132,12 @@ export function PortfolioGoalLedgerConversation({ anchor, canConfirm, onSave, on
   const superseded = new Set(turns.flatMap((turn) => turn.supersedesTurnId ? [turn.supersedesTurnId] : []));
   const isAccepted = (turn: PortfolioGoalTurn) =>
     isGoalLedgerTurnAccepted(anchor.sourceRefs, turn.id) || incorporatedLocally.includes(turn.id);
+  const isRejected = (turn: PortfolioGoalTurn) => isGoalLedgerTurnRejected(anchor.sourceRefs, turn.id);
+  const isResolved = (turn: PortfolioGoalTurn) => isGoalLedgerTurnResolved(anchor.sourceRefs, turn.id) || incorporatedLocally.includes(turn.id);
   const pending = [...turns].reverse().find((turn) =>
-    turn.anchorVersion === anchor.version && !isAccepted(turn) && !superseded.has(turn.id) && turn.disposition !== 'retracted') ?? null;
+    turn.anchorVersion === anchor.version && !isResolved(turn) && !superseded.has(turn.id) && turn.disposition !== 'retracted') ?? null;
   const stalePending = turns.find((turn) =>
-    turn.anchorVersion !== anchor.version && !isAccepted(turn) && !superseded.has(turn.id) && turn.disposition !== 'retracted') ?? null;
+    turn.anchorVersion !== anchor.version && !isResolved(turn) && !superseded.has(turn.id) && turn.disposition !== 'retracted') ?? null;
   const activeQuestion = plan?.activeQuestion ?? null;
   const awaitingAnchorRefresh = Boolean(latest && latest.anchorVersion === anchor.version && isAccepted(latest));
   const busy = submitting || applying || confirming || applyingCheckpoint || checkpointApplied || loadStatus !== 'ready';
@@ -141,7 +145,7 @@ export function PortfolioGoalLedgerConversation({ anchor, canConfirm, onSave, on
   const reviewRows = buildGoalReviewRows(anchor, turns);
   const reviewCount = reviewRows.filter((row) => row.status === 'pending_review').length;
   const openCheckpointTurns = turns.filter((turn) =>
-    !superseded.has(turn.id) && turn.disposition !== 'retracted' && !isAccepted(turn)
+    !superseded.has(turn.id) && turn.disposition !== 'retracted' && !isResolved(turn)
     && !checkpointApplied);
   const checkpointReady = Boolean(checkpointUiEnabled && openCheckpointTurns.length > 0
     && openCheckpointTurns.length <= 30 && plan?.contextReviewVersion != null
@@ -311,7 +315,7 @@ export function PortfolioGoalLedgerConversation({ anchor, canConfirm, onSave, on
               ) : turns.filter((turn) => showFullHistory || (!superseded.has(turn.id) && turn.disposition !== 'retracted')).map((turn) => (
                 <article key={turn.id} className="ml-auto max-w-[92%] rounded-2xl rounded-tr-sm bg-[#ede8fd] p-4 text-sm text-[#182246]">
                   <p className="mb-2 text-xs font-semibold text-[#493297]">
-                    {superseded.has(turn.id) ? 'Versión corregida · solo historial' : turn.disposition === 'retracted' ? 'Respuesta retractada · solo historial' : isAccepted(turn) ? 'Incorporada al borrador' : turn.anchorVersion !== anchor.version ? 'De otra versión del objetivo' : 'Pendiente de tu revisión'}
+                    {superseded.has(turn.id) ? 'Versión corregida · solo historial' : turn.disposition === 'retracted' ? 'Respuesta retractada · solo historial' : isAccepted(turn) ? 'Incorporada al borrador' : isRejected(turn) ? 'No incorporada por tu decisión' : turn.anchorVersion !== anchor.version ? 'De otra versión del objetivo' : 'Pendiente de tu revisión'}
                   </p>
                   <p className="whitespace-pre-wrap">{turn.inputText}</p>
                   <p className="mt-2 text-xs text-[#6446c0]">
@@ -319,7 +323,7 @@ export function PortfolioGoalLedgerConversation({ anchor, canConfirm, onSave, on
                     {' · '}{shownDate(turn.createdAt)} · versión {turn.version}
                     {turn.supersedesTurnId ? ' · corrige una respuesta anterior' : ''}
                   </p>
-                  <p className="mt-1 text-xs text-[#6c7695]">{isAccepted(turn) ? 'Incorporada al borrador por decisión humana' : 'Registro provisional, no confirmado'}</p>
+                  <p className="mt-1 text-xs text-[#6c7695]">{isAccepted(turn) ? 'Incorporada al borrador por decisión humana' : isRejected(turn) ? 'Descartada para este objetivo; conserva trazabilidad' : 'Registro provisional, no confirmado'}</p>
                 </article>
               ))}
             </section>
