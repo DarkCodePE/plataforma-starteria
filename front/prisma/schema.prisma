@@ -3463,6 +3463,7 @@ model PortfolioBootstrapGoalTurn {
   field                  String
   inputText              String   @db.Text
   disposition            String
+  supersedesTurnId       String?
   evidenceJson           Json
   idempotencyKeyHash     String
   payloadHash            String

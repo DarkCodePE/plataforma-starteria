@@ -15,6 +15,7 @@ CREATE TABLE "PortfolioBootstrapGoalTurn" (
   "field" TEXT NOT NULL,
   "inputText" TEXT NOT NULL,
   "disposition" TEXT NOT NULL,
+  "supersedesTurnId" TEXT,
   "evidenceJson" JSONB NOT NULL,
   "idempotencyKeyHash" TEXT NOT NULL,
   "payloadHash" TEXT NOT NULL,
