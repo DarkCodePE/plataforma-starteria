@@ -159,7 +159,7 @@ export class PortfolioBootstrapController {
       // An E1 correction not yet reconfirmed is not a safe source for new E2 questions.
       const confirmedContext = review?.status === 'confirmed' && !review.hasPendingCorrection
         ? review : null;
-      const planInput = {
+      const planInput: Parameters<typeof buildGoalQuestionPlan>[0] = {
         sessionId,
         anchor: {
           id: session.anchor.id,
