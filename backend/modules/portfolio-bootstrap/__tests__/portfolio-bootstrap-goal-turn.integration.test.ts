@@ -121,6 +121,27 @@ describeDb('KAN-253 B2 goal turn ledger with disposable PostgreSQL', () => {
     expect(await prisma.portfolioBootstrapGoalTurn.count()).toBe(1);
   });
 
+  it('KAN-253 B3 atomically accepts a specific Anchor version and rejects stale review', async () => {
+    await seed();
+    const client = app(userId);
+    const first = await request(client)
+      .patch(`/api/v1/portfolio-bootstrap/sessions/${sessionId}/anchor`)
+      .send({ expectedVersion: 1, outcomeStatement: 'Validar desayunos para oficinas.' })
+      .expect(200);
+    expect(first.body.data.anchor).toMatchObject({
+      outcomeStatement: 'Validar desayunos para oficinas.', version: 2,
+    });
+
+    const stale = await request(client)
+      .patch(`/api/v1/portfolio-bootstrap/sessions/${sessionId}/anchor`)
+      .send({ expectedVersion: 1, outcomeStatement: 'Sobrescritura desde otra pestaña.' })
+      .expect(409);
+    expect(stale.body.error.code).toBe('PORTFOLIO_ANCHOR_VERSION_CONFLICT');
+    const latest = await prisma.portfolioAnchor.findUnique({ where: { id: anchorId } });
+    expect(latest?.outcomeStatement).toBe('Validar desayunos para oficinas.');
+    expect(latest?.version).toBe(2);
+  });
+
   it('rejects cross-owner reads/writes with no data leak', async () => {
     await seed();
     await request(app(userId)).post(base).set('Idempotency-Key', 'original')
