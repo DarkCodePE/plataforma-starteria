@@ -126,6 +126,11 @@ export function PortfolioGoalLedgerConversation({ anchor, canConfirm, onSave, on
   }, [anchor.bootstrapSessionId, anchor.version]);
 
   useEffect(() => { void reload(); }, [reload]);
+  useEffect(() => {
+    // A refreshed canonical Anchor starts a fresh review surface.
+    setCheckpointApplied(false);
+    setCheckpointChoices({});
+  }, [anchor.bootstrapSessionId, anchor.version]);
 
   const turns = snapshot?.turns ?? [];
   const latest = turns.at(-1) ?? null;
@@ -256,7 +261,12 @@ export function PortfolioGoalLedgerConversation({ anchor, canConfirm, onSave, on
       await applyPortfolioBootstrapGoalCheckpoint(anchor.bootstrapSessionId, body);
       setCheckpointApplied(true);
       setNotice('Tus decisiones quedaron aplicadas al borrador. El objetivo todavía necesita confirmación humana.');
-      await onCheckpointApplied?.();
+      try {
+        await onCheckpointApplied?.();
+      } catch {
+        // The server committed successfully; a refresh failure cannot undo that operation.
+        setNotice('Decisiones aplicadas. No pudimos actualizar la pantalla; vuelve a abrir el objetivo para ver la versión vigente.');
+      }
     } catch (cause) {
       setError(toError(cause));
     } finally {
