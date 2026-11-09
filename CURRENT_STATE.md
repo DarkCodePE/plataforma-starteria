@@ -20,6 +20,12 @@ KAN-247 (PR #272) permanece en rama de implementación, **no fusionado**. La pro
 Trazabilidad del journey (implementado/API/browser/pending): `docs/implementation/STARTERIA_PORTFOLIO_E2E_TRACEABILITY_POST_KAN248_v0.1.md`.
 No considerar E5–E7 UI-only, Owner→Steps, Step4→Decision/benefits o delivery Fab certificados por el test híbrido KAN-240. Flag semántico OFF y Lab únicamente solicitud/contacto donde corresponda.
 
+## KAN-252 — E2 Objetivo con historial de respuestas guardadas (PR #276)
+
+Implementación UX desde HTML v1.0, sobre PR #274 (que ya contiene merge de KAN-251), **no en main** al registrar. La respuesta de Objetivo persiste bajo Anchor `sourceRefs.objectiveConversation.turns` y ahora se reconstruye en UI con procedencia de respuesta/disposición y fecha, ayudas explícitas y ficha provisional. No se presenta el contexto heredado como turno nuevo.
+
+El planner de E2 `nextObjectiveQuestion` sigue determinista, IA live no activada, confirmación Anchor y transición E2→E3 siguen gobernadas. Certificación CI, E2E dirigida, revisión y merge pendientes. Fuentes y límites en `docs/implementation/KAN-252_E2_OBJECTIVE_UX_PARITY_v0.1.md`.
+
 ## KAN-251 — Copilot-first semántico E1 (PR apilado, sin rollout)
 
 PR #275 `feat/KAN-251-semantic-copilot-ux` se basa en PR #274/KAN-250 aún abierto. La UX semántica E1 muestra turns reales, recap/pregunta/reasonToAsk del servidor, acciones de ayuda sin autosubmit, citas de usuario verificables y síntesis provisional de hechos/unknowns/hipótesis. Referencia de interacción: HTML Copilot-first v1.0 suministrado por el usuario; es un **mock simulado**, no motor generativo.
