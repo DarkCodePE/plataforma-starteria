@@ -3299,6 +3299,7 @@ model PortfolioBootstrapSession {
   contextReview PortfolioBootstrapContextReview?
   contextOperations PortfolioBootstrapContextOperation[]
   semanticState PortfolioBootstrapSemanticState?
+  goalTurns PortfolioBootstrapGoalTurn[]
 
   @@unique([userId, sourceContinuationId])
   @@index([userId])
@@ -3445,6 +3446,35 @@ model PortfolioBootstrapSemanticTurn {
   @@index([organizationId, createdAt])
   @@index([actorUserId, createdAt])
   @@index([status, createdAt])
+}
+
+// KAN-253 B2: additive provisional E2 goal turn ledger. This never replaces
+// the human-governed PortfolioAnchor, its history, or the E1 semantic ledger.
+model PortfolioBootstrapGoalTurn {
+  id                     String   @id @default(cuid())
+  bootstrapSessionId     String
+  turnVersion            Int
+  organizationId         String?
+  actorUserId            String
+  anchorVersion          Int
+  contextReviewId        String?
+  contextReviewVersion   Int?
+  questionId             String
+  field                  String
+  inputText              String   @db.Text
+  disposition            String
+  supersedesTurnId       String?
+  evidenceJson           Json
+  idempotencyKeyHash     String
+  payloadHash            String
+  createdAt              DateTime @default(now())
+
+  bootstrapSession PortfolioBootstrapSession @relation(fields: [bootstrapSessionId], references: [id], onDelete: Cascade)
+
+  @@unique([bootstrapSessionId, turnVersion], map: "PBGoalTurn_session_version_key")
+  @@unique([bootstrapSessionId, idempotencyKeyHash], map: "PBGoalTurn_session_idempotency_key")
+  @@index([organizationId, createdAt])
+  @@index([actorUserId, createdAt])
 }
 
 // PL-04/KAN-154: immutable reviewed proposal versions. These rows are

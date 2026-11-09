@@ -77,12 +77,22 @@ jobs:
 
       - name: Generate Prisma Client
         run: npm run db:generate
+      - name: KAN-253 B2 backend typecheck
+        run: npm run typecheck:backend
+
 
       - name: Provision disposable database and apply repository migrations
         env:
           E2E_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/starteria_e2e
           E2E_DATABASE_ADMIN_URL: postgresql://postgres:postgres@127.0.0.1:5432/postgres
         run: npm run db:e2e:provision && npm run db:e2e:migrate
+
+      - name: KAN-253 B2 E2 goal-turn ledger PostgreSQL integration
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/starteria_e2e
+          PORTFOLIO_GOAL_DB_INTEGRATION: '1'
+          PORTFOLIO_GOAL_E2_LEDGER_ENABLED: 'true'
+        run: npm exec -- vitest run --config vitest.backend.config.ts ../backend/modules/portfolio-bootstrap/__tests__/portfolio-bootstrap-goal-turn.integration.test.ts
 
       - name: KAN-221/KAN-244 G1 E1 + KAN-230 G4 completion PostgreSQL integration (16 scenarios)
         env:

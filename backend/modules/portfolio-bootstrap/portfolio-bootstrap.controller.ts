@@ -6,6 +6,8 @@ import type { PortfolioSetupCompletionService } from './portfolio-setup-completi
 import type { PortfolioBootstrapContextService } from './portfolio-bootstrap-context.service';
 import type { PortfolioBootstrapSemanticService } from './portfolio-bootstrap-semantic.service';
 import type { PortfolioBootstrapSemanticOrchestratorService } from './portfolio-bootstrap-semantic-orchestrator.service';
+import type { PortfolioBootstrapGoalTurnService } from './portfolio-bootstrap-goal-turn.service';
+import { portfolioBootstrapGoalTurnBodySchema } from './portfolio-bootstrap-goal-turn.schemas';
 import { buildContextProjection } from './portfolio-bootstrap-context-projection';
 import { buildGoalQuestionPlan } from './portfolio-bootstrap-goal-question-planner';
 import {
@@ -46,6 +48,7 @@ export class PortfolioBootstrapController {
     private readonly contextService: PortfolioBootstrapContextService,
     private readonly semanticService: PortfolioBootstrapSemanticService,
     private readonly semanticOrchestrator: PortfolioBootstrapSemanticOrchestratorService,
+    private readonly goalTurnService: PortfolioBootstrapGoalTurnService,
   ) {}
 
   submitSemanticTurn = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
@@ -77,6 +80,36 @@ export class PortfolioBootstrapController {
    * Read-only E2 plan. Existing service access checks govern session and
    * confirmed ContextReview ownership. No provider, updateAnchor or confirm.
    */
+  getGoalTurns = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      if (process.env.PORTFOLIO_GOAL_E2_LEDGER_ENABLED !== 'true') {
+        throw new AppError(503, 'El ledger E2 no está habilitado.', 'PORTFOLIO_GOAL_LEDGER_DISABLED');
+      }
+      if (!req.user?.id) throw AppError.unauthorized('No autorizado.', 'PORTFOLIO_BOOTSTRAP_AUTH_REQUIRED');
+      const { sessionId } = bootstrapSessionParamsSchema.parse(req.params);
+      const data = await this.goalTurnService.getTurns({
+        sessionId, authenticatedUserId: req.user.id, permissions: req.user.permissions,
+      });
+      res.json({ success: true, data });
+    } catch (error) { next(error); }
+  };
+
+  appendGoalTurn = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      if (process.env.PORTFOLIO_GOAL_E2_LEDGER_ENABLED !== 'true') {
+        throw new AppError(503, 'El ledger E2 no está habilitado.', 'PORTFOLIO_GOAL_LEDGER_DISABLED');
+      }
+      if (!req.user?.id) throw AppError.unauthorized('No autorizado.', 'PORTFOLIO_BOOTSTRAP_AUTH_REQUIRED');
+      const { sessionId } = bootstrapSessionParamsSchema.parse(req.params);
+      const body = portfolioBootstrapGoalTurnBodySchema.parse(req.body);
+      const data = await this.goalTurnService.appendTurn({
+        sessionId, authenticatedUserId: req.user.id, permissions: req.user.permissions,
+        idempotencyKey: req.get('Idempotency-Key') ?? '', body,
+      });
+      res.json({ success: true, data });
+    } catch (error) { next(error); }
+  };
+
   getGoalQuestionPlan = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
       if (!req.user?.id) throw AppError.unauthorized('No autorizado.', 'PORTFOLIO_BOOTSTRAP_AUTH_REQUIRED');

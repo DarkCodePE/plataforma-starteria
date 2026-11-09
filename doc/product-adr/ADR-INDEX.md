@@ -21,6 +21,8 @@ Este indice no reemplaza `docs/adr/`, que queda reservado para ADRs del harness.
 
 | ADR-009 | Canonicalización gobernada de iniciativas documentales | `ADR-009-canonicalizacion-gobernada-iniciativas-documentales.md` | APPROVED, 2026-10-23 | KAN-165/10453 · KAN-168/10454; ejecución solo en DB disposable. |
 
+| ADR-010 | Ledger provisional y separado de turnos de Objetivo E2 | `ADR-010-portfolio-e2-goal-turn-ledger.md` | PROPUESTO / pendiente de ratificación | KAN-253 B2; sin aprobación productiva ni CD. |
+
 ## Reglas
 
 - Registrar aqui solo ADRs de producto.
