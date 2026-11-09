@@ -187,7 +187,7 @@ test.describe('G02 authenticated overview-first and resumable Bootstrap', () => 
       await expect(conversation.getByRole('region', { name: 'Revisión completa del objetivo' })).toBeVisible();
       const review = conversation.getByRole('region', { name: 'Revisión completa del objetivo' });
       for (const field of ['Resultado esperado', 'Decisión a habilitar', 'Contexto', 'KPI o señal']) {
-        await review.getByRole('group', { name: field }).getByRole('radio', { name: 'Incorporar' }).check();
+        await review.getByRole('group', { name: field }).getByRole('radio', { name: 'Incorporar', exact: true }).check();
       }
       const checkpointResponse = page.waitForResponse((res) =>
         res.request().method() === 'POST' && new URL(res.url()).pathname.endsWith(`/sessions/${sessionId}/objective/checkpoint`));
