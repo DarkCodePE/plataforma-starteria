@@ -84,6 +84,31 @@ describe('PortfolioOverviewHome', () => {
     expect(within(table).queryByText('Iniciativa sin owner verificado')).not.toBeInTheDocument();
   });
 
+  it('G04 surfaces real pending DecisionRequests with canonical authority in the operational table', () => {
+    const withDecision = {
+      ...model,
+      pendingDecisions: [
+        { requestId: 'decision-a', initiativeId: 'project-1', status: 'pending', requestedDecision: 'Aprobar el siguiente ciclo',
+          decisionAuthority: { id: 'lead-1', name: 'Ana Portfolio', source: 'canonical' }, updatedAt: '2026-11-09T10:00:00.000Z' },
+        { requestId: 'decision-b', initiativeId: 'project-1', status: 'pending', requestedDecision: 'Revisar bloqueo técnico',
+          decisionAuthority: { id: 'unknown-id', name: 'Owner inferido', source: 'legacy-derived' }, updatedAt: null },
+      ],
+    };
+    render(<PortfolioOverviewHome model={withDecision as any} onOpenCopilot={vi.fn()} onOpenAdditionalFront={vi.fn()} />);
+    const table = screen.getByRole('table', { name: 'Seguimiento operativo del portafolio' });
+    expect(within(table).getByText('Aprobar el siguiente ciclo')).toBeVisible();
+    expect(within(table).getByText('Revisar bloqueo técnico')).toBeVisible();
+    expect(within(table).getByText('Ana Portfolio')).toBeVisible();
+    expect(within(table).getByText('Autoridad no disponible')).toBeVisible();
+    expect(within(table).queryByText('Owner inferido')).not.toBeInTheDocument();
+    const details = within(table).getByRole('button', { name: 'Ver detalle de Aprobar el siguiente ciclo' });
+    fireEvent.click(details);
+    expect(within(table).getByText(/Solicitud decision-a/)).toBeInTheDocument();
+    fireEvent.change(screen.getByRole('searchbox', { name: 'Filtrar trabajo y encargos' }), { target: { value: 'Ana Portfolio' } });
+    expect(within(table).getByText('Aprobar el siguiente ciclo')).toBeVisible();
+    expect(within(table).queryByText('Revisar bloqueo técnico')).not.toBeInTheDocument();
+  });
+
   it('KAN-250 shows a resumable context card and only resumes when the user clicks', () => {
     const resume = vi.fn();
     render(<PortfolioOverviewHome
