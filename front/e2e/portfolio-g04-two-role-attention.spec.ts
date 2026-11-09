@@ -198,7 +198,7 @@ test.describe('G04 — certified two-role AttentionItem journey', () => {
       expect(await prisma.portfolioAttentionEvent.count({ where: { attentionItemId: attentionId } })).toBe(3);
 
       await ownerPage.reload();
-      await expect(ownerPage.getByText(resolvedNote)).toBeVisible({ timeout: 20000 });
+      await expect(ownerPage.getByText(resolvedNote).first()).toBeVisible({ timeout: 20000 });
       await leadPage.goto('/portfolio/inicio');
       await expect(leadPage.getByTestId('portfolio-overview-home')).toBeVisible();
       // Resolved alerts must no longer produce actionable project_attention.
