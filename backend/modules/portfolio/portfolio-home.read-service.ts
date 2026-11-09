@@ -623,7 +623,7 @@ export class PortfolioHomeReadService {
     const lastConfirmedOutput = project?.adaptiveStepOutputs?.[0] ?? null;
     const executionActive = Boolean(project && (Number(project.currentStep) > 0 || ['ACTIVE', 'IN_PROGRESS', 'active'].includes(project.status)));
     const blockers = (project?.attentionItems ?? [])
-      .filter((item: any) => item.status === undefined || item.status === 'open')
+      .filter((item: any) => item.status === undefined || item.status === 'open' || item.status === 'acknowledged')
       .map((item: any) => ({ summary: item.reason ?? item.category ?? 'Atención pendiente', severity: item.severity ?? null, source: 'attention_item' }));
     if (meta.mainBlocker) blockers.push({ summary: meta.mainBlocker, severity: null, source: 'initiative_portfolio_meta' });
     const pending = (project?.decisionRequests ?? []).find((request: any) => !request.decision && ['pending', 'open', 'submitted'].includes(request.status));
