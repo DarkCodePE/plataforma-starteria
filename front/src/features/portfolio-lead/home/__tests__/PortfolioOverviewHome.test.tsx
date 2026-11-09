@@ -46,7 +46,67 @@ describe('PortfolioOverviewHome', () => {
     expect(screen.getByRole('heading', { name: 'Qué falta' })).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'Próxima intervención' })).toBeInTheDocument();
     expect(screen.getByText('1 iniciativa activa', { exact: false })).toBeInTheDocument();
+    const operationalTable = screen.getByRole('table', { name: 'Seguimiento operativo del portafolio' });
+    expect(within(operationalTable).getByText('Owner no disponible')).toBeInTheDocument();
+    expect(within(operationalTable).queryByText('Owner canónico')).not.toBeInTheDocument();
     expect(screen.getAllByText('Sin datos').length).toBeGreaterThanOrEqual(2);
+  });
+
+  it('G04 shows canonical Project owner from server data and filters by that owner, never inventing one', () => {
+    const withOwners = {
+      ...model,
+      strategicUnits: model.strategicUnits.map((front) => ({
+        ...front,
+        challenges: front.challenges.map((challenge) => ({
+          ...challenge,
+          initiatives: challenge.initiatives.map((initiative) => ({
+            ...initiative,
+            owner: { id: 'owner-1', name: 'María Operaciones', source: 'canonical' as const },
+          })),
+        })),
+      })),
+      independentInitiatives: [{
+        initiativeId: 'ind-1', title: 'Iniciativa sin owner verificado',
+        owner: { id: 'owner-legacy', name: 'Persona inferida', source: 'legacy-derived' },
+        strategicFrontId: null, challengeId: null,
+        activationVisibility: 'initiative_exists',
+        currentExecutionState: { projectStatus: 'DRAFT', step0Status: null, currentStep: null },
+        blockers: [],
+      }],
+    };
+    render(<PortfolioOverviewHome model={withOwners as any} onOpenCopilot={vi.fn()} onOpenAdditionalFront={vi.fn()} />);
+    const table = screen.getByRole('table', { name: 'Seguimiento operativo del portafolio' });
+    expect(within(table).getByText('María Operaciones')).toBeVisible();
+    expect(within(table).getByText('Owner no disponible')).toBeVisible();
+    expect(within(table).queryByText('Persona inferida')).not.toBeInTheDocument();
+    fireEvent.change(screen.getByRole('searchbox', { name: 'Filtrar trabajo y encargos' }), { target: { value: 'María Operaciones' } });
+    expect(within(table).getByText('Onboarding guiado')).toBeVisible();
+    expect(within(table).queryByText('Iniciativa sin owner verificado')).not.toBeInTheDocument();
+  });
+
+  it('G04 surfaces real pending DecisionRequests with canonical authority in the operational table', () => {
+    const withDecision = {
+      ...model,
+      pendingDecisions: [
+        { requestId: 'decision-a', initiativeId: 'project-1', status: 'pending', requestedDecision: 'Aprobar el siguiente ciclo',
+          decisionAuthority: { id: 'lead-1', name: 'Ana Portfolio', source: 'canonical' }, updatedAt: '2026-11-09T10:00:00.000Z' },
+        { requestId: 'decision-b', initiativeId: 'project-1', status: 'pending', requestedDecision: 'Revisar bloqueo técnico',
+          decisionAuthority: { id: 'unknown-id', name: 'Owner inferido', source: 'legacy-derived' }, updatedAt: null },
+      ],
+    };
+    render(<PortfolioOverviewHome model={withDecision as any} onOpenCopilot={vi.fn()} onOpenAdditionalFront={vi.fn()} />);
+    const table = screen.getByRole('table', { name: 'Seguimiento operativo del portafolio' });
+    expect(within(table).getByText('Aprobar el siguiente ciclo')).toBeVisible();
+    expect(within(table).getByText('Revisar bloqueo técnico')).toBeVisible();
+    expect(within(table).getByText('Ana Portfolio')).toBeVisible();
+    expect(within(table).getByText('Autoridad no disponible')).toBeVisible();
+    expect(within(table).queryByText('Owner inferido')).not.toBeInTheDocument();
+    const details = within(table).getByRole('button', { name: 'Ver detalle de Aprobar el siguiente ciclo' });
+    fireEvent.click(details);
+    expect(within(table).getByText(/Solicitud decision-a/)).toBeInTheDocument();
+    fireEvent.change(screen.getByRole('searchbox', { name: 'Filtrar trabajo y encargos' }), { target: { value: 'Ana Portfolio' } });
+    expect(within(table).getByText('Aprobar el siguiente ciclo')).toBeVisible();
+    expect(within(table).queryByText('Revisar bloqueo técnico')).not.toBeInTheDocument();
   });
 
   it('KAN-250 shows a resumable context card and only resumes when the user clicks', () => {
@@ -220,6 +280,13 @@ describe('PortfolioOverviewHome', () => {
     expect(details).toHaveAttribute('aria-expanded', 'true');
     expect(within(table).getByText('lead-a')).toBeInTheDocument();
     expect(within(table).getByText('Fuente y procedencia:')).toBeInTheDocument();
+
+    // G04: the searchbox promises owner/actor lookup, not only title and state.
+    fireEvent.change(screen.getByRole('searchbox', { name: 'Filtrar trabajo y encargos' }), { target: { value: 'lead-a' } });
+    expect(within(table).getByText('Tercera iniciativa sin activar')).toBeInTheDocument();
+    expect(within(table).getByText('Onboarding guiado')).toBeInTheDocument();
+    fireEvent.change(screen.getByRole('searchbox', { name: 'Filtrar trabajo y encargos' }), { target: { value: 'unassigned-actor-not-present' } });
+    expect(within(table).queryByText('Tercera iniciativa sin activar')).not.toBeInTheDocument();
   });
 
   it('G5-CA02/CA03 keeps sent, accepted, started, rejected and Lab notification as distinct factual rows', () => {
