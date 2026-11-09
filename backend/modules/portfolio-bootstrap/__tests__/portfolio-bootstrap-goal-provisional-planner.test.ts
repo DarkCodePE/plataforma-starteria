@@ -63,6 +63,23 @@ describe('KAN-253 B4-C2B opt-in E2 provisional question planning', () => {
     expect(result.status).toBe('ready_for_human_review');
     expect(result.activeQuestion).toBeNull();
   });
+  it('does not reuse provisional answers after E1 is reconfirmed at another version', () => {
+    const result = buildProvisionalGoalQuestionPlan({
+      sessionId: 'session-1', anchor,
+      contextReview: { ...review, version: 4 },
+      turns: [turn('t1', 1)],
+    });
+    expect(result.activeQuestion?.field).toBe('outcomeStatement');
+  });
+  it('ignores provisional turns entirely when E1 is not confirmed', () => {
+    const result = buildProvisionalGoalQuestionPlan({
+      sessionId: 'session-1', anchor,
+      contextReview: { ...review, status: 'draft' },
+      turns: [turn('t1', 1)],
+    });
+    expect(result.activeQuestion?.field).toBe('outcomeStatement');
+  });
+
   it('does not use turns from another session', () => {
     expect(plan([turn('t1', 1, { sessionId: 'other-session' })]).activeQuestion?.field).toBe('outcomeStatement');
   });
