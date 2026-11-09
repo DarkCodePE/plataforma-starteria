@@ -25,11 +25,17 @@ export async function validateGoalLedgerAnchorAdoption(
   const before = ids(record(record(anchor.sourceRefs).objectiveConversation).goalLedgerAcceptedTurnIds);
   const afterConversation = record(record(body.sourceRefs).objectiveConversation);
   const after = ids(afterConversation.goalLedgerAcceptedTurnIds);
+  const beforeRejected = ids(record(record(anchor.sourceRefs).objectiveConversation).goalLedgerRejectedTurnIds);
+  const afterRejected = ids(afterConversation.goalLedgerRejectedTurnIds);
   const fail = () => AppError.conflict(
     'La procedencia del turno E2 no coincide con la sesión o con la versión del objetivo.',
     'PORTFOLIO_GOAL_RECEIPT_INVALID',
   );
-  if (!before || !after) throw fail();
+  if (!before || !after || !beforeRejected || !afterRejected
+    || beforeRejected.length !== afterRejected.length
+    || !beforeRejected.every((id, i) => id === afterRejected[i])) throw fail();
+  // Reject receipts are created only by the atomic human checkpoint command,
+  // never by an arbitrary legacy PATCH of Anchor sourceRefs.
   if (before.length === after.length && before.every((id, i) => id === after[i])) return;
 
   // Only one additional receipt may be incorporated per human command.

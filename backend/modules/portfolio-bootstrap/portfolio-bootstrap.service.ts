@@ -7,6 +7,8 @@ import { ScopedPortfolioAccessService } from '../../shared/authz/scoped-portfoli
 import { logger } from '../../shared/utils/logger';
 import { deriveAnchorStatus, derivePortfolioAnchorFromContinuation } from './portfolio-anchor-derivation';
 import { validateGoalLedgerAnchorAdoption } from './portfolio-bootstrap-goal-turn-adoption';
+import { projectGoalCheckpoint } from './portfolio-bootstrap-goal-checkpoint';
+import type { PortfolioGoalCheckpoint } from './portfolio-bootstrap-goal-turn.schemas';
 import { derivePortfolioAnchorFromPortfolioSetup } from './portfolio-setup-anchor-derivation';
 import { validatePortfolioSetupArrival } from '../portfolio-entry-continuation/portfolio-setup-home-arrival.service';
 import { DeterministicPortfolioBootstrapAnalyzer, type PortfolioBootstrapAnalysisOutput, type PortfolioBootstrapAnalyzer } from './portfolio-bootstrap.analyzer';
@@ -685,6 +687,103 @@ export class PortfolioBootstrapService {
       await this.writeAudit(db, input.authenticatedUserId, 'portfolio_anchor_updated', updated.id, { sessionId: session.id });
       return updatedSession;
     });
+    return this.toDto(result);
+  }
+
+  /**
+   * B4-C2D — one authenticated human checkpoint, one Anchor CAS.
+   * The server resolves every accepted value from immutable GoalTurn records.
+   * No LLM, no automatic confirmation, and no chained frontend PATCH requests.
+   */
+  async applyGoalCheckpoint(input: {
+    sessionId: string;
+    authenticatedUserId: string;
+    permissions: ReadonlySet<Permission>;
+    body: PortfolioGoalCheckpoint;
+  }): Promise<PortfolioBootstrapDto> {
+    if (process.env.PORTFOLIO_GOAL_E2_CHECKPOINT_ENABLED !== 'true'
+      || process.env.PORTFOLIO_GOAL_E2_LEDGER_ENABLED !== 'true'
+      || process.env.PORTFOLIO_GOAL_E2_MULTI_TURN_ENABLED !== 'true') {
+      throw new AppError(503, 'La revisión conjunta E2 todavía no está habilitada.', 'PORTFOLIO_GOAL_CHECKPOINT_DISABLED');
+    }
+    const result = await this.prisma.$transaction(async (tx) => {
+      const db = tx as any;
+      const session = await this.requireOwnedSession(db, input.sessionId, input.authenticatedUserId);
+      await this.authorizeSessionCapability({
+        db, session, authenticatedUserId: input.authenticatedUserId,
+        permissions: input.permissions, capability: 'portfolio:write',
+      });
+      const anchor = session.anchor;
+      if (!anchor || ['anchor_confirmed', 'anchor_conflicting'].includes(anchor.status)) {
+        throw AppError.conflict('El objetivo no está disponible para revisión conjunta.', 'PORTFOLIO_GOAL_ANCHOR_LOCKED');
+      }
+      // requireOwnedSession's standard include does not hydrate contextReview.
+      // Read the confirmed E1 record inside this same serializable transaction
+      // instead of treating an unselected relation as an unconfirmed context.
+      const review = await db.portfolioBootstrapContextReview.findUnique({
+        where: { bootstrapSessionId: session.id },
+      });
+      if (!review || review.status !== 'confirmed' || !review.confirmedSnapshotJson) {
+        throw AppError.conflict('El contexto E1 debe estar confirmado.', 'PORTFOLIO_GOAL_E1_CONTEXT_NOT_CONFIRMED');
+      }
+      const rows = await db.portfolioBootstrapGoalTurn.findMany({
+        where: { bootstrapSessionId: session.id },
+        orderBy: { turnVersion: 'asc' },
+        take: 10_000,
+      });
+      const turns = rows.map((row: any) => ({
+        id: row.id, sessionId: row.bootstrapSessionId, version: row.turnVersion,
+        actorUserId: row.actorUserId, anchorVersion: row.anchorVersion,
+        contextReviewVersion: row.contextReviewVersion,
+        questionId: row.questionId, field: row.field,
+        inputText: row.inputText, disposition: row.disposition,
+        supersedesTurnId: row.supersedesTurnId, evidence: row.evidenceJson,
+        createdAt: row.createdAt instanceof Date ? row.createdAt.toISOString() : String(row.createdAt),
+      }));
+      const projection = projectGoalCheckpoint({
+        sessionId: session.id,
+        anchor, turns, contextReviewVersion: review.version,
+        checkpoint: input.body, actorUserId: input.authenticatedUserId,
+      });
+      // The checkpoint, receipts, history and audit must commit or roll back together.
+      await this.recordHistory(db, anchor, 'portfolio_anchor_goal_checkpoint', input.authenticatedUserId);
+      const nextData = {
+        outcomeStatement: projection.outcomeStatement,
+        contextSummary: projection.contextSummary,
+        decisionToEnable: projection.decisionToEnable,
+        businessSignalStatus: projection.businessSignalStatus,
+        businessSignalValue: projection.businessSignalValue,
+        sourceRefs: projection.sourceRefs as Prisma.InputJsonValue,
+      };
+      const claimed = await db.portfolioAnchor.updateMany({
+        where: { id: anchor.id, version: input.body.expectedAnchorVersion },
+        data: {
+          ...nextData, status: deriveAnchorStatus(nextData),
+          provenanceStatus: 'raw_entry',
+          confirmedBy: null, confirmedAt: null, version: { increment: 1 },
+        },
+      });
+      if (claimed.count !== 1) {
+        throw AppError.conflict('El objetivo cambió; revisa la versión actual antes de aplicar.',
+          'PORTFOLIO_ANCHOR_VERSION_CONFLICT');
+      }
+      const updated = await db.portfolioAnchor.findUnique({ where: { id: anchor.id } });
+      const nextSession = await db.portfolioBootstrapSession.update({
+        where: { id: session.id },
+        data: {
+          status: updated.status === 'anchor_sufficient' ? 'awaiting_work_intake' : 'awaiting_anchor_review',
+          bootstrapPhase: updated.status === 'anchor_sufficient' ? 'B2_WORK_INTAKE' : 'B1_ANCHOR',
+        },
+        include: this.sessionInclude(),
+      });
+      await this.writeAudit(db, input.authenticatedUserId, 'portfolio_goal_checkpoint_applied', updated.id, {
+        sessionId: session.id, previousAnchorVersion: anchor.version,
+        ledgerVersion: input.body.expectedLedgerVersion,
+        acceptedTurnIds: projection.acceptedTurnIds,
+        rejectedTurnIds: projection.rejectedTurnIds,
+      });
+      return nextSession;
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable, timeout: 10_000 });
     return this.toDto(result);
   }
 

@@ -21,6 +21,15 @@ export function isGoalLedgerTurnAccepted(sourceRefs: unknown, turnId: string): b
   return acceptedIds(sourceRefs).includes(turnId);
 }
 
+export function isGoalLedgerTurnRejected(sourceRefs: unknown, turnId: string): boolean {
+  const rejected = object(object(sourceRefs).objectiveConversation).goalLedgerRejectedTurnIds;
+  return Array.isArray(rejected) && rejected.includes(turnId);
+}
+
+export function isGoalLedgerTurnResolved(sourceRefs: unknown, turnId: string): boolean {
+  return isGoalLedgerTurnAccepted(sourceRefs, turnId) || isGoalLedgerTurnRejected(sourceRefs, turnId);
+}
+
 /**
  * A *proposal* for the existing explicit updateAnchor action. This pure function
  * never persists anything or confirms E2. B3 keeps the human review checkpoint.

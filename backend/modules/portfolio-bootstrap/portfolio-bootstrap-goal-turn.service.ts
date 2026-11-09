@@ -4,6 +4,7 @@ import { ScopedPortfolioAccessService } from '../../shared/authz/scoped-portfoli
 import { AppError } from '../../shared/errors/AppError';
 import { canonicalContextHash, isRetryableContextWriteConflict } from './portfolio-bootstrap-context.service';
 import { buildGoalQuestionPlan, type GoalPlanContextReview, type GoalPlanAnchor } from './portfolio-bootstrap-goal-question-planner';
+import { buildProvisionalGoalQuestionPlan } from './portfolio-bootstrap-goal-provisional-planner';
 import { portfolioBootstrapGoalTurnBodySchema, type PortfolioBootstrapGoalTurnBody } from './portfolio-bootstrap-goal-turn.schemas';
 
 type GoalAccess = {
@@ -119,7 +120,11 @@ export class PortfolioBootstrapGoalTurnService {
         'Confirma primero el contexto E1 antes de registrar turnos de Objetivo.',
         'PORTFOLIO_GOAL_E1_CONTEXT_NOT_CONFIRMED',
       );
-      const plan = buildGoalQuestionPlan({
+      const multiTurnEnabled = process.env.PORTFOLIO_GOAL_E2_MULTI_TURN_ENABLED === 'true';
+      const existingTurns = multiTurnEnabled ? await db.portfolioBootstrapGoalTurn.findMany({
+        where: { bootstrapSessionId: session.id }, orderBy: { turnVersion: 'asc' }, take: 10_000,
+      }) : [];
+      const planInput: Parameters<typeof buildGoalQuestionPlan>[0] = {
         sessionId: session.id,
         anchor: {
           id: anchor.id, version: anchor.version, status: anchor.status,
@@ -130,7 +135,10 @@ export class PortfolioBootstrapGoalTurnService {
           sourceRefs: anchor.sourceRefs,
         } satisfies GoalPlanAnchor,
         contextReview: review,
-      });
+      };
+      const plan = multiTurnEnabled
+        ? buildProvisionalGoalQuestionPlan({ ...planInput, turns: existingTurns.map(toDto) })
+        : buildGoalQuestionPlan(planInput);
       if (plan.contextReviewVersion !== body.expectedContextReviewVersion) throw AppError.conflict(
         'La fuente E1 cambió; recupera la propuesta vigente.',
         'PORTFOLIO_GOAL_CONTEXT_VERSION_CONFLICT',
@@ -140,6 +148,8 @@ export class PortfolioBootstrapGoalTurnService {
         'PORTFOLIO_GOAL_QUESTION_STALE',
       );
 
+      // The ledger CAS gate applies before accepting the proposed next question.
+      // A concurrent submission cannot silently advance or overwrite this preview.
       const latest = await db.portfolioBootstrapGoalTurn.findFirst({
         where: { bootstrapSessionId: session.id },
         orderBy: { turnVersion: 'desc' },

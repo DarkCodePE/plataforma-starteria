@@ -7,11 +7,13 @@ import type { PortfolioBootstrapAnchor, PortfolioGoalQuestionPlan, PortfolioGoal
 const getPlan = vi.hoisted(() => vi.fn());
 const getTurns = vi.hoisted(() => vi.fn());
 const submit = vi.hoisted(() => vi.fn());
+const applyCheckpoint = vi.hoisted(() => vi.fn());
 
 vi.mock('../../services/portfolioBootstrapClient', () => ({
   getPortfolioBootstrapGoalQuestionPlan: (...args: unknown[]) => getPlan(...args),
   getPortfolioBootstrapGoalTurns: (...args: unknown[]) => getTurns(...args),
   submitPortfolioBootstrapGoalTurn: (...args: unknown[]) => submit(...args),
+  applyPortfolioBootstrapGoalCheckpoint: (...args: unknown[]) => applyCheckpoint(...args),
 }));
 
 const anchor: PortfolioBootstrapAnchor = {
@@ -60,6 +62,7 @@ beforeEach(() => {
   getPlan.mockResolvedValue(plan);
   getTurns.mockResolvedValue({ version: 0, turns: [] } satisfies PortfolioGoalTurnSnapshot);
   submit.mockResolvedValue({ version: 1, turn: firstTurn });
+  applyCheckpoint.mockResolvedValue({ anchor: { ...anchor, version: 3 } });
 });
 
 describe('KAN-253 B3 user-governed E2 ledger experience', () => {
@@ -191,6 +194,169 @@ describe('KAN-253 B3 user-governed E2 ledger experience', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Ver historial completo' }));
     expect(within(history).getByText(firstTurn.inputText)).toBeInTheDocument();
     expect(within(history).getByText('Versión corregida · solo historial')).toBeInTheDocument();
+  });
+
+  it('opens the full objective review with current and proposed values without writing', async () => {
+    const user = userEvent.setup();
+    getTurns.mockResolvedValue({ version: 1, turns: [firstTurn] });
+    const onSave = vi.fn();
+    const onConfirm = vi.fn();
+    render(<PortfolioGoalLedgerConversation {...props({ onSave, onConfirm })} />);
+    await screen.findByText('Respuesta guardada, pendiente de revisión');
+    const expand = screen.getByRole('button', { name: /Revisar objetivo completo/ });
+    expect(expand).toHaveAttribute('aria-expanded', 'false');
+    await user.click(expand);
+    const review = screen.getByRole('region', { name: 'Revisión completa del objetivo' });
+    expect(within(review).getByText('Resultado esperado')).toBeVisible();
+    expect(within(review).getByText(/Validar pedidos a oficinas cercanas/)).toBeVisible();
+    expect(within(review).getByText('Decisión que queremos habilitar')).toBeVisible();
+    expect(onSave).not.toHaveBeenCalled();
+    expect(onConfirm).not.toHaveBeenCalled();
+    expect(submit).not.toHaveBeenCalled();
+    await user.click(screen.getByRole('button', { name: /Ocultar revisión completa/ }));
+    expect(screen.queryByRole('region', { name: 'Revisión completa del objetivo' })).not.toBeInTheDocument();
+  });
+
+  it('adopts only the explicitly selected current proposal from consolidated review', async () => {
+    const user = userEvent.setup();
+    getTurns.mockResolvedValue({ version: 1, turns: [firstTurn] });
+    const onSave = vi.fn().mockResolvedValue(undefined);
+    const onConfirm = vi.fn();
+    render(<PortfolioGoalLedgerConversation {...props({ onSave, onConfirm })} />);
+    await screen.findByText('Respuesta guardada, pendiente de revisión');
+    await user.click(screen.getByRole('button', { name: /Revisar objetivo completo/ }));
+    const review = screen.getByRole('region', { name: 'Revisión completa del objetivo' });
+    expect(within(review).getByRole('button', { name: 'Incorporar este cambio' })).toBeEnabled();
+    expect(onSave).not.toHaveBeenCalled();
+    await user.click(within(review).getByRole('button', { name: 'Incorporar este cambio' }));
+    await waitFor(() => expect(onSave).toHaveBeenCalledTimes(1));
+    expect(onSave).toHaveBeenCalledWith(expect.objectContaining({
+      expectedVersion: anchor.version,
+      outcomeStatement: firstTurn.inputText,
+    }));
+    expect(onConfirm).not.toHaveBeenCalled();
+  });
+
+  it('lets the user correct a pending proposal from consolidated review without writing immediately', async () => {
+    const user = userEvent.setup();
+    getTurns.mockResolvedValue({ version: 1, turns: [firstTurn] });
+    const onSave = vi.fn();
+    render(<PortfolioGoalLedgerConversation {...props({ onSave })} />);
+    await screen.findByText('Respuesta guardada, pendiente de revisión');
+    await user.click(screen.getByRole('button', { name: /Revisar objetivo completo/ }));
+    await user.click(screen.getByRole('button', { name: 'Corregir propuesta' }));
+    expect(screen.getByRole('button', { name: 'Cancelar corrección' })).toBeVisible();
+    expect(screen.getByLabelText('Tu respuesta de Objetivo')).toHaveValue(firstTurn.inputText);
+    expect(screen.queryByRole('region', { name: 'Revisión completa del objetivo' })).not.toBeInTheDocument();
+    expect(onSave).not.toHaveBeenCalled();
+    expect(submit).not.toHaveBeenCalled();
+  });
+
+  it('continues to the next server-issued question without incorporating provisional answers when opt-in is on', async () => {
+    vi.stubEnv('VITE_PORTFOLIO_GOAL_E2_MULTI_TURN_UI_ENABLED', 'true');
+    try {
+      const user = userEvent.setup();
+      const secondPlan = {
+        ...plan,
+        activeQuestion: {
+          ...plan.activeQuestion!,
+          id: 'q-2-ledger1',
+          field: 'decisionToEnable' as const,
+          question: '¿Qué decisión te gustaría poder tomar?',
+        },
+      };
+      getPlan.mockResolvedValueOnce(plan).mockResolvedValueOnce(secondPlan);
+      const onSave = vi.fn();
+      const onConfirm = vi.fn();
+      render(<PortfolioGoalLedgerConversation {...props({ onSave, onConfirm })} />);
+      await screen.findByText('¿Qué cambio quieres validar?');
+      await user.type(screen.getByLabelText('Tu respuesta de Objetivo'), firstTurn.inputText);
+      await user.click(screen.getByRole('button', { name: 'Guardar respuesta provisional' }));
+      expect(await screen.findByText('¿Qué decisión te gustaría poder tomar?')).toBeVisible();
+      expect(screen.getByText(/1 respuestas provisionales pendientes/)).toBeVisible();
+      expect(screen.getByLabelText('Tu respuesta de Objetivo')).toBeEnabled();
+      await user.click(screen.getByRole('button', { name: 'Revisar respuestas acumuladas' }));
+      const review = screen.getByRole('region', { name: 'Revisión completa del objetivo' });
+      expect(within(review).queryByRole('button', { name: 'Incorporar este cambio' })).not.toBeInTheDocument();
+      expect(onSave).not.toHaveBeenCalled();
+      expect(onConfirm).not.toHaveBeenCalled();
+    } finally { vi.unstubAllEnvs(); }
+  });
+
+  it('preserves the saved provisional turn when fetching next question fails', async () => {
+    vi.stubEnv('VITE_PORTFOLIO_GOAL_E2_MULTI_TURN_UI_ENABLED', 'true');
+    try {
+      const user = userEvent.setup();
+      getPlan.mockResolvedValueOnce(plan).mockRejectedValueOnce(new Error('backend unavailable'));
+      render(<PortfolioGoalLedgerConversation {...props()} />);
+      await screen.findByText('¿Qué cambio quieres validar?');
+      await user.type(screen.getByLabelText('Tu respuesta de Objetivo'), firstTurn.inputText);
+      await user.click(screen.getByRole('button', { name: 'Guardar respuesta provisional' }));
+      expect(await screen.findByRole('button', { name: 'Recuperar conversación' })).toBeVisible();
+      expect(screen.getByText(/Tu respuesta se registró/)).toBeVisible();
+      expect(screen.getByText(firstTurn.inputText, { selector: 'article p' })).toBeVisible();
+    } finally { vi.unstubAllEnvs(); }
+  });
+
+  it('requires an explicit decision for every provisional turn and applies one atomic command', async () => {
+    vi.stubEnv('VITE_PORTFOLIO_GOAL_E2_MULTI_TURN_UI_ENABLED', 'true');
+    vi.stubEnv('VITE_PORTFOLIO_GOAL_E2_CHECKPOINT_UI_ENABLED', 'true');
+    try {
+      const user = userEvent.setup();
+      getTurns.mockResolvedValue({
+        version: 2, turns: [
+          firstTurn,
+          { ...firstTurn, id: 'turn-2', version: 2, field: 'decisionToEnable',
+            questionId: 'q-2', inputText: 'Decidir si lanzar una prueba.' },
+        ],
+      });
+      const onCheckpointApplied = vi.fn();
+      const onConfirm = vi.fn();
+      const onSave = vi.fn();
+      render(<PortfolioGoalLedgerConversation {...props({ onCheckpointApplied, onConfirm, onSave })} />);
+      await screen.findByText('¿Qué cambio quieres validar?');
+      await user.click(screen.getByRole('button', { name: /Revisar objetivo completo/ }));
+      const review = screen.getByRole('region', { name: 'Revisión completa del objetivo' });
+      const button = within(review).getByRole('button', { name: 'Aplicar decisiones al borrador' });
+      expect(button).toBeDisabled();
+      await user.click(within(within(review).getByRole('group', { name: 'Resultado esperado' }))
+        .getByRole('radio', { name: 'Incorporar' }));
+      expect(button).toBeDisabled();
+      await user.click(within(within(review).getByRole('group', { name: 'Decisión a habilitar' }))
+        .getByRole('radio', { name: 'No incorporar' }));
+      expect(button).toBeEnabled();
+      await user.click(button);
+      await waitFor(() => expect(applyCheckpoint).toHaveBeenCalledTimes(1));
+      expect(applyCheckpoint).toHaveBeenCalledWith('session-1', {
+        expectedAnchorVersion: 2, expectedLedgerVersion: 2, expectedContextReviewVersion: 4,
+        decisions: [
+          { turnId: 'turn-1', action: 'accept' }, { turnId: 'turn-2', action: 'reject' },
+        ],
+      });
+      expect(onCheckpointApplied).toHaveBeenCalledTimes(1);
+      expect(onSave).not.toHaveBeenCalled();
+      expect(onConfirm).not.toHaveBeenCalled();
+    } finally { vi.unstubAllEnvs(); }
+  });
+
+  it('does not claim a checkpoint was applied when server rejects a stale version', async () => {
+    vi.stubEnv('VITE_PORTFOLIO_GOAL_E2_MULTI_TURN_UI_ENABLED', 'true');
+    vi.stubEnv('VITE_PORTFOLIO_GOAL_E2_CHECKPOINT_UI_ENABLED', 'true');
+    try {
+      getTurns.mockResolvedValue({ version: 1, turns: [firstTurn] });
+      applyCheckpoint.mockRejectedValue(new Error('La conversación cambió. Recarga.'));
+      const user = userEvent.setup();
+      const onCheckpointApplied = vi.fn();
+      render(<PortfolioGoalLedgerConversation {...props({ onCheckpointApplied })} />);
+      await screen.findByText('¿Qué cambio quieres validar?');
+      await user.click(screen.getByRole('button', { name: /Revisar objetivo completo/ }));
+      const review = screen.getByRole('region', { name: 'Revisión completa del objetivo' });
+      await user.click(within(within(review).getByRole('group', { name: 'Resultado esperado' }))
+        .getByRole('radio', { name: 'Incorporar' }));
+      await user.click(within(review).getByRole('button', { name: 'Aplicar decisiones al borrador' }));
+      expect(await screen.findByText('La conversación cambió. Recarga.')).toBeVisible();
+      expect(onCheckpointApplied).not.toHaveBeenCalled();
+    } finally { vi.unstubAllEnvs(); }
   });
 
   it('reenters with an unincorporated turn and does not repeat the question or write', async () => {

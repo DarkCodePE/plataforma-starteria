@@ -6,16 +6,21 @@ import type {
   PortfolioGoalTurn,
   PortfolioGoalTurnSnapshot,
   UpdatePortfolioBootstrapAnchorInput,
+  PortfolioGoalCheckpointInput,
 } from '../services/portfolioBootstrapClient';
 import {
   getPortfolioBootstrapGoalQuestionPlan,
   getPortfolioBootstrapGoalTurns,
   submitPortfolioBootstrapGoalTurn,
+  applyPortfolioBootstrapGoalCheckpoint,
 } from '../services/portfolioBootstrapClient';
 import {
   createGoalLedgerAnchorProposal,
   isGoalLedgerTurnAccepted,
+  isGoalLedgerTurnRejected,
+  isGoalLedgerTurnResolved,
 } from './goal-ledger-anchor-proposal';
+import { buildGoalReviewRows } from './goal-review-rows';
 
 type Props = {
   anchor: PortfolioBootstrapAnchor;
@@ -23,10 +28,12 @@ type Props = {
   onSave: (input: UpdatePortfolioBootstrapAnchorInput) => Promise<void>;
   onConfirm: () => Promise<void>;
   onUseGuided: () => void;
+  onCheckpointApplied?: () => Promise<void> | void;
 };
 
 type InteractionState = 'loading' | 'ready' | 'error';
 type GoalDisposition = 'user_declared' | 'unknown' | 'not_applicable';
+// Experimental UI only. The backend must independently enable PORTFOLIO_GOAL_E2_MULTI_TURN_ENABLED.
 
 function toError(error: unknown): string {
   return error instanceof Error && error.message.trim()
@@ -75,7 +82,9 @@ function shownDate(value: string): string {
     : date.toLocaleDateString('es-ES', { day: '2-digit', month: 'short', year: 'numeric' });
 }
 
-export function PortfolioGoalLedgerConversation({ anchor, canConfirm, onSave, onConfirm, onUseGuided }: Props) {
+export function PortfolioGoalLedgerConversation({ anchor, canConfirm, onSave, onConfirm, onUseGuided, onCheckpointApplied }: Props) {
+  const multiTurnUiEnabled = import.meta.env.VITE_PORTFOLIO_GOAL_E2_MULTI_TURN_UI_ENABLED === 'true';
+  const checkpointUiEnabled = multiTurnUiEnabled && import.meta.env.VITE_PORTFOLIO_GOAL_E2_CHECKPOINT_UI_ENABLED === 'true';
   const [plan, setPlan] = useState<PortfolioGoalQuestionPlan | null>(null);
   const [snapshot, setSnapshot] = useState<PortfolioGoalTurnSnapshot | null>(null);
   const [loadStatus, setLoadStatus] = useState<InteractionState>('loading');
@@ -89,6 +98,10 @@ export function PortfolioGoalLedgerConversation({ anchor, canConfirm, onSave, on
   const [incorporatedLocally, setIncorporatedLocally] = useState<string[]>([]);
   const [notice, setNotice] = useState<string | null>(null);
   const [showFullHistory, setShowFullHistory] = useState(false);
+  const [showGoalReview, setShowGoalReview] = useState(false);
+  const [checkpointChoices, setCheckpointChoices] = useState<Record<string, 'accept' | 'reject'>>({});
+  const [applyingCheckpoint, setApplyingCheckpoint] = useState(false);
+  const [checkpointApplied, setCheckpointApplied] = useState(false);
   const pendingKeyRef = useRef<string | null>(null);
   const lockRef = useRef(false);
 
@@ -113,22 +126,39 @@ export function PortfolioGoalLedgerConversation({ anchor, canConfirm, onSave, on
   }, [anchor.bootstrapSessionId, anchor.version]);
 
   useEffect(() => { void reload(); }, [reload]);
+  useEffect(() => {
+    // A refreshed canonical Anchor starts a fresh review surface.
+    setCheckpointApplied(false);
+    setCheckpointChoices({});
+  }, [anchor.bootstrapSessionId, anchor.version]);
 
   const turns = snapshot?.turns ?? [];
   const latest = turns.at(-1) ?? null;
   const superseded = new Set(turns.flatMap((turn) => turn.supersedesTurnId ? [turn.supersedesTurnId] : []));
   const isAccepted = (turn: PortfolioGoalTurn) =>
     isGoalLedgerTurnAccepted(anchor.sourceRefs, turn.id) || incorporatedLocally.includes(turn.id);
+  const isRejected = (turn: PortfolioGoalTurn) => isGoalLedgerTurnRejected(anchor.sourceRefs, turn.id);
+  const isResolved = (turn: PortfolioGoalTurn) => isGoalLedgerTurnResolved(anchor.sourceRefs, turn.id) || incorporatedLocally.includes(turn.id);
   const pending = [...turns].reverse().find((turn) =>
-    turn.anchorVersion === anchor.version && !isAccepted(turn) && !superseded.has(turn.id) && turn.disposition !== 'retracted') ?? null;
+    turn.anchorVersion === anchor.version && !isResolved(turn) && !superseded.has(turn.id) && turn.disposition !== 'retracted') ?? null;
   const stalePending = turns.find((turn) =>
-    turn.anchorVersion !== anchor.version && !isAccepted(turn) && !superseded.has(turn.id) && turn.disposition !== 'retracted') ?? null;
+    turn.anchorVersion !== anchor.version && !isResolved(turn) && !superseded.has(turn.id) && turn.disposition !== 'retracted') ?? null;
   const activeQuestion = plan?.activeQuestion ?? null;
   const awaitingAnchorRefresh = Boolean(latest && latest.anchorVersion === anchor.version && isAccepted(latest));
-  const busy = submitting || applying || confirming || loadStatus !== 'ready';
+  const busy = submitting || applying || confirming || applyingCheckpoint || checkpointApplied || loadStatus !== 'ready';
   const legacy = legacyAnswerTexts(anchor.sourceRefs);
-  const canWrite = Boolean(activeQuestion && !pending && !stalePending && !awaitingAnchorRefresh && !busy && plan?.status !== 'blocked');
-  const isCorrecting = Boolean(pending && editingPending);
+  const reviewRows = buildGoalReviewRows(anchor, turns);
+  const reviewCount = reviewRows.filter((row) => row.status === 'pending_review').length;
+  const openCheckpointTurns = turns.filter((turn) =>
+    !superseded.has(turn.id) && turn.disposition !== 'retracted' && !isResolved(turn)
+    && !checkpointApplied);
+  const checkpointReady = Boolean(checkpointUiEnabled && openCheckpointTurns.length > 0
+    && openCheckpointTurns.length <= 30 && plan?.contextReviewVersion != null
+    && openCheckpointTurns.every((turn) => checkpointChoices[turn.id] === 'accept' || checkpointChoices[turn.id] === 'reject'));
+  const hasPendingReviews = reviewCount > 0;
+  const canWrite = Boolean(activeQuestion && !stalePending && !awaitingAnchorRefresh && !busy
+    && plan?.status !== 'blocked' && (multiTurnUiEnabled || !pending));
+  const isCorrecting = Boolean(!multiTurnUiEnabled && pending && editingPending);
 
   async function saveTurn(event: React.FormEvent) {
     event.preventDefault();
@@ -167,7 +197,25 @@ export function PortfolioGoalLedgerConversation({ anchor, canConfirm, onSave, on
       setDisposition('user_declared');
       setEditingPending(false);
       pendingKeyRef.current = null;
-      setNotice('Respuesta guardada como provisional. Revisa si quieres incorporarla al borrador.');
+      if (multiTurnUiEnabled) {
+        // The server owns the next question and includes the new ledger version in its ID.
+        // Never synthesize the next question on the client.
+        try {
+          const nextPlan = await getPortfolioBootstrapGoalQuestionPlan(anchor.bootstrapSessionId);
+          if (nextPlan.sessionId !== anchor.bootstrapSessionId || nextPlan.anchorVersion !== anchor.version) {
+            throw new Error('La sesión cambió mientras se generaba la siguiente pregunta.');
+          }
+          setPlan(nextPlan);
+          setNotice(nextPlan.activeQuestion
+            ? 'Respuesta registrada sin incorporarla. Puedes continuar conversando o revisar lo acumulado.'
+            : 'Conversación lista para revisión. Tus respuestas siguen sin incorporarse.');
+        } catch (cause) {
+          setPlan(null);
+          setError(`Tu respuesta se registró, pero no pudimos recuperar la siguiente pregunta. Pulsa «Recuperar conversación». ${toError(cause)}`);
+        }
+      } else {
+        setNotice('Respuesta guardada como provisional. Revisa si quieres incorporarla al borrador.');
+      }
     } catch (cause) {
       setError(toError(cause));
       // Keep exact input and idempotency key for the explicit retry action.
@@ -192,6 +240,38 @@ export function PortfolioGoalLedgerConversation({ anchor, canConfirm, onSave, on
     } finally {
       lockRef.current = false;
       setApplying(false);
+    }
+  }
+
+  async function applyCheckpoint() {
+    if (lockRef.current || !checkpointReady || !snapshot || !plan
+      || plan.contextReviewVersion == null) return;
+    const body: PortfolioGoalCheckpointInput = {
+      expectedAnchorVersion: anchor.version,
+      expectedLedgerVersion: snapshot.version,
+      expectedContextReviewVersion: plan.contextReviewVersion,
+      decisions: openCheckpointTurns.map((turn) => ({
+        turnId: turn.id, action: checkpointChoices[turn.id],
+      })),
+    };
+    lockRef.current = true;
+    setApplyingCheckpoint(true);
+    setError(null);
+    try {
+      await applyPortfolioBootstrapGoalCheckpoint(anchor.bootstrapSessionId, body);
+      setCheckpointApplied(true);
+      setNotice('Tus decisiones quedaron aplicadas al borrador. El objetivo todavía necesita confirmación humana.');
+      try {
+        await onCheckpointApplied?.();
+      } catch {
+        // The server committed successfully; a refresh failure cannot undo that operation.
+        setNotice('Decisiones aplicadas. No pudimos actualizar la pantalla; vuelve a abrir el objetivo para ver la versión vigente.');
+      }
+    } catch (cause) {
+      setError(toError(cause));
+    } finally {
+      lockRef.current = false;
+      setApplyingCheckpoint(false);
     }
   }
 
@@ -245,7 +325,7 @@ export function PortfolioGoalLedgerConversation({ anchor, canConfirm, onSave, on
               ) : turns.filter((turn) => showFullHistory || (!superseded.has(turn.id) && turn.disposition !== 'retracted')).map((turn) => (
                 <article key={turn.id} className="ml-auto max-w-[92%] rounded-2xl rounded-tr-sm bg-[#ede8fd] p-4 text-sm text-[#182246]">
                   <p className="mb-2 text-xs font-semibold text-[#493297]">
-                    {superseded.has(turn.id) ? 'Versión corregida · solo historial' : turn.disposition === 'retracted' ? 'Respuesta retractada · solo historial' : isAccepted(turn) ? 'Incorporada al borrador' : turn.anchorVersion !== anchor.version ? 'De otra versión del objetivo' : 'Pendiente de tu revisión'}
+                    {superseded.has(turn.id) ? 'Versión corregida · solo historial' : turn.disposition === 'retracted' ? 'Respuesta retractada · solo historial' : isAccepted(turn) ? 'Incorporada al borrador' : isRejected(turn) ? 'No incorporada por tu decisión' : turn.anchorVersion !== anchor.version ? 'De otra versión del objetivo' : 'Pendiente de tu revisión'}
                   </p>
                   <p className="whitespace-pre-wrap">{turn.inputText}</p>
                   <p className="mt-2 text-xs text-[#6446c0]">
@@ -253,7 +333,7 @@ export function PortfolioGoalLedgerConversation({ anchor, canConfirm, onSave, on
                     {' · '}{shownDate(turn.createdAt)} · versión {turn.version}
                     {turn.supersedesTurnId ? ' · corrige una respuesta anterior' : ''}
                   </p>
-                  <p className="mt-1 text-xs text-[#6c7695]">{isAccepted(turn) ? 'Incorporada al borrador por decisión humana' : 'Registro provisional, no confirmado'}</p>
+                  <p className="mt-1 text-xs text-[#6c7695]">{isAccepted(turn) ? 'Incorporada al borrador por decisión humana' : isRejected(turn) ? 'Descartada para este objetivo; conserva trazabilidad' : 'Registro provisional, no confirmado'}</p>
                 </article>
               ))}
             </section>
@@ -268,6 +348,22 @@ export function PortfolioGoalLedgerConversation({ anchor, canConfirm, onSave, on
                   {legacy.map((value, i) => <li key={i}>{value}</li>)}
                 </ul>
               </details>
+            ) : null}
+            {multiTurnUiEnabled && hasPendingReviews ? (
+              <div role="status" className="rounded-xl border border-[#d9caff] bg-white p-4 text-sm text-[#493297]">
+                <p className="font-semibold">{reviewCount} respuestas provisionales pendientes de revisión.</p>
+                <p className="mt-1">Puedes continuar con la siguiente pregunta. Ninguna respuesta ha modificado el objetivo.</p>
+                <button type="button" onClick={() => setShowGoalReview(true)}
+                  className="mt-2 rounded-lg border border-[#d9caff] px-3 py-2 text-xs font-semibold">
+                  Revisar respuestas acumuladas
+                </button>
+              </div>
+            ) : null}
+            {multiTurnUiEnabled && !plan ? (
+              <button type="button" disabled={busy} onClick={() => void reload()}
+                className="rounded-lg border border-[#d9caff] bg-white px-3 py-2 text-sm font-semibold text-[#493297]">
+                Recuperar conversación
+              </button>
             ) : null}
             {activeQuestion ? (
               <section aria-label="Pregunta de Objetivo" className="rounded-2xl border border-[#decfff] border-l-[3px] border-l-[#7b59d3] bg-[#f5f0ff] p-4">
@@ -291,7 +387,7 @@ export function PortfolioGoalLedgerConversation({ anchor, canConfirm, onSave, on
                 {plan?.reason ?? 'La ficha está pendiente de revisión humana.'}
               </div>
             )}
-            {pending && !isAccepted(pending) && !editingPending ? (
+            {pending && !isAccepted(pending) && !editingPending && !multiTurnUiEnabled ? (
               <section className="rounded-xl border border-[#d9caff] bg-white p-4">
                 <h3 className="font-semibold text-[#182246]">Respuesta guardada, pendiente de revisión</h3>
                 <p className="mt-2 text-sm text-[#6c7695]">No se ha modificado el objetivo. Puedes incorporarla o corregirla antes de seguir.</p>
@@ -403,6 +499,90 @@ export function PortfolioGoalLedgerConversation({ anchor, canConfirm, onSave, on
       <aside className="min-w-0 space-y-3 rounded-xl border border-[#e4e7f0] bg-white p-4" aria-label="Ficha provisional de E2">
         <p className="text-xs font-bold uppercase tracking-wider text-[#6446c0]">Ficha estratégica · provisional</p>
         <h3 className="text-lg font-semibold text-[#182246]">Lo que estamos construyendo</h3>
+        {multiTurnUiEnabled ? (
+          <p className="rounded-lg border border-[#d9caff] bg-[#f5f0ff] p-3 text-xs text-[#493297]">
+            {checkpointUiEnabled
+              ? 'Modo experimental: puedes revisar y aplicar tus decisiones en conjunto. El objetivo sigue sin confirmarse hasta tu aprobación final.'
+              : 'Modo experimental: conversación consecutiva. Las respuestas siguen provisionales; la aceptación agrupada aún no está habilitada.'}
+          </p>
+        ) : null}
+        <button type="button" aria-expanded={showGoalReview} aria-controls="e2-goal-review"
+          onClick={() => setShowGoalReview((value) => !value)}
+          className="w-full rounded-lg border border-[#d9caff] bg-[#f5f0ff] px-3 py-2 text-left text-sm font-semibold text-[#493297]">
+          {showGoalReview ? 'Ocultar revisión completa' : 'Revisar objetivo completo'}
+          <span className="ml-2 text-xs font-normal">{reviewCount} cambios pendientes</span>
+        </button>
+        {showGoalReview ? (
+          <section id="e2-goal-review" aria-label="Revisión completa del objetivo" className="space-y-3 rounded-lg border border-[#e4e7f0] bg-[#fbfcff] p-3">
+            <p className="text-xs text-[#6c7695]">Esta vista no confirma nada. Compara los valores del borrador con las respuestas todavía pendientes de tu decisión.</p>
+            {checkpointUiEnabled && openCheckpointTurns.length > 0 ? (
+              <section aria-label="Decisiones sobre respuestas provisionales" className="space-y-3 rounded-lg border border-[#d9caff] bg-white p-3">
+                <h4 className="text-sm font-semibold text-[#182246]">Decide qué incorporar al borrador</h4>
+                <p className="text-xs text-[#6c7695]">Revisa cada respuesta vigente. Aceptar conserva su texto; descartar no cambia ese campo. Ninguna elección se aplica hasta que pulses el botón final.</p>
+                {openCheckpointTurns.map((turn) => (
+                  <fieldset key={turn.id} className="rounded-lg border border-[#e4e7f0] p-3">
+                    <legend className="text-xs font-semibold text-[#493297]">{goalFieldLabels[turn.field as GoalField] ?? 'Dato por revisar'}</legend>
+                    <p className="whitespace-pre-wrap text-sm text-[#182246]">{turn.inputText}</p>
+                    <div className="mt-2 flex flex-wrap gap-4 text-xs">
+                      <label className="inline-flex items-center gap-2">
+                        <input type="radio" name={`checkpoint-${turn.id}`} checked={checkpointChoices[turn.id] === 'accept'}
+                          onChange={() => setCheckpointChoices((choices) => ({ ...choices, [turn.id]: 'accept' }))} disabled={busy}/>
+                        Incorporar
+                      </label>
+                      <label className="inline-flex items-center gap-2">
+                        <input type="radio" name={`checkpoint-${turn.id}`} checked={checkpointChoices[turn.id] === 'reject'}
+                          onChange={() => setCheckpointChoices((choices) => ({ ...choices, [turn.id]: 'reject' }))} disabled={busy}/>
+                        No incorporar
+                      </label>
+                    </div>
+                  </fieldset>
+                ))}
+                <button type="button" disabled={!checkpointReady || busy} onClick={() => void applyCheckpoint()}
+                  className="w-full rounded-lg bg-[#6446c0] px-3 py-2.5 text-sm font-semibold text-white disabled:opacity-50">
+                  {applyingCheckpoint ? 'Aplicando revisión…' : 'Aplicar decisiones al borrador'}
+                </button>
+                <p className="text-xs text-[#6c7695]">Una única operación verificará versiones de E1, Anchor y conversación. Confirmar el objetivo será una decisión posterior.</p>
+              </section>
+            ) : null}
+            {reviewRows.map((row) => (
+              <article key={row.key} className="rounded-lg border border-[#e4e7f0] bg-white p-3">
+                <p className="text-sm font-semibold text-[#182246]">{row.label}</p>
+                <p className="mt-1 text-xs text-[#586582]">
+                  {row.status === 'pending_review' ? 'Respuesta pendiente de incorporar' :
+                    row.status === 'outdated_response' ? 'Respuesta de versión anterior · requiere nueva revisión' :
+                    row.status === 'already_in_draft' ? 'Valor en el borrador actual' : 'Aún por definir'}
+                </p>
+                <p className="mt-2 whitespace-pre-wrap text-xs text-[#182246]"><strong>Actual:</strong> {row.current}</p>
+                {row.proposed !== null ? <p className="mt-2 whitespace-pre-wrap text-xs text-[#493297]"><strong>Propuesto:</strong> {row.proposed}</p> : null}
+                {row.status === 'pending_review' && pending?.id === row.turnId && !multiTurnUiEnabled ? (
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <button type="button" disabled={busy || isAccepted(pending)}
+                      onClick={() => void incorporate(pending)}
+                      className="rounded-lg bg-[#6446c0] px-3 py-2 text-xs font-semibold text-white disabled:opacity-50">
+                      Incorporar este cambio
+                    </button>
+                    <button type="button" disabled={busy} onClick={() => {
+                      setEditingPending(true);
+                      setAnswer(pending.inputText);
+                      setDisposition(pending.disposition === 'unknown' ? 'unknown' : pending.disposition === 'not_applicable' ? 'not_applicable' : 'user_declared');
+                      pendingKeyRef.current = null;
+                      setShowGoalReview(false);
+                    }} className="rounded-lg border border-[#d9caff] bg-white px-3 py-2 text-xs font-semibold text-[#493297]">
+                      Corregir propuesta
+                    </button>
+                  </div>
+                ) : null}
+              </article>
+            ))}
+            <p className="text-xs text-[#6c7695]">
+              {multiTurnUiEnabled
+                ? checkpointUiEnabled
+                  ? 'La aplicación conjunta solo ocurrirá cuando decidas aceptar o descartar cada respuesta y pulses «Aplicar decisiones al borrador».'
+                  : 'Este es un checkpoint de revisión sin escrituras. La aceptación conjunta requiere una operación de backend validada; ninguna respuesta se incorporará automáticamente.'
+                : 'Solo las respuestas vigentes pueden incorporarse desde aquí. No se aplican cambios en lote: cada incorporación exige tu acción y la confirmación final del objetivo es independiente.'}
+            </p>
+          </section>
+        ) : null}
         <dl className="space-y-3 text-sm">
           {[
             ['Resultado', anchor.outcomeStatement],
@@ -422,7 +602,7 @@ export function PortfolioGoalLedgerConversation({ anchor, canConfirm, onSave, on
           </p>
           <p className="mt-1">{snapshot?.turns.length ?? 0} respuestas registradas. Los datos no confirmados no se convierten automáticamente en resultados de negocio.</p>
         </div>
-        {canConfirm && !pending && !stalePending ? (
+        {canConfirm && !pending && !stalePending && !hasPendingReviews ? (
           <button type="button" onClick={() => void confirm()} disabled={busy}
             className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-[#182246] px-3 py-2.5 text-sm font-semibold text-white disabled:opacity-50">
             <CheckCircle2 size={16} /> {confirming ? 'Confirmando…' : 'Confirmar objetivo y continuar'} <ArrowRight size={16} />

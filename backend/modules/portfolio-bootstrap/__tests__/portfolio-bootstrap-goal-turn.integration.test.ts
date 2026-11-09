@@ -89,6 +89,108 @@ describeDb('KAN-253 B2 goal turn ledger with disposable PostgreSQL', () => {
   afterEach(cleanup);
   afterAll(async () => { await cleanup(); await prisma.$disconnect(); });
 
+  it('allows two provisional questions without incorporating the first when opt-in is enabled', async () => {
+    process.env.PORTFOLIO_GOAL_E2_MULTI_TURN_ENABLED = 'true';
+    try {
+      await seed();
+      const before = await prisma.portfolioAnchor.findUnique({ where: { id: anchorId } });
+      const client = app(userId);
+      const firstPlan = await request(client)
+        .get(base.replace('/turns', '/plan')).expect(200);
+      expect(firstPlan.body.data.activeQuestion.id).toContain('-ledger0');
+      const first = await request(client).post(base)
+        .set('Idempotency-Key', 'multi-turn-first')
+        .send({ ...command(), questionId: firstPlan.body.data.activeQuestion.id })
+        .expect(200);
+      expect(first.body.data).toMatchObject({ version: 1, turn: { field: 'outcomeStatement' } });
+
+      const next = await request(client).get(base.replace('/turns', '/plan')).expect(200);
+      expect(next.body.data.activeQuestion).toMatchObject({
+        field: 'decisionToEnable',
+        id: `goal-preview-${anchorId}-v1-decisionToEnable-ledger1`,
+      });
+      // A stale question and ledger version may not write the second turn.
+      await request(client).post(base).set('Idempotency-Key', 'multi-turn-stale')
+        .send({ ...command(), expectedVersion: 1, questionId: firstPlan.body.data.activeQuestion.id })
+        .expect(409);
+      const second = await request(client).post(base)
+        .set('Idempotency-Key', 'multi-turn-second')
+        .send({
+          ...command(), expectedVersion: 1, questionId: next.body.data.activeQuestion.id,
+          inputText: 'Decidir si conviene ofrecer desayunos a oficinas.',
+        }).expect(200);
+      expect(second.body.data).toMatchObject({ version: 2, turn: { field: 'decisionToEnable' } });
+      expect(await prisma.portfolioAnchor.findUnique({ where: { id: anchorId } })).toEqual(before);
+    } finally {
+      delete process.env.PORTFOLIO_GOAL_E2_MULTI_TURN_ENABLED;
+    }
+  });
+
+  it('commits one human E2 checkpoint atomically after two provisional turns', async () => {
+    process.env.PORTFOLIO_GOAL_E2_MULTI_TURN_ENABLED = 'true';
+    process.env.PORTFOLIO_GOAL_E2_CHECKPOINT_ENABLED = 'true';
+    try {
+      await seed();
+      const client = app(userId);
+      const firstPlan = await request(client).get(base.replace('/turns', '/plan')).expect(200);
+      const first = await request(client).post(base).set('Idempotency-Key', 'checkpoint-first')
+        .send({ ...command(), questionId: firstPlan.body.data.activeQuestion.id }).expect(200);
+      const secondPlan = await request(client).get(base.replace('/turns', '/plan')).expect(200);
+      const second = await request(client).post(base).set('Idempotency-Key', 'checkpoint-second')
+        .send({
+          ...command(), expectedVersion: 1,
+          questionId: secondPlan.body.data.activeQuestion.id,
+          inputText: 'Decidir si merece la pena una prueba controlada.',
+        }).expect(200);
+      const checkpointPath = base.replace('/turns', '/checkpoint');
+      const body = {
+        expectedAnchorVersion: 1, expectedLedgerVersion: 2, expectedContextReviewVersion: 1,
+        decisions: [
+          { turnId: first.body.data.turn.id, action: 'accept' },
+          { turnId: second.body.data.turn.id, action: 'reject' },
+        ],
+      };
+      const before = await prisma.portfolioAnchor.findUnique({ where: { id: anchorId } });
+      expect(before?.version).toBe(1);
+      const incomplete = await request(client).post(checkpointPath)
+        .send({ ...body, decisions: [body.decisions[0]] }).expect(409);
+      expect(incomplete.body.success).toBe(false);
+      // Existing Bootstrap ownership contract returns 403 for a known session
+      // owned by another authenticated user; the command must remain write-denied.
+      const forbidden = await request(app(otherUserId))
+        .post(checkpointPath).send(body).expect(403);
+      expect(forbidden.body.success).toBe(false);
+      expect((await prisma.portfolioAnchor.findUnique({ where: { id: anchorId } }))?.version).toBe(1);
+
+      const result = await request(client).post(checkpointPath).send(body).expect(200);
+      expect(result.body.data.anchor).toMatchObject({
+        version: 2, outcomeStatement: command().inputText, decisionToEnable: null,
+      });
+      const after = await prisma.portfolioAnchor.findUnique({ where: { id: anchorId } });
+      const refs = after?.sourceRefs as { objectiveConversation?: {
+        goalLedgerAcceptedTurnIds?: string[]; goalLedgerRejectedTurnIds?: string[];
+      } };
+      expect(refs.objectiveConversation?.goalLedgerAcceptedTurnIds).toEqual([first.body.data.turn.id]);
+      expect(refs.objectiveConversation?.goalLedgerRejectedTurnIds).toEqual([second.body.data.turn.id]);
+      expect(after?.confirmedBy).toBeNull();
+      expect(after?.version).toBe(2);
+      // The accepted and rejected decisions were one CAS write, not a chain of PATCHes.
+      await request(client).post(checkpointPath).send(body).expect(409);
+      expect((await prisma.portfolioAnchor.findUnique({ where: { id: anchorId } }))?.version).toBe(2);
+      const fakePatch = await request(client).patch(base.replace('/objective/turns', '/anchor')).send({
+        expectedVersion: 2,
+        sourceRefs: { objectiveConversation: {
+          goalLedgerAcceptedTurnIds: [first.body.data.turn.id],
+          goalLedgerRejectedTurnIds: [second.body.data.turn.id, 'forged'],
+        } },
+      }).expect(409);
+      expect(fakePatch.body.success).toBe(false);
+    } finally {
+      delete process.env.PORTFOLIO_GOAL_E2_MULTI_TURN_ENABLED;
+      delete process.env.PORTFOLIO_GOAL_E2_CHECKPOINT_ENABLED;
+    }
+  });
+
   it('persists one provisional turn and returns it on reentry without changing Anchor', async () => {
     await seed();
     const before = await prisma.portfolioAnchor.findUnique({ where: { id: anchorId } });

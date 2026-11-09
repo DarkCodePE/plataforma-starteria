@@ -35,3 +35,21 @@ export const portfolioBootstrapGoalTurnBodySchema = z.object({
 });
 
 export type PortfolioBootstrapGoalTurnBody = z.infer<typeof portfolioBootstrapGoalTurnBodySchema>;
+
+
+/** B4-C2D: all current provisional turns must receive an explicit human decision. */
+export const portfolioGoalCheckpointSchema = z.object({
+  expectedAnchorVersion: z.number().int().positive(),
+  expectedLedgerVersion: z.number().int().positive(),
+  expectedContextReviewVersion: z.number().int().positive(),
+  decisions: z.array(z.object({
+    turnId: z.string().trim().min(1).max(240),
+    action: z.enum(['accept', 'reject']),
+  }).strict()).min(1).max(30),
+}).strict().superRefine((value, ctx) => {
+  const ids = value.decisions.map((decision) => decision.turnId);
+  if (new Set(ids).size !== ids.length) ctx.addIssue({
+    code: 'custom', path: ['decisions'], message: 'No puede decidirse dos veces sobre la misma respuesta.',
+  });
+});
+export type PortfolioGoalCheckpoint = z.infer<typeof portfolioGoalCheckpointSchema>;
