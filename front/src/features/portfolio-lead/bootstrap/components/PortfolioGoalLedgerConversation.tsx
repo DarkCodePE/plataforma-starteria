@@ -118,6 +118,19 @@ export function PortfolioGoalLedgerConversation({ anchor, canConfirm, onSave, on
       }
       setPlan(nextPlan);
       setSnapshot(nextTurns);
+      // Nielsen H1/H6: when the server finishes questioning, show the human
+      // checkpoint on reentry. Do not auto-accept or invent another question.
+      const supersededIds = new Set(nextTurns.turns.flatMap((turn) =>
+        turn.supersedesTurnId ? [turn.supersedesTurnId] : []));
+      const hasUnresolvedAnswers = nextTurns.turns.some((turn) =>
+        turn.anchorVersion === anchor.version && !supersededIds.has(turn.id)
+        && turn.disposition !== 'retracted'
+        && !isGoalLedgerTurnResolved(anchor.sourceRefs, turn.id));
+      if (import.meta.env.VITE_PORTFOLIO_GOAL_E2_MULTI_TURN_UI_ENABLED === 'true'
+        && import.meta.env.VITE_PORTFOLIO_GOAL_E2_CHECKPOINT_UI_ENABLED === 'true'
+        && !nextPlan.activeQuestion && hasUnresolvedAnswers) {
+        setShowGoalReview(true);
+      }
       setLoadStatus('ready');
     } catch (cause) {
       setLoadStatus('error');
@@ -206,6 +219,9 @@ export function PortfolioGoalLedgerConversation({ anchor, canConfirm, onSave, on
             throw new Error('La sesión cambió mientras se generaba la siguiente pregunta.');
           }
           setPlan(nextPlan);
+          if (!nextPlan.activeQuestion && checkpointUiEnabled) {
+            setShowGoalReview(true);
+          }
           setNotice(nextPlan.activeQuestion
             ? 'Respuesta registrada sin incorporarla. Puedes continuar conversando o revisar lo acumulado.'
             : 'Conversación lista para revisión. Tus respuestas siguen sin incorporarse.');
@@ -512,6 +528,11 @@ export function PortfolioGoalLedgerConversation({ anchor, canConfirm, onSave, on
           {showGoalReview ? 'Ocultar revisión completa' : 'Revisar objetivo completo'}
           <span className="ml-2 text-xs font-normal">{reviewCount} cambios pendientes</span>
         </button>
+        {checkpointUiEnabled && !activeQuestion && hasPendingReviews ? (
+          <p role="status" className="rounded-lg border border-[#d9caff] bg-[#f5f0ff] p-3 text-sm font-semibold text-[#493297]">
+            Ya tenemos las respuestas necesarias para revisar el objetivo. Elige qué incorporar y qué dejar fuera; nada se aplicará sin tu decisión.
+          </p>
+        ) : null}
         {showGoalReview ? (
           <section id="e2-goal-review" aria-label="Revisión completa del objetivo" className="space-y-3 rounded-lg border border-[#e4e7f0] bg-[#fbfcff] p-3">
             <p className="text-xs text-[#6c7695]">Esta vista no confirma nada. Compara los valores del borrador con las respuestas todavía pendientes de tu decisión.</p>
