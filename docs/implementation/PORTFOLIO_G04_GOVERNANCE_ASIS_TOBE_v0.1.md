@@ -21,3 +21,11 @@ H1 visibilidad: la búsqueda devuelve filas congruentes con el detalle de respon
 
 ## Límites
 Este PR abre G04 con una corrección factual que impacta a la tabla; **no certifica** el circuito alertas→decisión→resolución ni cierra G04. No habilita features experimentales ni crea entidades. CI, review y merge pendientes.
+
+## G04 · Gate de solicitudes y autoridad (misma entrega)
+
+Se integra como **CI obligatorio** `backend/modules/adaptive-core/__tests__/decision-request.e2e.test.ts` con `R2_PERSISTENCE_E2E=1` sobre PostgreSQL desechable, no contra producción. Valida creación de DecisionRequest desde iniciativa terminada y gobernada, petición repetida idempotente, persistencia/reentrada tras nuevo cliente Prisma, autoridad Portfolio Lead, snapshot de evidencia, y rechazo de casos auto-iniciados, incompletos o sin autoridad resuelta.
+
+**Límite fundamental:** este es un circuito de solicitud de decisión al completar una iniciativa, **no** es todavía el workflow general de bloqueos/alertas de equipo (responder, asignar, escalar, resolver). No se modifican por este gate los modelos de negocio ni se hace pasar actor que registró un WorkItem por owner de ejecución.
+
+**Hallazgo estructural:** `PortfolioHomeReadModel` incluye `challenge.owner` pero no `initiative.owner` en la proyección de iniciativas. La tabla operacional enseña actualmente «Owner canónico» como texto fijo en filas de Project. Hasta que el backend exponga ownership con fuente y permisos, no se debe interpretar ese rótulo como un owner real confirmado.
