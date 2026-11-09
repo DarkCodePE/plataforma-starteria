@@ -29,3 +29,12 @@ Se integra como **CI obligatorio** `backend/modules/adaptive-core/__tests__/deci
 **Límite fundamental:** este es un circuito de solicitud de decisión al completar una iniciativa, **no** es todavía el workflow general de bloqueos/alertas de equipo (responder, asignar, escalar, resolver). No se modifican por este gate los modelos de negocio ni se hace pasar actor que registró un WorkItem por owner de ejecución.
 
 **Hallazgo estructural corregido:** el backend `portfolio-home.read-service.ts` **sí** incluye `initiative.owner` (con `source: canonical`) para iniciativas vinculadas e independientes. La omisión estaba en el tipo TypeScript de frontend y en el mapeo de la tabla. Esta entrega enlaza el owner real de la proyección cuando `source === 'canonical'`, con fallback «Owner no disponible» para fuente ausente o derivada; no se inventan responsables ni se sustituye `actorId` por owner. Prueba de UI verifica nombre/filtrado canónico y rechazo de fuente `legacy-derived`.
+
+## G04 · Solicitudes pendientes visibles en seguimiento operativo
+
+Se incorpora la proyección **ya existente** `pendingDecisions` del backend a la misma tabla con una fila por `DecisionRequest`, solicitud, iniciativa y autoridad. Su fuente solo se presenta como canónica si `decisionAuthority.source === 'canonical'`; si no, el texto es «Autoridad no disponible».
+
+**Antes:** las solicitudes aparecían en el resumen «Decisiones del portafolio» pero no en la tabla filtrable Trabajo/Encargo; no podían localizarse desde la lista operativa por nombre de autoridad.
+**Después:** la tabla contiene filas «Decisión pendiente» filtrables con detalle de solicitud y procedencia. Pruebas RTL comprueban autoridad verificada, fuente no canónica y búsqueda.
+
+Esto es **solo lectura**. No se marca como implementado el workflow general de bloqueo, ni se crean acciones de asignación/escalamiento/resolución no existentes. Las mutaciones requieren contratos de ownership y auditoría posteriores.
