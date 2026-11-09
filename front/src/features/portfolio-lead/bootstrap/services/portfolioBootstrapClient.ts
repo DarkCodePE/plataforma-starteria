@@ -382,6 +382,56 @@ export async function createOrReusePortfolioBootstrapSession(
 }
 
 /** Read-only E2 goal question plan, not a confirmed business fact. */
+/** B2 provisional user-authored E2 ledger, independent of the confirmed Anchor. */
+export type PortfolioGoalTurn = {
+  id: string;
+  sessionId: string;
+  version: number;
+  actorUserId: string;
+  anchorVersion: number;
+  contextReviewVersion: number | null;
+  questionId: string;
+  field: string;
+  inputText: string;
+  disposition: 'user_declared' | 'unknown' | 'not_applicable' | 'retracted';
+  supersedesTurnId: string | null;
+  evidence: Array<{ kind: 'user_input'; quote: string; status: 'provisional' }>;
+  createdAt: string;
+};
+export type PortfolioGoalTurnSnapshot = { version: number; turns: PortfolioGoalTurn[] };
+export type PortfolioGoalTurnInput = {
+  expectedVersion: number;
+  expectedAnchorVersion: number;
+  expectedContextReviewVersion: number | null;
+  questionId: string;
+  inputText: string;
+  disposition: PortfolioGoalTurn['disposition'];
+  supersedesTurnId: string | null;
+};
+export async function getPortfolioBootstrapGoalTurns(sessionId: string): Promise<PortfolioGoalTurnSnapshot> {
+  try {
+    const { data } = await api.get<ApiResponse<PortfolioGoalTurnSnapshot>>(
+      `/portfolio-bootstrap/sessions/${encodeURIComponent(sessionId)}/objective/turns`,
+    );
+    return data.data;
+  } catch (err) { throw new PortfolioBootstrapClientError(parseApiError(err)); }
+}
+export async function submitPortfolioBootstrapGoalTurn(
+  sessionId: string,
+  body: PortfolioGoalTurnInput,
+  idempotencyKey: string,
+): Promise<{ version: number; turn: PortfolioGoalTurn }> {
+  if (!idempotencyKey.trim()) throw new Error('Se requiere una Idempotency-Key estable para enviar un turno.');
+  try {
+    const { data } = await api.post<ApiResponse<{ version: number; turn: PortfolioGoalTurn }>>(
+      `/portfolio-bootstrap/sessions/${encodeURIComponent(sessionId)}/objective/turns`,
+      body,
+      { headers: { 'Idempotency-Key': idempotencyKey } },
+    );
+    return data.data;
+  } catch (err) { throw new PortfolioBootstrapClientError(parseApiError(err)); }
+}
+
 export type PortfolioGoalQuestionPlan = {
   mode: 'deterministic_preview';
   sessionId: string;
