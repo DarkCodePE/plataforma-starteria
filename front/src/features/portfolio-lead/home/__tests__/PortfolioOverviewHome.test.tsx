@@ -52,6 +52,38 @@ describe('PortfolioOverviewHome', () => {
     expect(screen.getAllByText('Sin datos').length).toBeGreaterThanOrEqual(2);
   });
 
+  it('G04 shows canonical Project owner from server data and filters by that owner, never inventing one', () => {
+    const withOwners = {
+      ...model,
+      strategicUnits: model.strategicUnits.map((front) => ({
+        ...front,
+        challenges: front.challenges.map((challenge) => ({
+          ...challenge,
+          initiatives: challenge.initiatives.map((initiative) => ({
+            ...initiative,
+            owner: { id: 'owner-1', name: 'María Operaciones', source: 'canonical' as const },
+          })),
+        })),
+      })),
+      independentInitiatives: [{
+        initiativeId: 'ind-1', title: 'Iniciativa sin owner verificado',
+        owner: { id: 'owner-legacy', name: 'Persona inferida', source: 'legacy-derived' },
+        strategicFrontId: null, challengeId: null,
+        activationVisibility: 'initiative_exists',
+        currentExecutionState: { projectStatus: 'DRAFT', step0Status: null, currentStep: null },
+        blockers: [],
+      }],
+    };
+    render(<PortfolioOverviewHome model={withOwners as any} onOpenCopilot={vi.fn()} onOpenAdditionalFront={vi.fn()} />);
+    const table = screen.getByRole('table', { name: 'Seguimiento operativo del portafolio' });
+    expect(within(table).getByText('María Operaciones')).toBeVisible();
+    expect(within(table).getByText('Owner no disponible')).toBeVisible();
+    expect(within(table).queryByText('Persona inferida')).not.toBeInTheDocument();
+    fireEvent.change(screen.getByRole('searchbox', { name: 'Filtrar trabajo y encargos' }), { target: { value: 'María Operaciones' } });
+    expect(within(table).getByText('Onboarding guiado')).toBeVisible();
+    expect(within(table).queryByText('Iniciativa sin owner verificado')).not.toBeInTheDocument();
+  });
+
   it('KAN-250 shows a resumable context card and only resumes when the user clicks', () => {
     const resume = vi.fn();
     render(<PortfolioOverviewHome
