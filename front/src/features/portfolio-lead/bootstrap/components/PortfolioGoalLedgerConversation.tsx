@@ -328,10 +328,6 @@ export function PortfolioGoalLedgerConversation({ anchor, canConfirm, onSave, on
                     className="rounded-lg border border-amber-300 bg-white px-3 py-2 text-xs font-semibold">
                     Recuperar estado actual
                   </button>
-                  <button type="button" disabled={busy} onClick={onUseGuided}
-                    className="rounded-lg border border-amber-300 bg-white px-3 py-2 text-xs font-semibold">
-                    Usar preparación guiada
-                  </button>
                 </div>
               </div>
             ) : null}
