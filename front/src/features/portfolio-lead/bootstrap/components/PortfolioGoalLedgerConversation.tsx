@@ -47,6 +47,22 @@ function legacyAnswerTexts(sourceRefs: unknown): string[] {
     return !entry.ledgerTurnId && typeof value === 'string' && value.trim() ? [value.slice(0, 2_000)] : [];
   });
 }
+const goalFieldLabels: Record<PortfolioGoalTurn['field'], string> = {
+  outcomeStatement: 'Resultado esperado',
+  contextSummary: 'Contexto',
+  decisionToEnable: 'Decisión a habilitar',
+  businessSignalValue: 'KPI o señal',
+};
+
+function pendingChangePreview(anchor: PortfolioBootstrapAnchor, turn: PortfolioGoalTurn) {
+  const current = anchor[turn.field]?.trim() || 'Sin definir';
+  const unknown = turn.disposition === 'unknown' || turn.disposition === 'not_applicable';
+  const proposed = unknown && turn.field === 'outcomeStatement'
+    ? current
+    : unknown ? 'Se registrará como pendiente / desconocido' : turn.inputText;
+  return { label: goalFieldLabels[turn.field], current, proposed, unknown };
+}
+
 function shownDate(value: string): string {
   const date = new Date(value);
   return Number.isNaN(date.getTime())
@@ -253,7 +269,32 @@ export function PortfolioGoalLedgerConversation({ anchor, canConfirm, onSave, on
               <section className="rounded-xl border border-[#d9caff] bg-white p-4">
                 <h3 className="font-semibold text-[#182246]">Respuesta guardada, pendiente de revisión</h3>
                 <p className="mt-2 text-sm text-[#6c7695]">No se ha modificado el objetivo. Puedes incorporarla o corregirla antes de seguir.</p>
-                <p className="mt-2 rounded-lg bg-[#f7f4fe] p-3 text-sm text-[#182246]">{pending.inputText}</p>
+                {(() => {
+                  const change = pendingChangePreview(anchor, pending);
+                  return (
+                    <div className="mt-3 rounded-lg border border-[#e4e7f0] bg-[#fbfcff] p-3" aria-label="Vista previa de cambios al objetivo">
+                      <p className="text-xs font-semibold text-[#493297]">Antes de incorporar · {change.label}</p>
+                      <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                        <div className="rounded-lg bg-white p-3">
+                          <p className="text-xs font-semibold text-[#6c7695]">Valor actual</p>
+                          <p className="mt-1 whitespace-pre-wrap text-sm text-[#182246]">{change.current}</p>
+                        </div>
+                        <div className="rounded-lg bg-[#f5f0ff] p-3">
+                          <p className="text-xs font-semibold text-[#493297]">Después de incorporar</p>
+                          <p className="mt-1 whitespace-pre-wrap text-sm text-[#182246]">{change.proposed}</p>
+                        </div>
+                      </div>
+                      {change.unknown ? (
+                        <p className="mt-2 text-xs text-[#6c7695]">
+                          Esta respuesta conserva explícitamente la incertidumbre. No inventa un valor de negocio ni confirma el objetivo.
+                        </p>
+                      ) : null}
+                      <p className="mt-2 text-xs text-[#6c7695]">
+                        Incorporar modifica solo el borrador de este campo. Confirmar el objetivo es una decisión posterior.
+                      </p>
+                    </div>
+                  );
+                })()}
                 <div className="mt-3 flex flex-wrap gap-2">
                   <button type="button" disabled={busy} onClick={() => void incorporate(pending)}
                     className="rounded-lg bg-[#6446c0] px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">
@@ -295,6 +336,16 @@ export function PortfolioGoalLedgerConversation({ anchor, canConfirm, onSave, on
                   <button type="button" disabled={busy} onClick={() => { setDisposition('user_declared'); pendingKeyRef.current = null; }}
                     className="rounded-lg border border-[#dce1ee] px-3 py-2 text-xs font-semibold text-[#586582]">Respuesta propia</button>
                 </div>
+                {isCorrecting ? (
+                  <button type="button" disabled={busy} onClick={() => {
+                    setEditingPending(false);
+                    setAnswer('');
+                    setDisposition('user_declared');
+                    pendingKeyRef.current = null;
+                  }} className="rounded-lg border border-[#dce1ee] bg-white px-3 py-2 text-xs font-semibold text-[#586582]">
+                    Cancelar corrección
+                  </button>
+                ) : null}
                 <p className="text-xs text-[#6c7695]">Tipo: {disposition === 'unknown' ? 'desconocido' : disposition === 'not_applicable' ? 'no aplicable' : 'declaración propia'}. Guardar aquí no confirma ni actualiza automáticamente el Anchor.</p>
                 <button type="submit" disabled={busy || !answer.trim()} className="rounded-lg bg-[#6446c0] px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50">
                   {submitting ? 'Guardando…' : 'Guardar respuesta provisional'}
