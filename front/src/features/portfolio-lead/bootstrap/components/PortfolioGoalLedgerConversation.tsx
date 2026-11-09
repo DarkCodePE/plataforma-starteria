@@ -88,6 +88,7 @@ export function PortfolioGoalLedgerConversation({ anchor, canConfirm, onSave, on
   const [editingPending, setEditingPending] = useState(false);
   const [incorporatedLocally, setIncorporatedLocally] = useState<string[]>([]);
   const [notice, setNotice] = useState<string | null>(null);
+  const [showFullHistory, setShowFullHistory] = useState(false);
   const pendingKeyRef = useRef<string | null>(null);
   const lockRef = useRef(false);
 
@@ -225,10 +226,27 @@ export function PortfolioGoalLedgerConversation({ anchor, canConfirm, onSave, on
         {loadStatus === 'ready' ? (
           <>
             <section role="region" aria-label="Historial de respuestas E2" className="space-y-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <h3 className="text-sm font-semibold text-[#182246]">Tu conversación</h3>
+                  <p className="text-xs text-[#6c7695]">
+                    {turns.filter((turn) => isAccepted(turn)).length} incorporadas · {turns.filter((turn) => superseded.has(turn.id)).length} corregidas · {turns.length} registradas
+                  </p>
+                </div>
+                {turns.length > 1 ? (
+                  <button type="button" aria-pressed={showFullHistory} onClick={() => setShowFullHistory((current) => !current)}
+                    className="rounded-lg border border-[#dce1ee] bg-white px-3 py-2 text-xs font-semibold text-[#493297]">
+                    {showFullHistory ? 'Ver conversación actual' : 'Ver historial completo'}
+                  </button>
+                ) : null}
+              </div>
               {turns.length === 0 ? (
                 <p className="rounded-xl border border-dashed border-[#d9dceb] bg-white p-4 text-sm text-[#6c7695]">Aún no hay turnos en este registro. Las respuestas antiguas se mantienen aparte.</p>
-              ) : turns.map((turn) => (
+              ) : turns.filter((turn) => showFullHistory || (!superseded.has(turn.id) && turn.disposition !== 'retracted')).map((turn) => (
                 <article key={turn.id} className="ml-auto max-w-[92%] rounded-2xl rounded-tr-sm bg-[#ede8fd] p-4 text-sm text-[#182246]">
+                  <p className="mb-2 text-xs font-semibold text-[#493297]">
+                    {superseded.has(turn.id) ? 'Versión corregida · solo historial' : turn.disposition === 'retracted' ? 'Respuesta retractada · solo historial' : isAccepted(turn) ? 'Incorporada al borrador' : turn.anchorVersion !== anchor.version ? 'De otra versión del objetivo' : 'Pendiente de tu revisión'}
+                  </p>
                   <p className="whitespace-pre-wrap">{turn.inputText}</p>
                   <p className="mt-2 text-xs text-[#6446c0]">
                     {turn.disposition === 'unknown' ? 'Desconocido declarado' : turn.disposition === 'not_applicable' ? 'No aplicable' : turn.disposition === 'retracted' ? 'Respuesta retractada' : 'Declarado por ti'}
@@ -239,6 +257,9 @@ export function PortfolioGoalLedgerConversation({ anchor, canConfirm, onSave, on
                 </article>
               ))}
             </section>
+            {!showFullHistory && turns.some((turn) => superseded.has(turn.id) || turn.disposition === 'retracted') ? (
+              <p className="text-xs text-[#6c7695]">Las respuestas corregidas o retractadas siguen disponibles en «Ver historial completo» y no se ocultan del registro.</p>
+            ) : null}
             {legacy.length > 0 ? (
               <details className="rounded-xl border border-[#dce1ee] bg-white p-3 text-sm">
                 <summary className="cursor-pointer font-semibold text-[#493297]">Respuestas anteriores a este modo</summary>
@@ -321,7 +342,14 @@ export function PortfolioGoalLedgerConversation({ anchor, canConfirm, onSave, on
             ) : null}
             {stalePending ? (
               <div role="alert" className="rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900">
-                Una respuesta pendiente pertenece a otra versión del objetivo. No se incorporará automáticamente. Recarga y revisa los cambios antes de continuar.
+                <p>Una respuesta pendiente pertenece a una versión anterior del objetivo. No se incorporará automáticamente.</p>
+                <p className="mt-2 text-sm">La respuesta sigue en el historial. Recupera el estado actual para revisar si necesitas volver a responder o utiliza la preparación guiada.</p>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <button type="button" disabled={busy} onClick={() => void reload()}
+                    className="rounded-lg border border-amber-300 bg-white px-3 py-2 text-xs font-semibold">
+                    Recuperar estado actual
+                  </button>
+                </div>
               </div>
             ) : null}
             {activeQuestion && (canWrite || isCorrecting) ? (
@@ -329,7 +357,13 @@ export function PortfolioGoalLedgerConversation({ anchor, canConfirm, onSave, on
                 <label className="block text-sm font-semibold text-[#182246]">
                   Tu respuesta de Objetivo
                   <textarea value={answer} maxLength={2_000} rows={3} disabled={busy}
-                    onChange={(event) => { setAnswer(event.target.value); pendingKeyRef.current = null; }}
+                    onChange={(event) => {
+                      setAnswer(event.target.value);
+                      // A manually edited answer is a declaration, not an unknown/not-applicable marker.
+                      // The user can explicitly select those dispositions again below.
+                      setDisposition('user_declared');
+                      pendingKeyRef.current = null;
+                    }}
                     placeholder="Describe lo que quieres conseguir; puedes dejar algo como desconocido"
                     className="mt-2 w-full rounded-lg border border-[#dbe0ef] px-3 py-2 font-normal disabled:opacity-50" />
                 </label>
@@ -351,7 +385,11 @@ export function PortfolioGoalLedgerConversation({ anchor, canConfirm, onSave, on
                     Cancelar corrección
                   </button>
                 ) : null}
-                <p className="text-xs text-[#6c7695]">Tipo: {disposition === 'unknown' ? 'desconocido' : disposition === 'not_applicable' ? 'no aplicable' : 'declaración propia'}. Guardar aquí no confirma ni actualiza automáticamente el Anchor.</p>
+                <p role="status" className="text-xs text-[#6c7695]">
+                  Se guardará como {disposition === 'unknown' ? 'información que aún no conoces' : disposition === 'not_applicable' ? 'información que no aplica' : 'tu respuesta declarada'}.
+                  {isCorrecting ? ' Esta corrección conservará la versión anterior en el historial.' : ''}
+                  {' '}No cambiará el objetivo hasta que revises y aceptes su incorporación.
+                </p>
                 <button type="submit" disabled={busy || !answer.trim()} className="rounded-lg bg-[#6446c0] px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50">
                   {submitting ? 'Guardando…' : 'Guardar respuesta provisional'}
                 </button>
@@ -378,10 +416,12 @@ export function PortfolioGoalLedgerConversation({ anchor, canConfirm, onSave, on
             </div>
           ))}
         </dl>
-        <p className="text-xs text-[#6c7695]">
-          {snapshot?.turns.length ?? 0} respuestas registradas en el nuevo ledger.
-          No se infieren metas, costes ni resultados.
-        </p>
+        <div role="status" className="rounded-lg bg-[#f7f7fc] p-3 text-xs text-[#586582]">
+          <p className="font-semibold text-[#182246]">
+            {pending ? 'Una respuesta espera tu revisión' : stalePending ? 'Hay una respuesta de una versión anterior' : awaitingAnchorRefresh ? 'Cambio incorporado; recuperando ficha' : canConfirm ? 'Ficha lista para confirmar' : 'Ficha en construcción'}
+          </p>
+          <p className="mt-1">{snapshot?.turns.length ?? 0} respuestas registradas. Los datos no confirmados no se convierten automáticamente en resultados de negocio.</p>
+        </div>
         {canConfirm && !pending && !stalePending ? (
           <button type="button" onClick={() => void confirm()} disabled={busy}
             className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-[#182246] px-3 py-2.5 text-sm font-semibold text-white disabled:opacity-50">

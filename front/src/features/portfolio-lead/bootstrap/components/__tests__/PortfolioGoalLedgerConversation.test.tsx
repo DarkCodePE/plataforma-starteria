@@ -127,6 +127,72 @@ describe('KAN-253 B3 user-governed E2 ledger experience', () => {
     expect(within(preview).getByText(/conserva explícitamente la incertidumbre/)).toBeVisible();
   });
 
+  it('converts an unknown suggestion to a declared answer when the user edits it', async () => {
+    const user = userEvent.setup();
+    render(<PortfolioGoalLedgerConversation {...props()} />);
+    await screen.findByText('¿Qué cambio quieres validar?');
+    await user.click(screen.getByRole('button', { name: 'No lo sé todavía' }));
+    const field = screen.getByLabelText('Tu respuesta de Objetivo');
+    await user.clear(field);
+    await user.type(field, 'Quiero probar desayunos a oficinas cercanas.');
+    expect(screen.getByText(/Se guardará como tu respuesta declarada/)).toBeVisible();
+    await user.click(screen.getByRole('button', { name: 'Guardar respuesta provisional' }));
+    await waitFor(() => expect(submit).toHaveBeenCalledTimes(1));
+    expect(submit.mock.calls[0][1]).toMatchObject({
+      disposition: 'user_declared', inputText: 'Quiero probar desayunos a oficinas cercanas.',
+    });
+  });
+
+  it('offers recovery and guided fallback for a stale pending turn without writing', async () => {
+    getTurns.mockResolvedValue({ version: 1, turns: [{ ...firstTurn, anchorVersion: 1 }] });
+    const onUseGuided = vi.fn();
+    const onSave = vi.fn();
+    render(<PortfolioGoalLedgerConversation {...props({ onUseGuided, onSave })} />);
+    expect(await screen.findByText(/Una respuesta pendiente pertenece a una versión anterior/)).toBeVisible();
+    expect(screen.getByRole('button', { name: 'Recuperar estado actual' })).toBeEnabled();
+    await userEvent.click(screen.getByRole('button', { name: 'Usar preparación guiada' }));
+    expect(onUseGuided).toHaveBeenCalledTimes(1);
+    expect(onSave).not.toHaveBeenCalled();
+    expect(submit).not.toHaveBeenCalled();
+  });
+
+  it('focuses the current conversation and lets the user inspect corrected history', async () => {
+    const user = userEvent.setup();
+    getTurns.mockResolvedValue({ version: 2, turns: [
+      firstTurn,
+      { ...firstTurn, id: 'turn-2', version: 2, inputText: 'Revisar pedidos a oficinas con menos alcance.',
+        supersedesTurnId: 'turn-1' },
+    ] });
+    render(<PortfolioGoalLedgerConversation {...props()} />);
+    const history = await screen.findByRole('region', { name: 'Historial de respuestas E2' });
+    expect(within(history).getByText('Revisar pedidos a oficinas con menos alcance.')).toBeVisible();
+    expect(within(history).queryByText('Validar pedidos a oficinas cercanas.')).not.toBeInTheDocument();
+    const toggle = screen.getByRole('button', { name: 'Ver historial completo' });
+    expect(toggle).toHaveAttribute('aria-pressed', 'false');
+    await user.click(toggle);
+    expect(within(history).getByText('Validar pedidos a oficinas cercanas.')).toBeVisible();
+    expect(within(history).getByText('Versión corregida · solo historial')).toBeVisible();
+    expect(screen.getByRole('button', { name: 'Ver conversación actual' })).toHaveAttribute('aria-pressed', 'true');
+    await user.click(screen.getByRole('button', { name: 'Ver conversación actual' }));
+    expect(within(history).queryByText('Validar pedidos a oficinas cercanas.')).not.toBeInTheDocument();
+    expect(submit).not.toHaveBeenCalled();
+  });
+
+  it('keeps legacy and retracted turns traceable without treating them as current answers', async () => {
+    getTurns.mockResolvedValue({ version: 2, turns: [
+      { ...firstTurn, disposition: 'retracted' },
+      { ...firstTurn, id: 'turn-2', version: 2, inputText: 'Respuesta vigente', supersedesTurnId: 'turn-1' },
+    ] });
+    render(<PortfolioGoalLedgerConversation {...props()} />);
+    const history = await screen.findByRole('region', { name: 'Historial de respuestas E2' });
+    // The pending-review preview repeats the answer by design; assert inside the conversation only.
+    expect(within(history).getByText('Respuesta vigente')).toBeVisible();
+    expect(within(history).queryByText(firstTurn.inputText)).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Ver historial completo' }));
+    expect(within(history).getByText(firstTurn.inputText)).toBeInTheDocument();
+    expect(within(history).getByText('Versión corregida · solo historial')).toBeInTheDocument();
+  });
+
   it('reenters with an unincorporated turn and does not repeat the question or write', async () => {
     getTurns.mockResolvedValue({ version: 1, turns: [firstTurn] });
     render(<PortfolioGoalLedgerConversation {...props()} />);
