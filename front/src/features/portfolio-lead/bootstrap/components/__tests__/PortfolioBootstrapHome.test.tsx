@@ -465,7 +465,10 @@ describe('PortfolioBootstrapHome — frozen Copilot-first composition', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Enviar respuesta' }));
 
     await waitFor(() => expect(save).toHaveBeenCalledWith(expect.objectContaining({ outcomeStatement: 'Reducir el abandono durante la activación de nuevos clientes.' })));
-    expect(screen.getByText('Reducir el abandono durante la activación de nuevos clientes.')).toBeInTheDocument();
+    expect(within(screen.getByTestId('portfolio-objective-card'))
+      .getByText('Reducir el abandono durante la activación de nuevos clientes.')).toBeInTheDocument();
+    expect(within(screen.getByRole('region', { name: 'Historial del objetivo' }))
+      .getByText('Reducir el abandono durante la activación de nuevos clientes.')).toBeInTheDocument();
     expect(screen.getByText('¿Qué te gustaría poder decidir mejor cuando tengas más claridad sobre este objetivo?')).toBeInTheDocument();
     expect(screen.getByText(/He actualizado el borrador con tu respuesta/i)).toBeInTheDocument();
   });
