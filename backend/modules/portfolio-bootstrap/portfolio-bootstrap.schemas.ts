@@ -108,8 +108,8 @@ export const updateAnchorBodySchema = z.object({
   businessSignalStatus: z.enum(['confirmed', 'proxy', 'suggested', 'unknown', 'conflicting']).optional(),
   businessSignalValue: z.string().min(1).nullable().optional(),
   sourceRefs: z.unknown().optional(),
-}).strict().refine((value) => Object.keys(value).length > 0, {
-  message: 'Debe enviar al menos un campo para actualizar.',
+}).strict().refine((value) => Object.keys(value).some((field) => field !== 'expectedVersion'), {
+  message: 'Debe enviar al menos un campo de negocio para actualizar.',
 });
 
 export const pasteWorkItemsBodySchema = z.object({

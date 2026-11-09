@@ -6,6 +6,7 @@ import { can, type Permission } from '../../shared/authz/permissions';
 import { ScopedPortfolioAccessService } from '../../shared/authz/scoped-portfolio-access.service';
 import { logger } from '../../shared/utils/logger';
 import { deriveAnchorStatus, derivePortfolioAnchorFromContinuation } from './portfolio-anchor-derivation';
+import { validateGoalLedgerAnchorAdoption } from './portfolio-bootstrap-goal-turn-adoption';
 import { derivePortfolioAnchorFromPortfolioSetup } from './portfolio-setup-anchor-derivation';
 import { validatePortfolioSetupArrival } from '../portfolio-entry-continuation/portfolio-setup-home-arrival.service';
 import { DeterministicPortfolioBootstrapAnalyzer, type PortfolioBootstrapAnalysisOutput, type PortfolioBootstrapAnalyzer } from './portfolio-bootstrap.analyzer';
@@ -631,6 +632,7 @@ export class PortfolioBootstrapService {
         throw AppError.conflict('El objetivo cambió. Recarga el borrador antes de incorporar esta respuesta.', 'PORTFOLIO_ANCHOR_VERSION_CONFLICT');
       }
 
+      await validateGoalLedgerAnchorAdoption(db, session.id, anchor, input.body);
       await this.recordHistory(db, anchor, 'portfolio_anchor_updated', input.authenticatedUserId);
       const nextData = {
         outcomeStatement: input.body.outcomeStatement ?? anchor.outcomeStatement,
@@ -664,6 +666,7 @@ export class PortfolioBootstrapService {
           throw AppError.conflict('El objetivo cambió. Recarga antes de incorporar.', 'PORTFOLIO_ANCHOR_VERSION_CONFLICT');
         }
         updated = await db.portfolioAnchor.findUnique({ where: { id: anchor.id } });
+        if (!updated) throw AppError.conflict('El Anchor ya no está disponible.', 'PORTFOLIO_ANCHOR_VERSION_CONFLICT');
       } else {
         // Legacy E2 callers retain their established write path.
         updated = await db.portfolioAnchor.update({
