@@ -89,6 +89,43 @@ describeDb('KAN-253 B2 goal turn ledger with disposable PostgreSQL', () => {
   afterEach(cleanup);
   afterAll(async () => { await cleanup(); await prisma.$disconnect(); });
 
+  it('allows two provisional questions without incorporating the first when opt-in is enabled', async () => {
+    process.env.PORTFOLIO_GOAL_E2_MULTI_TURN_ENABLED = 'true';
+    try {
+      await seed();
+      const before = await prisma.portfolioAnchor.findUnique({ where: { id: anchorId } });
+      const client = app(userId);
+      const firstPlan = await request(client)
+        .get(base.replace('/turns', '/plan')).expect(200);
+      expect(firstPlan.body.data.activeQuestion.id).toContain('-ledger0');
+      const first = await request(client).post(base)
+        .set('Idempotency-Key', 'multi-turn-first')
+        .send({ ...command(), questionId: firstPlan.body.data.activeQuestion.id })
+        .expect(200);
+      expect(first.body.data).toMatchObject({ version: 1, turn: { field: 'outcomeStatement' } });
+
+      const next = await request(client).get(base.replace('/turns', '/plan')).expect(200);
+      expect(next.body.data.activeQuestion).toMatchObject({
+        field: 'decisionToEnable',
+        id: `goal-preview-${anchorId}-v1-decisionToEnable-ledger1`,
+      });
+      // A stale question and ledger version may not write the second turn.
+      await request(client).post(base).set('Idempotency-Key', 'multi-turn-stale')
+        .send({ ...command(), expectedVersion: 1, questionId: firstPlan.body.data.activeQuestion.id })
+        .expect(409);
+      const second = await request(client).post(base)
+        .set('Idempotency-Key', 'multi-turn-second')
+        .send({
+          ...command(), expectedVersion: 1, questionId: next.body.data.activeQuestion.id,
+          inputText: 'Decidir si conviene ofrecer desayunos a oficinas.',
+        }).expect(200);
+      expect(second.body.data).toMatchObject({ version: 2, turn: { field: 'decisionToEnable' } });
+      expect(await prisma.portfolioAnchor.findUnique({ where: { id: anchorId } })).toEqual(before);
+    } finally {
+      delete process.env.PORTFOLIO_GOAL_E2_MULTI_TURN_ENABLED;
+    }
+  });
+
   it('persists one provisional turn and returns it on reentry without changing Anchor', async () => {
     await seed();
     const before = await prisma.portfolioAnchor.findUnique({ where: { id: anchorId } });
