@@ -184,8 +184,9 @@ describe('KAN-253 B3 user-governed E2 ledger experience', () => {
       { ...firstTurn, id: 'turn-2', version: 2, inputText: 'Respuesta vigente', supersedesTurnId: 'turn-1' },
     ] });
     render(<PortfolioGoalLedgerConversation {...props()} />);
-    expect(await screen.findByText('Respuesta vigente')).toBeVisible();
-    const history = screen.getByRole('region', { name: 'Historial de respuestas E2' });
+    const history = await screen.findByRole('region', { name: 'Historial de respuestas E2' });
+    // The pending-review preview repeats the answer by design; assert inside the conversation only.
+    expect(within(history).getByText('Respuesta vigente')).toBeVisible();
     expect(within(history).queryByText(firstTurn.inputText)).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Ver historial completo' }));
     expect(within(history).getByText(firstTurn.inputText)).toBeInTheDocument();
