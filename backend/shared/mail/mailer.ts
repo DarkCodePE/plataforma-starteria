@@ -24,6 +24,8 @@ export interface Mailer {
   readonly enabled: boolean;
   /** Send a message. Resolves to false (and logs) when the mailer is disabled. */
   send(message: MailMessage): Promise<boolean>;
+  /** Send while preserving the SMTP receipt used as delivery evidence. */
+  sendWithReceipt?(message: MailMessage): Promise<MailDeliveryReceipt>;
 }
 
 export interface MailDeliveryReceipt {
@@ -62,6 +64,10 @@ export const mailer: Mailer = {
     }
     const receipt = await sendMailWithReceipt(message);
     return receipt.acceptedByTransport;
+  },
+
+  sendWithReceipt(message: MailMessage): Promise<MailDeliveryReceipt> {
+    return sendMailWithReceipt(message);
   },
 };
 

@@ -413,6 +413,31 @@ describe('PortfolioHomeReadService — asignaciones de handoff por organización
       deliveryStatus: 'not_sent',
     });
   });
+
+  it('distingue un envío solicitado con resultado desconocido de uno nunca enviado', async () => {
+    const row = {
+      ...projection('unknown', 'org-a'),
+      handoffState: 'CREATED',
+      assignment: {
+        briefVersionId: 'brief-v1',
+        invitedEmailNormalized: 'owner@example.test',
+        deliveryAttempts: [{
+          status: 'UNKNOWN',
+          errorCategory: 'DELIVERY_OUTCOME_UNKNOWN',
+          attemptedAt: new Date('2026-11-10T09:00:00Z'),
+        }],
+      },
+    };
+    const home = await new PortfolioHomeReadService(prismaWithProjections([row]) as any)
+      .getHome('u1', { all: false, organizationIds: ['org-a'] });
+
+    expect(home.handoffAssignments[0]).toMatchObject({
+      assignmentId: 'unknown',
+      handoffState: 'CREATED',
+      deliveryStatus: 'requested',
+      latestDeliveryAttemptAt: '2026-11-10T09:00:00.000Z',
+    });
+  });
 });
 
 describe('PortfolioHomeReadService - Starteria Lab requests owner scope', () => {

@@ -24,6 +24,9 @@ if (!/^[a-z0-9][a-z0-9_-]*$/.test(dockerProjectName)) {
 const backendPort = Number(process.env.E2E_BACKEND_PORT || process.env.PORT || 4100);
 const frontendPort = Number(process.env.E2E_FRONTEND_PORT || 5176);
 const e2ePostgresPort = Number(process.env.E2E_POSTGRES_PORT || 55433);
+const mailpitEnabled = process.env.E2E_WITH_MAILPIT === 'true';
+const mailpitSmtpPort = Number(process.env.E2E_MAILPIT_SMTP_PORT || 11025);
+const mailpitHttpPort = Number(process.env.E2E_MAILPIT_HTTP_PORT || 18025);
 const frontendHost = process.env.E2E_FRONTEND_HOST || '127.0.0.1';
 const backendHost = process.env.E2E_BACKEND_HOST || '127.0.0.1';
 const localStorageDir = path.join(
@@ -32,6 +35,7 @@ const localStorageDir = path.join(
 );
 const baseURL = process.env.E2E_BASE_URL || `http://${frontendHost}:${frontendPort}`;
 const backendHealthURL = process.env.E2E_BACKEND_HEALTH_URL || `http://${backendHost}:${backendPort}/api/health`;
+const mailpitURL = process.env.E2E_MAILPIT_URL || `http://127.0.0.1:${mailpitHttpPort}`;
 const fullStackPortfolioEntryFlag = '--portfolio-entry-full-stack-test';
 const semanticE1TestFlag = '--portfolio-semantic-e1-test';
 const postgresConfirmationIntegrationFlag = '--portfolio-entry-postgres-confirmation-test';
@@ -127,6 +131,7 @@ async function assertRunIsolation() {
     [backendPort, 'backend'],
     [frontendPort, 'frontend'],
     ...(process.env.E2E_SKIP_DOCKER === 'true' ? [] : [[e2ePostgresPort, 'postgres'] as [number, string]]),
+    ...(mailpitEnabled ? [[mailpitSmtpPort, 'mailpit-smtp'], [mailpitHttpPort, 'mailpit-http']] as Array<[number, string]> : []),
   ] as const;
   if (new Set(ports.map(([port]) => port)).size !== ports.length) {
     throw new Error(`E2E backend, frontend, and postgres ports must be distinct: ${ports.map(([port]) => port).join(', ')}`);
@@ -260,6 +265,17 @@ async function main() {
     LOCAL_STORAGE_DIR: localStorageDir,
     INITIAL_REVIEW_AI: process.env.INITIAL_REVIEW_AI || '',
     PDF_EXTRACTION_E2E_MODE: process.env.PDF_EXTRACTION_E2E_MODE || 'terminal-failed',
+    ...(mailpitEnabled ? {
+      SMTP_HOST: '127.0.0.1',
+      SMTP_PORT: String(mailpitSmtpPort),
+      SMTP_SECURE: 'false',
+      SMTP_USER: '',
+      SMTP_PASS: '',
+      PILOT_LEAD_NOTIFY_FROM: 'sandbox@starteria.test',
+      HANDOFF_EMAIL_TRANSPORT_MODE: 'sandbox',
+      HANDOFF_INVITATION_PUBLIC_BASE_URL: baseURL,
+      E2E_MAILPIT_URL: mailpitURL,
+    } : {}),
   };
 
   fs.mkdirSync(env.LOCAL_STORAGE_DIR, { recursive: true });
@@ -275,13 +291,17 @@ async function main() {
     // so the waitForTcp gate below is satisfied while postgres is still booting and
     // the next step (prisma provisioning) fails with "Can't reach database server".
     dockerProjectOwnedByRun = true;
-    runChecked(dockerCmd, ['compose', '-f', 'docker-compose.e2e.yml', '-p', dockerProjectName, 'up', '-d', '--wait', 'postgres'], repoRoot, env);
+    runChecked(dockerCmd, ['compose', '-f', 'docker-compose.e2e.yml', '-p', dockerProjectName, 'up', '-d', '--wait', 'postgres', ...(mailpitEnabled ? ['mailpit'] : [])], repoRoot, env);
   } else {
     console.log('[E2E] E2E_SKIP_DOCKER=true; using existing E2E_DATABASE_URL');
   }
   const postgresTarget = parsePostgresHostPort(adminDatabaseURL);
   console.log(`[E2E] Wait for PostgreSQL at ${postgresTarget.host}:${postgresTarget.port}`);
   await waitForTcp(postgresTarget.host, postgresTarget.port, 'postgres');
+  if (mailpitEnabled) {
+    console.log(`[E2E] Verify isolated Mailpit at ${mailpitURL}`);
+    await waitForURL(`${mailpitURL}/livez`, 'mailpit');
+  }
 
   console.log('[E2E] Provision database');
   runChecked(npmCmd, ['run', 'db:e2e:provision'], frontRoot, env);

@@ -80,8 +80,11 @@ export function PortfolioOverviewHome({
     if (assignment.deliveryStatus === 'failed') {
       return [{ key: assignment.assignmentId, title: 'Error al enviar', detail: assignmentDetail(assignment) }];
     }
+    if (assignment.deliveryStatus === 'requested') {
+      return [{ key: assignment.assignmentId, title: 'Envío solicitado, resultado pendiente', detail: assignmentDetail(assignment) }];
+    }
     if (assignment.handoffState === 'CREATED') {
-      return [{ key: assignment.assignmentId, title: 'Pendiente de envío', detail: assignmentDetail(assignment) }];
+      return [{ key: assignment.assignmentId, title: 'Preparada, sin enviar', detail: assignmentDetail(assignment) }];
     }
     if (assignment.handoffState === 'REJECTED' && !assignment.portfolioResponse) {
       return [{
@@ -156,7 +159,7 @@ export function PortfolioOverviewHome({
       ) : resumableSessions.length === 0 ? (
         <div className="mt-5 rounded-xl border border-dashed border-[#cdd5e7] bg-[#fbfcff] p-5">
           <p className="font-semibold text-[#182246]">No hay preparaciones pendientes</p>
-          <p className="mt-1 text-sm text-[#6c7695]">Cuando inicies una conversación o un nuevo espacio desde aquí, podrás regresar y continuar sin perder su contexto.</p>
+          <p className="mt-1 text-sm text-slate-600">Cuando inicies una conversación o un nuevo espacio desde aquí, podrás regresar y continuar sin perder su contexto.</p>
         </div>
       ) : (
         <div className="mt-5 grid gap-3 md:grid-cols-2">
@@ -434,6 +437,7 @@ function workItemNextAction(status: string): string {
 
 function assignmentNextAction(assignment: PortfolioHomeReadModel['handoffAssignments'][number]): string {
   if (assignment.deliveryStatus === 'failed') return 'Reintentar envío';
+  if (assignment.deliveryStatus === 'requested') return 'Conciliar antes de reenviar';
   const actions: Record<string, string> = {
     CREATED: 'Revisar y enviar', SENT: 'Esperar respuesta', VIEWED: 'Esperar respuesta',
     ACCEPTED: 'Iniciar de forma explícita', STARTED: 'Abrir Initiative Overview',
@@ -450,8 +454,9 @@ function formatTrace(value: unknown): string {
 
 function assignmentStatusLabel(assignment: PortfolioHomeReadModel['handoffAssignments'][number]): string {
   if (assignment.deliveryStatus === 'failed') return 'Falló el envío';
+  if (assignment.deliveryStatus === 'requested') return 'Envío solicitado, resultado pendiente';
   const labels: Record<string, string> = {
-    CREATED: 'Pendiente de envío', SENT: 'Procesada por SMTP', VIEWED: 'Enlace abierto',
+    CREATED: 'Preparada, sin enviar', SENT: 'Enviada (SMTP aceptado)', VIEWED: 'Enlace abierto',
     ACCEPTED: 'Aceptada', REJECTED: 'Rechazada', REVOKED: 'Revocada', EXPIRED: 'Expirada', STARTED: 'Iniciada',
   };
   return labels[assignment.handoffState] ?? assignment.handoffState;

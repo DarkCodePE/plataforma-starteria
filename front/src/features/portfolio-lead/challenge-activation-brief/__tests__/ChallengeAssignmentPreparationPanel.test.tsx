@@ -261,7 +261,7 @@ describe('ChallengeAssignmentPreparationPanel - PL-06A multiple preparation', ()
       members: [{ identityKey: 'owner@starteria.test', emailNormalized: 'owner@starteria.test', role: 'OWNER' }],
     }, expect.any(String)));
     expect(screen.getByRole('heading', { name: 'Asignaciones preparadas' })).toBeInTheDocument();
-    expect(screen.getByText('Pendiente de envío')).toBeInTheDocument();
+    expect(screen.getByText('Preparada, sin enviar')).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: '+ Asignar responsable' }));
     await user.type(screen.getByLabelText('Persona responsable'), 'second@starteria.test');
     await user.click(screen.getByRole('button', { name: 'Revisar asignación' }));
@@ -311,7 +311,7 @@ describe('ChallengeAssignmentPreparationPanel - PL-06A multiple preparation', ()
     await waitFor(() => expect(api.sendHandoffInvitationBatch).toHaveBeenCalledWith('challenge-1', [
       { assignmentId: 'assignment-1', expectedVersion: 1 },
     ], expect.any(String)));
-    expect(screen.getByText('1 envío procesado')).toBeInTheDocument();
+    expect(screen.getByText('1 enviada (SMTP aceptado)')).toBeInTheDocument();
     expect(api.sendHandoffInvitationBatch).toHaveBeenCalledTimes(1);
     expect(onCompleteSetup).not.toHaveBeenCalled();
     await user.click(screen.getByRole('button', { name: 'Finalizar configuración y ver mi portafolio' }));
@@ -354,9 +354,9 @@ describe('ChallengeAssignmentPreparationPanel - PL-06A multiple preparation', ()
     await user.click(screen.getByRole('button', { name: 'Revisar y enviar seleccionados (2)' }));
     await user.click(screen.getByRole('button', { name: 'Confirmar envío de 2 invitaciones' }));
 
-    expect(await screen.findByText('1 envío procesado')).toBeInTheDocument();
+    expect(await screen.findByText('1 enviada (SMTP aceptado)')).toBeInTheDocument();
     expect(screen.getByText('1 error al enviar')).toBeInTheDocument();
-    expect(screen.getByText('1 sin enviar')).toBeInTheDocument();
+    expect(screen.getByText('1 preparados sin enviar')).toBeInTheDocument();
     expect(screen.getByText('Motivo técnico: SMTP_TEMPORARY')).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Reintentar solo fallidas' }));
     await waitFor(() => expect(api.sendHandoffInvitationBatch).toHaveBeenLastCalledWith('challenge-1', [
@@ -379,7 +379,7 @@ describe('ChallengeAssignmentPreparationPanel - PL-06A multiple preparation', ()
     await user.click(screen.getByRole('button', { name: 'Revisar y enviar seleccionados (1)' }));
     await user.click(screen.getByRole('button', { name: 'Confirmar envío de 1 invitación' }));
 
-    expect(await screen.findByText('1 resultado por conciliar')).toBeInTheDocument();
+    expect(await screen.findByText('1 envío solicitado por conciliar')).toBeInTheDocument();
     expect(screen.getByRole('alert')).toHaveTextContent('No reenviaremos automáticamente');
     expect(screen.queryByRole('button', { name: 'Reintentar solo fallidas' })).not.toBeInTheDocument();
     expect(screen.getByText('Motivo técnico: DELIVERY_OUTCOME_UNKNOWN')).toBeInTheDocument();
@@ -453,14 +453,14 @@ describe('ChallengeAssignmentPreparationPanel - PL-06A multiple preparation', ()
     ]);
     render(<ChallengeAssignmentPreparationPanel target={target} />);
 
-    expect(await screen.findByText('Pendiente de envío')).toBeInTheDocument();
-    expect(screen.getByText('Envío procesado')).toBeInTheDocument();
+    expect(await screen.findByText('Preparada, sin enviar')).toBeInTheDocument();
+    expect(screen.getByText('Enviada (SMTP aceptado)')).toBeInTheDocument();
     expect(screen.getByText('Enlace abierto')).toBeInTheDocument();
     expect(screen.getByText('Aceptada')).toBeInTheDocument();
     expect(screen.getByText('Rechazada')).toBeInTheDocument();
     expect(screen.getByText('Error al enviar')).toBeInTheDocument();
     expect(screen.getByRole('region', { name: 'Qué significa cada estado' })).toHaveTextContent(/enlace abierto: se abrió el enlace seguro; no equivale a aceptación/i);
-    expect(screen.getByRole('region', { name: 'Qué significa cada estado' })).toHaveTextContent(/envío procesado: el servidor aceptó el mensaje; no acredita entrega externa ni apertura/i);
+    expect(screen.getByRole('region', { name: 'Qué significa cada estado' })).toHaveTextContent(/enviada \(SMTP aceptado\): el servidor aceptó el mensaje; no acredita entrega externa ni apertura/i);
     expect(screen.queryByRole('button', { name: 'Editar asignación para sent@starteria.test' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Editar asignación para viewed@starteria.test' })).not.toBeInTheDocument();
   });

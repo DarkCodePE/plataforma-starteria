@@ -121,8 +121,19 @@ Prisma con `PORTFOLIO_ENTRY_DB_INTEGRATION=1` contra la base desechable `starter
 como evidencia la sola migración y seed.
 
 Variables útiles: `E2E_SKIP_DOCKER=1` (usar una base que ya levantaste, con `E2E_DATABASE_URL`),
-`E2E_KEEP_DOCKER=1` (no bajar el contenedor al terminar), `E2E_BASE_URL`. Credenciales y flags
-tienen defaults de prueba en `run-e2e.ts`; no pongas secretos reales.
+`E2E_KEEP_DOCKER=1` (no bajar el contenedor al terminar), `E2E_BASE_URL`. Para certificar un
+delivery real sin salir del entorno de test, `E2E_WITH_MAILPIT=true` levanta un Mailpit aislado
+junto a PostgreSQL (`127.0.0.1:11025` SMTP y `127.0.0.1:18025` HTTP por defecto; puertos
+configurables con `E2E_MAILPIT_SMTP_PORT` y `E2E_MAILPIT_HTTP_PORT`). `run-e2e.ts` fuerza el modo
+`sandbox`, conserva el receipt SMTP como evidencia y elimina ambos contenedores al terminar. Ejemplo:
+
+```bash
+E2E_WITH_MAILPIT=true npm run test:e2e -- e2e/kan232-g5-home-final.spec.ts --workers=1
+```
+
+Credenciales y flags tienen defaults de prueba en `run-e2e.ts`; no pongas secretos reales. La
+aceptación SMTP acredita que el transporte aceptó el mensaje, no entrega externa, apertura ni
+aceptación del destinatario.
 
 Al terminar, el log muestra varios `prisma:error ... terminating connection due to administrator
 command` (`E57P01`): es el contenedor de Postgres bajando mientras el backend todavía tiene

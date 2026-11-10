@@ -52,7 +52,11 @@ function fixture(type: 'DEMO' | 'EARLY_ACCESS' = 'DEMO') {
     },
   };
   const db = { $transaction: vi.fn(async (callback: (client: unknown) => Promise<unknown>) => callback(tx)) } as unknown as PrismaClient;
-  const transport: Mailer = { enabled: true, send: vi.fn(async () => true) };
+  const transport: Mailer = {
+    enabled: true,
+    send: vi.fn(async () => true),
+    sendWithReceipt: vi.fn(async () => ({ acceptedByTransport: true, acceptedRecipients: [], rejectedRecipients: [] })),
+  };
   const service = new ConversionSubmissionService(db, () => config, transport);
   return { rows, session, source, config, tx, db, transport, service, setFailCreate: () => { failCreate = true; } };
 }

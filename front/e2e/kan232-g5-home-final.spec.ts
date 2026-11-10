@@ -1,11 +1,11 @@
 import { PrismaClient } from '@prisma/client';
-import { createHash } from 'node:crypto';
 import { expect, request as pwRequest, test, type APIRequestContext, type Page } from '@playwright/test';
 import * as XLSX from 'xlsx';
+import axe from 'axe-core';
 
 const prisma = new PrismaClient();
 const baseURL = process.env.E2E_BASE_URL ?? 'http://127.0.0.1:5176';
-const labRecipients = ['fabio.merino.97@gmail.com', 'orlandokuanb@gmail.com'];
+const mailpitURL = process.env.E2E_MAILPIT_URL ?? '';
 
 type Lead = Awaited<ReturnType<typeof registerLead>>;
 type CanonicalChallenge = { challengeId: string; briefId?: string; briefVersionId?: string };
@@ -76,6 +76,31 @@ async function loginUi(page: Page, lead: Pick<Lead, 'email' | 'password'>) {
   await page.locator('input[type="password"]').fill(lead.password);
   await page.getByRole('button', { name: 'Entrar' }).click();
   await expect(page).toHaveURL(/\/portfolio\/inicio/, { timeout: 20_000 });
+}
+
+async function loginParticipantUi(page: Page, participant: { email: string; password: string }) {
+  await page.goto('/auth');
+  await page.getByPlaceholder('tu@empresa.com').fill(participant.email);
+  await page.locator('input[type="password"]').fill(participant.password);
+  await page.getByRole('button', { name: 'Entrar' }).click();
+  await expect(page).not.toHaveURL(/\/auth/, { timeout: 20_000 });
+}
+
+async function assertWcagAA(page: Page, selector: string) {
+  await page.addScriptTag({ content: axe.source });
+  const violations = await page.evaluate(async (target) => {
+    const root = document.querySelector(target);
+    if (!root) return [{ id: 'missing-target', impact: 'critical', nodes: 1 }];
+    const result = await (window as typeof window & { axe: typeof axe }).axe.run(root, {
+      runOnly: { type: 'tag', values: ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'] },
+    });
+    return result.violations.map((item) => ({
+      id: item.id,
+      impact: item.impact,
+      nodes: item.nodes.map((node) => ({ target: node.target, html: node.html, summary: node.failureSummary })),
+    }));
+  }, selector);
+  expect(violations).toEqual([]);
 }
 
 async function createAnchoredSession(api: APIRequestContext, lead: Lead) {
@@ -238,26 +263,32 @@ async function createLabRequest(api: APIRequestContext, lead: Lead, brief: Requi
   expect(await prisma.portfolioLabRequest.count({
     where: { organizationId: lead.organizationId, challengeId: brief.challengeId, briefVersionId: brief.briefVersionId },
   })).toBe(1);
+  const persisted = await prisma.portfolioLabRequest.findUniqueOrThrow({ where: { id: requestId } });
+  expect(persisted.notificationStatus).toBe('NOTIFIED');
+  expect(persisted.providerMessageRef).toBeTruthy();
+  await waitForMailpit([requestId]);
   return requestId;
 }
 
-async function acceptLabNotification(lead: Lead, requestId: string, suffix: string) {
-  await prisma.portfolioLabNotificationAttempt.create({
-    data: {
-      requestId,
-      actorId: lead.userId,
-      idempotencyKeyHash: `kan232-accepted-${lead.stamp}-${suffix}`,
-      payloadHash: `kan232-payload-${lead.stamp}-${suffix}`,
-      status: 'ACCEPTED',
-      acceptedRecipients: labRecipients,
-      providerMessageRef: `kan232-smtp-${lead.stamp}-${suffix}`,
-      completedAt: new Date(),
-    },
-  });
-  await prisma.portfolioLabRequest.update({
-    where: { id: requestId },
-    data: { notificationStatus: 'NOTIFIED', providerMessageRef: `kan232-smtp-${lead.stamp}-${suffix}`, lastNotificationError: null },
-  });
+async function waitForMailpit(needles: string[]): Promise<string> {
+  if (!mailpitURL) throw new Error('E2E_MAILPIT_URL is required; simulated delivery evidence is not accepted.');
+  const deadline = Date.now() + 30_000;
+  while (Date.now() < deadline) {
+    const listing = await fetch(`${mailpitURL}/api/v1/messages?limit=100`);
+    if (listing.ok) {
+      const body = await listing.json() as { messages?: Array<Record<string, unknown>>; Messages?: Array<Record<string, unknown>> };
+      for (const summary of body.messages ?? body.Messages ?? []) {
+        const id = summary.ID ?? summary.Id ?? summary.id;
+        if (!id) continue;
+        const detail = await fetch(`${mailpitURL}/api/v1/message/${encodeURIComponent(String(id))}`);
+        if (!detail.ok) continue;
+        const serialized = JSON.stringify(await detail.json());
+        if (needles.every((needle) => serialized.toLowerCase().includes(needle.toLowerCase()))) return serialized;
+      }
+    }
+    await new Promise((resolve) => setTimeout(resolve, 500));
+  }
+  throw new Error(`Mailpit did not capture evidence containing: ${needles.join(', ')}`);
 }
 
 async function createTeamAssignment(
@@ -290,53 +321,39 @@ async function createTeamAssignment(
     failOnStatusCode: false,
   });
   expect(stale.status()).toBe(409);
-  await prisma.portfolioHandoffDeliveryAttempt.create({
-    // External SMTP is intentionally the sole fixture boundary in this browser journey.
-    // PL-06 delivery regressions certify the invitation command, transport receipt and
-    // idempotency; from here G5 consumes the resulting durable SMTP_ACCEPTED/SENT state.
-    data: {
-      assignmentId: assignment.id,
-      status: 'SUCCEEDED',
-      providerMessageRef: `kan232-team-smtp-${lead.stamp}-${suffix}`,
-      idempotencyKey: `kan232-team-send-${lead.stamp}-${suffix}`,
-      requestFingerprint: `kan232-team-fingerprint-${lead.stamp}-${suffix}`,
-    },
+  const sent = await api.post('/api/v1/portfolio/handoff-assignments/batch/invitations', {
+    headers: { ...bearer(lead.token), 'Idempotency-Key': `kan232-team-send-${lead.stamp}-${suffix}` },
+    data: { challengeId: brief.challengeId, items: [{ assignmentId: assignment.id, expectedVersion: assignment.version }], retryOfBatchId: null },
   });
-  await prisma.portfolioHandoffAssignment.update({
-    where: { id: assignment.id },
-    data: {
-      state: 'SENT', sentAt: new Date(), version: { increment: 1 },
-    },
+  expect(sent.status(), await sent.text()).toBe(200);
+  expect((await sent.json()).data).toMatchObject({
+    status: 'COMPLETED', succeededCount: 1,
+    results: [expect.objectContaining({ assignmentId: assignment.id, status: 'SUCCEEDED', state: 'SENT' })],
   });
-  await prisma.portfolioHandoffProjection.update({
-    where: { assignmentId: assignment.id },
-    data: {
-      handoffState: 'SENT', lastMaterialEvent: 'invitation_sent',
-      projectionVersion: { increment: 1 }, generatedAt: new Date(),
-    },
+  const serializedMail = await waitForMailpit([invitedEmail, brief.briefVersionId]);
+  const invitationToken = serializedMail.match(/\/handoff\/invitations\/([a-f0-9]{64})/i)?.[1];
+  expect(invitationToken).toBeTruthy();
+  const durableAttempt = await prisma.portfolioHandoffDeliveryAttempt.findFirstOrThrow({
+    where: { assignmentId: assignment.id }, orderBy: { attemptedAt: 'desc' },
   });
-  const invitationToken = `kan232-invitation-${lead.stamp}-${suffix}`;
-  await prisma.portfolioHandoffInvitation.create({
-    data: {
-      assignmentId: assignment.id,
-      tokenHash: createHash('sha256').update(invitationToken).digest('hex'),
-    },
-  });
+  expect(durableAttempt).toMatchObject({ status: 'SUCCEEDED', errorCategory: null });
+  expect(durableAttempt.providerMessageRef).toBeTruthy();
   const claimed = await api.post('/api/v1/public/handoff-invitations/claim', {
-    headers: bearer(recipient.token), data: { token: invitationToken },
+    headers: bearer(recipient.token), data: { token: invitationToken! },
   });
   expect(claimed.status(), await claimed.text()).toBe(200);
-  expect((await claimed.json()).data.identityClaimStatus).toBe('MATCHED');
+  const claimData = (await claimed.json()).data;
+  expect(claimData.identityClaimStatus).toBe('MATCHED');
   const responseHeaders = {
     ...bearer(recipient.token),
     'Idempotency-Key': `kan232-${outcome}-${lead.stamp}-${suffix}`,
   };
   const transition = outcome === 'accept'
     ? await api.post(`/api/v1/handoff/assignments/${assignment.id}/accept`, {
-      headers: responseHeaders, data: { expectedVersion: 2 },
+      headers: responseHeaders, data: { expectedVersion: claimData.version },
     })
     : await api.post(`/api/v1/handoff/assignments/${assignment.id}/reject`, {
-      headers: responseHeaders, data: { expectedVersion: 2, reason: 'No hay capacidad disponible.' },
+      headers: responseHeaders, data: { expectedVersion: claimData.version, reason: 'No hay capacidad disponible.' },
     });
   expect(transition.status(), await transition.text()).toBe(200);
   const transitioned = (await transition.json()).data;
@@ -409,9 +426,14 @@ async function importRows(api: APIRequestContext, lead: Lead, sessionId: string,
 }
 
 test.describe('KAN-232 G5 authenticated PostgreSQL certification', () => {
+  test.beforeAll(() => {
+    expect(process.env.E2E_WITH_MAILPIT).toBe('true');
+    expect(mailpitURL).toMatch(/^http:\/\/(127\.0\.0\.1|localhost):\d+$/);
+    expect(process.env.HANDOFF_EMAIL_TRANSPORT_MODE).toBe('sandbox');
+  });
   test.afterAll(async () => { await prisma.$disconnect(); });
 
-  test('A · 0 trabajo → E5 → Brief → Lab → Home, reentrada y aislamiento', async ({ page }) => {
+  test('A · emprendedor sin iniciativas → E5 → Brief → Lab → Home, reentrada y aislamiento', async ({ page }, testInfo) => {
     const api = await pwRequest.newContext({ baseURL });
     const lead = await registerLead(api, 'scenario-a');
     const other = await registerLead(api, 'other-tenant');
@@ -424,19 +446,6 @@ test.describe('KAN-232 G5 authenticated PostgreSQL certification', () => {
     const structure = await materializeOrganization(api, lead, sessionId, 1);
     const brief = await confirmBrief(api, lead, structure.challenges[0], 'a');
     const requestId = await createLabRequest(api, lead, brief as Required<CanonicalChallenge>, 'a');
-    const failedOrPending = await prisma.portfolioLabRequest.findUniqueOrThrow({ where: { id: requestId } });
-    expect(failedOrPending.notificationStatus).toBe('FAILED');
-    const retryHeaders = { ...bearer(lead.token), 'Idempotency-Key': `kan232-retry-${lead.stamp}` };
-    const retry = await api.post(`/api/v1/portfolio-lab/requests/${requestId}/notification-retry`, {
-      headers: retryHeaders, data: {},
-    });
-    expect(retry.status(), await retry.text()).toBe(200);
-    const replayedRetry = await api.post(`/api/v1/portfolio-lab/requests/${requestId}/notification-retry`, {
-      headers: retryHeaders, data: {},
-    });
-    expect(replayedRetry.status(), await replayedRetry.text()).toBe(200);
-    expect((await replayedRetry.json()).data.idempotent).toBe(true);
-    await acceptLabNotification(lead, requestId, 'a');
     await completeSetup(api, lead, sessionId, 'LAB_NOTIFIED');
 
     const crossTenant = await api.get('/api/v1/portfolio/home', { headers: bearer(other.token) });
@@ -464,6 +473,8 @@ test.describe('KAN-232 G5 authenticated PostgreSQL certification', () => {
     await expect(page.getByText('Contacto pendiente', { exact: true }).first()).toBeVisible();
     await expect(page.locator('[data-field="roi"]')).toHaveText('Sin datos');
     await expect(page.locator('[data-field="impact"]')).toHaveText('Sin datos');
+    await assertWcagAA(page, '[data-testid="portfolio-overview-home"]');
+    await page.screenshot({ path: testInfo.outputPath('A-emprendedor-sin-iniciativas-home.png'), fullPage: true });
     await page.reload();
     await expect(page.getByTestId('portfolio-overview-home')).toBeVisible();
     await page.getByRole('button', { name: 'Cerrar sesión' }).click();
@@ -473,7 +484,7 @@ test.describe('KAN-232 G5 authenticated PostgreSQL certification', () => {
     await api.dispose();
   });
 
-  test('B · 3 iniciativas → un frente/dos Briefs → Equipo+Lab → tercero sin activar → Home', async ({ page }) => {
+  test('B · pyme con 3 iniciativas → un frente/dos Briefs → Equipo+Lab → tercero sin activar → Home', async ({ page }, testInfo) => {
     const api = await pwRequest.newContext({ baseURL });
     const lead = await registerLead(api, 'scenario-b');
     const sessionId = await createAnchoredSession(api, lead);
@@ -501,7 +512,6 @@ test.describe('KAN-232 G5 authenticated PostgreSQL certification', () => {
     expect(await prisma.step.count()).toBe(stepsBeforeAccept);
     await createTeamAssignment(api, lead, labBrief as Required<CanonicalChallenge>, 'reject', 'rejected');
     const labRequestId = await createLabRequest(api, lead, labBrief as Required<CanonicalChallenge>, 'b');
-    await acceptLabNotification(lead, labRequestId, 'b');
     await completeSetup(api, lead, sessionId, 'BOTH');
 
     await loginUi(page, lead);
@@ -520,10 +530,11 @@ test.describe('KAN-232 G5 authenticated PostgreSQL certification', () => {
     await page.keyboard.press('Enter');
     await expect(page.getByRole('button', { name: 'Ocultar detalle' })).toHaveAttribute('aria-expanded', 'true');
     await expect(page.getByText('Fuente y procedencia:', { exact: true })).toBeVisible();
+    await page.screenshot({ path: testInfo.outputPath('B-pyme-reentrada-y-procedencia.png'), fullPage: true });
     await api.dispose();
   });
 
-  test('C · 25 CSV/XLSX → revisión → un frente → Briefs selectivos → Home responsive', async ({ page }) => {
+  test('C · corporate con 25 CSV/XLSX → revisión → un frente → Briefs selectivos → Home responsive', async ({ page }, testInfo) => {
     const api = await pwRequest.newContext({ baseURL });
     const lead = await registerLead(api, 'scenario-c');
     const sessionId = await createAnchoredSession(api, lead);
@@ -546,7 +557,6 @@ test.describe('KAN-232 G5 authenticated PostgreSQL certification', () => {
     const selectedBrief = await confirmBrief(api, lead, structure.challenges[0], 'c-selected');
     await confirmBrief(api, lead, structure.challenges[1], 'c-second-selected');
     const requestId = await createLabRequest(api, lead, selectedBrief as Required<CanonicalChallenge>, 'c');
-    await acceptLabNotification(lead, requestId, 'c');
     await completeSetup(api, lead, sessionId, 'LAB_NOTIFIED');
     expect(await prisma.project.count({ where: { organizationId: lead.organizationId } })).toBe(before.projects);
     expect(await prisma.portfolioHandoffAssignment.count({ where: { organizationId: lead.organizationId } })).toBe(before.assignments);
@@ -564,6 +574,270 @@ test.describe('KAN-232 G5 authenticated PostgreSQL certification', () => {
     await filter.fill('XLSX trabajo 25');
     await expect(page.getByRole('row', { name: /XLSX trabajo 25/ })).toBeVisible();
     await expect(page.getByText('0', { exact: true }).first()).toBeVisible();
+    await assertWcagAA(page, '[data-testid="portfolio-overview-home"]');
+    await page.screenshot({ path: testInfo.outputPath('C-corporate-home-390.png'), fullPage: true });
+    await api.dispose();
+  });
+
+  test('D · iniciativa avanzada → recorrido humano continuo E1–E7 → SMTP real → aceptación sin iniciar Steps → reentrada', async ({ browser, page }, testInfo) => {
+    const api = await pwRequest.newContext({ baseURL });
+    const lead = await registerLead(api, 'scenario-d-advanced');
+    const recipient = await registerViewer(api, 'advanced-owner');
+    const project = await prisma.project.create({
+      data: {
+        name: 'Iniciativa canónica avanzada',
+        description: 'Proyecto preexistente en Step 2; E7 no debe alterar su ejecución.',
+        ownerId: lead.userId,
+        organizationId: lead.organizationId,
+        status: 'IN_PROGRESS',
+        currentStep: 2,
+        steps: {
+          create: [
+            { number: 1, name: 'Step 1 existente', status: 'APPROVED', progress: 100 },
+            { number: 2, name: 'Step 2 existente', status: 'IN_PROGRESS', progress: 40 },
+            { number: 3, name: 'Step 3 existente', status: 'BLOCKED', progress: 0 },
+            { number: 4, name: 'Step 4 existente', status: 'BLOCKED', progress: 0 },
+          ],
+        },
+      },
+    });
+    const before = await prisma.project.findUniqueOrThrow({
+      where: { id: project.id },
+      select: {
+        ownerId: true,
+        currentStep: true,
+        status: true,
+        steps: { orderBy: { number: 'asc' }, select: { id: true, number: true, status: true, progress: true } },
+      },
+    });
+
+    await loginUi(page, lead);
+    await expect(page.getByTestId('portfolio-overview-home')).toBeVisible({ timeout: 20_000 });
+    await page.getByRole('button', { name: 'Preparar nueva oportunidad' }).click();
+    await expect(page.getByText('Configurar con Copilot · 1 de 7')).toBeVisible({ timeout: 20_000 });
+
+    // E1 · contexto: la persona responde, revisa y confirma; Copilot no decide por ella.
+    await page.getByLabel('Tu respuesta').fill(
+      'Somos una pyme B2B de 12 personas. Nunca hemos probado una reasignación formal de iniciativas avanzadas.',
+    );
+    await page.getByRole('button', { name: 'Guardar y continuar' }).click();
+    await page.getByRole('button', { name: 'No aplica en este caso' }).click();
+    await page.getByLabel('Tu respuesta').fill(
+      'La responsable sería la Portfolio Lead y la nueva owner debe revisar el encargo antes de aceptar.',
+    );
+    await page.getByRole('button', { name: 'Guardar y continuar' }).click();
+    await page.getByRole('button', { name: 'Sí, conservar esta información' }).click();
+    await page.getByRole('button', { name: 'Revisar contexto' }).click();
+    await page.getByRole('button', { name: 'Estoy de acuerdo, confirmar contexto' }).click();
+    await page.getByRole('button', { name: 'Estoy de acuerdo, continuar al objetivo' }).click();
+    await page.screenshot({ path: testInfo.outputPath('D-E1-contexto-confirmado.png'), fullPage: true });
+
+    // E2 · objetivo: el turno queda confirmado antes de incorporar trabajo existente.
+    const objectiveConversation = page.getByTestId('portfolio-objective-conversation');
+    for (const { prompt, answer } of [
+      { prompt: /qué resultado de negocio quieres mover/i, answer: 'Conservar el avance de la iniciativa y transferir la responsabilidad con trazabilidad.' },
+      { prompt: /qué contexto explica/i, answer: 'La iniciativa ya está en Step 2 y no debe reiniciarse al aceptar el encargo.' },
+      { prompt: /qué te gustaría poder decidir mejor/i, answer: 'Decidir quién continúa el trabajo con el Brief confirmado como contexto.' },
+    ]) {
+      await expect(objectiveConversation.getByText(prompt)).toBeVisible();
+      const response = objectiveConversation.getByLabel('Tu respuesta');
+      await response.fill(answer);
+      const send = objectiveConversation.getByRole('button', { name: 'Enviar respuesta' });
+      await expect(send).toBeEnabled();
+      await send.click();
+    }
+    await expect(objectiveConversation.getByText(/cómo sabrás que el resultado está mejorando/i)).toBeVisible();
+    await objectiveConversation.getByRole('button', { name: /No lo s/i }).click();
+    await page.getByRole('button', { name: 'Confirmar este punto de partida y continuar' }).click();
+    await page.getByRole('button', { name: 'Continuar a Incorporación' }).click();
+
+    // E3 · incorporación: la iniciativa se registra desde la UX y conserva procedencia manual.
+    const workIntake = page.getByTestId('portfolio-bootstrap-work-intake');
+    await expect(workIntake).toBeVisible({ timeout: 20_000 });
+    await page.getByRole('button', { name: /A.adir manualmente/ }).click();
+    await page.getByLabel(/Nombre o descripci.n breve/).fill('Iniciativa avanzada Step 2');
+    await page.getByLabel(/Que intenta conseguir|Qu. intenta conseguir/).fill('Conservar el avance y reasignar con trazabilidad.');
+    await page.getByRole('button', { name: 'Agregar trabajo' }).click();
+    await page.getByRole('button', { name: 'Analizar 1 iniciativas' }).click();
+
+    const session = await prisma.portfolioBootstrapSession.findFirstOrThrow({ where: { userId: lead.userId } });
+    const sessionId = session.id;
+    const sourceWorkItem = await prisma.portfolioBootstrapWorkItem.findFirstOrThrow({
+      where: { bootstrapSessionId: sessionId, rawLabel: 'Iniciativa avanzada Step 2' },
+    });
+    expect(sourceWorkItem.sourceType).toBe('manual_entry');
+
+    // E4 · análisis: la lectura provisional se abre y revisa antes de avanzar.
+    const materialReview = page.getByTestId('portfolio-bootstrap-material-review');
+    await expect(materialReview).toBeVisible({ timeout: 20_000 });
+    await materialReview.getByRole('button', { name: 'Ver análisis' }).first().click();
+    const analysisDialog = page.getByRole('dialog', { name: 'Análisis de Iniciativa avanzada Step 2' });
+    await expect(analysisDialog).toContainText('Interpretación provisional — no decisión');
+    await expect(analysisDialog).toContainText('Revisión/corrección del Portfolio Lead');
+    await page.screenshot({ path: testInfo.outputPath('D-E4-analisis-revision-humana.png'), fullPage: true });
+    await analysisDialog.getByRole('button', { name: 'Cerrar' }).click();
+    await page.getByRole('button', { name: 'Continuar a organización' }).click();
+
+    // E5 · organización: se confirma desde la propuesta revisable, sin crear ni arrancar Steps.
+    const organizationProposal = page.getByTestId('portfolio-organization-proposal');
+    await expect(organizationProposal).toBeVisible({ timeout: 20_000 });
+    await expect(organizationProposal).toContainText('Objetivo → Frente estratégico → Reto → Iniciativas');
+    await organizationProposal.getByRole('button', { name: 'Mover Iniciativa avanzada Step 2' }).click();
+    const initiativeDestination = organizationProposal.getByLabel('Nuevo destino para Iniciativa avanzada Step 2');
+    const challengeDestination = await initiativeDestination.locator('option').filter({ hasText: /^Reto 1 ·/ }).getAttribute('value');
+    expect(challengeDestination).toBeTruthy();
+    await initiativeDestination.selectOption(challengeDestination!);
+    await expect(organizationProposal.locator('[data-testid^="organization-challenge-"]')).toContainText('Iniciativa avanzada Step 2');
+    await page.screenshot({ path: testInfo.outputPath('D-E5-organizacion-revisable.png'), fullPage: true });
+    await organizationProposal.getByRole('button', { name: 'Confirmar estructura estratégica' }).click();
+    await expect(page.getByText('PL-05 · Briefs').first()).toBeVisible({ timeout: 20_000 });
+
+    const materialization = await prisma.portfolioOrganizationMaterialization.findUniqueOrThrow({
+      where: { bootstrapSessionId: sessionId },
+    });
+    const mappings = materialization.canonicalMappings as {
+      fronts: Array<{ canonicalId: string }>;
+      challenges: Array<{ canonicalId: string; relatedInitiativeIds: string[] }>;
+    };
+    expect(mappings.challenges[0].relatedInitiativeIds).toEqual([sourceWorkItem.id]);
+    const structure = {
+      frontId: mappings.fronts[0].canonicalId,
+      challenges: [{ challengeId: mappings.challenges[0].canonicalId }],
+    };
+    await prisma.initiativePortfolioMeta.create({
+      data: {
+        projectId: project.id,
+        challengeId: structure.challenges[0].challengeId,
+        strategicFrontId: structure.frontId,
+        teamOwner: lead.email,
+        currentStep: 'Step 2',
+        status: 'en_step_2',
+      },
+    });
+
+    // E6 · Brief: borrador y versión confirmada se crean desde la UX.
+    const briefBoundary = page.getByTestId('pl05-brief-boundary');
+    await briefBoundary.getByRole('button', { name: 'Preparar primer Brief' }).click();
+    const briefPanel = page.getByTestId('challenge-activation-brief-panel');
+    await briefPanel.getByLabel('Qué buscamos conseguir').fill('Continuar la iniciativa avanzada sin reiniciar su ejecución.');
+    await briefPanel.getByLabel('Qué esperamos que entregue').fill('Una continuidad asumida explícitamente, con contexto y procedencia verificables.');
+    await briefPanel.getByRole('button', { name: 'Guardar borrador' }).click();
+    await briefPanel.getByRole('button', { name: 'Confirmar esta versión' }).click();
+    await expect(briefPanel.getByText('Versión 1 confirmada', { exact: true })).toBeVisible();
+    await page.screenshot({ path: testInfo.outputPath('D-E6-brief-confirmado.png'), fullPage: true });
+    const persistedBriefRecord = await prisma.challengeActivationBrief.findFirstOrThrow({
+      where: { challengeId: structure.challenges[0].challengeId },
+      include: { versions: { where: { status: 'CONFIRMED' } } },
+    });
+    const confirmedBriefVersion = persistedBriefRecord.versions[0];
+    expect(confirmedBriefVersion).toBeTruthy();
+    const brief = { briefId: persistedBriefRecord.id, briefVersionId: confirmedBriefVersion.id };
+    await briefPanel.getByRole('button', { name: 'Continuar a asignación' }).click();
+
+    // E7 se alcanza por el control visible del Brief confirmado, no por una URL fabricada.
+    const preparation = page.getByTestId('pl06a-assignment-preparation');
+    await expect(preparation).toHaveAttribute('data-brief-version-id', brief.briefVersionId, { timeout: 20_000 });
+    await preparation.getByRole('button', { name: '+ Asignar responsable' }).click();
+    await preparation.getByRole('checkbox', { name: 'Asignarle una iniciativa existente' }).check();
+    await preparation.getByLabel('Iniciativa a continuar').selectOption(project.id);
+    await preparation.getByLabel('Persona responsable').fill(recipient.email);
+    await preparation.getByLabel('Adjuntar también este Brief confirmado').check();
+    await preparation.getByLabel('Contexto específico del encargo').fill('Continuar desde Step 2 después de revisar el Brief; aceptar no inicia el trabajo.');
+    await preparation.getByRole('button', { name: 'Revisar asignación' }).click();
+    await expect(preparation.getByRole('heading', { name: 'Revisa este encargo' })).toBeVisible();
+    await preparation.getByRole('button', { name: 'Guardar asignación' }).click();
+    await expect(preparation.getByText('Preparada, sin enviar', { exact: true })).toBeVisible();
+
+    const assignment = await prisma.portfolioHandoffAssignment.findFirstOrThrow({
+      where: { organizationId: lead.organizationId, initiativeId: project.id, briefVersionId: brief.briefVersionId },
+      include: { members: true },
+    });
+    expect(assignment).toMatchObject({
+      challengeId: structure.challenges[0].challengeId,
+      targetKind: 'EXISTING_INITIATIVE',
+      state: 'CREATED',
+      invitedEmailNormalized: recipient.email,
+      createdByActorId: lead.userId,
+    });
+    expect(assignment.members.filter((member) => member.role === 'OWNER')).toHaveLength(1);
+    expect(await prisma.portfolioHandoffInvitation.count({ where: { assignmentId: assignment.id } })).toBe(0);
+    expect(await prisma.portfolioHandoffDeliveryAttempt.count({ where: { assignmentId: assignment.id } })).toBe(0);
+
+    await preparation.getByRole('checkbox', { name: `Seleccionar invitación para ${recipient.email}` }).check();
+    await preparation.getByRole('button', { name: 'Revisar y enviar seleccionados (1)' }).click();
+    await expect(preparation.getByRole('region', { name: 'Revisión de invitaciones' })).toContainText(recipient.email);
+    await assertWcagAA(page, '[data-testid="pl06a-assignment-preparation"]');
+    await page.screenshot({ path: testInfo.outputPath('D-E7-revision-humana.png'), fullPage: true });
+    await preparation.getByRole('button', { name: 'Confirmar envío de 1 invitación' }).click();
+    await expect(preparation.getByText('Enviada (SMTP aceptado)', { exact: true }).first()).toBeVisible({ timeout: 20_000 });
+
+    const serializedMail = await waitForMailpit([recipient.email, brief.briefVersionId]);
+    const invitationToken = serializedMail.match(/\/handoff\/invitations\/([a-f0-9]{64})/i)?.[1];
+    expect(invitationToken).toBeTruthy();
+    const sent = await prisma.portfolioHandoffAssignment.findUniqueOrThrow({
+      where: { id: assignment.id },
+      include: { deliveryAttempts: true, invitations: true },
+    });
+    expect(sent.state).toBe('SENT');
+    expect(sent.deliveryAttempts).toEqual([expect.objectContaining({ status: 'SUCCEEDED', errorCategory: null })]);
+    expect(sent.deliveryAttempts[0].providerMessageRef).toBeTruthy();
+    expect(sent.invitations).toHaveLength(1);
+
+    const recipientContext = await browser.newContext();
+    const recipientPage = await recipientContext.newPage();
+    await loginParticipantUi(recipientPage, recipient);
+    await recipientPage.goto(`/handoff/invitations/${invitationToken}`);
+    await expect(recipientPage.getByTestId('handoff-shell')).toBeVisible({ timeout: 20_000 });
+    await expect(recipientPage.getByTestId('handoff-status')).toHaveText(/Pendiente de respuesta/);
+    await expect(recipientPage.getByRole('button', { name: 'Aceptar asignación' })).toBeVisible();
+    await expect(recipientPage.getByRole('button', { name: 'Empezar' })).toHaveCount(0);
+    await recipientPage.getByRole('button', { name: 'Aceptar asignación' }).click();
+    await expect(recipientPage.getByTestId('handoff-status')).toHaveText('Aceptada');
+    await expect(recipientPage.getByRole('button', { name: 'Empezar' })).toBeEnabled();
+    await recipientPage.screenshot({ path: testInfo.outputPath('D-destinatario-aceptada-sin-iniciar.png'), fullPage: true });
+
+    const afterAcceptance = await prisma.project.findUniqueOrThrow({
+      where: { id: project.id },
+      select: {
+        ownerId: true,
+        currentStep: true,
+        status: true,
+        steps: { orderBy: { number: 'asc' }, select: { id: true, number: true, status: true, progress: true } },
+      },
+    });
+    expect(afterAcceptance).toEqual(before);
+    expect(await prisma.portfolioHandoffAssignment.findUniqueOrThrow({ where: { id: assignment.id } })).toMatchObject({
+      state: 'ACCEPTED',
+      startedAt: null,
+      startedBy: null,
+      initiativeId: project.id,
+      briefVersionId: brief.briefVersionId,
+    });
+
+    await page.goto('/portfolio/inicio');
+    await expect(page.getByTestId('portfolio-overview-home')).toBeVisible({ timeout: 20_000 });
+    await expect(page.getByText('Aceptada', { exact: true }).first()).toBeVisible();
+    await page.reload();
+    await expect(page.getByTestId('portfolio-overview-home')).toBeVisible({ timeout: 20_000 });
+    expect(await prisma.portfolioHandoffAssignment.count({ where: { id: assignment.id } })).toBe(1);
+    expect(await prisma.portfolioHandoffInvitation.count({ where: { assignmentId: assignment.id } })).toBe(1);
+    expect(await prisma.portfolioHandoffDeliveryAttempt.count({ where: { assignmentId: assignment.id } })).toBe(1);
+    expect(await prisma.step.count({ where: { projectId: project.id } })).toBe(4);
+    const persistedBrief = await prisma.challengeActivationBriefVersion.findUniqueOrThrow({ where: { id: brief.briefVersionId } });
+    expect(persistedBrief).toMatchObject({
+      challengeId: structure.challenges[0].challengeId,
+      status: 'CONFIRMED',
+      versionNumber: 1,
+      confirmedByActorId: lead.userId,
+    });
+    expect(persistedBrief.provenance).toMatchObject({
+      source: 'PL05_COPILOT',
+      challengeId: structure.challenges[0].challengeId,
+      inheritedFrom: 'PL04_CONFIRMED_ORGANIZATION',
+    });
+    expect(persistedBrief.createdByActorId).toBe(lead.userId);
+    await page.screenshot({ path: testInfo.outputPath('D-home-reentrada-aceptada.png'), fullPage: true });
+    await recipientContext.close();
     await api.dispose();
   });
 });
