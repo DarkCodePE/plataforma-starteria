@@ -1,14 +1,18 @@
 # ADR-010 — Ledger provisional y separado de turnos de Objetivo E2
 
-- **Estado:** PROPUESTO / PENDIENTE DE RATIFICACIÓN (KAN-253 B2)
+- **Estado:** ACCEPTED
 - **Fecha:** 2026-11-09
+- **Aprobado por:** Fabio Augusto Merino Becerra — Product Decision Owner para KAN-253 / Product ADR-010
+- **Aprobado en:** 2026-11-10
+- **Ratificación registrada:** Jira `KAN-253`, comentario `10835`, 2026-11-10T12:03:19.457-05:00
+- **Evidencia revisada:** PR #307; `main@07ffb81abf687739bb198c14fae08498f3e8a409`; CI postmerge #42849908644; integración KAN-253 B2 con PostgreSQL desechable
 - **Core vigente:** v0.2, sin promoción del candidato v0.3
 - **Ámbito:** Portfolio Bootstrap E2, *no* Portfolio Entry ni Step 0–4
 
 ## Problema
 El flujo actual de E2 guarda algunas respuestas en `PortfolioAnchor.sourceRefs.objectiveConversation.turns`, con máximo histórico de UI y sin una frontera independiente de idempotencia, orden de turnos, CAS y procedencia. Usarlo como ledger semántico autoritativo expondría a pérdida de historial ante modificaciones del Anchor y confundiría un borrador con una decisión confirmada.
 
-## Decisión propuesta
+## Decisión aceptada
 Agregar una **única tabla de turnos provisionales E2**, `PortfolioBootstrapGoalTurn`, asociada a `PortfolioBootstrapSession`, aditiva y sin migrar ni reemplazar la estructura histórica. Cada turno:
 - requiere sesión del actor, permiso `portfolio:write`, vínculo tenant/owner;
 - referencia el Anchor exacto, su versión y, si se utilizó, la versión del ContextReview E1 confirmado;
@@ -32,11 +36,17 @@ No hay autorización para que una respuesta del ledger produzca un cambio en Anc
 - Reusar `PortfolioBootstrapSemanticState` E1: mezclaría autoridades y gates E1/E2.
 - Crear directamente una iniciativa/Step para cada conversación: viola Portfolio-first y requiere autorización de negocio.
 
-## Condiciones antes de merge y producción
-1. Validación humana de este ADR candidato y revisión de migración SQL expand-only. **La presencia del ADR en el repo no lo aprueba**.
+## Alcance y límites de la ratificación
+
+La decisión `RATIFY` registrada en [KAN-253, comentario 10835](https://stateria.atlassian.net/browse/KAN-253?focusedCommentId=10835) acepta exclusivamente el ledger provisional E2 y la migración aditiva `20261109100000_kan253_e2_goal_turn_ledger`. No cambia las invariantes Core INV-03, INV-04, INV-05 ni INV-10. Preserva `sourceRefs.objectiveConversation.turns` sin backfill ni reconciliación destructiva.
+
+`PORTFOLIO_GOAL_E2_LEDGER_ENABLED` y todos los feature flags experimentales relacionados permanecen **OFF**. Esta ratificación no autoriza CD, migraciones productivas, IA live, habilitar E3, crear automáticamente Initiative/Project, activar Steps, cambiar Step 0–4, configurar SMTP ni enviar correos reales.
+
+## Condiciones antes de producción
+1. La ratificación de producto queda acreditada por KAN-253#10835; la aprobación de una PR o un CI verde no la sustituye ni amplía.
 2. Typecheck backend, Prisma validation/migration diff, tests unit y PostgreSQL desechable con concurrencia, idempotencia y reentrada, seguridad owner/tenant, E2E regresión KAN-240.
 3. Revisión independiente; CI completo; no activar CD ni migraciones productivas hasta aprobación específica.
 4. Tras B2, definir contract B3 de proyección explícita a Anchor y mecanismos para confrontar datos E2 legado con nuevos turnos, sin migraciones destructivas.
 
 ## Fuentes de autoridad
-`docs/STARTERIA_AUTHORITY.md`, `doc/CONTRATO_LOGICA_CORE_STARTERIA_MVP_v0.2_ES(1).md`, `docs/governance/STARTERIA_V2_MIGRATION_GUARDRAILS.md`, `STARTERIA_V2_MANIFEST.md`, KAN-253.
+`docs/STARTERIA_AUTHORITY.md`, `doc/CONTRATO_LOGICA_CORE_STARTERIA_MVP_v0.2_ES(1).md`, `docs/governance/STARTERIA_V2_MIGRATION_GUARDRAILS.md`, `STARTERIA_V2_MANIFEST.md`, KAN-253 y su comentario 10835.

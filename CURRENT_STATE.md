@@ -22,7 +22,7 @@ No considerar E5–E7 UI-only, Owner→Steps, Step4→Decision/benefits o delive
 
 ## KAN-253 B3 — Reentrada y aceptación humana del ledger E2 (PR, sin CD)
 
-B2/PR #278 se fusionó en `main@82f06c1cf7a8fb30d5fa6c4ed6a5bcb583c32dbb` y su CI posterior #42548341856 pasó. **ADR-010 conserva estado PROPUESTO**, y no se ha verificado CD para esa versión. Ambas banderas del ledger E2 permanecen OFF por defecto.
+B2/PR #278 se fusionó en `main@82f06c1cf7a8fb30d5fa6c4ed6a5bcb583c32dbb` y su CI posterior #42548341856 pasó. **Product ADR-010 fue ratificado de forma acotada en KAN-253#10835 el 2026-11-10**; la ratificación no autoriza CD ni migración productiva. No se ha verificado CD para esa versión y ambas banderas del ledger E2 permanecen OFF por defecto.
 
 La rama KAN-253 B3 añade una conversación de Objetivo de lectura/reentrada y una separación explícita entre respuesta provisional y aceptación del borrador. La incorporación envía `expectedVersion` (CAS opcional para Anchor), además de `goalLedgerAcceptedTurnIds` y evidencia literal contrastada en backend. El legacy `ObjectiveConversation` sigue por defecto; ninguna aceptación o Step/Project es automática. CI / revisión independiente y pruebas UX reales siguen siendo gates de despliegue. Contrato: `docs/implementation/KAN-253_B3_E2_LEDGER_UX_v0.1.md`.
 
@@ -30,7 +30,7 @@ La rama KAN-253 B3 añade una conversación de Objetivo de lectura/reentrada y u
 
 B1 (PR #277) fusionado a main@f9c093255be7d901ccc1bce6689e08532df05b53, CI main #42543901999 SUCCESS. B2 agrega en una nueva rama el modelo Prisma aditivo `PortfolioBootstrapGoalTurn`, migración 20261109100000, GET/POST de turnos en un estado provisional separado del Anchor, y guardrail de flag `PORTFOLIO_GOAL_E2_LEDGER_ENABLED=false`. Los turnos E2 solo recogen declaraciones literales, correcciones y desconocidos mediante idempotencia y versionado; nunca confirman el objetivo ni desbloquean E3.
 
-ADR-010 está expresamente PROPUESTO y requiere ratificación antes del merge/migración. Tests de schema/unit/router y DB desechable están añadidos, pero la ejecución real/typecheck/revisión siguen pendientes de evidenciar. No se ha activado IA live ni modificado el modo semántico E1. Contrato: `docs/implementation/KAN-253_E2_GOAL_TURN_LEDGER_B2_v0.1.md`.
+Product ADR-010 está `ACCEPTED` exclusivamente para el ledger provisional E2 y su migración aditiva, por la decisión `RATIFY` de KAN-253#10835. La autorización productiva de migración continúa separada y pendiente. Tests de schema/unit/router y DB desechable están añadidos; no se ha activado IA live ni modificado el modo semántico E1. Contrato histórico: `docs/implementation/KAN-253_E2_GOAL_TURN_LEDGER_B2_v0.1.md`.
 
 ## KAN-253 — Goal Question Planner B1 para E2 (PR #277, no fusionado)
 
