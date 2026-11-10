@@ -22,6 +22,7 @@
  */
 import { PrismaClient } from '@prisma/client';
 import { hashPassword } from '../modules/auth/password.service';
+import { assertSafeE2eProdUserReuse, assertSyntheticCleanupProjects, protectedIdentityRef } from './e2e-prod-tenant-safety';
 
 const prisma = new PrismaClient();
 const [command] = process.argv.slice(2).filter((arg) => !arg.startsWith('--'));
@@ -62,7 +63,11 @@ async function setup() {
   ];
   for (const u of users) {
     const existing = await prisma.user.findUnique({ where: { email: u.email } });
-    console.log(`${existing ? 'actualizar' : apply ? 'crear' : 'crearía'} ${u.email} (${u.role}) en ${E2E_PROD_ORG_ID}`);
+    const memberships = existing
+      ? await prisma.organizationMember.findMany({ where: { userId: existing.id }, select: { organizationId: true } })
+      : [];
+    assertSafeE2eProdUserReuse(existing, memberships, E2E_PROD_ORG_ID);
+    console.log(`${existing ? 'actualizar' : apply ? 'crear' : 'crearía'} ${protectedIdentityRef(u.email)} (${u.role}) en ${E2E_PROD_ORG_ID}`);
     if (!apply) continue;
     const passwordHash = await hashPassword(requirePassword(u.passwordEnv));
     const data = { name: u.name, role: u.role, roles: [u.role], organizationId: E2E_PROD_ORG_ID, isActive: true, passwordHash } as any;
@@ -76,13 +81,16 @@ async function setup() {
 }
 
 async function cleanup() {
-  const users = await prisma.user.findMany({ where: { email: { in: [E2E_PROD_LEAD_EMAIL, E2E_PROD_PARTICIPANT_EMAIL, ...E2E_PROD_MEMBERS.map((m) => m.email)] } }, select: { id: true } });
+  const users = await prisma.user.findMany({ where: { email: { in: [E2E_PROD_LEAD_EMAIL, E2E_PROD_PARTICIPANT_EMAIL, ...E2E_PROD_MEMBERS.map((m) => m.email)] } }, select: { id: true, organizationId: true } });
+  for (const user of users) {
+    const memberships = await prisma.organizationMember.findMany({ where: { userId: user.id }, select: { organizationId: true } });
+    assertSafeE2eProdUserReuse(user, memberships, E2E_PROD_ORG_ID);
+  }
   const ids = users.map((u) => u.id);
-  // Sólo lo que está en la organización de prueba o pertenece a los usuarios de prueba.
-  const fronts = await prisma.strategicFront.findMany({ where: { OR: [{ organizationId: E2E_PROD_ORG_ID }, { ownerId: { in: ids } }] }, select: { id: true, name: true, organizationId: true } });
-  const foreign = fronts.filter((f) => f.organizationId && f.organizationId !== E2E_PROD_ORG_ID);
-  if (foreign.length > 0) throw new Error(`Abortado: ${foreign.length} frente(s) de los usuarios de prueba están en otra organización: ${foreign.map((f) => f.id).join(', ')}`);
+  // Los frentes sólo son inequívocamente sintéticos dentro del tenant dedicado.
+  const fronts = await prisma.strategicFront.findMany({ where: { organizationId: E2E_PROD_ORG_ID }, select: { id: true, name: true, organizationId: true } });
   const projects = await prisma.project.findMany({ where: { ownerId: { in: ids } }, select: { id: true, name: true } });
+  assertSyntheticCleanupProjects(projects);
   console.log(`${apply ? 'borrar' : 'borraría'} ${fronts.length} frente(s) (con sus retos en cascada) y ${projects.length} proyecto(s):`);
   for (const f of fronts) console.log(`  frente ${f.id} ${f.name}`);
   for (const p of projects) console.log(`  proyecto ${p.id} ${p.name}`);

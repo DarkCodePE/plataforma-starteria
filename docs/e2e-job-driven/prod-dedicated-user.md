@@ -93,8 +93,10 @@ gh workflow run e2e-prod-tenant.yml -f command=cleanup -f apply=false   # seco: 
 gh workflow run e2e-prod-tenant.yml -f command=cleanup -f apply=true
 ```
 
-Borra sólo frentes de `org-e2e-prod` o de los usuarios de prueba, y proyectos de esos usuarios.
-**Aborta** si encuentra un frente de esos usuarios en otra organización.
+Borra sólo frentes de `org-e2e-prod` y Projects de las identidades sintéticas cuyos nombres llevan
+el prefijo exacto `[E2E-PROD] ` o `[E2E-SWARM] `. Antes de listar o borrar, **aborta** si cualquiera
+de esas identidades ya no pertenece exclusivamente a `org-e2e-prod`, o si un Project carece de uno
+de los prefijos aprobados.
 
 ## Qué ve el resto de la plataforma
 
