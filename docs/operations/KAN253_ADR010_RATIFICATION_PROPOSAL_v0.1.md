@@ -1,12 +1,30 @@
 # KAN-253 / Product ADR-010 — ratification proposal
 
-**Status:** PROPOSED FOR HUMAN DECISION — NOT RATIFIED  
+**Status:** RATIFIED IN JIRA / CANONICAL RECONCILIATION IN REVIEW  
 **Prepared:** 2026-11-10  
 **Baseline inspected:** `main@f5b8569091f9c5683ea12488756e93b2e14c0c4e`
 **Canonical decision record:** `doc/product-adr/ADR-010-portfolio-e2-goal-turn-ledger.md`
 
-This document prepares a decision. It does not approve the ADR, authorize a production
-migration or replace the canonical product ADR.
+This document prepared the decision and now records its outcome. Jira KAN-253 comment 10835 is
+the human ratification evidence; this document does not replace the canonical product ADR or
+authorize a production migration.
+
+## Ratification outcome
+
+```text
+DECISION: RATIFY
+ACTOR: Fabio Augusto Merino Becerra
+ROLE: Product Decision Owner for KAN-253 / Product ADR-010
+RECORDED_AT: 2026-11-10T12:03:19.457-05:00
+EVIDENCE: Jira KAN-253 comment 10835
+SCOPE: provisional E2 ledger + additive migration only
+CORE: no invariant change; preserve INV-03/04/05/10
+FEATURE_FLAGS: OFF
+LEGACY: no backfill; preserve sourceRefs.objectiveConversation.turns
+```
+
+The record explicitly excludes CD, production migrations, experimental-flag activation, SMTP,
+real email, live AI, automatic E3/Initiative/Project creation and Steps.
 
 ## Authority finding
 
@@ -21,36 +39,22 @@ There are three unrelated `ADR-010` references in the repository:
    decision. Its canonical index and document both say `PROPUESTO / pendiente de
    ratificación`.
 
-The KAN-253 migration and implementation reports correctly refer to item 3. A merge, green
-CI or a matching number in another ADR series cannot ratify it.
+The KAN-253 migration and implementation reports correctly refer to item 3. A merge, green CI
+or a matching number in another ADR series did not ratify it; KAN-253#10835 did.
 
 ## Formal decision-owner verification
 
 ```text
-AUTHORITY_CHECK: BLOCKED
-PROPOSED_PRODUCT_DECISION_OWNER: requester responsible for Product
-FORMAL_IDENTITY: not recorded
-FORMAL_SCOPE_DELEGATION_FOR_KAN-253: not recorded
-JIRA_ASSIGNEE: none
+AUTHORITY_CHECK: VERIFIED_FOR_BOUNDED_PRODUCT_DECISION
+PRODUCT_DECISION_OWNER: Fabio Augusto Merino Becerra
+FORMAL_SCOPE: KAN-253 / Product ADR-010 only
+DECISION_RECORD: Jira KAN-253 comment 10835
+PRODUCTION_AUTHORITY: NOT GRANTED
 ```
 
-`docs/STARTERIA_AUTHORITY.md` defines the order of product authority, while `AGENTS.md`
-reserves product decisions and ADR approval to a person. Neither source names the requester
-or delegates Product ADR-010 authority to an account. KAN-253 is still `Por hacer` and has no
-assignee. Repository write access, PR approval, GitHub environment approval or requesting this
-preparation do not establish product-decision authority.
-
-Formal verification requires a durable governance record that:
-
-1. names the human and verifiable account authorized to decide Product ADR-010/KAN-253;
-2. states that the delegation covers the provisional E2 ledger and additive migration only;
-3. is authored or acknowledged by the existing product authority, not by the preparing agent;
-4. records one of `RATIFY`, `REJECT` or `RETURN_FOR_CHANGES` using the exact decision record
-   below; and
-5. remains distinct from production/CD approval.
-
-Until that evidence exists, the proposed owner is `UNVERIFIED` and the canonical ADR must stay
-`PROPUESTO / PENDIENTE DE RATIFICACION`.
+The durable Jira record identifies the human actor, declares the bounded Product Decision Owner
+role, records `RATIFY`, fixes the exact scope and keeps production/CD approval separate. Repository
+write access, PR approval and CI remain non-authoritative for the product decision.
 
 ## Governance deviation observed
 
@@ -59,7 +63,7 @@ though the canonical ADR says ratification is required before merge and producti
 an integration fact, not implicit approval. CD must remain blocked until the decision below
 is made and recorded.
 
-## Proposed scoped decision
+## Ratified scoped decision
 
 Ratify Product ADR-010 only for the following bounded behavior:
 
@@ -74,7 +78,7 @@ Ratify Product ADR-010 only for the following bounded behavior:
 - preserve legacy `sourceRefs.objectiveConversation.turns` without backfill or destructive
   reconciliation.
 
-This ratification would not authorize live AI, automatic Objective confirmation, E3
+This ratification does not authorize live AI, automatic Objective confirmation, E3
 transition, Project/Initiative creation, Step activation, changes to Step 0–4, or any new
 human/AI authority.
 
@@ -88,8 +92,8 @@ human/AI authority.
 | INV-10 / §30 — new information preserves history | Improved by monotonic versions, idempotency and supersession instead of overwrite. |
 | Portfolio and Initiative remain separate | Compatible: no Initiative, Project, Step or Core object is created. |
 
-No Core invariant changes. Ratification is still required because this is a durable product
-data boundary and a production schema migration.
+No Core invariant changes. Separate production authorization is still required because this is a
+durable product data boundary and a production schema migration.
 
 ## Migration impact
 
@@ -106,24 +110,24 @@ data boundary and a production schema migration.
 Disposable PostgreSQL, concurrency/idempotency, tenant/owner and re-entry evidence must be
 green on the exact release SHA before a production authorization.
 
-## Exact human ratification record required
+## Human ratification record satisfied
 
-The product decision owner must provide all of the following, not only “approved” in a PR:
+KAN-253#10835 supplies the required fields, rather than relying on an “approved” PR:
 
 ```text
-Decision: RATIFY | REJECT | RETURN_FOR_CHANGES
+Decision: RATIFY
 Canonical ADR: doc/product-adr/ADR-010-portfolio-e2-goal-turn-ledger.md
 Approved scope: provisional E2 ledger + additive migration only
 Core impact: no invariant change
 Feature flags after deploy: OFF
-Aprobado por: <human name/account>
-Aprobado en: <ISO date>
-Evidencia revisada: <PR/run/disposable DB references>
+Aprobado por: Fabio Augusto Merino Becerra
+Aprobado en: 2026-11-10
+Evidencia revisada: PR #307; main@07ffb81abf687739bb198c14fae08498f3e8a409; CI #42849908644; PostgreSQL desechable KAN-253 B2
 ```
 
-After a `RATIFY` decision, a separate governed change must update the canonical ADR status,
-`doc/product-adr/ADR-INDEX.md` and the stale KAN-253 status in `CURRENT_STATE.md`. This proposal
-must not make those edits pre-emptively.
+This governed change updates the canonical ADR status, `doc/product-adr/ADR-INDEX.md` and the stale
+KAN-253 status in `CURRENT_STATE.md`; it still requires review and merge before reconciliation is
+complete.
 
 The canonical ADR and its index row must use the exact closed status `ACCEPTED`. Negative or
 compound values such as `NO APROBADO`, `NOT ACCEPTED`, `REJECTED`, or text that merely contains
@@ -229,9 +233,9 @@ creation, configuration changes or sending.
 
 | Gate | State | Responsible | Evidence required to become GO | Principal risk while open |
 |---|---|---|---|---|
-| Product decision authority | `NO-GO` | Existing Product authority | Named human/account and bounded KAN-253 delegation | An unverified requester could promote a durable product boundary. |
-| Product ADR-010 decision | `NO-GO` | Verified Product Decision Owner | Exact `RATIFY`, `REJECT` or `RETURN_FOR_CHANGES` record | Merge/CI could be mistaken for approval. |
-| Canonical ADR/index reconciliation | `NO-GO` | Docs/Product approver | Separate reviewed PR after a valid `RATIFY` | Proposal could be marked accepted prematurely. |
+| Product decision authority | `GO` | Product Decision Owner | KAN-253#10835 identifies the actor and bounded role | Scope must not be generalized beyond KAN-253/ADR-010. |
+| Product ADR-010 decision | `GO` | Product Decision Owner | `RATIFY` recorded in KAN-253#10835 | Merge/CI must not be mistaken for broader production approval. |
+| Canonical ADR/index reconciliation | `IN_REVIEW` | Docs/Product approver | This governed PR merged after review | Canonical files remain unreconciled until merge. |
 | Data/DB ownership | `NO-GO` | `DarkCodePE` proposed | Explicit acceptance statement | Backup/restore evidence has no accountable custodian. |
 | Off-volume backup/checksum | `NO-GO` | Accepted Data/DB Owner | Run, encrypted artifact, size, SHA-256 and off-volume custody | Same-volume loss or unverified artifact. |
 | Isolated restore drill | `NO-GO` | Accepted Data/DB Owner | PostgreSQL 16 restore and destruction evidence | Backup may be unusable when needed. |
@@ -245,7 +249,8 @@ creation, configuration changes or sending.
 ## Governance result
 
 ```text
-RESULT: GOVERNANCE_READY_FOR_APPROVAL
+RESULT: PRODUCT_DECISION_RATIFIED_CANONICAL_RECONCILIATION_IN_REVIEW
+PRODUCT_DECISION_RATIFIED: YES
 PRODUCTION_GO: NO
 CD_AUTHORIZED: NO
 MIGRATIONS_AUTHORIZED: NO
@@ -253,7 +258,7 @@ SMTP_CONFIGURATION_AUTHORIZED: NO
 EMAIL_SEND_AUTHORIZED: NO
 ```
 
-The package is complete enough for the named humans to accept or reject their roles and for a
-verified Product Decision Owner to make the bounded ADR decision. It does not satisfy any
-production execution gate by itself.
+The bounded product decision is complete. Data/DB and SMTP ownership, backup/restore, production
+configuration, CD and send gates remain open. Neither KAN-253#10835 nor this reconciliation
+satisfies any production execution gate.
 

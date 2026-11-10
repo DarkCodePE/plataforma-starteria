@@ -10,8 +10,9 @@ This runbook contains no production authorization. Every mutation remains behind
 
 ## Current preflight result
 
-`NO-GO` until Product ADR-010 is ratified by a formally verified decision owner and a controlled
-external Owner identity is securely provisioned. Consent exists for one candidate mailbox and one
+`NO-GO`. Product ADR-010 was ratified within the bounded scope in Jira KAN-253#10835, but canonical
+reconciliation still requires review and the remaining operational gates are open. A controlled
+external Owner identity must be securely provisioned. Consent exists for one candidate mailbox and one
 invitation only, but the mailbox is not configured and no send is authorized. An off-volume
 encrypted backup and isolated restore drill are also missing.
 Production currently advertises deployment
@@ -79,7 +80,8 @@ not inject an external Owner email, so no creation/update path is armed by this 
 - older images ignore the new table;
 - recovery preference: leave schema in place and disable the feature, never drop the table as an
   incident reaction;
-- production application remains blocked until Product ADR-010 ratification.
+- product ratification is recorded in KAN-253#10835; production application remains blocked pending
+  canonical reconciliation and the separate migration/CD gates.
 
 ### 20261109222000_g04_attention_event_history
 
@@ -120,7 +122,7 @@ and automated evidence and cannot be claimed as production-certified by this smo
 ### Preconditions
 
 - exact release SHA and postmerge CI recorded;
-- Product ADR-010 ratified and migration approval recorded;
+- Product ADR-010 canonical reconciliation merged and separate migration approval recorded;
 - protected environment reviewer present;
 - off-volume encrypted backup destination, checksum procedure, isolated restore drill and recovery
   owner confirmed;
@@ -180,7 +182,9 @@ new explicit authorization.
 - Handoff transport/config, production startup/config and tenant safety tests: pass;
 - migration authority tests, including ambiguous negative statuses, empty decision metadata,
   invalid ISO date and a pre-KAN-253 rollback target: pass;
-- current canonical Product ADR-010 checked through the gate: rejected as expected;
+- pre-ratification canonical Product ADR-010 was checked through the gate and rejected as expected;
+- KAN-253#10835 now provides the bounded human ratification; this reconciliation PR must pass the
+  same gate before merge;
 - independent review round 3 found empty approval metadata and one stale cleanup paragraph; both
   were corrected and regression-tested. A final independent review of that correction set returned
   `approve`, with no blocking or security findings.
@@ -191,7 +195,7 @@ was sent.
 
 ## Exact remaining approvals
 
-1. Human ratification of canonical Product ADR-010 by a formally verified Product Decision Owner.
+1. Review and merge the governed canonical reconciliation of Product ADR-010 from KAN-253#10835.
 2. Formal acceptance by `DarkCodePE` of Data/DB Owner responsibility.
 3. Formal acceptance by `DarkCodePE` of SMTP Owner responsibility.
 4. Approval and evidence for encrypted off-volume backup, SHA-256 and isolated restore drill.

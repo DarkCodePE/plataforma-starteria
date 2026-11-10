@@ -6,8 +6,10 @@ validator="$repo_root/scripts/ci/validate-production-migration-authority.sh"
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
 
-cp "$repo_root/doc/product-adr/ADR-010-portfolio-e2-goal-turn-ledger.md" "$tmp/adr.md"
-cp "$repo_root/doc/product-adr/ADR-INDEX.md" "$tmp/index.md"
+sed -E '0,/Estado:/s/(Estado:[[:space:]]*).*/\1PROPUESTO/' \
+  "$repo_root/doc/product-adr/ADR-010-portfolio-e2-goal-turn-ledger.md" > "$tmp/adr.md"
+awk -F'|' 'BEGIN { OFS="|" } $2 ~ /^[[:space:]]*ADR-010[[:space:]]*$/ { $5=" PROPUESTO " } { print }' \
+  "$repo_root/doc/product-adr/ADR-INDEX.md" > "$tmp/index.md"
 mkdir -p "$tmp/front/prisma/migrations/20261109100000_kan253_e2_goal_turn_ledger"
 touch "$tmp/front/prisma/migrations/20261109100000_kan253_e2_goal_turn_ledger/migration.sql"
 
@@ -28,19 +30,15 @@ for rejected_status in 'NO APROBADO' 'NOT ACCEPTED' 'REJECTED'; do
   fi
 done
 
-sed -E '0,/Estado:/s/(Estado:[[:space:]]*).*/\1ACCEPTED/' "$repo_root/doc/product-adr/ADR-010-portfolio-e2-goal-turn-ledger.md" > "$tmp/adr.md"
-awk -F'|' 'BEGIN { OFS="|" } $2 ~ /^[[:space:]]*ADR-010[[:space:]]*$/ { $5=" ACCEPTED " } { print }' "$repo_root/doc/product-adr/ADR-INDEX.md" > "$tmp/index.md"
+sed -E '/^- \*\*(Aprobado por|Aprobado en|Evidencia revisada):\*\*/d' \
+  "$repo_root/doc/product-adr/ADR-010-portfolio-e2-goal-turn-ledger.md" > "$tmp/adr.md"
+cp "$repo_root/doc/product-adr/ADR-INDEX.md" "$tmp/index.md"
 if run_validator >/dev/null 2>&1; then
   echo 'migration authority gate accepted status text without a decision owner/evidence' >&2
   exit 1
 fi
 
-cat >> "$tmp/adr.md" <<'EOF'
-
-- **Aprobado por:** product-owner
-- **Aprobado en:** 2026-11-10
-- **Evidencia revisada:** disposable-db-run-and-independent-review
-EOF
+cp "$repo_root/doc/product-adr/ADR-010-portfolio-e2-goal-turn-ledger.md" "$tmp/adr.md"
 run_validator >/dev/null
 
 cp "$tmp/adr.md" "$tmp/adr-valid.md"

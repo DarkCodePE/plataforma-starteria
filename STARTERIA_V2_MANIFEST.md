@@ -628,8 +628,9 @@ petición ni por una configuración productiva y el flag continúa apagado fuera
 ```text
 slice_id: PORTFOLIO_E2_LEDGER_CONVERSATION_UI_B3
 task: KAN-253 B3
-authority: Core v0.2, Authority Map, KAN-253, ADR-010 candidate NOT RATIFIED
-status: IMPLEMENTED_IN_PR_PENDING_CI_REVIEW_AND_AUTHORITY_RATIFICATION
+authority_at_record: Core v0.2, Authority Map, KAN-253, ADR-010 candidate NOT RATIFIED
+status_at_record: IMPLEMENTED_IN_PR_PENDING_CI_REVIEW_AND_AUTHORITY_RATIFICATION
+ratification_update: Product ADR-010 RATIFIED in KAN-253#10835 on 2026-11-10; flags remain OFF; no CD authorized
 frontend_gate: VITE_PORTFOLIO_GOAL_E2_LEDGER_UI_ENABLED=false default
 backend_gate: PORTFOLIO_GOAL_E2_LEDGER_ENABLED=false default
 ui: server-backed E2 question + durable turns; explicit pending draft incorporation
@@ -651,8 +652,9 @@ documentation: docs/implementation/KAN-253_B3_E2_LEDGER_UX_v0.1.md
 ```text
 slice_id: PORTFOLIO_E2_GOAL_TURN_LEDGER_B2
 task: KAN-253 B2
-authority: Core factual v0.2 + Authority Map + ADR-010 candidate (NOT APPROVED)
-status: MERGED_TO_MAIN_CI_SUCCESS_FLAG_OFF_ADR010_NOT_RATIFIED
+authority_at_record: Core factual v0.2 + Authority Map + ADR-010 candidate (NOT APPROVED)
+status_at_record: MERGED_TO_MAIN_CI_SUCCESS_FLAG_OFF_ADR010_NOT_RATIFIED
+ratification_update: Product ADR-010 RATIFIED in KAN-253#10835 on 2026-11-10; flags remain OFF; no CD authorized
 source_of_truth: provisional GoalTurn ledger, not canonical PortfolioAnchor
 persistence: additive PortfolioBootstrapGoalTurn, unique session/version + session/idempotency
 api: GET/POST /portfolio-bootstrap/sessions/:sessionId/objective/turns
@@ -662,7 +664,7 @@ scope: session owner/tenant and Portfolio read/write permission
 provenance: immutable literal user_input, provisional; append correction via supersedesTurnId
 output: turn receipt and ordered history; no Anchor update or automatic convergence
 tests: schema, service, router; optional PostgreSQL disposable E2E gated by env
-unproven: full DB tests, backend typecheck, independent review, ADR ratification
+unproven_at_record: full DB tests, backend typecheck, independent review, ADR ratification
 excluded: Core, E1 semantic, Steps, live AI, paid tokens, auto canonicalization, activation
 follow_up: B3 UX/persistence reconciliation and B4 governed model inference
 documentation: docs/implementation/KAN-253_E2_GOAL_TURN_LEDGER_B2_v0.1.md
