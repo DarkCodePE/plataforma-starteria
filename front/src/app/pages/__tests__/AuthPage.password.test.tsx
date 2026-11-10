@@ -11,8 +11,13 @@
  * El fallo era invisible desde la API: por curl el login funcionaba.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { AuthPage } from '../AuthPage';
+
+const authMocks = vi.hoisted(() => ({
+  login: vi.fn(),
+  register: vi.fn(),
+}));
 
 vi.mock('react-router', () => ({
   useNavigate: () => vi.fn(),
@@ -20,8 +25,8 @@ vi.mock('react-router', () => ({
 
 vi.mock('../../context/AppContext', () => ({
   useApp: () => ({
-    login: vi.fn(),
-    register: vi.fn(),
+    login: authMocks.login,
+    register: authMocks.register,
     googleSignIn: vi.fn(),
     isAuthenticated: false,
     user: null,
@@ -48,6 +53,7 @@ function switchToRegister() {
 
 describe('AuthPage — minLength del campo de contraseña', () => {
   beforeEach(() => {
+    vi.clearAllMocks();
     window.localStorage.clear();
     window.sessionStorage.clear();
   });
@@ -106,5 +112,21 @@ describe('AuthPage — minLength del campo de contraseña', () => {
 
     expect(screen.getByText(/CUENTAS DEMO/i)).toBeInTheDocument();
     expect(screen.getByText(/participante@starteria\.io/i)).toBeInTheDocument();
+  });
+
+  it('recupera una invitación pendiente tras registrar una cuenta activa sin tokens', async () => {
+    window.sessionStorage.setItem('starteria.handoff.pendingInvitation', 'token-owner');
+    authMocks.register.mockResolvedValue({ success: true, waitlisted: true, waitlistedEmail: 'owner@example.test' });
+    authMocks.login.mockResolvedValue({ success: true });
+    render(<AuthPage />);
+    switchToRegister();
+
+    fireEvent.change(screen.getByPlaceholderText(/Ana/i), { target: { value: 'Owner Nueva' } });
+    fireEvent.change(screen.getByPlaceholderText('tu@empresa.com'), { target: { value: 'owner@example.test' } });
+    fireEvent.change(passwordInput()!, { target: { value: 'E2eTest!1234' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Crear cuenta' }));
+
+    await waitFor(() => expect(authMocks.login).toHaveBeenCalledWith('owner@example.test', 'E2eTest!1234'));
+    expect(screen.queryByRole('heading', { name: /lista de espera/i })).not.toBeInTheDocument();
   });
 });

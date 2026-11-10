@@ -183,6 +183,47 @@ describe('PortfolioOverviewHome', () => {
     expect(screen.queryByText('Invitación fallida')).not.toBeInTheDocument();
   });
 
+  it('shows exact Brief version, actors and separates SMTP transport from human acceptance', () => {
+    const accepted = {
+      ...model,
+      handoffAssignments: [{
+        ...model.handoffAssignments[0],
+        handoffState: 'ACCEPTED',
+        deliveryStatus: 'smtp_accepted',
+        briefVersionId: 'brief-v3',
+        briefVersionNumber: 3,
+        invitedEmail: 'owner@example.test',
+        createdByActor: { id: 'lead-1', name: 'Lucía Lead', email: 'lead@example.test' },
+        actor: { id: 'owner-1', name: 'Olga Owner', email: 'owner@example.test' },
+        acceptedAt: '2026-11-10T09:10:00.000Z',
+        history: [
+          { eventId: 'created-1', eventType: 'assignment_created', source: 'handoff', actorId: 'lead-1', actorLabel: 'Lucía Lead', actorRole: 'PORTFOLIO_LEAD', occurredAt: '2026-11-10T08:50:00.000Z', sourceRefs: [], transportStatus: null, providerMessageRef: null },
+          { eventId: 'sent-1', eventType: 'invitation_sent', source: 'handoff', actorId: 'lead-1', actorLabel: 'Lucía Lead', actorRole: 'PORTFOLIO_LEAD', occurredAt: '2026-11-10T08:59:00.000Z', sourceRefs: [], transportStatus: null, providerMessageRef: null },
+          { eventId: 'mail-1', eventType: 'delivery_smtp_accepted', source: 'transport', actorId: null, actorLabel: null, actorRole: null, occurredAt: '2026-11-10T09:00:00.000Z', sourceRefs: [], transportStatus: 'smtp_accepted', providerMessageRef: 'mailpit-1' },
+          { eventId: 'view-1', eventType: 'invitation_viewed', source: 'handoff', actorId: null, actorLabel: null, actorRole: null, occurredAt: '2026-11-10T09:05:00.000Z', sourceRefs: [], transportStatus: null, providerMessageRef: null },
+          { eventId: 'accept-1', eventType: 'assignment_accepted', source: 'handoff', actorId: 'owner-1', actorLabel: 'Olga Owner', actorRole: 'OWNER', occurredAt: '2026-11-10T09:10:00.000Z', sourceRefs: ['brief-v3'], transportStatus: null, providerMessageRef: null },
+        ],
+      }],
+    };
+
+    render(<PortfolioOverviewHome model={accepted as any} onOpenCopilot={vi.fn()} onOpenAdditionalFront={vi.fn()} />);
+    const table = screen.getByRole('table', { name: 'Seguimiento operativo del portafolio' });
+    fireEvent.click(within(table).getByRole('button', { name: 'Ver detalle de Assignment assignment-challenge' }));
+
+    expect(within(table).getByText('Olga Owner')).toBeInTheDocument();
+    expect(within(table).getByText(/v3 · brief-v3/)).toBeInTheDocument();
+    expect(within(table).getByText('Lucía Lead')).toBeInTheDocument();
+    expect(within(table).getByText('Encargo preparado')).toBeInTheDocument();
+    expect(within(table).getByText('Invitación enviada')).toBeInTheDocument();
+    expect(within(table).getByText('Correo aceptado por SMTP')).toBeInTheDocument();
+    expect(within(table).getByText('Invitación abierta')).toBeInTheDocument();
+    expect(within(table).getByText('Encargo aceptado por el owner')).toBeInTheDocument();
+    expect(within(within(table).getByText('Invitación enviada').closest('li')!).getByText(/Actividad del encargo/)).toBeInTheDocument();
+    expect(within(within(table).getByText('Invitación abierta').closest('li')!).getByText(/Actividad del encargo/)).toBeInTheDocument();
+    expect(within(within(table).getByText('Correo aceptado por SMTP').closest('li')!).getByText(/Transporte de correo/)).toBeInTheDocument();
+    expect(within(within(table).getByText('Encargo aceptado por el owner').closest('li')!).getByText(/Respuesta humana/)).toBeInTheDocument();
+  });
+
   it('surfaces a rejected assignment without Portfolio response as a human decision', () => {
     const rejected = {
       ...model,

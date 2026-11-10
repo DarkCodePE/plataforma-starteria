@@ -25,6 +25,42 @@ export type HandoffActivationBriefVersionProjection = {
   confirmedAt: Date | null;
 };
 
+export type HandoffCanonicalContextProjection = {
+  strategicFront: {
+    id: string;
+    name: string;
+    description: string | null;
+    strategicObjective: string | null;
+    whyNow: string | null;
+    constraints: string | null;
+    horizon: string | null;
+  } | null;
+  challenge: {
+    id: string;
+    title: string;
+    description: string | null;
+    objective: string | null;
+    whatWeWantToMove: string | null;
+    whyNow: string | null;
+    successCriteria: string | null;
+    knownFacts: string | null;
+    openQuestions: string | null;
+    constraints: string | null;
+    dependencies: string | null;
+    expectedDecision: string | null;
+  };
+  initiative: {
+    id: string;
+    name: string;
+    description: string | null;
+    status: string;
+    currentStep: number;
+  } | null;
+  sender: { id: string; name: string; email: string };
+  members: Array<HandoffMemberInput & { displayName: string | null }>;
+  assignmentContextNote: string | null;
+};
+
 export type CreateHandoffAssignmentInput = {
   organizationId?: string | null;
   portfolioScopeRef?: string | null;
@@ -63,6 +99,7 @@ export type HandoffAssignment = Omit<CreateHandoffAssignmentInput, 'members'> & 
   portfolioResponseRecordedAt: Date | null;
   portfolioResponseRecordedBy: string | null;
   briefVersion?: HandoffActivationBriefVersionProjection | null;
+  canonicalContext?: HandoffCanonicalContextProjection | null;
 };
 
 export type UpdateCreatedHandoffAssignmentInput = {

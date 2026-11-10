@@ -54,7 +54,10 @@ const handoffProjector = new PortfolioHandoffProjector(new PrismaPortfolioHandof
 const semanticEventPort = new DurableHandoffEventPort(semanticEventRepository, handoffProjector);
 const invitationRepository = new PrismaPortfolioHandoffInvitationRepository(prisma);
 const deliveryAttemptRepository = new PrismaPortfolioHandoffDeliveryAttemptRepository(prisma);
-const invitationService = new PortfolioHandoffInvitationService({ assignments: assignmentRepository, access: invitationRepository });
+const invitationService = new PortfolioHandoffInvitationService(
+  { assignments: assignmentRepository, access: invitationRepository },
+  semanticEventPort,
+);
 const handoffEmailGate = new HandoffEmailTransportGate({
   ...config.handoffEmail,
   smtpHost: config.smtp.host,

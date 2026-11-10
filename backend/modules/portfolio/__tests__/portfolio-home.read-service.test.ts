@@ -440,6 +440,46 @@ describe('PortfolioHomeReadService — asignaciones de handoff por organización
   });
 });
 
+describe('PortfolioHomeReadService — handoff chronology', () => {
+  const projection = (assignmentId: string, organizationId: string | null) => ({
+    assignmentId, organizationId, targetKind: 'CHALLENGE', challengeRef: `ch-${assignmentId}`,
+    handoffState: 'ACCEPTED', acceptedAt: new Date('2026-11-10T09:10:00Z'),
+    generatedAt: new Date('2026-11-10T09:10:00Z'),
+  });
+
+  it('returns the exact Brief version, material actor and ordered transport/human history', async () => {
+    const row = {
+      ...projection('accepted', 'org-a'),
+      assignment: {
+        briefVersionId: 'brief-v3', acceptedBy: 'owner-1', rejectedBy: null, startedBy: null,
+        invitedEmailNormalized: 'owner@example.test',
+        createdByActor: { id: 'lead-1', name: 'Lucía Lead', email: 'lead@example.test' },
+        briefVersion: { versionNumber: 3, confirmedAt: new Date('2026-11-10T08:00:00Z') },
+        members: [{ userId: 'owner-1', role: 'OWNER', label: 'Owner principal', emailNormalized: 'owner@example.test', user: { id: 'owner-1', name: 'Olga Owner', email: 'owner@example.test' } }],
+        deliveryAttempts: [{ id: 'delivery-1', status: 'SUCCEEDED', errorCategory: null, providerMessageRef: 'mailpit-1', attemptedAt: new Date('2026-11-10T09:00:00Z') }],
+        semanticEvents: [{ eventId: 'event-accept', eventType: 'assignment_accepted', actorId: 'owner-1', actorRole: 'OWNER', interactionChannel: 'WEB', sourceRefs: ['brief-v3'], occurredAt: new Date('2026-11-10T09:10:00Z') }],
+      },
+    };
+    const prisma = {
+      ...makePrisma(),
+      portfolioHandoffProjection: { findMany: vi.fn().mockResolvedValue([row]) },
+    };
+    const home = await new PortfolioHomeReadService(prisma as any)
+      .getHome('u1', { all: false, organizationIds: ['org-a'] });
+
+    expect(home.handoffAssignments[0]).toMatchObject({
+      briefVersionId: 'brief-v3', briefVersionNumber: 3,
+      actor: { id: 'owner-1', name: 'Olga Owner', email: 'owner@example.test' },
+      createdByActor: { id: 'lead-1', name: 'Lucía Lead', email: 'lead@example.test' },
+    });
+    expect(home.handoffAssignments[0].history.map((event) => event.eventType)).toEqual([
+      'delivery_smtp_accepted', 'assignment_accepted',
+    ]);
+    expect(home.handoffAssignments[0].history[0]).toMatchObject({ source: 'transport', transportStatus: 'smtp_accepted' });
+    expect(home.handoffAssignments[0].history[1]).toMatchObject({ source: 'handoff', actorLabel: 'Olga Owner' });
+  });
+});
+
 describe('PortfolioHomeReadService - Starteria Lab requests owner scope', () => {
   it('projects actor requests separately without recipient or mail evidence', async () => {
     const findMany = vi.fn().mockResolvedValue([{

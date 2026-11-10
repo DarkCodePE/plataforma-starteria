@@ -293,6 +293,17 @@ export function AuthPage() {
 
     if (result.success) {
       if (result.waitlisted) {
+        // Registration does not issue tokens in every environment. When the
+        // person arrived through a real handoff invitation, try the normal
+        // login path once and let the existing post-auth claim consume the
+        // same pending token. A genuinely waitlisted/inactive account still
+        // fails login and keeps the standard waitlist experience.
+        if (mode === 'register' && readPendingHandoffInvitation()) {
+          setLoading(true);
+          const loginAfterRegistration = await login(email, password);
+          setLoading(false);
+          if (loginAfterRegistration.success) return;
+        }
         setWaitlistEmail(result.waitlistedEmail ?? email.trim().toLowerCase());
       }
       return;

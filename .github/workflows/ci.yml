@@ -364,6 +364,20 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
+      - name: KAN-254 Owner handoff - identity, response, reentry and Lead trace
+        env:
+          E2E_WITH_MAILPIT: 'true'
+        run: npm run test:e2e -- e2e/kan254-owner-handoff-acceptance.spec.ts
+
+      - name: Preserve KAN-254 Owner handoff browser evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: kan-254-owner-handoff-acceptance-${{ github.run_id }}
+          path: front/test-results/
+          if-no-files-found: error
+          retention-days: 14
+
       - name: CURRENT_114D — deterministic full-stack browser journey
         run: npm run test:e2e -- --portfolio-entry-full-stack-test e2e/portfolio-entry-conversion.spec.ts --grep CURRENT_114D
 

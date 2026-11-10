@@ -207,7 +207,11 @@ export type PortfolioHomeReadModel = {
     deliveryStatus: 'not_sent' | 'requested' | 'smtp_accepted' | 'failed';
     latestDeliveryAttemptAt: string | null;
     briefVersionId: string | null;
+    briefVersionNumber: number | null;
+    briefConfirmedAt: string | null;
     invitedEmail: string | null;
+    createdByActor: { id: string; name: string | null; email: string | null } | null;
+    actor: { id: string; name: string | null; email: string | null } | null;
     acceptedAt: string | null;
     rejectedAt: string | null;
     rejectionReason: string | null;
@@ -216,6 +220,18 @@ export type PortfolioHomeReadModel = {
     resultingInitiativeRef: string | null;
     lastMaterialEvent: string | null;
     sourceEventRefs: string[];
+    history: Array<{
+      eventId: string;
+      eventType: string;
+      source: 'transport' | 'handoff';
+      actorId: string | null;
+      actorLabel: string | null;
+      actorRole: string | null;
+      occurredAt: string;
+      sourceRefs: string[];
+      transportStatus: 'requested' | 'smtp_accepted' | 'failed' | null;
+      providerMessageRef: string | null;
+    }>;
     projectionVersion: number;
     generatedAt: string;
   }>;
@@ -505,10 +521,80 @@ export class PortfolioHomeReadService {
     const rows = await this.prisma.portfolioHandoffProjection.findMany({
       where: { organizationId: { in: scope.organizationIds } },
       orderBy: { generatedAt: 'desc' },
-      include: { assignment: { include: { deliveryAttempts: { orderBy: { attemptedAt: 'desc' }, take: 1 } } } },
+      include: {
+        assignment: {
+          include: {
+            deliveryAttempts: { orderBy: { attemptedAt: 'desc' }, take: 20 },
+            semanticEvents: { orderBy: { occurredAt: 'asc' }, take: 50 },
+            briefVersion: { select: { versionNumber: true, confirmedAt: true } },
+            createdByActor: { select: { id: true, name: true, email: true } },
+            members: { include: { user: { select: { id: true, name: true, email: true } } } },
+          },
+        },
+      },
     });
     return (rows ?? []).map((row: any) => {
-      const latestAttempt = row.assignment?.deliveryAttempts?.[0] ?? null;
+      const assignment = row.assignment ?? null;
+      const attempts = Array.isArray(assignment?.deliveryAttempts) ? assignment.deliveryAttempts : [];
+      const semanticEvents = Array.isArray(assignment?.semanticEvents) ? assignment.semanticEvents : [];
+      const latestAttempt = attempts[0] ?? null;
+      const people = [assignment?.createdByActor, ...(assignment?.members ?? []).map((member: any) => member.user)]
+        .filter(Boolean);
+      const personById = (id: string | null | undefined) => {
+        if (!id) return null;
+        const person = people.find((candidate: any) => candidate?.id === id);
+        return { id, name: person?.name ?? null, email: person?.email ?? null };
+      };
+      const materialActorId = row.startedAt
+        ? assignment?.startedBy
+        : row.acceptedAt
+          ? assignment?.acceptedBy
+          : row.rejectedAt
+            ? assignment?.rejectedBy
+            : assignment?.createdByActor?.id;
+      const transportHistory = attempts
+        .filter((attempt: any) => attempt?.attemptedAt)
+        .map((attempt: any, index: number) => {
+          const isReservation = attempt.status === 'FAILED' && attempt.errorCategory === HANDOFF_DELIVERY_RESERVATION;
+          const transportStatus = attempt.status === 'SUCCEEDED'
+            ? 'smtp_accepted'
+            : attempt.status === 'FAILED' && !isReservation
+              ? 'failed'
+              : 'requested';
+          const eventType = transportStatus === 'smtp_accepted'
+            ? 'delivery_smtp_accepted'
+            : transportStatus === 'failed'
+              ? 'delivery_failed'
+              : 'delivery_requested';
+          return {
+            eventId: attempt.id ?? `delivery-${row.assignmentId}-${index}`,
+            eventType,
+            source: 'transport' as const,
+            actorId: null,
+            actorLabel: null,
+            actorRole: null,
+            occurredAt: toIso(attempt.attemptedAt) ?? new Date(0).toISOString(),
+            sourceRefs: [],
+            transportStatus,
+            providerMessageRef: attempt.providerMessageRef ?? null,
+          };
+        });
+      const handoffHistory = semanticEvents
+        .filter((event: any) => event?.occurredAt)
+        .map((event: any, index: number) => ({
+          eventId: event.eventId ?? `handoff-${row.assignmentId}-${index}`,
+          eventType: String(event.eventType ?? 'handoff_event'),
+          source: 'handoff' as const,
+          actorId: event.actorId ?? null,
+          actorLabel: personById(event.actorId)?.name ?? personById(event.actorId)?.email ?? event.actorId ?? null,
+          actorRole: event.actorRole ?? null,
+          occurredAt: toIso(event.occurredAt) ?? new Date(0).toISOString(),
+          sourceRefs: Array.isArray(event.sourceRefs) ? event.sourceRefs : [],
+          transportStatus: null,
+          providerMessageRef: null,
+        }));
+      const history = [...transportHistory, ...handoffHistory]
+        .sort((left, right) => left.occurredAt.localeCompare(right.occurredAt));
       return ({
       assignmentId: row.assignmentId,
       targetKind: row.targetKind,
@@ -524,8 +610,14 @@ export class PortfolioHomeReadService {
           ? 'smtp_accepted'
           : latestAttempt?.status === 'UNKNOWN' ? 'requested' : 'not_sent',
       latestDeliveryAttemptAt: toIso(latestAttempt?.attemptedAt),
-      briefVersionId: row.assignment?.briefVersionId ?? null,
-      invitedEmail: row.assignment?.invitedEmailNormalized ?? null,
+      briefVersionId: assignment?.briefVersionId ?? null,
+      briefVersionNumber: assignment?.briefVersion?.versionNumber ?? null,
+      briefConfirmedAt: toIso(assignment?.briefVersion?.confirmedAt),
+      invitedEmail: assignment?.invitedEmailNormalized ?? null,
+      createdByActor: assignment?.createdByActor
+        ? { id: assignment.createdByActor.id, name: assignment.createdByActor.name ?? null, email: assignment.createdByActor.email ?? null }
+        : null,
+      actor: personById(materialActorId),
       acceptedAt: toIso(row.acceptedAt),
       rejectedAt: toIso(row.rejectedAt),
       rejectionReason: row.rejectionReason ?? null,
@@ -534,6 +626,7 @@ export class PortfolioHomeReadService {
       resultingInitiativeRef: row.resultingInitiativeRef ?? null,
       lastMaterialEvent: row.lastMaterialEvent ?? null,
       sourceEventRefs: Array.isArray(row.sourceEventRefs) ? row.sourceEventRefs : [],
+      history,
       projectionVersion: row.projectionVersion,
       generatedAt: toIso(row.generatedAt) ?? new Date().toISOString(),
       });

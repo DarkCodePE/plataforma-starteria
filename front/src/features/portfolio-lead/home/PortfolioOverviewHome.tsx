@@ -30,6 +30,7 @@ type OperationalRow = {
   provenance: unknown;
   evidence: string;
   updatedAt: string | null;
+  handoff?: PortfolioHomeReadModel['handoffAssignments'][number];
 };
 
 export function PortfolioOverviewHome({
@@ -242,6 +243,7 @@ export function PortfolioOverviewHome({
             return <React.Fragment key={row.key}>
               <tr className="border-b border-slate-100 align-top last:border-0"><th scope="row" className="px-3 py-3 font-semibold text-slate-950">{row.title}</th><td className="px-3 py-3 text-slate-700">{row.destination}</td><td className="px-3 py-3"><span className="inline-flex rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-800">{row.status}</span></td><td className="px-3 py-3 text-slate-700">{row.nextAction}</td><td className="px-3 py-3"><button type="button" aria-expanded={expanded} aria-controls={detailId} onClick={() => setExpandedRow(expanded ? null : row.key)} className="min-h-11 rounded-lg px-2 font-semibold text-violet-800 underline-offset-4 hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2">{expanded ? 'Ocultar detalle' : `Ver detalle de ${row.title}`}</button></td></tr>
               {expanded ? <tr id={detailId} className="border-b border-slate-200 bg-slate-50"><td colSpan={5} className="px-4 py-4 text-xs leading-5 text-slate-700"><div className="grid gap-1 sm:grid-cols-2"><p><strong>Actor:</strong> {row.actor ?? 'Sin datos'}</p><p><strong>Actualizado:</strong> {row.updatedAt ? formatDate(row.updatedAt) : 'Sin datos'}</p><p><strong>Fuente y procedencia:</strong> {formatTrace(row.provenance)}</p><p><strong>Evidencia/eventos:</strong> {row.evidence}</p><p><strong>Permiso:</strong> lectura del portafolio de la organización</p><p><strong>Siguiente paso:</strong> {row.nextAction}</p></div>
+                {row.handoff ? <HandoffTrace assignment={row.handoff} /> : null}
                 {row.key.startsWith('initiative-') ? (
                   <PortfolioAttentionPanel key={row.key} projectId={row.key.slice('initiative-'.length)} assignees={assignees} />
                 ) : null}
@@ -364,10 +366,15 @@ function buildOperationalRows(model: PortfolioHomeReadModel, initiatives: Array<
     destination: assignment.invitedEmail ?? (assignment.initiativeRef ? `Iniciativa ${assignment.initiativeRef}` : `Reto ${assignment.challengeRef}`),
     status: assignmentStatusLabel(assignment),
     nextAction: assignmentNextAction(assignment),
-    actor: null,
-    provenance: assignment.sourceEventRefs ?? [],
+    actor: personLabel(assignment.actor) ?? personLabel(assignment.createdByActor),
+    provenance: {
+      briefVersionId: assignment.briefVersionId ?? null,
+      briefVersionNumber: assignment.briefVersionNumber ?? null,
+      sourceEventRefs: assignment.sourceEventRefs ?? [],
+    },
     evidence: assignment.lastMaterialEvent ?? `Assignment ${assignment.assignmentId}`,
     updatedAt: assignment.startedAt ?? assignment.acceptedAt ?? assignment.rejectedAt ?? assignment.latestDeliveryAttemptAt ?? assignment.generatedAt ?? null,
+    handoff: assignment,
   }));
   const decisionRows: OperationalRow[] = (model.pendingDecisions ?? []).map((request) => ({
     key: `decision-${request.requestId}`,
@@ -452,6 +459,60 @@ function formatTrace(value: unknown): string {
   try { return JSON.stringify(value); } catch { return 'No serializable'; }
 }
 
+function personLabel(person: { id: string; name: string | null; email: string | null } | null | undefined): string | null {
+  if (!person) return null;
+  return person.name?.trim() || person.email?.trim() || person.id;
+}
+
+function HandoffTrace({ assignment }: { assignment: PortfolioHomeReadModel['handoffAssignments'][number] }) {
+  const history = assignment.history ?? [];
+  return <section className="mt-4 rounded-lg border border-slate-200 bg-white p-3" aria-label={`Historial del encargo ${assignment.assignmentId}`}>
+    <dl className="grid gap-1 sm:grid-cols-2">
+      <div><dt className="font-semibold">Brief confirmado</dt><dd>{assignment.briefVersionNumber ? `v${assignment.briefVersionNumber}` : 'Versión no disponible'}{assignment.briefVersionId ? ` · ${assignment.briefVersionId}` : ''}</dd></div>
+      <div><dt className="font-semibold">Destinatario</dt><dd>{assignment.invitedEmail ?? 'Sin datos'}</dd></div>
+      <div><dt className="font-semibold">Emisor</dt><dd>{personLabel(assignment.createdByActor) ?? 'Sin datos'}</dd></div>
+      <div><dt className="font-semibold">Respuesta humana</dt><dd>{assignment.handoffState === 'ACCEPTED' ? 'Aceptada' : assignment.handoffState === 'REJECTED' ? 'Rechazada' : 'Pendiente'}</dd></div>
+      {assignment.rejectionReason ? <div className="sm:col-span-2"><dt className="font-semibold">Motivo del rechazo</dt><dd>{assignment.rejectionReason}</dd></div> : null}
+      {assignment.portfolioResponse ? <div className="sm:col-span-2"><dt className="font-semibold">Respuesta de Portfolio Lead</dt><dd>{assignment.portfolioResponse}</dd></div> : null}
+    </dl>
+    <h3 className="mt-3 font-semibold text-slate-900">Cronología de transporte y respuesta</h3>
+    {history.length > 0 ? <ol className="mt-2 space-y-2">
+      {history.map((event) => <li key={event.eventId} className="rounded-md bg-slate-50 px-3 py-2">
+        <p className="font-semibold">{handoffEventLabel(event.eventType)}</p>
+        <p>{handoffEventCategory(event)} · {formatDateTime(event.occurredAt)}{event.actorLabel ? ` · ${event.actorLabel}` : ''}</p>
+      </li>)}
+    </ol> : <p className="mt-2 text-slate-500">Sin eventos cronológicos disponibles.</p>}
+  </section>;
+}
+
+function handoffEventLabel(eventType: string): string {
+  const labels: Record<string, string> = {
+    delivery_requested: 'Envío solicitado',
+    delivery_smtp_accepted: 'Correo aceptado por SMTP',
+    delivery_failed: 'Envío fallido',
+    assignment_created: 'Encargo preparado',
+    assignment_preparation_updated: 'Preparación del encargo actualizada',
+    invitation_sent: 'Invitación enviada',
+    invitation_viewed: 'Invitación abierta',
+    assignment_accepted: 'Encargo aceptado por el owner',
+    assignment_rejected: 'Encargo rechazado por el owner',
+    portfolio_response_recorded: 'Respuesta de Portfolio Lead registrada',
+    handoff_assignment_started: 'Trabajo iniciado explícitamente',
+    assignment_revoked: 'Invitación revocada',
+    assignment_expired: 'Invitación expirada',
+    initiative_linked_to_handoff_assignment: 'Iniciativa vinculada al encargo',
+  };
+  return labels[eventType] ?? eventType;
+}
+
+function handoffEventCategory(event: PortfolioHomeReadModel['handoffAssignments'][number]['history'][number]): string {
+  if (event.source === 'transport') return 'Transporte de correo';
+  if (['assignment_accepted', 'assignment_rejected', 'portfolio_response_recorded'].includes(event.eventType)) {
+    return 'Respuesta humana';
+  }
+  return 'Actividad del encargo';
+}
+
 function assignmentStatusLabel(assignment: PortfolioHomeReadModel['handoffAssignments'][number]): string {
   if (assignment.deliveryStatus === 'failed') return 'Falló el envío';
   if (assignment.deliveryStatus === 'requested') return 'Envío solicitado, resultado pendiente';
@@ -480,6 +541,11 @@ function assignmentDetail(assignment: PortfolioHomeReadModel['handoffAssignments
 function formatDate(value: string): string {
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? value : new Intl.DateTimeFormat('es-ES', { dateStyle: 'medium' }).format(date);
+}
+
+function formatDateTime(value: string): string {
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? value : new Intl.DateTimeFormat('es-ES', { dateStyle: 'medium', timeStyle: 'short' }).format(date);
 }
 
 function MetricField({ label, value, field }: { label: string; value: string | null | undefined; field?: string }) {

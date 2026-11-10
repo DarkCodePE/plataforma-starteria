@@ -15,12 +15,22 @@ export type HandoffBriefVersion = {
   confirmedAt?: string | null;
 };
 
+export type HandoffCanonicalContext = {
+  strategicFront: { id: string; name: string; description: string | null; strategicObjective: string | null; whyNow: string | null; constraints: string | null; horizon: string | null } | null;
+  challenge: { id: string; title: string; description: string | null; objective: string | null; whatWeWantToMove: string | null; whyNow: string | null; successCriteria: string | null; knownFacts: string | null; openQuestions: string | null; constraints: string | null; dependencies: string | null; expectedDecision: string | null };
+  initiative: { id: string; name: string; description: string | null; status: string; currentStep: number } | null;
+  sender: { id: string; name: string; email: string };
+  members: Array<{ identityKey: string; userId?: string | null; emailNormalized?: string | null; label?: string | null; role: 'OWNER' | 'EXECUTOR' | 'OBSERVER'; displayName: string | null }>;
+  assignmentContextNote: string | null;
+};
+
 export type HandoffInvitationPreview = {
   assignmentId: string;
   targetKind: 'CHALLENGE' | 'EXISTING_INITIATIVE';
   challengeId: string;
   initiativeId: string | null;
   briefVersion: HandoffBriefVersion | null;
+  canonicalContext?: HandoffCanonicalContext | null;
   state: 'CREATED' | 'SENT' | 'VIEWED' | 'ACCEPTED' | 'REJECTED' | 'REVOKED' | 'EXPIRED' | 'STARTED';
   version: number;
   rejectionReason: string | null;

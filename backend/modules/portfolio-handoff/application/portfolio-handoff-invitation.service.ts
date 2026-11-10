@@ -7,11 +7,17 @@ import type {
   HandoffInvitationDependencies,
   HandoffInvitationPreview,
 } from '../domain/portfolio-handoff-invitation.types';
+import type { DurableHandoffEventPort } from './portfolio-handoff-semantic-event.projector';
+import { expireHandoffAssignment } from './portfolio-handoff-expiry';
 
 export type HandoffAuthenticatedIdentity = { id: string; email: string };
 
 export class PortfolioHandoffInvitationService {
-  constructor(private readonly dependencies: HandoffInvitationDependencies) {}
+  constructor(
+    private readonly dependencies: HandoffInvitationDependencies,
+    private readonly events?: DurableHandoffEventPort,
+    private readonly now: () => Date = () => new Date(),
+  ) {}
 
   async issueInvitationToken(assignmentId: string, expiresAt: Date | null = null): Promise<string> {
     const assignment = await this.dependencies.assignments.findById(assignmentId);
@@ -32,14 +38,18 @@ export class PortfolioHandoffInvitationService {
     const access = await this.dependencies.access.findByTokenHash(hashRefreshToken(token));
     if (!access) return this.invalid('INVALID_INVITATION');
     if (access.revokedAt) return this.invalid('REVOKED');
-    const accessExpired = Boolean(access.expiresAt && access.expiresAt.getTime() <= Date.now());
+    const now = this.now();
+    const accessExpired = Boolean(access.expiresAt && access.expiresAt.getTime() <= now.getTime());
 
     const assignment = await this.dependencies.assignments.findById(access.assignmentId);
     if (!assignment) return this.invalid('INVALID_INVITATION');
     if (assignment.state === 'REVOKED') return this.invalid('REVOKED');
-    if (assignment.state === 'EXPIRED') return this.invalid('EXPIRED');
+    if (assignment.state === 'EXPIRED') {
+      await expireHandoffAssignment(this.dependencies.assignments, this.events, assignment, now);
+      return this.invalid('EXPIRED');
+    }
     if (accessExpired) {
-      await this.dependencies.assignments.transitionState({ assignmentId: assignment.id, from: ['CREATED', 'SENT', 'VIEWED'], to: 'EXPIRED' });
+      await expireHandoffAssignment(this.dependencies.assignments, this.events, assignment, now);
       return this.invalid('EXPIRED');
     }
 
@@ -52,6 +62,7 @@ export class PortfolioHandoffInvitationService {
       return { ...this.preview(assignment, identity.email), identityClaimStatus: 'MISMATCH' };
     }
 
+    let claimedAssignment = assignment;
     const alreadyAssociated = assignment.members.some((member) => member.userId === identity.id);
     if (!alreadyAssociated) {
       const associated = await this.dependencies.assignments.associateInvitedIdentity({
@@ -61,11 +72,12 @@ export class PortfolioHandoffInvitationService {
         identityRef: assignment.invitedIdentityRef,
       });
       if (!associated) return this.invalid('INVALID_INVITATION');
+      claimedAssignment = associated;
     }
 
     if (!access.claimedByUserId) await this.dependencies.access.markClaimed({ accessId: access.id, userId: identity.id });
 
-    return { ...this.preview(assignment, identity.email), identityClaimStatus: 'MATCHED' };
+    return { ...this.preview(claimedAssignment, identity.email), identityClaimStatus: 'MATCHED' };
   }
 
   private async resolve(token: string): Promise<{ assignment: HandoffAssignment }> {
@@ -89,6 +101,7 @@ export class PortfolioHandoffInvitationService {
       challengeId: assignment.challengeId,
       initiativeId: assignment.initiativeId ?? null,
       briefVersion: identityMatches ? assignment.briefVersion ?? null : null,
+      canonicalContext: identityMatches ? assignment.canonicalContext ?? null : null,
       state: assignment.state,
       version: assignment.version,
       rejectionReason: identityMatches ? assignment.rejectionReason : null,
@@ -101,7 +114,7 @@ export class PortfolioHandoffInvitationService {
   }
 
   private invalid(status: 'INVALID_INVITATION' | 'EXPIRED' | 'REVOKED'): HandoffIdentityClaimResult {
-    return { assignmentId: '', targetKind: 'CHALLENGE', challengeId: '', initiativeId: null, briefVersion: null, state: 'EXPIRED', version: 0, rejectionReason: null, portfolioResponse: null, acceptedAt: null, rejectedAt: null, authenticationRequired: true, identityClaimStatus: status };
+    return { assignmentId: '', targetKind: 'CHALLENGE', challengeId: '', initiativeId: null, briefVersion: null, canonicalContext: null, state: 'EXPIRED', version: 0, rejectionReason: null, portfolioResponse: null, acceptedAt: null, rejectedAt: null, authenticationRequired: true, identityClaimStatus: status };
   }
 }
 
