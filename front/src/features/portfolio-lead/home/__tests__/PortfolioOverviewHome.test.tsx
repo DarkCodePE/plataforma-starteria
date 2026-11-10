@@ -169,13 +169,15 @@ describe('PortfolioOverviewHome', () => {
       ...model,
       handoffAssignments: [
         { ...model.handoffAssignments[0], assignmentId: 'assignment-pending', handoffState: 'CREATED', deliveryStatus: 'not_sent' },
+        { ...model.handoffAssignments[0], assignmentId: 'assignment-requested', handoffState: 'CREATED', deliveryStatus: 'requested' },
         { ...model.handoffAssignments[0], assignmentId: 'assignment-failed', handoffState: 'CREATED', deliveryStatus: 'failed' },
       ],
     };
 
     render(<PortfolioOverviewHome model={withPendingDelivery as any} onOpenCopilot={vi.fn()} onOpenAdditionalFront={vi.fn()} />);
 
-    expect(screen.getAllByText('Pendiente de envío').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Preparada, sin enviar').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Envío solicitado, resultado pendiente').length).toBeGreaterThan(0);
     expect(screen.getAllByText('Error al enviar').length).toBeGreaterThan(0);
     expect(screen.queryByText('Encargo guardado sin enviar')).not.toBeInTheDocument();
     expect(screen.queryByText('Invitación fallida')).not.toBeInTheDocument();
@@ -306,7 +308,7 @@ describe('PortfolioOverviewHome', () => {
     render(<PortfolioOverviewHome model={g5Model as any} onOpenCopilot={vi.fn()} onOpenAdditionalFront={vi.fn()} />);
 
     const table = screen.getByRole('table', { name: 'Seguimiento operativo del portafolio' });
-    expect(within(table).getByText('Procesada por SMTP')).toBeInTheDocument();
+    expect(within(table).getByText('Enviada (SMTP aceptado)')).toBeInTheDocument();
     expect(within(table).getByText('Aceptada')).toBeInTheDocument();
     expect(within(table).getByText('Iniciada')).toBeInTheDocument();
     expect(within(table).getByText('Rechazada')).toBeInTheDocument();

@@ -148,7 +148,12 @@ suite('P12-R1 ADR-008 HTTP lifecycle', () => {
 
     // The P6 delivery router and recipient projection run against the real
     // disposable database. Only the external SMTP transport is intercepted.
-    const send = vi.spyOn(mailer, 'send').mockResolvedValue(true);
+    const send = vi.spyOn(mailer, 'sendWithReceipt').mockResolvedValue({
+      acceptedByTransport: true,
+      acceptedRecipients: ['p12r1-http-recipient@starteria.test'],
+      rejectedRecipients: [],
+      providerMessageRef: 'p12r1-http-smtp-receipt',
+    });
     try {
       await request(app).post(`/api/v1/portfolio/handoff-assignments/${assignment.body.data.assignment.id}/invitation`).set(auth).set('Idempotency-Key', 'p12r1-http-send-assignment').send({}).expect(200).expect(({ body }) => expect(body.data).toMatchObject({ state: 'SENT', attemptStatus: 'SUCCEEDED' }));
       await request(app).post(`/api/v1/portfolio/handoff-assignments/${assignment.body.data.assignment.id}/invitation`).set(auth).set('Idempotency-Key', 'p12r1-http-send-assignment').send({}).expect(200).expect(({ body }) => expect(body.data).toMatchObject({ state: 'SENT', attemptStatus: 'IDEMPOTENT' }));

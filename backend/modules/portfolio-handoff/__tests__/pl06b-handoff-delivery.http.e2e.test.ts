@@ -65,11 +65,11 @@ suite('PL-06B HTTP + durable PostgreSQL + SMTP sandbox', () => {
   });
 
   it('sends a selected batch, records a partial failure, retries safely and projects VIEWED without duplicates', async () => {
-    const realSend = mailer.send.bind(mailer);
+    const realSend = mailer.sendWithReceipt!.bind(mailer);
     let smtpCalls = 0;
-    const send = vi.spyOn(mailer, 'send').mockImplementation(async (message) => {
+    const send = vi.spyOn(mailer, 'sendWithReceipt').mockImplementation(async (message) => {
       smtpCalls += 1;
-      if (smtpCalls === 2) return false;
+      if (smtpCalls === 2) return { acceptedByTransport: false, acceptedRecipients: [], rejectedRecipients: [] };
       return realSend(message);
     });
     const body = { challengeId: ids.challenge, items: [{ assignmentId: ids.first, expectedVersion: 1 }, { assignmentId: ids.second, expectedVersion: 1 }] };
@@ -139,10 +139,10 @@ suite('PL-06B HTTP + durable PostgreSQL + SMTP sandbox', () => {
 
   it('sends one email and keeps one active token for concurrent batches with different keys', async () => {
     const before = (await (await fetch(`${mailpitApi}/messages`)).json() as any).total;
-    const realSend = mailer.send.bind(mailer);
+    const realSend = mailer.sendWithReceipt!.bind(mailer);
     let releaseDelivery!: () => void;
     const gate = new Promise<void>((resolve) => { releaseDelivery = resolve; });
-    const sendSpy = vi.spyOn(mailer, 'send').mockImplementation(async (message) => {
+    const sendSpy = vi.spyOn(mailer, 'sendWithReceipt').mockImplementation(async (message) => {
       await gate;
       return realSend(message);
     });
@@ -240,8 +240,8 @@ suite('PL-06B HTTP + durable PostgreSQL + SMTP sandbox', () => {
 
   it('does not resend after SMTP accepted but the transport response was lost', async () => {
     const before = (await (await fetch(`${mailpitApi}/messages`)).json() as any).total;
-    const realSend = mailer.send.bind(mailer);
-    const sendSpy = vi.spyOn(mailer, 'send').mockImplementationOnce(async (message) => {
+    const realSend = mailer.sendWithReceipt.bind(mailer);
+    const sendSpy = vi.spyOn(mailer, 'sendWithReceipt').mockImplementationOnce(async (message) => {
       await realSend(message);
       throw new Error('simulated crash after SMTP acceptance');
     });

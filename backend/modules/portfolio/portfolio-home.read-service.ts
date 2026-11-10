@@ -204,7 +204,7 @@ export type PortfolioHomeReadModel = {
     executionTeam: unknown[];
     observers: unknown[];
     handoffState: string;
-    deliveryStatus: 'not_sent' | 'smtp_accepted' | 'failed';
+    deliveryStatus: 'not_sent' | 'requested' | 'smtp_accepted' | 'failed';
     latestDeliveryAttemptAt: string | null;
     briefVersionId: string | null;
     invitedEmail: string | null;
@@ -520,7 +520,9 @@ export class PortfolioHomeReadService {
       handoffState: row.handoffState,
       deliveryStatus: latestAttempt?.status === 'FAILED' && latestAttempt.errorCategory !== HANDOFF_DELIVERY_RESERVATION
         ? 'failed'
-        : latestAttempt?.status === 'SUCCEEDED' ? 'smtp_accepted' : 'not_sent',
+        : latestAttempt?.status === 'SUCCEEDED'
+          ? 'smtp_accepted'
+          : latestAttempt?.status === 'UNKNOWN' ? 'requested' : 'not_sent',
       latestDeliveryAttemptAt: toIso(latestAttempt?.attemptedAt),
       briefVersionId: row.assignment?.briefVersionId ?? null,
       invitedEmail: row.assignment?.invitedEmailNormalized ?? null,

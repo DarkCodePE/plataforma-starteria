@@ -63,7 +63,11 @@ const handoffEmailGate = new HandoffEmailTransportGate({
 }, () => new Date(), logger);
 const deliveryService = new PortfolioHandoffDeliveryService(assignmentRepository, invitationRepository, deliveryAttemptRepository, {
   async send(message) {
-    return { acceptedByTransport: await mailer.send(message) };
+    const receipt = await mailer.sendWithReceipt!(message);
+    return {
+      acceptedByTransport: receipt.acceptedByTransport,
+      providerMessageRef: receipt.providerMessageRef,
+    };
   },
 } satisfies HandoffInvitationDeliveryPort, handoffEmailGate, semanticEventPort);
 const deliveryBatchRepository = new PrismaPortfolioHandoffDeliveryBatchRepository(prisma);

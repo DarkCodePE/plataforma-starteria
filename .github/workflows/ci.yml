@@ -350,8 +350,19 @@ jobs:
       - name: G03 E3–E7 — browser and persisted handoff baseline
         run: npm run test:e2e -- e2e/kan240-e1-e7-delta.spec.ts
 
-      - name: KAN-232 G5 - authenticated PostgreSQL Home certification (A/B/C)
+      - name: KAN-232 G5 - authenticated PostgreSQL + Mailpit E1-E7 certification (A/B/C/D)
+        env:
+          E2E_WITH_MAILPIT: 'true'
         run: npm run test:e2e -- e2e/kan232-g5-home-final.spec.ts
+
+      - name: Preserve KAN-232 E1-E7 browser evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: kan-232-portfolio-lead-e1-e7-${{ github.run_id }}
+          path: front/test-results/
+          if-no-files-found: error
+          retention-days: 14
 
       - name: CURRENT_114D — deterministic full-stack browser journey
         run: npm run test:e2e -- --portfolio-entry-full-stack-test e2e/portfolio-entry-conversion.spec.ts --grep CURRENT_114D

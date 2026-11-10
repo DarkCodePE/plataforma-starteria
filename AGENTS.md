@@ -246,5 +246,7 @@ ignora y se avisa.
   mergear (puerta de una o dos vías, radio de impacto).
 - **CI** (`.github/workflows/ci.yml`): tests Node con cobertura 80 %, tests Python con cobertura
   75 %, build, los recorridos full-stack CURRENT_114D y LEGACY_COMPAT de Portfolio Entry y la
-  integración Prisma de confirmación sobre PostgreSQL desechable. No corre `typecheck` ni
-  `npm run lint`: los corre `/verificar` antes del PR.
+  integración Prisma de confirmación sobre PostgreSQL desechable. El recorrido KAN-232 usa
+  `E2E_WITH_MAILPIT=true`: levanta Mailpit en sandbox, persiste el receipt SMTP y sube
+  `front/test-results/` inmediatamente después del spec para no perder las capturas A/B/C/D.
+  No corre `typecheck` ni `npm run lint`: los corre `/verificar` antes del PR.
