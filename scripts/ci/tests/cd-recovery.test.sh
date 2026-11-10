@@ -78,6 +78,9 @@ export PILOT_CODE_SECRET=$STARTERIA_PILOT_CODE_SECRET
 export PORTFOLIO_ENTRY_API_KEY='synthetic-portfolio-key'
 export JEV_API_KEY='synthetic-jev-key'
 export GOOGLE_CLIENT_ID='synthetic-google-client'
+export HANDOFF_EMAIL_TRANSPORT_MODE=disabled
+export HANDOFF_EMAIL_PILOT_ENABLED=false
+export HANDOFF_INVITATION_PUBLIC_BASE_URL=https://starter-ia.com
 export KUBECTL_CAPTURE_DIR=$tmp
 
 cat > "$tmp/kubectl" <<'EOF'
@@ -109,7 +112,7 @@ EOF
 chmod +x "$tmp/kubectl"
 KUBECTL_BIN="$tmp/kubectl" bash "$syncer" >/dev/null
 
-jq -e '.data.BILLING_WEBHOOKS_ENABLED == "ZmFsc2U=" and .data.PILOT_CODE_SECRET and (.data.BILLING_WEBHOOK_SECRET | not) and (.data.UNKNOWN_EXISTING_KEY | not)' "$tmp/patch.json" >/dev/null
+jq -e '.data.BILLING_WEBHOOKS_ENABLED == "ZmFsc2U=" and .data.PILOT_CODE_SECRET and .data.HANDOFF_EMAIL_TRANSPORT_MODE == "ZGlzYWJsZWQ=" and .data.HANDOFF_EMAIL_PILOT_ENABLED == "ZmFsc2U=" and .data.HANDOFF_INVITATION_PUBLIC_BASE_URL == "aHR0cHM6Ly9zdGFydGVyLWlhLmNvbQ==" and (.data.BILLING_WEBHOOK_SECRET | not) and (.data.UNKNOWN_EXISTING_KEY | not)' "$tmp/patch.json" >/dev/null
 export BILLING_WEBHOOKS_ENABLED=true
 KUBECTL_BIN="$tmp/kubectl" bash "$syncer" >/dev/null
 jq -e '.data.BILLING_WEBHOOK_SECRET and .data.BILLING_WEBHOOKS_ENABLED == "dHJ1ZQ=="' "$tmp/patch.json" >/dev/null

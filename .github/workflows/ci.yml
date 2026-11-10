@@ -57,6 +57,14 @@ jobs:
         working-directory: .
         run: bash scripts/ci/tests/cd-recovery.test.sh
 
+      - name: Test production Handoff email pilot gate
+        working-directory: .
+        run: bash scripts/ci/tests/handoff-email-pilot-config.test.sh
+
+      - name: Test production migration authority gate
+        working-directory: .
+        run: bash scripts/ci/tests/production-migration-authority.test.sh
+
       - name: Test KAN-204 Step reasoning QA guards
         working-directory: .
         run: bash scripts/ci/tests/step-reasoning-qa-config.test.sh

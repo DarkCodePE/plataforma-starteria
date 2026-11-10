@@ -9,7 +9,7 @@ on:
   workflow_dispatch:
     inputs:
       source_sha:
-        description: 'Full 40-hex commit SHA to deploy (rollback/redeploy). Empty = tip of the selected ref.'
+        description: 'Full 40-hex commit SHA from main history to deploy (rollback/redeploy). Empty = current main.'
         required: false
         default: ''
         type: string
@@ -52,28 +52,17 @@ jobs:
         env:
           EVENT_NAME: ${{ github.event_name }}
           REF: ${{ github.ref }}
-          REF_NAME: ${{ github.ref_name }}
           HEAD_SHA: ${{ github.sha }}
           INPUT_SHA: ${{ inputs.source_sha }}
           REASON: ${{ inputs.reason }}
         run: |
           set -euo pipefail
-          semver='^v[0-9]+\.[0-9]+\.[0-9]+$'
-
-          # workflow_dispatch may be launched from any ref in the GitHub UI.
-          # Keep a closed allowlist: main and semver tags only.
-          case "$EVENT_NAME:$REF" in
-            workflow_dispatch:refs/heads/main|workflow_dispatch:refs/tags/*)
-              channel=manual ;;
-            *)
-              echo "::error::CD accepts only a manual dispatch from main or a vX.Y.Z tag (got $EVENT_NAME on $REF)"
-              exit 1 ;;
-          esac
-
-          # The `on:` glob is laxer than it looks; validate the tag name for real.
-          if [[ "$REF" == refs/tags/* ]]; then
-            [[ "$REF_NAME" =~ $semver ]] || { echo "::error::Tag $REF_NAME is not vMAJOR.MINOR.PATCH"; exit 1; }
-          fi
+          # The workflow definition itself is part of the safety boundary.
+          # Dispatching a historical tag could execute an older definition
+          # without current gates, so only current main may orchestrate CD.
+          [[ "$EVENT_NAME" == workflow_dispatch && "$REF" == refs/heads/main ]] \
+            || { echo "::error::CD accepts only a manual dispatch from main (got $EVENT_NAME on $REF)"; exit 1; }
+          channel=manual-main
 
           sha="${INPUT_SHA:-$HEAD_SHA}"
           [[ "$sha" =~ ^[0-9a-f]{40}$ ]] || { echo '::error::Resolved commit must be a full 40-character lowercase SHA'; exit 1; }
@@ -87,13 +76,7 @@ jobs:
           git merge-base --is-ancestor "$sha" origin/main \
             || { echo "::error::Commit $sha is not reachable from origin/main; refusing to deploy"; exit 1; }
 
-          # One tag rule: a semver tag ships under its own name unless the
-          # operator overrode the SHA; everything else ships as main-<7sha>.
-          if [[ "$REF" == refs/tags/* && -z "${INPUT_SHA:-}" ]]; then
-            tag="$REF_NAME"
-          else
-            tag="main-${sha:0:7}"
-          fi
+          tag="main-${sha:0:7}"
 
           {
             echo "sha=$sha"
@@ -125,6 +108,60 @@ jobs:
         run: |
           printf '## Production authorization\n\n- Authorized commit: `%s`\n- Authorized image tag: `%s`\n- No image publication, migration, or deployment occurred before this gate.\n' "$SOURCE_SHA" "$TAG" >> "$GITHUB_STEP_SUMMARY"
 
+  handoff-email-config:
+    name: Validate fail-closed Handoff email configuration
+    needs: [resolve, authorize]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          path: control-plane
+      - name: Validate disabled or restricted pilot mode
+        env:
+          PRODUCTION_BASE_URL: https://starter-ia.com
+          HANDOFF_EMAIL_TRANSPORT_MODE: ${{ vars.HANDOFF_EMAIL_TRANSPORT_MODE || 'disabled' }}
+          HANDOFF_EMAIL_PILOT_ENABLED: ${{ vars.HANDOFF_EMAIL_PILOT_ENABLED || 'false' }}
+          HANDOFF_INVITATION_PUBLIC_BASE_URL: ${{ vars.HANDOFF_INVITATION_PUBLIC_BASE_URL || 'https://starter-ia.com' }}
+          HANDOFF_EMAIL_PILOT_MAX_SENDS_PER_WINDOW: ${{ vars.HANDOFF_EMAIL_PILOT_MAX_SENDS_PER_WINDOW || '2' }}
+          HANDOFF_EMAIL_PILOT_WINDOW_SECONDS: ${{ vars.HANDOFF_EMAIL_PILOT_WINDOW_SECONDS || '3600' }}
+          HANDOFF_EMAIL_PILOT_MIN_INTERVAL_SECONDS: ${{ vars.HANDOFF_EMAIL_PILOT_MIN_INTERVAL_SECONDS || '30' }}
+          HANDOFF_INVITATION_TTL_HOURS: ${{ vars.HANDOFF_INVITATION_TTL_HOURS || '24' }}
+          SMTP_HOST: ${{ secrets.STARTERIA_SMTP_HOST }}
+          SMTP_USER: ${{ secrets.STARTERIA_SMTP_USER }}
+          SMTP_PASS: ${{ secrets.STARTERIA_SMTP_PASS }}
+          PILOT_LEAD_NOTIFY_FROM: ${{ secrets.STARTERIA_PILOT_LEAD_NOTIFY_FROM }}
+          HANDOFF_EMAIL_PILOT_VERIFIED_FROM: ${{ secrets.STARTERIA_HANDOFF_EMAIL_PILOT_VERIFIED_FROM }}
+          HANDOFF_EMAIL_REPLY_TO: ${{ secrets.STARTERIA_HANDOFF_EMAIL_REPLY_TO }}
+          HANDOFF_EMAIL_PILOT_RECIPIENT_ALLOWLIST: ${{ secrets.STARTERIA_HANDOFF_EMAIL_RECIPIENT_ALLOWLIST }}
+          HANDOFF_EMAIL_PILOT_ORGANIZATION_ALLOWLIST: ${{ secrets.STARTERIA_HANDOFF_EMAIL_ORGANIZATION_ALLOWLIST }}
+          HANDOFF_EMAIL_PILOT_ACTOR_ALLOWLIST: ${{ secrets.STARTERIA_HANDOFF_EMAIL_ACTOR_ALLOWLIST }}
+          E2E_PROD_OWNER_EMAIL: ${{ secrets.E2E_PROD_OWNER_EMAIL }}
+          E2E_PROD_LEAD_ACTOR_ID: ${{ secrets.E2E_PROD_LEAD_ACTOR_ID }}
+        run: bash control-plane/scripts/ci/validate-handoff-email-pilot-config.sh
+
+  migration-authority:
+    name: Validate Product ADR authority for pending production schema
+    needs: [resolve, authorize]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          path: control-plane
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.resolve.outputs.sha }}
+          path: release-target
+      - name: Require canonical Product ADR-010 ratification
+        env:
+          RELEASE_TARGET_ROOT: ${{ github.workspace }}/release-target
+        run: bash control-plane/scripts/ci/validate-production-migration-authority.sh
+
   tests:
     name: CI gate
     needs: [resolve, authorize]
@@ -149,7 +186,7 @@ jobs:
 
   build-and-push:
     name: Build and push ${{ matrix.service }}
-    needs: [tests, step-reasoning-qa-config, resolve, authorize]
+    needs: [tests, step-reasoning-qa-config, handoff-email-config, migration-authority, resolve, authorize]
     runs-on: ubuntu-latest
     timeout-minutes: 30
     environment: production
@@ -193,7 +230,7 @@ jobs:
     name: Deploy to Rackspace Spot
     # `resolve` is listed explicitly: needs.<job>.outputs is NOT inherited
     # transitively through build-and-push.
-    needs: [build-and-push, resolve, authorize]
+    needs: [build-and-push, handoff-email-config, migration-authority, resolve, authorize]
     runs-on: ubuntu-latest
     timeout-minutes: 20
     # Keep the environment on the deploy job as a second protection boundary
@@ -203,6 +240,10 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: ${{ needs.resolve.outputs.sha }}
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          path: .cd-control-plane
       - name: Check required credentials
         env:
           DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
@@ -270,6 +311,7 @@ jobs:
           done
       - name: Sync Kubernetes secrets
         env:
+          PRODUCTION_BASE_URL: https://starter-ia.com
           DB_PASSWORD: ${{ secrets.STARTERIA_DB_PASSWORD }}
           JWT_SECRET: ${{ secrets.STARTERIA_JWT_SECRET }}
           AI_SERVICE_TOKEN: ${{ secrets.STARTERIA_AI_SERVICE_TOKEN }}
@@ -288,17 +330,32 @@ jobs:
           SMTP_USER: ${{ secrets.STARTERIA_SMTP_USER }}
           SMTP_PASS: ${{ secrets.STARTERIA_SMTP_PASS }}
           PILOT_LEAD_NOTIFY_FROM: ${{ secrets.STARTERIA_PILOT_LEAD_NOTIFY_FROM }}
+          HANDOFF_EMAIL_TRANSPORT_MODE: ${{ vars.HANDOFF_EMAIL_TRANSPORT_MODE || 'disabled' }}
+          HANDOFF_EMAIL_PILOT_ENABLED: ${{ vars.HANDOFF_EMAIL_PILOT_ENABLED || 'false' }}
+          HANDOFF_INVITATION_PUBLIC_BASE_URL: ${{ vars.HANDOFF_INVITATION_PUBLIC_BASE_URL || 'https://starter-ia.com' }}
+          HANDOFF_EMAIL_PILOT_VERIFIED_FROM: ${{ secrets.STARTERIA_HANDOFF_EMAIL_PILOT_VERIFIED_FROM }}
+          HANDOFF_EMAIL_REPLY_TO: ${{ secrets.STARTERIA_HANDOFF_EMAIL_REPLY_TO }}
+          HANDOFF_EMAIL_PILOT_RECIPIENT_ALLOWLIST: ${{ secrets.STARTERIA_HANDOFF_EMAIL_RECIPIENT_ALLOWLIST }}
+          HANDOFF_EMAIL_PILOT_ORGANIZATION_ALLOWLIST: ${{ secrets.STARTERIA_HANDOFF_EMAIL_ORGANIZATION_ALLOWLIST }}
+          HANDOFF_EMAIL_PILOT_ACTOR_ALLOWLIST: ${{ secrets.STARTERIA_HANDOFF_EMAIL_ACTOR_ALLOWLIST }}
+          HANDOFF_EMAIL_PILOT_MAX_SENDS_PER_WINDOW: ${{ vars.HANDOFF_EMAIL_PILOT_MAX_SENDS_PER_WINDOW || '2' }}
+          HANDOFF_EMAIL_PILOT_WINDOW_SECONDS: ${{ vars.HANDOFF_EMAIL_PILOT_WINDOW_SECONDS || '3600' }}
+          HANDOFF_EMAIL_PILOT_MIN_INTERVAL_SECONDS: ${{ vars.HANDOFF_EMAIL_PILOT_MIN_INTERVAL_SECONDS || '30' }}
+          HANDOFF_INVITATION_TTL_HOURS: ${{ vars.HANDOFF_INVITATION_TTL_HOURS || '24' }}
+          E2E_PROD_OWNER_EMAIL: ${{ secrets.E2E_PROD_OWNER_EMAIL }}
+          E2E_PROD_LEAD_ACTOR_ID: ${{ secrets.E2E_PROD_LEAD_ACTOR_ID }}
           STEP_REASONING_COPILOT_ENABLED: 'true'
           STEP_REASONING_COPILOT_EMERGENCY_DISABLED: ${{ vars.STEP_REASONING_COPILOT_EMERGENCY_DISABLED || 'false' }}
           STEP_REASONING_PROVIDER_MODE: qa_stub
         run: |
           set -euo pipefail
+          bash .cd-control-plane/scripts/ci/validate-handoff-email-pilot-config.sh
           bash scripts/ci/validate-step-reasoning-qa-config.sh
           encoded_password=$(jq -nr --arg v "$DB_PASSWORD" '$v|@uri')
           database_url="postgresql://starteria:${encoded_password}@starteria-db:5432/starteria_db"
           kubectl -n "$NAMESPACE" create secret generic starteria-db-secrets --from-literal=POSTGRES_PASSWORD="$DB_PASSWORD" --dry-run=client -o yaml | kubectl apply -f -
           export DATABASE_URL="$database_url"
-          bash scripts/ci/sync-backend-secret.sh
+          bash .cd-control-plane/scripts/ci/sync-backend-secret.sh
           kubectl -n "$NAMESPACE" create configmap starteria-step-reasoning-qa \
             --from-literal=STEP_REASONING_COPILOT_ENABLED="$STEP_REASONING_COPILOT_ENABLED" \
             --from-literal=STEP_REASONING_COPILOT_EMERGENCY_DISABLED="$STEP_REASONING_COPILOT_EMERGENCY_DISABLED" \

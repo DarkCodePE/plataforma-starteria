@@ -15,11 +15,31 @@ required=(
   GOOGLE_CLIENT_ID
 )
 billing_webhooks_enabled="${BILLING_WEBHOOKS_ENABLED:-false}"
+handoff_email_transport_mode="${HANDOFF_EMAIL_TRANSPORT_MODE:-disabled}"
+handoff_email_pilot_enabled="${HANDOFF_EMAIL_PILOT_ENABLED:-false}"
 case "$billing_webhooks_enabled" in
   true) required+=(BILLING_WEBHOOK_SECRET) ;;
   false) ;;
   *) echo '::error::BILLING_WEBHOOKS_ENABLED must be true or false'; exit 1 ;;
 esac
+case "$handoff_email_transport_mode" in
+  disabled|pilot) ;;
+  *) echo '::error::HANDOFF_EMAIL_TRANSPORT_MODE must be disabled or pilot in production'; exit 1 ;;
+esac
+case "$handoff_email_pilot_enabled" in
+  true|false) ;;
+  *) echo '::error::HANDOFF_EMAIL_PILOT_ENABLED must be true or false'; exit 1 ;;
+esac
+if [[ "$handoff_email_transport_mode" == disabled && "$handoff_email_pilot_enabled" != false ]]; then
+  echo '::error::Handoff email pilot kill switch must be false while transport is disabled'
+  exit 1
+fi
+export HANDOFF_EMAIL_TRANSPORT_MODE="$handoff_email_transport_mode"
+export HANDOFF_EMAIL_PILOT_ENABLED="$handoff_email_pilot_enabled"
+export HANDOFF_EMAIL_PILOT_MAX_SENDS_PER_WINDOW="${HANDOFF_EMAIL_PILOT_MAX_SENDS_PER_WINDOW:-2}"
+export HANDOFF_EMAIL_PILOT_WINDOW_SECONDS="${HANDOFF_EMAIL_PILOT_WINDOW_SECONDS:-3600}"
+export HANDOFF_EMAIL_PILOT_MIN_INTERVAL_SECONDS="${HANDOFF_EMAIL_PILOT_MIN_INTERVAL_SECONDS:-30}"
+export HANDOFF_INVITATION_TTL_HOURS="${HANDOFF_INVITATION_TTL_HOURS:-24}"
 
 for name in "${required[@]}"; do
   [[ -n "${!name-}" ]] || { echo "::error::Missing backend secret input: $name"; exit 1; }
@@ -96,6 +116,12 @@ jq -n '
       BRIDGE_SHARED_SECRET: encoded("BRIDGE_SHARED_SECRET"),
       PILOT_CODE_SECRET: encoded("PILOT_CODE_SECRET"),
       BILLING_WEBHOOKS_ENABLED: (env.BILLING_WEBHOOKS_ENABLED // "false" | @base64),
+      HANDOFF_EMAIL_TRANSPORT_MODE: encoded("HANDOFF_EMAIL_TRANSPORT_MODE"),
+      HANDOFF_EMAIL_PILOT_ENABLED: encoded("HANDOFF_EMAIL_PILOT_ENABLED"),
+      HANDOFF_EMAIL_PILOT_MAX_SENDS_PER_WINDOW: encoded("HANDOFF_EMAIL_PILOT_MAX_SENDS_PER_WINDOW"),
+      HANDOFF_EMAIL_PILOT_WINDOW_SECONDS: encoded("HANDOFF_EMAIL_PILOT_WINDOW_SECONDS"),
+      HANDOFF_EMAIL_PILOT_MIN_INTERVAL_SECONDS: encoded("HANDOFF_EMAIL_PILOT_MIN_INTERVAL_SECONDS"),
+      HANDOFF_INVITATION_TTL_HOURS: encoded("HANDOFF_INVITATION_TTL_HOURS"),
       PORTFOLIO_ENTRY_API_KEY: encoded("PORTFOLIO_ENTRY_API_KEY"),
       PORTFOLIO_ENTRY_PROVIDER: ("openai_responses" | @base64),
       PORTFOLIO_ENTRY_MODEL: ("openai/gpt-5.6-luna" | @base64),
@@ -108,7 +134,13 @@ jq -n '
     + optional("SMTP_HOST")
     + optional("SMTP_USER")
     + optional("SMTP_PASS")
-    + optional("PILOT_LEAD_NOTIFY_FROM"))
+    + optional("PILOT_LEAD_NOTIFY_FROM")
+    + optional("HANDOFF_INVITATION_PUBLIC_BASE_URL")
+    + optional("HANDOFF_EMAIL_PILOT_VERIFIED_FROM")
+    + optional("HANDOFF_EMAIL_REPLY_TO")
+    + optional("HANDOFF_EMAIL_PILOT_RECIPIENT_ALLOWLIST")
+    + optional("HANDOFF_EMAIL_PILOT_ORGANIZATION_ALLOWLIST")
+    + optional("HANDOFF_EMAIL_PILOT_ACTOR_ALLOWLIST"))
   }
 ' | "$kubectl_bin" -n "$namespace" patch secret "$secret_name" --type=merge --patch-file=/dev/stdin >/dev/null
 
