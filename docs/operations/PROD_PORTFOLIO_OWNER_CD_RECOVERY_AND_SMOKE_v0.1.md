@@ -2,7 +2,7 @@
 
 **Status:** PREPARED / NOT EXECUTED  
 **Prepared:** 2026-11-10  
-**Target baseline:** `b6c3e8a155dbd1996b8d489acf4ab92438c25716`  
+**Target baseline:** `f5b8569091f9c5683ea12488756e93b2e14c0c4e`
 **Production origin:** `https://starter-ia.com`
 
 This runbook contains no production authorization. Every mutation remains behind the protected
@@ -10,8 +10,10 @@ This runbook contains no production authorization. Every mutation remains behind
 
 ## Current preflight result
 
-`NO-GO` until Product ADR-010 is ratified and a controlled external Owner identity is securely
-provisioned. An off-volume encrypted backup and isolated restore drill are also missing.
+`NO-GO` until Product ADR-010 is ratified by a formally verified decision owner and a controlled
+external Owner identity is securely provisioned. Consent exists for one candidate mailbox and one
+invitation only, but the mailbox is not configured and no send is authorized. An off-volume
+encrypted backup and isolated restore drill are also missing.
 Production currently advertises deployment
 `1e2dfa874c72f16bc2d0d78b9d92f99408834f94`; health alone does not prove the target journey.
 
@@ -32,7 +34,7 @@ repository secret store and must never be copied into issues, logs, screenshots 
 | variable | `HANDOFF_EMAIL_TRANSPORT_MODE` | `pilot` only for the approved window; otherwise `disabled` |
 | variable | `HANDOFF_EMAIL_PILOT_ENABLED` | independent kill switch, `true` only for the approved window |
 | variable | `HANDOFF_INVITATION_PUBLIC_BASE_URL` | exactly `https://starter-ia.com` |
-| variables | `HANDOFF_EMAIL_PILOT_MAX_SENDS_PER_WINDOW`, `...WINDOW_SECONDS`, `...MIN_INTERVAL_SECONDS` | at most 2 sends, bounded window, at least 30 seconds separation |
+| variables | `HANDOFF_EMAIL_PILOT_MAX_SENDS_PER_WINDOW`, `...WINDOW_SECONDS`, `...MIN_INTERVAL_SECONDS` | exactly 1 permitted send for this smoke, bounded window, at least 30 seconds separation |
 | variable | `HANDOFF_INVITATION_TTL_HOURS` | 1–168; proposed smoke value 24 |
 | existing secrets | `STARTERIA_SMTP_HOST`, `STARTERIA_SMTP_USER`, `STARTERIA_SMTP_PASS` | external SMTP; provider remains undisclosed |
 | existing secret | `STARTERIA_PILOT_LEAD_NOTIFY_FROM` | organizational sender |
@@ -56,9 +58,11 @@ Lead, Participant and shared Member. No `E2E_PROD_OWNER_EMAIL` or authorized ext
 declared. The documented Participant defaults to `e2e-participante@starteria.test`, which cannot
 prove real delivery.
 
-Therefore an external Owner account does **not** have sufficient evidence of existence or
-authorization. Do not create or rename an identity until a human supplies the controlled mailbox
-through the protected secret surface and separately authorizes tenant setup/update.
+Consent reference `GOV-2026-11-10-OWNER-PILOT-01` records that the mailbox owner confirms control
+and consents to exactly one production Handoff invitation. This is candidacy evidence only: the
+mailbox is not configured, identity existence is not proven and no account creation, tenant
+setup/update, configuration change or send is authorized. The exact mailbox must remain outside
+Git and later enter only through the protected secret surface after separate authorization.
 
 The prepared tenant script refuses to reuse an existing identity unless its primary organization
 and every membership already belong exclusively to `org-e2e-prod`; operator logs use a hash
@@ -108,8 +112,10 @@ not inject an external Owner email, so no creation/update path is armed by this 
 
 ## Controlled smoke — prepared, not executed
 
-Use two controlled assignments because acceptance and rejection are terminal alternatives. The
-send window therefore permits at most two messages.
+Use one controlled assignment because the mailbox consent covers exactly one invitation.
+Acceptance and rejection are terminal alternatives; the later send authorization must select
+which one is exercised. The non-selected human-response branch remains covered only by sandbox
+and automated evidence and cannot be claimed as production-certified by this smoke.
 
 ### Preconditions
 
@@ -124,7 +130,7 @@ send window therefore permits at most two messages.
 - browser trace/screenshot directory prepared with redaction rules;
 - no production customer data selected or displayed.
 
-### Scenario A — accept
+### Single authorized scenario — accept or reject
 
 1. Lead logs in through the browser and starts at Overview.
 2. Traverse E1–E7 using `[E2E-PROD] HANDOFF <UTC timestamp>` synthetic content.
@@ -134,17 +140,13 @@ send window therefore permits at most two messages.
    inbox delivery or human acceptance.
 6. Owner verifies the message in the real mailbox, opens the production-origin link, authenticates
    with the invited identity and reviews canonical Brief/context/provenance.
-7. Owner accepts explicitly. Verify `ACCEPTED`, actor/time/version and `startedAt = null`.
+7. Owner performs the one terminal response selected in the later authorization:
+   - `ACCEPT`: verify `ACCEPTED`, actor/time/version and `startedAt = null`; or
+   - `REJECT`: use a synthetic reason and verify `REJECTED`, actor/time/version/reason and
+     `startedAt = null`.
 8. Reload Owner, then re-enter Lead Overview and verify the same Assignment/version/history with no
-   duplicate invitation, attempt or response.
-
-### Scenario B — reject
-
-1. Create Assignment B under the same synthetic scope with a distinct idempotency key.
-2. Send once and repeat mailbox/identity verification.
-3. Owner rejects with a synthetic reason. Verify `REJECTED`, actor/time/version/reason and
-   `startedAt = null`.
-4. Reload Owner and Lead; verify reason and ordered transport/human events remain distinct.
+   duplicate invitation, attempt or response. Do not create a second assignment to exercise the
+   other response.
 
 ### Negative/read-only checks
 
@@ -189,11 +191,15 @@ was sent.
 
 ## Exact remaining approvals
 
-1. Human ratification of canonical Product ADR-010.
-2. Approval to create/update the external Owner identity in `org-e2e-prod`.
-3. Approval to add the named production secrets/variables and arm `pilot`.
-4. Approval to dispatch CD for one exact SHA and apply the two named migrations.
-5. Approval to send at most two real invitations to the controlled mailbox.
-6. Environment reviewer approval in GitHub.
-7. Separate approval for any rollback, restore, cleanup or resend.
+1. Human ratification of canonical Product ADR-010 by a formally verified Product Decision Owner.
+2. Formal acceptance by `DarkCodePE` of Data/DB Owner responsibility.
+3. Formal acceptance by `DarkCodePE` of SMTP Owner responsibility.
+4. Approval and evidence for encrypted off-volume backup, SHA-256 and isolated restore drill.
+5. Approval to create/update the external Owner identity in `org-e2e-prod`.
+6. Approval to add the named production secrets/variables while keeping transport disabled.
+7. Approval to dispatch CD for one exact post-ratification SHA and apply the two named migrations.
+8. Environment reviewer approval in GitHub.
+9. Separate approval to activate the bounded SMTP window and send exactly one invitation, selecting
+   `ACCEPT` or `REJECT` as the human response scenario.
+10. Separate approval for any rollback, restore, cleanup or resend.
 
