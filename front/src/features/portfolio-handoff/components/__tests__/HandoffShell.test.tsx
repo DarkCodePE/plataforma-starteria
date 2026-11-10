@@ -78,14 +78,48 @@ describe('HandoffShell', () => {
 
   it('does not invent an Initiative for a Challenge assignment', () => {
     render(<HandoffShell preview={preview()} onAccept={vi.fn()} onReject={vi.fn()} />);
-    expect(screen.getAllByText('Challenge Assignment')).toHaveLength(2);
-    expect(screen.getByText('El encargo está vinculado a un reto. Todavía no existe una Initiative asociada.')).toBeInTheDocument();
+    expect(screen.getAllByText('Encargo sobre reto')).toHaveLength(2);
+    expect(screen.getByText('El encargo está vinculado a un reto y no crea una iniciativa.')).toBeInTheDocument();
     expect(screen.queryByText(/Step 0|Step 1|progreso|Initiative existente/)).not.toBeInTheDocument();
+  });
+
+  it('renders canonical Owner context and never substitutes generic assignment copy', () => {
+    render(<HandoffShell preview={preview({
+      canonicalContext: {
+        strategicFront: { id: 'front-1', name: 'Retención', strategicObjective: 'Reducir churn', horizon: 'Q2', constraints: 'Sin datos sensibles' },
+        challenge: { id: 'challenge-1', title: 'Activación temprana', objective: 'Mejorar activación', description: 'Acompañar el primer uso', expectedDecision: 'Priorizar un piloto' },
+        initiative: null,
+        sender: { id: 'lead-1', name: 'Lucía Lead', email: 'lead@example.com' },
+        members: [{ identityKey: 'owner@example.com', userId: 'owner-1', emailNormalized: 'owner@example.com', label: 'Owner principal', role: 'OWNER', displayName: 'Olga Owner' }],
+        assignmentContextNote: 'Revisar el Brief antes de responder.',
+      },
+      briefVersion: {
+        id: 'brief-v3', versionNumber: 3, status: 'CONFIRMED', intent: 'Validar la activación', scope: 'Piloto de 30 días',
+        strategicContextRefs: { objective: 'Reducir churn' },
+        inheritedContext: { challengeProblem: 'Las cuentas abandonan pronto', expectedDeliverable: 'Decisión documentada' },
+        constraintsSnapshot: ['Sin PII'], knownGaps: ['Baseline pendiente'], sourceRefs: ['front-1'],
+        provenance: { source: 'PL05_COPILOT' }, confirmedAt: '2026-11-10T08:00:00.000Z',
+      },
+    } as any)} onAccept={vi.fn()} onReject={vi.fn()} />);
+
+    for (const value of ['Retención', 'Reducir churn', 'Activación temprana', 'Mejorar activación', 'Las cuentas abandonan pronto', 'Decisión documentada', 'Sin PII', 'Lucía Lead', 'Revisar el Brief antes de responder.']) {
+      expect(screen.getAllByText(new RegExp(value)).length).toBeGreaterThan(0);
+    }
+    expect(screen.queryByText('Reto vinculado a tu asignación')).not.toBeInTheDocument();
+    expect(screen.queryByText(/Tu participación ayuda a convertir este contexto/)).not.toBeInTheDocument();
+  });
+
+  it('offers an explicit account recovery action on identity mismatch', async () => {
+    const user = userEvent.setup();
+    const onChangeAccount = vi.fn();
+    render(<HandoffShell preview={preview({ identityClaimStatus: 'MISMATCH' })} onAccept={vi.fn()} onReject={vi.fn()} onChangeAccount={onChangeAccount} />);
+    await user.click(screen.getByRole('button', { name: 'Cambiar de cuenta' }));
+    expect(onChangeAccount).toHaveBeenCalledTimes(1);
   });
 
   it('renders a bounded terminal state after Start with no downstream navigation', () => {
     render(<HandoffShell preview={preview({ state: 'STARTED', version: 4 })} onAccept={vi.fn()} onReject={vi.fn()} />);
-    expect(screen.getByRole('status')).toHaveTextContent('Trabajo iniciado');
+    expect(screen.getByTestId('handoff-status')).toHaveTextContent('Trabajo iniciado');
     expect(screen.queryByRole('button', { name: 'Aceptar asignación' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Empezar' })).not.toBeInTheDocument();
     expect(screen.queryByText(/Step|Workspace|Iniciativa iniciada/)).not.toBeInTheDocument();

@@ -14,6 +14,7 @@ async function context(
     reservationTtlMs?: number;
     authorize?: HandoffEmailAuthorizationPort['authorize'];
     consumeSendQuota?: HandoffEmailAuthorizationPort['consumeSendQuota'];
+    publish?: (input: any) => Promise<void>;
   } = {},
 ) {
   const assignments = new InMemoryPortfolioHandoffAssignmentRepository();
@@ -34,7 +35,7 @@ async function context(
       authorize: options.authorize ?? (() => ({ mode: 'sandbox', from: 'sandbox@starteria.test', publicBaseUrl: 'http://localhost:5173', receiptSemantics: 'SMTP_ACCEPTED_ONLY', invitationTtlHours: 24 })),
       consumeSendQuota: options.consumeSendQuota,
     },
-    undefined,
+    options.publish ? ({ publish: options.publish } as any) : undefined,
     options.now,
     options.reservationTtlMs,
   );
@@ -395,11 +396,16 @@ describe('PortfolioHandoffDeliveryService / H-TECH-04', () => {
     expect((await created.service.revokeHandoffInvitation(created.assignment.id)).state).toBe('REVOKED');
 
     let expiredMessage: any;
-    const expiring = await context(async (input) => { expiredMessage = input; return { acceptedByTransport: true }; });
+    const publish = vi.fn().mockResolvedValue(undefined);
+    const expiring = await context(async (input) => { expiredMessage = input; return { acceptedByTransport: true }; }, { publish });
     await expiring.service.sendHandoffInvitation({ assignmentId: expiring.assignment.id, idempotencyKey: 'send-expired', expiresAt: new Date(Date.now() - 1) });
     const expiredToken = expiredMessage.text.match(/\/handoff\/invitations\/([^\s]+)/)?.[1];
     await expect(expiring.service.markHandoffInvitationViewed(expiredToken)).rejects.toMatchObject({ code: 'HANDOFF_INVITATION_EXPIRED' });
     expect((await expiring.assignments.findById(expiring.assignment.id))?.state).toBe('EXPIRED');
+    expect(publish).toHaveBeenCalledWith(expect.objectContaining({
+      type: 'assignment_expired', assignmentId: expiring.assignment.id,
+      payload: expect.objectContaining({ handoffState: 'EXPIRED' }),
+    }));
     await expect(expiring.service.sendHandoffInvitation({ assignmentId: expiring.assignment.id, idempotencyKey: 'retry-expired' })).rejects.toMatchObject({ code: 'HANDOFF_INVITATION_NOT_SENDABLE' });
   });
 });

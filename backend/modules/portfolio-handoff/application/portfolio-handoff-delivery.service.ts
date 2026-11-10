@@ -7,6 +7,7 @@ import { HANDOFF_DELIVERY_OUTCOME_UNKNOWN, HANDOFF_DELIVERY_RESERVATION } from '
 import type { HandoffDeliveryAttempt, HandoffDeliveryAttemptRepository, HandoffInvitationAccessRepository } from '../domain/portfolio-handoff-invitation.types';
 import type { DurableHandoffEventPort } from './portfolio-handoff-semantic-event.projector';
 import type { HandoffEmailAuthorization, HandoffEmailAuthorizationRequest } from './handoff-email-transport-gate';
+import { expireHandoffAssignment } from './portfolio-handoff-expiry';
 
 export type HandoffInvitationDeliveryPort = {
   send(input: { to: string; from: string; replyTo?: string; subject: string; text: string; html: string }): Promise<{ acceptedByTransport: boolean; providerMessageRef?: string }>;
@@ -285,7 +286,7 @@ export class PortfolioHandoffDeliveryService {
     const assignment = await this.requireAssignment(access.assignmentId);
     if (access.revokedAt || assignment.state === 'REVOKED') throw AppError.conflict('La invitacion fue revocada', 'HANDOFF_INVITATION_REVOKED');
     if (access.expiresAt && access.expiresAt.getTime() <= Date.now()) {
-      await this.assignments.transitionState({ assignmentId: assignment.id, from: ['CREATED', 'SENT', 'VIEWED'], to: 'EXPIRED' });
+      await expireHandoffAssignment(this.assignments, this.events, assignment, this.now());
       throw AppError.conflict('La invitacion expiro', 'HANDOFF_INVITATION_EXPIRED');
     }
     if (assignment.state === 'SENT') await this.assignments.transitionState({ assignmentId: assignment.id, from: ['SENT'], to: 'VIEWED' });

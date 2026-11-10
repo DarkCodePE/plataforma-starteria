@@ -18,6 +18,7 @@ export type HandoffShellProps = {
   responseError?: string | null;
   onStart?: () => Promise<void>;
   startBusy?: boolean;
+  onChangeAccount?: () => void | Promise<void>;
 };
 
 function shellState(preview: HandoffInvitationPreview): ShellState {
@@ -28,7 +29,7 @@ function shellState(preview: HandoffInvitationPreview): ShellState {
   return 'invitation';
 }
 
-export function HandoffShell({ preview, onAccept, onReject, acceptBusy = false, responseError, onStart, startBusy = false }: HandoffShellProps) {
+export function HandoffShell({ preview, onAccept, onReject, acceptBusy = false, responseError, onStart, startBusy = false, onChangeAccount }: HandoffShellProps) {
   const state = shellState(preview);
   const [rejectOpen, setRejectOpen] = useState(false);
   const [reason, setReason] = useState('');
@@ -38,8 +39,18 @@ export function HandoffShell({ preview, onAccept, onReject, acceptBusy = false, 
   const matched = preview.identityClaimStatus === 'MATCHED';
   const canRespond = matched && state === 'invitation' && ['SENT', 'VIEWED'].includes(preview.state);
   const isChallenge = preview.targetKind === 'CHALLENGE';
-  const title = isChallenge ? 'Asignación para desarrollar un reto' : 'Asignación sobre una iniciativa';
-  const typeLabel = isChallenge ? 'Challenge Assignment' : 'Initiative Assignment';
+  const context = preview.canonicalContext;
+  const title = context ? `Encargo: ${context.initiative?.name ?? context.challenge.title}` : 'Encargo recibido';
+  const typeLabel = isChallenge ? 'Encargo sobre reto' : 'Encargo sobre iniciativa existente';
+  const inheritedProblem = recordText(preview.briefVersion?.inheritedContext, 'challengeProblem');
+  const expectedDeliverable = recordText(preview.briefVersion?.inheritedContext, 'expectedDeliverable') ?? context?.challenge.successCriteria ?? null;
+  const strategicObjective = context?.strategicFront?.strategicObjective ?? recordText(preview.briefVersion?.strategicContextRefs, 'objective');
+  const restrictions = joinKnown([
+    context?.strategicFront?.constraints,
+    context?.challenge.constraints,
+    displayUnknown(preview.briefVersion?.constraintsSnapshot),
+  ]);
+  const knownGaps = displayUnknown(preview.briefVersion?.knownGaps);
 
   async function submitReject() {
     const trimmed = reason.trim();
@@ -61,11 +72,11 @@ export function HandoffShell({ preview, onAccept, onReject, acceptBusy = false, 
     }
   }
 
-  const status = state === 'started' ? <Badge variant="success" data-testid="handoff-status">Trabajo iniciado</Badge>
-    : state === 'accepted' ? <Badge variant="success" data-testid="handoff-status">Aceptada</Badge>
-    : state === 'rejected' ? <Badge variant="destructive" data-testid="handoff-status">Rechazada</Badge>
-      : state === 'terminal' ? <Badge variant="neutral" data-testid="handoff-status">No disponible</Badge>
-        : <Badge variant="info" data-testid="handoff-status">Pendiente de respuesta</Badge>;
+  const status = state === 'started' ? <Badge role="status" aria-live="polite" variant="success" data-testid="handoff-status">Trabajo iniciado</Badge>
+    : state === 'accepted' ? <Badge role="status" aria-live="polite" variant="success" data-testid="handoff-status">Aceptada</Badge>
+    : state === 'rejected' ? <Badge role="status" aria-live="polite" variant="destructive" data-testid="handoff-status">Rechazada</Badge>
+      : state === 'terminal' ? <Badge role="status" aria-live="polite" variant="neutral" data-testid="handoff-status">No disponible</Badge>
+        : <Badge role="status" aria-live="polite" variant="info" data-testid="handoff-status">Pendiente de respuesta</Badge>;
 
   return (
     <main data-testid="handoff-shell" className="min-h-screen bg-background-subtle px-4 py-6 text-text-primary sm:px-6 md:py-10">
@@ -83,38 +94,51 @@ export function HandoffShell({ preview, onAccept, onReject, acceptBusy = false, 
         />
 
         {responseError && <div role="alert" className="rounded-ds-md border border-status-error-border bg-status-error-surface p-4 text-sm text-status-error-text"><AlertCircle aria-hidden="true" className="mr-2 inline size-4" />{responseError}</div>}
-        {!matched && state === 'invitation' && <div role="status" className="rounded-ds-md border border-border-default bg-surface-default p-4 text-sm text-text-secondary">Esta cuenta no coincide con la identidad invitada. Usa la cuenta correcta para responder.</div>}
+        {!matched && state === 'invitation' && <div role="status" className="flex flex-col gap-3 rounded-ds-md border border-border-default bg-surface-default p-4 text-sm text-text-secondary sm:flex-row sm:items-center sm:justify-between"><span>Esta cuenta no coincide con la identidad invitada. Usa la cuenta correcta para responder.</span>{onChangeAccount && <Button type="button" variant="outline" className="min-h-11 shrink-0" onClick={() => void onChangeAccount()}>Cambiar de cuenta</Button>}</div>}
 
-        <ContextSummary title="Qué recibiste" description={isChallenge ? 'El encargo está vinculado a un reto. Todavía no existe una Initiative asociada.' : 'El encargo conserva la identidad de la Initiative existente.'} items={[
-          { label: isChallenge ? 'Reto asignado' : 'Iniciativa asignada', value: isChallenge ? 'Reto vinculado a tu asignación' : 'Initiative existente vinculada al reto' },
+        <ContextSummary title="Contexto del encargo" description={isChallenge ? 'El encargo está vinculado a un reto y no crea una iniciativa.' : 'El encargo conserva la identidad de la iniciativa existente.'} items={[
+          { label: 'Frente estratégico', value: context?.strategicFront?.name ?? 'No informado' },
+          { label: 'Reto', value: context?.challenge.title ?? 'No informado' },
+          { label: 'Iniciativa', value: isChallenge ? 'No existe una iniciativa asociada' : context?.initiative?.name ?? 'No informado' },
           { label: 'Tipo de encargo', value: typeLabel },
         ]} />
 
         {preview.briefVersion && <section data-testid="handoff-brief-version" className="rounded-ds-md border border-border-default bg-surface-default p-5" aria-labelledby="handoff-brief-title">
           <h2 id="handoff-brief-title" className="text-base font-semibold">Brief confirmado · versión {preview.briefVersion.versionNumber}</h2>
-          {preview.briefVersion.intent && <p className="mt-3 text-sm leading-6 text-text-secondary"><span className="font-medium text-text-primary">Objetivo:</span> {preview.briefVersion.intent}</p>}
-          {preview.briefVersion.scope && <p className="mt-2 text-sm leading-6 text-text-secondary"><span className="font-medium text-text-primary">Alcance:</span> {preview.briefVersion.scope}</p>}
+          <p className="mt-3 text-sm leading-6 text-text-secondary"><span className="font-medium text-text-primary">Objetivo del Brief:</span> {preview.briefVersion.intent ?? 'No informado'}</p>
+          <p className="mt-2 text-sm leading-6 text-text-secondary"><span className="font-medium text-text-primary">Alcance:</span> {preview.briefVersion.scope ?? 'No informado'}</p>
           <p className="mt-3 text-xs text-text-muted">Referencia inmutable: {preview.briefVersion.id}</p>
         </section>}
 
         <section className="grid gap-5 md:grid-cols-2">
-          <section className="rounded-ds-md border border-border-default bg-surface-default p-5" aria-labelledby="handoff-why-title">
-            <h2 id="handoff-why-title" className="text-base font-semibold">Por qué importa</h2>
-            <p className="mt-2 text-sm leading-6 text-text-secondary">Tu participación ayuda a convertir este contexto en trabajo trazable, con una responsabilidad clara y apoyo disponible.</p>
+          <section className="rounded-ds-md border border-border-default bg-surface-default p-5" aria-labelledby="handoff-context-title">
+            <h2 id="handoff-context-title" className="text-base font-semibold">Objetivo y contexto</h2>
+            <Definition label="Objetivo estratégico" value={strategicObjective} />
+            <Definition label="Objetivo del reto" value={context?.challenge.objective ?? context?.challenge.whatWeWantToMove} />
+            <Definition label="Contexto heredado" value={inheritedProblem ?? context?.challenge.description} />
+            <Definition label="Contexto específico del encargo" value={context?.assignmentContextNote} />
           </section>
           <section className="rounded-ds-md border border-border-default bg-surface-default p-5" aria-labelledby="handoff-expected-title">
-            <h2 id="handoff-expected-title" className="text-base font-semibold">Qué se espera de ti</h2>
-            <p className="mt-2 text-sm leading-6 text-text-secondary">Asumir el encargo como Initiative Owner y revisar el contexto antes de decidir cuándo empezar.</p>
+            <h2 id="handoff-expected-title" className="text-base font-semibold">Resultado y límites</h2>
+            <Definition label="Resultado esperado" value={expectedDeliverable} />
+            <Definition label="Restricciones" value={restrictions} />
+            <Definition label="Horizonte" value={context?.strategicFront?.horizon} />
+            <Definition label="Información pendiente" value={knownGaps} />
           </section>
         </section>
 
-        <details className="rounded-ds-md border border-border-default bg-surface-default p-5">
-          <summary className="cursor-pointer font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring">Ver marco y apoyo disponible</summary>
-          <div className="mt-4 grid gap-4 text-sm text-text-secondary md:grid-cols-2">
-            <p><Clock3 aria-hidden="true" className="mr-2 inline size-4 text-brand-primary" />El contexto se conserva para que puedas revisarlo antes de actuar.</p>
-            <p><Users aria-hidden="true" className="mr-2 inline size-4 text-brand-primary" />El equipo y Portfolio Lead podrán acompañar el desarrollo del encargo.</p>
+        <section className="rounded-ds-md border border-border-default bg-surface-default p-5" aria-labelledby="handoff-people-title">
+          <h2 id="handoff-people-title" className="text-base font-semibold">Responsables</h2>
+          <div className="mt-3 grid gap-4 text-sm text-text-secondary md:grid-cols-2">
+            <p><Clock3 aria-hidden="true" className="mr-2 inline size-4 text-brand-primary" /><span className="font-medium text-text-primary">Emite:</span> {context ? `${context.sender.name} · ${context.sender.email}` : 'No informado'}</p>
+            <div><p className="font-medium text-text-primary"><Users aria-hidden="true" className="mr-2 inline size-4 text-brand-primary" />Equipo del encargo</p>{context?.members.length ? <ul className="mt-2 space-y-1">{context.members.map((member) => <li key={`${member.role}-${member.identityKey}`}>{member.role}: {member.displayName ?? member.label ?? member.emailNormalized ?? 'No informado'}</li>)}</ul> : <p className="mt-2">No informado</p>}</div>
           </div>
-        </details>
+        </section>
+
+        {preview.briefVersion && <details className="rounded-ds-md border border-border-default bg-surface-default p-5">
+          <summary className="cursor-pointer font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring">Ver procedencia del Brief</summary>
+          <div className="mt-4 space-y-2 text-sm text-text-secondary"><Definition label="Fuentes" value={displayUnknown(preview.briefVersion.sourceRefs)} /><Definition label="Procedencia" value={displayUnknown(preview.briefVersion.provenance)} /></div>
+        </details>}
 
         {state === 'accepted' && <section className="rounded-ds-md border border-brand-primary/30 bg-brand-primary-subtle p-5" aria-labelledby="handoff-start-title">
           <h2 id="handoff-start-title" className="text-base font-semibold">Cuando decidas empezar</h2>
@@ -158,4 +182,35 @@ export function HandoffShell({ preview, onAccept, onReject, acceptBusy = false, 
       </Dialog>
     </main>
   );
+}
+
+function Definition({ label, value }: { label: string; value: string | null | undefined }) {
+  return <p className="mt-2 text-sm leading-6 text-text-secondary"><span className="font-medium text-text-primary">{label}:</span> {value?.trim() || 'No informado'}</p>;
+}
+
+function recordText(value: unknown, key: string): string | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const candidate = (value as Record<string, unknown>)[key];
+  return typeof candidate === 'string' && candidate.trim() ? candidate.trim() : null;
+}
+
+function displayUnknown(value: unknown): string | null {
+  if (typeof value === 'string') return value.trim() || null;
+  if (Array.isArray(value)) {
+    const items = value.map(displayUnknown).filter((item): item is string => Boolean(item));
+    return items.length ? items.join(' · ') : null;
+  }
+  if (value && typeof value === 'object') {
+    const items = Object.entries(value as Record<string, unknown>)
+      .map(([key, item]) => { const rendered = displayUnknown(item); return rendered ? `${key}: ${rendered}` : null; })
+      .filter((item): item is string => Boolean(item));
+    return items.length ? items.join(' · ') : null;
+  }
+  if (typeof value === 'number' || typeof value === 'boolean') return String(value);
+  return null;
+}
+
+function joinKnown(values: Array<string | null | undefined>): string | null {
+  const unique = [...new Set(values.map((value) => value?.trim()).filter((value): value is string => Boolean(value)))];
+  return unique.length ? unique.join(' · ') : null;
 }

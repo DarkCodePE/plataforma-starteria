@@ -333,6 +333,45 @@ autenticado, y de que la revisión independiente confirme que no se incorporó s
 
 ---
 
+## Slice OWNER_HANDOFF_ACCEPTANCE_E2E (KAN-254)
+
+**Registrado:** 2026-11-10 sobre `main@f5baae73fe657aaea2d866bf41ce6cf0c0233f73`,
+posterior al merge del PR #304. La aprobación humana formal consta en KAN-254#10831.
+
+```text
+slice_id: OWNER_HANDOFF_ACCEPTANCE_E2E
+functional_hu: KAN-254
+parent_epic: KAN-45
+related_goal: KAN-232 / Portfolio Lead G5 E2E
+baseline: main@f5baae73fe657aaea2d866bf41ce6cf0c0233f73
+logic_status: ACTIVE_V2_SLICE
+implementation_status: READY_FOR_MERGE_REVIEW
+visual_status: V2_PILOT_DS08_ADAPT
+evidence_status: IMPLEMENTED + FRONTEND_1200_PASS + BACKEND_2010_PASS_WITH_11_LOCAL_DB_ENV_FAILURES + KAN254_PLAYWRIGHT_1_PASS + INDEPENDENT_REVIEW_3_ROUNDS_FINAL_FINDING_RESOLVED
+semantic_owner: Portfolio Lead to Initiative Owner Handoff V2
+authority_chain: Core v0.2 factual + active Handoff Experience Contract v0.2 + ADR-004/005/008/009 + KAN-254 approved scope
+current_routes: /handoff/invitations/:token; GET/POST /api/v1/handoff/*; GET /api/v1/portfolio/home; /portfolio/inicio
+current_gap: Productive mailbox delivery and productive deployment remain uncertified; no approved visual baseline exists. Owner canonical context, account recovery, exact Brief/actor/history, expiry reconciliation and sandbox browser coverage are implemented.
+allowed_backend: additive owner/tenant-scoped invitation preview and Portfolio Home read-model composition from existing canonical relations/events; no new aggregate or business transition
+allowed_frontend: adapt existing Handoff Shell, invitation page, auth continuation and Portfolio Home detail to show canonical data, explicit missing-data states, identity recovery, actor/version/history and accessible feedback
+allowed_tests: KAN-254 OH-CA01..OH-CA16; focused contract/regression/negative suites; disposable PostgreSQL + Mailpit + authenticated Playwright at 375/768/1440; axe and keyboard checks
+reuse_required: PortfolioHandoffInvitationService; PortfolioHandoffResponseService; PortfolioHandoffProjection/events; PortfolioHomeReadService; HandoffShell; AuthPage pending-invitation continuation; existing Playwright disposable runner and Mailpit
+state_separation: delivery requested/UNKNOWN/SMTP accepted/failed != viewed/accepted/rejected human; Accept != Start; Challenge Assignment != Initiative; sandbox SMTP != productive delivery
+preserves: exact immutable BriefVersion; recipient/tenant authorization; idempotency; provenance; human review; Project/Initiative identity; Steps 0-4 unchanged
+excluded: Start redesign or auto-Start; Project/Initiative/Step creation; Step 0-4 changes; MCP; memory; checkpoints; result brief; alerts; Owner inbox; new infrastructure/provider; productive email; production migration/deploy; Core/cardinality changes
+legacy_dependencies: Project remains the canonical Initiative identity only for EXISTING_INITIATIVE; existing Start path remains stable but is not exercised by the acceptance certification; no legacy surface may supply invented owner context
+adapter_required: NO; additive read DTOs and existing route/UI adaptation only
+negative_guards: no invented labels/context; no claim on identity mismatch; no PII leak; no duplicate invitation/delivery/response; no SMTP-to-human-state inference; no automatic ownership or Step mutation
+stop_conditions: need for Core/ADR/Steps/schema/new aggregate/new alert/new inbox semantics; ambiguous canonical source; productive provider or deployment requirement
+guardrail: V2_CHANGE_GUARDRAIL_CHECK Proceed:YES for allowed and Proceed:NO for excluded
+delivery_status: OWNER_HANDOFF_E2E_READY_FOR_MERGE_REVIEW or OWNER_HANDOFF_E2E_BLOCKED with evidence
+```
+
+Este slice completa la recepción y respuesta humana hasta Accept/Reject y su retorno a Portfolio
+Home. No promueve Start ni la plataforma Steps, y no convierte aceptación SMTP en aceptación humana.
+
+---
+
 ## Slice RELEASE_G1_G5_STAGING_CERTIFICATION (KAN-236 / KAN-237)
 
 **Registrado:** 2026-11-07 por KAN-236/KAN-237 y los hallazgos de preparación operativa

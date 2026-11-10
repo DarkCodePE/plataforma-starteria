@@ -9,6 +9,20 @@ import type {
   UpdateCreatedHandoffAssignmentInput,
 } from '../domain/portfolio-handoff-assignment.types';
 
+const ASSIGNMENT_INCLUDE = {
+  members: { include: { user: { select: { id: true, name: true, email: true } } } },
+  briefVersion: true,
+  challenge: {
+    include: {
+      strategicFront: {
+        select: { id: true, name: true, description: true, strategicObjective: true, whyNow: true, constraints: true, horizon: true },
+      },
+    },
+  },
+  initiative: { select: { id: true, name: true, description: true, status: true, currentStep: true } },
+  createdByActor: { select: { id: true, name: true, email: true } },
+} as const;
+
 export class PrismaPortfolioHandoffAssignmentRepository implements HandoffAssignmentRepository, HandoffReferenceRepository {
   constructor(private readonly prisma: PrismaClient) {}
 
@@ -27,13 +41,13 @@ export class PrismaPortfolioHandoffAssignmentRepository implements HandoffAssign
         createdByActorId: input.createdByActorId,
         members: { create: input.members.map((member) => ({ ...member, identityKey: member.identityKey.trim().toLowerCase() })) },
       },
-      include: { members: true, briefVersion: true },
+      include: ASSIGNMENT_INCLUDE,
     });
     return mapAssignment(record);
   }
 
   async findById(id: string): Promise<HandoffAssignment | null> {
-    const record = await this.prisma.portfolioHandoffAssignment.findUnique({ where: { id }, include: { members: true, briefVersion: true } });
+    const record = await this.prisma.portfolioHandoffAssignment.findUnique({ where: { id }, include: ASSIGNMENT_INCLUDE });
     return record ? mapAssignment(record) : null;
   }
 
@@ -58,7 +72,7 @@ export class PrismaPortfolioHandoffAssignmentRepository implements HandoffAssign
 
   async associateInvitedIdentity(input: { assignmentId: string; userId: string; emailNormalized: string; identityRef?: string | null }): Promise<HandoffAssignment | null> {
     const prisma = this.prisma as any;
-    const assignment = await prisma.portfolioHandoffAssignment.findUnique({ where: { id: input.assignmentId }, include: { members: true, briefVersion: true } });
+    const assignment = await prisma.portfolioHandoffAssignment.findUnique({ where: { id: input.assignmentId }, include: ASSIGNMENT_INCLUDE });
     if (!assignment) return null;
     const member = assignment.members.find((candidate: any) => candidate.role === 'OWNER' && !candidate.userId && (candidate.emailNormalized === input.emailNormalized || candidate.identityKey === input.emailNormalized || candidate.identityKey === input.identityRef));
     if (!member) return null;
@@ -137,6 +151,48 @@ function mapAssignment(record: any): HandoffAssignment {
       strategicContextRefs: record.briefVersion.strategicContextRefs, inheritedContext: record.briefVersion.inheritedContext,
       constraintsSnapshot: record.briefVersion.constraintsSnapshot, knownGaps: record.briefVersion.knownGaps,
       sourceRefs: record.briefVersion.sourceRefs, provenance: record.briefVersion.provenance, confirmedAt: record.briefVersion.confirmedAt,
+    } : null,
+    canonicalContext: record.challenge && record.createdByActor ? {
+      strategicFront: record.challenge.strategicFront ? {
+        id: record.challenge.strategicFront.id,
+        name: record.challenge.strategicFront.name,
+        description: record.challenge.strategicFront.description,
+        strategicObjective: record.challenge.strategicFront.strategicObjective,
+        whyNow: record.challenge.strategicFront.whyNow,
+        constraints: record.challenge.strategicFront.constraints,
+        horizon: record.challenge.strategicFront.horizon,
+      } : null,
+      challenge: {
+        id: record.challenge.id,
+        title: record.challenge.title,
+        description: record.challenge.description,
+        objective: record.challenge.objective,
+        whatWeWantToMove: record.challenge.whatWeWantToMove,
+        whyNow: record.challenge.whyNow,
+        successCriteria: record.challenge.successCriteria,
+        knownFacts: record.challenge.knownFacts,
+        openQuestions: record.challenge.openQuestions,
+        constraints: record.challenge.constraints,
+        dependencies: record.challenge.dependencies,
+        expectedDecision: record.challenge.expectedDecision,
+      },
+      initiative: record.initiative ? {
+        id: record.initiative.id,
+        name: record.initiative.name,
+        description: record.initiative.description,
+        status: String(record.initiative.status),
+        currentStep: record.initiative.currentStep,
+      } : null,
+      sender: { id: record.createdByActor.id, name: record.createdByActor.name, email: record.createdByActor.email },
+      members: record.members.map((member: any) => ({
+        identityKey: member.identityKey,
+        userId: member.userId,
+        emailNormalized: member.emailNormalized,
+        label: member.label,
+        role: member.role,
+        displayName: member.user?.name ?? null,
+      })),
+      assignmentContextNote: record.contextNote ?? null,
     } : null,
   };
 }

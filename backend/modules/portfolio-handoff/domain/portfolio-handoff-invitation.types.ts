@@ -1,4 +1,4 @@
-import type { HandoffActivationBriefVersionProjection, HandoffAssignment, HandoffAssignmentRepository, HandoffTargetKind } from './portfolio-handoff-assignment.types';
+import type { HandoffActivationBriefVersionProjection, HandoffAssignment, HandoffAssignmentRepository, HandoffCanonicalContextProjection, HandoffTargetKind } from './portfolio-handoff-assignment.types';
 
 export type HandoffInvitationAccess = {
   id: string;
@@ -35,6 +35,7 @@ export type HandoffInvitationPreview = {
   challengeId: string;
   initiativeId: string | null;
   briefVersion: HandoffActivationBriefVersionProjection | null;
+  canonicalContext: HandoffCanonicalContextProjection | null;
   state: HandoffAssignment['state'];
   version: number;
   rejectionReason: string | null;
