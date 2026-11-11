@@ -95,5 +95,17 @@ app.include_router(ai_router, prefix="/api/v1")
 # ---------------------------------------------------------------------------
 
 @app.get("/health", tags=["health"])
-async def health() -> dict[str, str]:
-    return {"status": "ok", "service": "starteria-ai-service"}
+async def health() -> dict[str, object]:
+    source_sha = os.getenv("STARTERIA_RELEASE_SHA", "unknown").strip() or "unknown"
+    if source_sha != "unknown" and not (
+        len(source_sha) == 40 and all(char in "0123456789abcdef" for char in source_sha)
+    ):
+        source_sha = "invalid"
+    return {
+        "status": "ok",
+        "service": "starteria-ai-service",
+        "release": {
+            "sourceSha": source_sha,
+            "version": os.getenv("STARTERIA_RELEASE_VERSION", "0.1.0"),
+        },
+    }
