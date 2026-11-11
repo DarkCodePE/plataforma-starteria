@@ -44,7 +44,7 @@ jobs:
       tag: ${{ steps.target.outputs.tag }}
       channel: ${{ steps.target.outputs.channel }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
       - name: Resolve and verify release target
@@ -204,7 +204,7 @@ jobs:
             context: ./ai-service
             dockerfile: ./ai-service/Dockerfile
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ needs.resolve.outputs.sha }}
       - uses: docker/setup-buildx-action@v3
@@ -237,7 +237,7 @@ jobs:
     # and as the source of production-scoped secrets.
     environment: production
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ needs.resolve.outputs.sha }}
       - uses: actions/checkout@v4
