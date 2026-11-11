@@ -387,6 +387,9 @@ jobs:
           PLAYWRIGHT_TARGET_ROOT: ${{ github.workspace }}
         run: .ci-control-plane/scripts/ci/playwright-runtime.sh start
 
+      - name: G04 - authenticated owner to Portfolio Lead attention certification
+        run: npm run test:e2e -- e2e/portfolio-g04-two-role-attention.spec.ts
+
       - name: KAN-212 G2-A V2_CONFORMANCE — authenticated navigation and reentry
         run: npm run test:e2e -- e2e/kan212-g2a-navigation.spec.ts
 
