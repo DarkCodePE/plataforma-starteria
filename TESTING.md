@@ -102,6 +102,14 @@ npm run test:e2e -- e2e/portfolio-entry-conversion.spec.ts   # un spec (es el qu
 npm run test:e2e:debug -- e2e/<spec>                 # con inspector
 ```
 
+En CI y en la paridad previa al deploy no se instalan paquetes de navegador con `apt`. El runner
+arranca el `scripts/ci/playwright-runtime.sh start` del control plane vigente, pasándole la raíz del
+release target. El helper comprueba que lockfile y paquete instalado coinciden y selecciona la
+imagen oficial aprobada para esa versión desde una lista fijada por digest; las pruebas siguen en
+el host mediante `PW_TEST_CONNECT_WS_ENDPOINT` y `PW_TEST_CONNECT_EXPOSE_NETWORK=<loopback>`. Así
+conservan PostgreSQL y Mailpit aislados con Docker Compose. El paso `stop` se ejecuta siempre al
+finalizar el job.
+
 La verificación full-stack de Portfolio Entry en CI usa estos modos explícitos:
 
 ```bash

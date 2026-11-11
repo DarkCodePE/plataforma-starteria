@@ -61,9 +61,19 @@ jobs:
         with:
           ref: ${{ inputs.release_source_sha || github.sha }}
 
+      - name: Checkout current CI control plane
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          path: .ci-control-plane
+
       - name: Test immutable release parity contract
         working-directory: .
         run: bash scripts/ci/tests/release-parity.test.sh
+
+      - name: Test pinned Playwright runtime contract
+        working-directory: .ci-control-plane
+        run: bash scripts/ci/tests/playwright-runtime.test.sh
 
       - name: Test production CD recovery guards
         working-directory: .
@@ -340,6 +350,9 @@ jobs:
     name: E2E light (Portfolio Entry)
     runs-on: ubuntu-24.04
     timeout-minutes: 25
+    env:
+      PW_TEST_CONNECT_WS_ENDPOINT: ws://127.0.0.1:3000/
+      PW_TEST_CONNECT_EXPOSE_NETWORK: '<loopback>'
     defaults:
       run:
         working-directory: ./front
@@ -349,6 +362,12 @@ jobs:
         uses: actions/checkout@v4
         with:
           ref: ${{ inputs.release_source_sha || github.sha }}
+
+      - name: Checkout current CI control plane
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          path: .ci-control-plane
 
       - name: Setup Node.js 20.x
         uses: actions/setup-node@v4
@@ -360,10 +379,13 @@ jobs:
       - name: Install dependencies (npm ci)
         run: npm ci
 
-      # Una única invocación evita solapar procesos apt si la instalación falla o agota el tiempo.
-      # El código de salida de Playwright se propaga para que el job falle de forma visible.
-      - name: Install Playwright Chromium
-        run: npx playwright install --with-deps chromium
+      # Chromium corre en la imagen oficial inmutable; no depende de apt ni de
+      # repositorios Ubuntu, y los E2E permanecen en el runner con Docker Compose.
+      - name: Start pinned Playwright Chromium runtime
+        working-directory: .
+        env:
+          PLAYWRIGHT_TARGET_ROOT: ${{ github.workspace }}
+        run: .ci-control-plane/scripts/ci/playwright-runtime.sh start
 
       - name: KAN-212 G2-A V2_CONFORMANCE — authenticated navigation and reentry
         run: npm run test:e2e -- e2e/kan212-g2a-navigation.spec.ts
@@ -465,6 +487,13 @@ jobs:
             front/test-results/
           retention-days: 7
           if-no-files-found: warn
+
+      - name: Stop pinned Playwright Chromium runtime
+        if: always()
+        working-directory: .
+        env:
+          PLAYWRIGHT_TARGET_ROOT: ${{ github.workspace }}
+        run: .ci-control-plane/scripts/ci/playwright-runtime.sh stop
 
   # ---------------------------------------------------------------------------
   # Job 5: Aggregate summary — runs even on partial failure to give one place
