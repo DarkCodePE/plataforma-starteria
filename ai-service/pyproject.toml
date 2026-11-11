@@ -16,7 +16,7 @@ dependencies = [
     "httpx>=0.27",
     "python-dotenv>=1.0",
     # ADR-027: methodology harness config is loaded from harness/config/methodology.yaml.
-    "pyyaml>=6.0",
+    "pyyaml>=6.0.3",
     # TASK-008 (pdf_extractor): PDF parsing dependencies.
     "pypdf>=4.0",
     "pdfplumber>=0.11",
