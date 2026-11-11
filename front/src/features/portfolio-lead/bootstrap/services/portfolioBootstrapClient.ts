@@ -291,6 +291,8 @@ export type PortfolioOrganizationChallengeCandidate = {
   evidence: string[];
   gaps: string[];
   overlaps: string[];
+  /** Optional human-reviewed date. Never copied automatically from the Front horizon. */
+  timeframe?: string | null;
 };
 
 export type PortfolioOrganizationFrontCandidate = {
@@ -299,6 +301,8 @@ export type PortfolioOrganizationFrontCandidate = {
   focus: string;
   rationale: string;
   coverage: string;
+  /** Optional strategic horizon for the Front; Challenges keep their own timeframe. */
+  strategicHorizon?: string | null;
   challenges: PortfolioOrganizationChallengeCandidate[];
 };
 

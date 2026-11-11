@@ -293,7 +293,10 @@ describe('PortfolioSetupCompletionService', () => {
       data: expect.objectContaining({
         bootstrapSessionId: result.bootstrapSession.id,
         contextSummary: null,
-        outcomeStatement: 'Reducir abandono',
+        outcomeStatement: '',
+        decisionToEnable: null,
+        businessSignalStatus: 'unknown',
+        businessSignalValue: null,
         status: 'anchor_insufficient',
         provenanceStatus: 'extracted',
         confirmedBy: null,

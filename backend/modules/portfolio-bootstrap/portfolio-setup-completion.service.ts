@@ -237,11 +237,11 @@ export class PortfolioSetupCompletionService {
       const anchor = await db.portfolioAnchor.create({
         data: {
           bootstrapSessionId: created.id,
-          outcomeStatement: previous.anchor.outcomeStatement,
+          outcomeStatement: '',
           contextSummary: null,
-          decisionToEnable: previous.anchor.decisionToEnable,
-          businessSignalStatus: previous.anchor.businessSignalValue ? 'suggested' : 'unknown',
-          businessSignalValue: previous.anchor.businessSignalValue,
+          decisionToEnable: null,
+          businessSignalStatus: 'unknown',
+          businessSignalValue: null,
           status: 'anchor_insufficient',
           sourceRefs: {
             organizationalContextReference: {

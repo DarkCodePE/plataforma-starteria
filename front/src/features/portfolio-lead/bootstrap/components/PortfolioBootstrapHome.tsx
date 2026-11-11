@@ -548,9 +548,9 @@ function PortfolioCopilotWorkspace({
           <div className="flex items-start justify-between gap-4 border-b border-slate-200 px-5 py-4 md:px-6">
             <div className="flex items-center gap-3">
               <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-violet-100 text-violet-800"><Sparkles size={18} /></span>
-              <div><h2 className="text-base font-semibold text-slate-950">{semantic?.snapshot?.enabled ? 'Conversación con Copilot' : 'Preparación guiada del portafolio'}</h2><p className="text-sm text-slate-500">Aquí organizamos el contexto guardado; la síntesis requiere tu revisión.</p></div>
+              <div><h2 className="text-base font-semibold text-slate-950">{semantic?.snapshot?.enabled && stage === 0 ? 'Conversación con Copilot' : 'Preparación guiada del portafolio'}</h2><p className="text-sm text-slate-500">Aquí organizamos el contexto guardado; la síntesis requiere tu revisión.</p></div>
             </div>
-            <span className="rounded-full border border-violet-200 bg-violet-50 px-2.5 py-1 text-xs font-semibold text-violet-800">{semantic?.snapshot?.enabled ? 'Copilot semántico' : 'Guía estructurada'}</span>
+            <span className="rounded-full border border-violet-200 bg-violet-50 px-2.5 py-1 text-xs font-semibold text-violet-800">{semantic?.snapshot?.enabled && stage === 0 ? 'Copilot semántico' : 'Guía estructurada · sin IA de pago'}</span>
           </div>
           <div className="space-y-5 bg-slate-50/60 px-5 py-6 md:px-7">
             {stage === 0 ? (
@@ -568,7 +568,7 @@ function PortfolioCopilotWorkspace({
                 enableContextProjection
               />
             ) : null}
-            {stage === 1 ? <FrozenObjectiveConversation projection={projection} onSave={onUpdateAnchor} onConfirm={confirmObjective} onCheckpointApplied={onCheckpointApplied} /> : null}
+            {stage === 1 ? <FrozenObjectiveConversation projection={projection} contextReview={contextReview} onSave={onUpdateAnchor} onConfirm={confirmObjective} onCheckpointApplied={onCheckpointApplied} /> : null}
             {stage === 2 ? <FrozenChatStage eyebrow="Incorporar iniciativas" title="¿Qué iniciativas existentes quieres que revisemos?" help="Puedes subir un archivo, pegar una lista o continuar sin iniciativas. No hay una respuesta obligatoria.">{runtimePanel}</FrozenChatStage> : null}
             {stage === 3 ? <FrozenChatStage eyebrow="Análisis explicable" title="¿Qué está contribuyendo, qué se solapa y qué requiere revisión?" help="Cada lectura conserva su fuente, evidencia, vacíos y estado de revisión humana.">{runtimePanel}</FrozenChatStage> : null}
             {stage === 4 ? <FrozenOrganizationStage projection={projection} proposal={organizationProposal} status={organizationStatus} error={organizationError} onSave={onSaveOrganizationProposal} onConfirm={onConfirmOrganizationProposal} onComplete={(confirmed) => { setConfirmedOrganization(confirmed); setSelectedStage(5); }} /> : null}
@@ -595,7 +595,7 @@ function FrozenContextConversation(props: React.ComponentProps<typeof PortfolioB
   return <PortfolioBootstrapContextConversation {...props} />;
 }
 
-function FrozenObjectiveConversation({ projection, onSave, onConfirm, onCheckpointApplied }: { projection: BootstrapProjection; onSave: (input: UpdatePortfolioBootstrapAnchorInput) => Promise<void>; onConfirm: () => Promise<void>; onCheckpointApplied: () => void }) {
+function FrozenObjectiveConversation({ projection, contextReview, onSave, onConfirm, onCheckpointApplied }: { projection: BootstrapProjection; contextReview: PortfolioBootstrapContextReview | null; onSave: (input: UpdatePortfolioBootstrapAnchorInput) => Promise<void>; onConfirm: () => Promise<void>; onCheckpointApplied: () => void }) {
   const anchor = projection.anchor;
   const [useGuided, setUseGuided] = useState(false);
   // Both the frontend opt-in AND the backend's own ledger flag must be enabled.
@@ -604,6 +604,7 @@ function FrozenObjectiveConversation({ projection, onSave, onConfirm, onCheckpoi
   const ledgerUiEnabled = import.meta.env.VITE_PORTFOLIO_GOAL_E2_LEDGER_UI_ENABLED === 'true';
   return <>
     <AssistantBubble>Partimos de la información disponible en este espacio. <b>Aclararemos el resultado de negocio y la decisión que quieres habilitar</b> sin inventar KPIs ni causas. Puedes dejar incertidumbres abiertas.</AssistantBubble>
+    {contextReview?.effectiveContext ? <ConfirmedE1Context context={contextReview.effectiveContext} /> : null}
     {anchor.contextSummary ? (
       <section aria-label="Referencia disponible del objetivo" className="rounded-xl border border-[#dce6f7] bg-[#edf2fb] p-4 text-sm text-[#344d80]">
         <p className="text-xs font-semibold uppercase tracking-wide">Contexto disponible · referencia, no turno de conversación</p>
@@ -625,6 +626,43 @@ function FrozenObjectiveConversation({ projection, onSave, onConfirm, onCheckpoi
       <ObjectiveConversation anchor={anchor} onSave={onSave} canConfirm={projection.canConfirm} onConfirm={onConfirm} />
     )}
   </>;
+}
+
+function ConfirmedE1Context({ context }: { context: PortfolioBootstrapContextPayload }) {
+  const entries = [
+    ['Situación', 'situation'],
+    ['Parte de la actividad', 'area'],
+    ['Personas implicadas', 'stakeholder'],
+    ['Experiencia previa', 'pilotExperience'],
+  ] as const;
+  const disposition = (field: typeof entries[number][1]) => {
+    if (context.gaps?.includes(`context-disposition:${field}:not_applicable`)) return 'No aplica en este caso';
+    if (context.gaps?.includes(`context-disposition:${field}:unknown`)) return 'Desconocido';
+    return null;
+  };
+  const provenance = (value: PortfolioBootstrapContextPayload[typeof entries[number][1]]) => {
+    switch (value.provenance) {
+      case 'user_declared': return 'Declarado por ti';
+      case 'source_extracted': return 'Extraído de una fuente';
+      case 'copilot_inferred': return 'Inferencia por revisar';
+      case 'copilot_suggested': return 'Sugerencia por revisar';
+      default: return 'Desconocido';
+    }
+  };
+  return <section role="region" aria-label="Contexto confirmado en E1" className="rounded-xl border border-emerald-200 bg-emerald-50/70 p-4">
+    <p className="text-xs font-bold uppercase tracking-[0.12em] text-emerald-800">Confirmado en E1 · reutilizado, no vuelto a preguntar</p>
+    <dl className="mt-3 grid gap-3 text-sm md:grid-cols-2">
+      {entries.map(([label, field]) => {
+        const value = context[field] ?? { value: null, provenance: 'unknown' as const };
+        return <div key={field} className="rounded-lg border border-emerald-100 bg-white/80 p-3">
+          <dt className="text-xs font-semibold text-slate-600">{label}</dt>
+          <dd className="mt-1 text-slate-900">{value.value?.trim() || disposition(field) || 'Desconocido'}</dd>
+          <dd className="mt-1 text-xs text-emerald-800">Procedencia: {value.value ? provenance(value) : disposition(field) ?? provenance(value)}</dd>
+        </div>;
+      })}
+    </dl>
+    <p className="mt-3 text-xs leading-5 text-slate-600">Este contexto sólo sirve de punto de partida. E2 pregunta por el resultado y la decisión; no inventa sponsor, KPI, baseline ni área.</p>
+  </section>;
 }
 
 function FrozenChatStage({ eyebrow, title, help, children }: { eyebrow: string; title: string; help: string; children: React.ReactNode }) { return <><AssistantBubble>Seguimos con la información disponible. No convertiré una fuente o inferencia en una decisión confirmada.</AssistantBubble><FocusedQuestion eyebrow={eyebrow} title={title} help={help} />{children}</>; }
@@ -745,6 +783,11 @@ function FrozenOrganizationStage({
     : reviewNeedsSaving && !onSave
       ? 'Tienes cambios sin guardar, pero el guardado no está disponible en esta sesión.'
       : null;
+  const horizonConflicts = draft.fronts.flatMap((front) => front.strategicHorizon
+    ? front.challenges
+      .filter((challenge) => Boolean(challenge.timeframe && challenge.timeframe > front.strategicHorizon!))
+      .map((challenge) => ({ front: front.name, challenge: challenge.title, horizon: front.strategicHorizon!, timeframe: challenge.timeframe! }))
+    : []);
   const insightFor = (
     id: string,
     placement: 'challenge' | 'cross-cutting' | 'ungrouped' | 'outside',
@@ -762,6 +805,21 @@ function FrozenOrganizationStage({
         <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">La lectura va del resultado de negocio a los problemas que conviene resolver y, después, al trabajo que ya existe. Puedes cambiar cualquier agrupación antes de confirmar.</p>
       </div>
 
+      <section role="region" aria-label="Procedencia de la propuesta estratégica" className="rounded-xl border border-sky-200 bg-sky-50/70 p-4 text-sm text-sky-950">
+        <p className="font-semibold">Procedencia visible antes de confirmar</p>
+        <ul className="mt-2 space-y-1 text-xs leading-5">
+          <li>Objetivo: Anchor de esta sesión · {statusLabel(projection.anchor.status)}.</li>
+          <li>Trabajo considerado: {projection.workItems.length} {projection.workItems.length === 1 ? 'iniciativa conservando su fuente' : 'iniciativas conservando sus fuentes'}.</li>
+          <li>La organización es una propuesta editable y sólo se materializa tras confirmación humana.</li>
+          <li>No se han inferido sponsor, KPI, baseline ni área. La señal de negocio aparece como “Por confirmar” cuando no existe.</li>
+        </ul>
+      </section>
+
+      {horizonConflicts.length > 0 ? <section role="alert" aria-label="Conflicto de horizontes" className="rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950">
+        <p className="font-semibold">Revisa los plazos antes de confirmar</p>
+        {horizonConflicts.map((conflict) => <p key={`${conflict.front}-${conflict.challenge}`} className="mt-1">El reto “{conflict.challenge}” tiene plazo {conflict.timeframe}, posterior al horizonte {conflict.horizon} del frente “{conflict.front}”. No hemos ajustado ninguna fecha automáticamente.</p>)}
+      </section> : null}
+
       <div className="space-y-6" data-testid="portfolio-organization-cascade">
         {organizationOptedOut ? <OrganizationOptOutState onResume={resumeOrganizationReview} /> : draft.fronts.map((front, frontIndex) => <article key={front.candidateId} className="relative overflow-hidden rounded-2xl border border-violet-200 bg-violet-50/40" data-testid={`organization-front-${front.candidateId}`}>
           <div className="border-b border-violet-200 bg-gradient-to-br from-violet-100/80 via-white to-white p-5 md:p-6">
@@ -776,6 +834,7 @@ function FrozenOrganizationStage({
               <OrganizationDefinition label="Resultado de negocio" value={front.focus} />
               <OrganizationDefinition label="KPI / señal" value={projection.anchor.businessSignalValue ?? 'Por confirmar'} />
               <OrganizationDefinition label="Decisión que ayuda a tomar" value={projection.anchor.decisionToEnable ?? 'Por confirmar'} />
+              <OrganizationDefinition label="Horizonte estratégico" value={front.strategicHorizon ?? 'Por confirmar'} />
               <OrganizationDefinition label="Por qué conviene organizarlo así" value={front.rationale} />
             </dl>
             <details className="mt-4 rounded-lg border border-violet-200 bg-white/80 p-3">
@@ -783,6 +842,7 @@ function FrozenOrganizationStage({
               <div className="mt-3 grid gap-3 md:grid-cols-2">
                 <label className="text-sm font-semibold text-slate-800">Nombre del frente estratégico<input aria-label="Nombre del frente estratégico" value={front.name} onChange={(event) => mutate((value) => updateFront(value, front.candidateId, { name: event.target.value }))} className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 font-normal" /></label>
                 <label className="text-sm font-semibold text-slate-800">Resultado / foco que organiza<textarea aria-label="Foco del frente estratégico" value={front.focus} onChange={(event) => mutate((value) => updateFront(value, front.candidateId, { focus: event.target.value }))} rows={2} className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 font-normal" /></label>
+                <label className="text-sm font-semibold text-slate-800">Horizonte estratégico del frente<input type="date" aria-label="Horizonte estratégico del frente" value={front.strategicHorizon ?? ''} onChange={(event) => mutate((value) => updateFront(value, front.candidateId, { strategicHorizon: event.target.value || null }))} className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 font-normal" /><span className="mt-1 block text-xs font-normal text-slate-500">Opcional. No se copia a los retos.</span></label>
               </div>
             </details>
           </div>
@@ -801,6 +861,7 @@ function FrozenOrganizationStage({
               <dl className="mt-4 grid gap-4 text-sm md:grid-cols-2">
                 <OrganizationDefinition label="Problema o incertidumbre" value={challenge.problem} compact />
                 <OrganizationDefinition label="Decisión que ayuda a tomar" value={challengeDecision(challenge)} compact />
+                <OrganizationDefinition label="Plazo propio del reto" value={challenge.timeframe ?? 'Por confirmar'} compact />
                 <OrganizationDefinition label="Por qué estas iniciativas están juntas" value={challengeGroupingRationale(challenge)} compact />
               </dl>
               <SpecificOverlapSummary comparisons={specificChallengeComparisons(challenge, workById)} />
@@ -995,6 +1056,7 @@ function ChallengeProposalReview({
   const [problem, setProblem] = useState(challenge?.problem ?? '');
   const [decision, setDecision] = useState(challenge ? challengeDecision(challenge) : '');
   const [groupingRationale, setGroupingRationale] = useState(challenge ? challengeGroupingRationale(challenge) : '');
+  const [timeframe, setTimeframe] = useState(challenge?.timeframe ?? '');
   const [newTitle, setNewTitle] = useState('');
   const [newProblem, setNewProblem] = useState('');
   const [newDecision, setNewDecision] = useState('');
@@ -1039,6 +1101,7 @@ function ChallengeProposalReview({
       <div className="p-5 md:p-6">
         {mode === 'menu' ? <div className="space-y-5">
           <div><h4 className="font-semibold text-slate-950">¿Qué quieres revisar?</h4><p className="mt-1 text-sm leading-6 text-slate-600">Nada se materializa mientras trabajas aquí. Todos los cambios afectan únicamente a la propuesta provisional.</p></div>
+          <RationaleItem label="Plazo propio del reto" value={challenge.timeframe ?? 'Por confirmar. No se copia automáticamente del horizonte del frente.'} />
           <div className="grid gap-2 sm:grid-cols-2">
             <ReviewAction label="Entender por qué Startería lo propone" description="Revisar el patrón, las fuentes, los vacíos y la decisión." onClick={() => setMode('rationale')} />
             <ReviewAction label="Editar reto" description="Corregir el nombre, el problema o la decisión." onClick={() => setMode('edit')} />
@@ -1062,13 +1125,14 @@ function ChallengeProposalReview({
           <RationaleItem label="Por qué tratarlo como un reto separado" value={`Permite decidir sobre “${challenge.problem}” sin mezclarlo con problemas que podrían requerir otra prioridad, evidencia o capacidad.`} />
         </div> : null}
 
-        {mode === 'edit' ? <form className="space-y-4" onSubmit={(event) => { event.preventDefault(); onEdit({ title: title.trim(), problem: problem.trim(), rationale: composeChallengeRationale(groupingRationale, decision) }); }}>
+        {mode === 'edit' ? <form className="space-y-4" onSubmit={(event) => { event.preventDefault(); onEdit({ title: title.trim(), problem: problem.trim(), rationale: composeChallengeRationale(groupingRationale, decision), timeframe: timeframe || null }); }}>
           <ReviewBack onClick={goBack} />
           <div><h4 className="text-lg font-semibold text-slate-950">Editar reto</h4><p className="mt-1 text-sm text-slate-600">Corrige la interpretación de Startería con tus palabras.</p></div>
           <ReviewField label="Nombre del reto"><input aria-label="Nombre del reto" value={title} onChange={(event) => setTitle(event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" /></ReviewField>
           <ReviewField label="Problema o incertidumbre"><textarea aria-label="Problema o incertidumbre del reto" value={problem} onChange={(event) => setProblem(event.target.value)} rows={3} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" /></ReviewField>
           <ReviewField label="Decisión que ayuda a tomar"><textarea aria-label="Decisión que ayuda a tomar" value={decision} onChange={(event) => setDecision(event.target.value)} rows={2} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" /></ReviewField>
           <ReviewField label="Por qué conviene agrupar estas iniciativas"><textarea aria-label="Por qué conviene agrupar estas iniciativas" value={groupingRationale} onChange={(event) => setGroupingRationale(event.target.value)} rows={3} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" /></ReviewField>
+          <ReviewField label="Plazo propio del reto"><input type="date" aria-label="Plazo propio del reto" value={timeframe} onChange={(event) => setTimeframe(event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" /><span className="mt-1 block text-xs font-normal text-slate-500">Opcional e independiente del horizonte estratégico del frente.</span></ReviewField>
           <div className="flex flex-wrap gap-2"><button type="submit" disabled={!title.trim() || !problem.trim() || !decision.trim()} className="rounded-lg bg-slate-950 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">Aplicar cambios al reto</button><button type="button" onClick={goBack} className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700">Volver sin cambios</button></div>
         </form> : null}
 
@@ -1208,6 +1272,7 @@ function buildOrganizationProposal(projection: BootstrapProjection): PortfolioOr
       focus: projection.anchor.outcomeStatement,
       rationale: 'Reúne las iniciativas que persiguen el mismo resultado de negocio para poder comparar cobertura, prioridades y decisiones necesarias.',
       coverage: `${relatedInitiativeIds.length} de ${count} iniciativas revisadas`,
+      strategicHorizon: null,
       challenges: [{
         candidateId: `challenge-${projection.bootstrapSessionId}-1`,
         title: 'Aclarar y remover las barreras para lograr el objetivo',
@@ -1223,6 +1288,7 @@ function buildOrganizationProposal(projection: BootstrapProjection): PortfolioOr
         overlaps: relatedInitiativeIds.length > 1
           ? ['Varias iniciativas contribuyen al mismo resultado; revisa si duplican alcance, evidencia o medición.']
           : [],
+        timeframe: null,
       }],
     }],
     crossCuttingInitiativeIds: [],
