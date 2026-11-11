@@ -234,3 +234,19 @@ Es solo lectura: los objetivos piden navegar sin crear, editar ni borrar.
 
 Si falta algo de esto, la validación va como `NO CORRIDO` con el motivo; no se reemplaza por
 "debería funcionar".
+
+## 10. Paridad del release E1–E7 y Owner Handoff
+
+El CD manual construye una sola vez backend, frontend y AI service para el SHA resuelto. Conserva
+los digests inmutables, genera `release-manifest.json` y ejecuta sobre esas mismas imágenes:
+
+- PostgreSQL 16 aislado y migraciones del repositorio;
+- `kan232-g5-home-final.spec.ts` para Inicio y E1–E7 con 0, 3 y 25 iniciativas;
+- `kan254-owner-handoff-acceptance.spec.ts` para roles y recepción Owner, usando Mailpit sandbox;
+- axe y capturas en 375, 768 y 1440 px.
+
+El despliegue consume `repositorio@sha256:digest`; no reconstruye. Tras el rollout,
+`scripts/ci/verify-deployed-release.sh` compara el manifiesto con los DeploymentSpecs, los image IDs
+observados, `/release.json`, `/api/health` y el health del AI service. Cualquier diferencia detiene la
+aceptación como `PROD_UX_FAIL`. El smoke autenticado que escriba datos en producción sigue sujeto a
+autorización separada y no forma parte de CI.

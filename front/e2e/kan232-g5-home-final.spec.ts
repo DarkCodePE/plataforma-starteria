@@ -1,5 +1,5 @@
 import { PrismaClient } from '@prisma/client';
-import { expect, request as pwRequest, test, type APIRequestContext, type Page } from '@playwright/test';
+import { expect, request as pwRequest, test, type APIRequestContext, type Page, type TestInfo } from '@playwright/test';
 import * as XLSX from 'xlsx';
 import axe from 'axe-core';
 
@@ -101,6 +101,14 @@ async function assertWcagAA(page: Page, selector: string) {
     }));
   }, selector);
   expect(violations).toEqual([]);
+}
+
+async function captureReleaseViewports(page: Page, testInfo: TestInfo, prefix: string) {
+  for (const [name, width, height] of [['mobile', 375, 812], ['tablet', 768, 1024], ['desktop', 1440, 1000]] as const) {
+    await page.setViewportSize({ width, height });
+    await expect(page.getByTestId('portfolio-overview-home')).toBeVisible();
+    await page.screenshot({ path: testInfo.outputPath(`${prefix}-${name}-${width}.png`), fullPage: true });
+  }
 }
 
 async function createAnchoredSession(api: APIRequestContext, lead: Lead) {
@@ -836,7 +844,7 @@ test.describe('KAN-232 G5 authenticated PostgreSQL certification', () => {
       inheritedFrom: 'PL04_CONFIRMED_ORGANIZATION',
     });
     expect(persistedBrief.createdByActorId).toBe(lead.userId);
-    await page.screenshot({ path: testInfo.outputPath('D-home-reentrada-aceptada.png'), fullPage: true });
+    await captureReleaseViewports(page, testInfo, 'D-home-reentrada-aceptada');
     await recipientContext.close();
     await api.dispose();
   });

@@ -17,6 +17,12 @@ on:
     branches: [main]
   # Manual CD reuses the same suite after its production authorization gate.
   workflow_call:
+    inputs:
+      release_source_sha:
+        description: Exact source commit selected by the manual CD resolver.
+        required: false
+        default: ''
+        type: string
 
 # Cancel superseded runs on the same branch/PR to save minutes.
 concurrency:
@@ -52,6 +58,12 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.release_source_sha || github.sha }}
+
+      - name: Test immutable release parity contract
+        working-directory: .
+        run: bash scripts/ci/tests/release-parity.test.sh
 
       - name: Test production CD recovery guards
         working-directory: .
@@ -178,6 +190,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.release_source_sha || github.sha }}
 
       - name: Setup Node.js 20.x
         uses: actions/setup-node@v4
@@ -220,6 +234,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.release_source_sha || github.sha }}
 
       - name: Setup Python 3.11
         uses: actions/setup-python@v5
@@ -261,6 +277,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.release_source_sha || github.sha }}
 
       # ----- Node side -----
       - name: Setup Node.js 20.x
@@ -277,6 +295,18 @@ jobs:
       - name: Build front (vite + tsc)
         working-directory: ./front
         # `npm run build` runs `vite build`; tsc errors will surface here.
+        env:
+          VITE_API_URL: /api/v1
+          VITE_FEATURE_PDF_AUTOFILL: 'true'
+          VITE_ENABLE_DEMO_DATA: 'false'
+          VITE_ENABLE_INITIAL_REVIEW: 'false'
+          VITE_ENABLE_INITIATIVE_REVIEW_CHAT: 'true'
+          VITE_PORTFOLIO_COPILOT_ENABLED: 'false'
+          VITE_STEP_REASONING_COPILOT_ENABLED: 'true'
+          VITE_PORTFOLIO_GOAL_E2_LEDGER_UI_ENABLED: 'false'
+          VITE_PORTFOLIO_GOAL_E2_MULTI_TURN_UI_ENABLED: 'false'
+          VITE_PORTFOLIO_GOAL_E2_CHECKPOINT_UI_ENABLED: 'false'
+          VITE_GOOGLE_CLIENT_ID: ci-parity-client-id.apps.googleusercontent.com
         run: npm run build
 
       # ----- Python side -----
@@ -317,6 +347,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.release_source_sha || github.sha }}
 
       - name: Setup Node.js 20.x
         uses: actions/setup-node@v4

@@ -166,6 +166,8 @@ jobs:
     name: CI gate
     needs: [resolve, authorize]
     uses: ./.github/workflows/ci.yml
+    with:
+      release_source_sha: ${{ needs.resolve.outputs.sha }}
 
   step-reasoning-qa-config:
     name: Validate synthetic Step Copilot exposure
@@ -197,12 +199,15 @@ jobs:
           - service: backend
             context: .
             dockerfile: Dockerfile.backend
+            version: 0.0.1
           - service: frontend
             context: .
             dockerfile: Dockerfile.frontend
+            version: 0.0.1
           - service: ai-service
             context: ./ai-service
             dockerfile: ./ai-service/Dockerfile
+            version: 0.1.0
     steps:
       - uses: actions/checkout@v4
         with:
@@ -213,6 +218,7 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
       - name: Build immutable release image
+        id: image
         uses: docker/build-push-action@v6
         with:
           context: ${{ matrix.context }}
@@ -222,15 +228,180 @@ jobs:
           cache-from: type=gha,scope=${{ matrix.service }}
           cache-to: type=gha,mode=max,scope=${{ matrix.service }}
           build-args: |
+            STARTERIA_RELEASE_SHA=${{ needs.resolve.outputs.sha }}
+            STARTERIA_RELEASE_VERSION=${{ matrix.version }}
+            VITE_API_URL=/api/v1
+            VITE_FEATURE_PDF_AUTOFILL=true
+            VITE_ENABLE_DEMO_DATA=false
+            VITE_ENABLE_INITIAL_REVIEW=false
+            VITE_ENABLE_INITIATIVE_REVIEW_CHAT=true
+            VITE_PORTFOLIO_COPILOT_ENABLED=false
             VITE_GOOGLE_CLIENT_ID=${{ secrets.GOOGLE_CLIENT_ID }}
             VITE_STEP_REASONING_COPILOT_ENABLED=true
+            VITE_PORTFOLIO_GOAL_E2_LEDGER_UI_ENABLED=false
+            VITE_PORTFOLIO_GOAL_E2_MULTI_TURN_UI_ENABLED=false
+            VITE_PORTFOLIO_GOAL_E2_CHECKPOINT_UI_ENABLED=false
           tags: ${{ env.DOCKERHUB_NAMESPACE }}/starteria-${{ matrix.service }}:${{ needs.resolve.outputs.tag }}
+          provenance: true
+          sbom: true
+      - name: Record immutable image digest
+        env:
+          SERVICE: ${{ matrix.service }}
+          DIGEST: ${{ steps.image.outputs.digest }}
+        run: |
+          set -euo pipefail
+          [[ "$DIGEST" =~ ^sha256:[a-f0-9]{64}$ ]] || { echo '::error::Build did not return an immutable digest'; exit 1; }
+          mkdir -p release-digest
+          jq -n --arg service "$SERVICE" --arg digest "$DIGEST" '{service:$service,digest:$digest}' > "release-digest/$SERVICE.json"
+      - name: Upload immutable image digest
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-digest-${{ matrix.service }}-${{ github.run_id }}
+          path: release-digest/${{ matrix.service }}.json
+          if-no-files-found: error
+          retention-days: 30
+
+  release-manifest:
+    name: Generate immutable release manifest
+    needs: [build-and-push, resolve, authorize]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: production
+    outputs:
+      backend_digest: ${{ steps.digests.outputs.backend_digest }}
+      frontend_digest: ${{ steps.digests.outputs.frontend_digest }}
+      ai_service_digest: ${{ steps.digests.outputs.ai_service_digest }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.resolve.outputs.sha }}
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: release-digest-*-${{ github.run_id }}
+          path: release-digests
+          merge-multiple: true
+      - name: Resolve certified image references
+        id: digests
+        run: |
+          set -euo pipefail
+          backend=$(jq -er 'select(.service == "backend") | .digest' release-digests/backend.json)
+          frontend=$(jq -er 'select(.service == "frontend") | .digest' release-digests/frontend.json)
+          ai_service=$(jq -er 'select(.service == "ai-service") | .digest' release-digests/ai-service.json)
+          for digest in "$backend" "$frontend" "$ai_service"; do
+            [[ "$digest" =~ ^sha256:[a-f0-9]{64}$ ]] || { echo '::error::Invalid image digest artifact'; exit 1; }
+          done
+          {
+            echo "backend_digest=$backend"
+            echo "frontend_digest=$frontend"
+            echo "ai_service_digest=$ai_service"
+          } >> "$GITHUB_OUTPUT"
+      - name: Generate and verify release manifest
+        env:
+          SOURCE_SHA: ${{ needs.resolve.outputs.sha }}
+          BACKEND_DIGEST: ${{ steps.digests.outputs.backend_digest }}
+          FRONTEND_DIGEST: ${{ steps.digests.outputs.frontend_digest }}
+          AI_SERVICE_DIGEST: ${{ steps.digests.outputs.ai_service_digest }}
+          HANDOFF_EMAIL_TRANSPORT_MODE: ${{ vars.HANDOFF_EMAIL_TRANSPORT_MODE || 'disabled' }}
+          HANDOFF_EMAIL_PILOT_ENABLED: ${{ vars.HANDOFF_EMAIL_PILOT_ENABLED || 'false' }}
+          GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
+        run: |
+          set -euo pipefail
+          backend_image="$DOCKERHUB_NAMESPACE/starteria-backend@${BACKEND_DIGEST}"
+          frontend_image="$DOCKERHUB_NAMESPACE/starteria-frontend@${FRONTEND_DIGEST}"
+          ai_image="$DOCKERHUB_NAMESPACE/starteria-ai-service@${AI_SERVICE_DIGEST}"
+          google_login_enabled=false
+          [[ -n "$GOOGLE_CLIENT_ID" ]] && google_login_enabled=true
+          node scripts/ci/generate-release-manifest.mjs \
+            --output release-manifest.json \
+            --source-sha "$SOURCE_SHA" \
+            --backend-image "$backend_image" \
+            --frontend-image "$frontend_image" \
+            --ai-service-image "$ai_image" \
+            --handoff-email-mode "$HANDOFF_EMAIL_TRANSPORT_MODE" \
+            --handoff-email-pilot-enabled "$HANDOFF_EMAIL_PILOT_ENABLED" \
+            --google-login-enabled "$google_login_enabled"
+          node scripts/ci/verify-release-manifest.mjs \
+            --manifest release-manifest.json \
+            --source-sha "$SOURCE_SHA" \
+            --backend-image "$backend_image" \
+            --frontend-image "$frontend_image" \
+            --ai-service-image "$ai_image"
+      - name: Upload release manifest
+        uses: actions/upload-artifact@v4
+        with:
+          name: starteria-release-manifest-${{ github.run_id }}
+          path: release-manifest.json
+          if-no-files-found: error
+          retention-days: 30
+
+  release-parity:
+    name: Release parity E2E on immutable images
+    needs: [release-manifest, resolve, authorize]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.resolve.outputs.sha }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: starteria-release-manifest-${{ github.run_id }}
+          path: release
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: front/package-lock.json
+      - name: Install parity dependencies
+        working-directory: front
+        run: npm ci
+      - name: Generate Prisma client
+        working-directory: front
+        run: npm run db:generate
+      - name: Install Playwright Chromium
+        working-directory: front
+        run: npx playwright install --with-deps chromium
+      - uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+      - name: Verify manifest binding
+        env:
+          SOURCE_SHA: ${{ needs.resolve.outputs.sha }}
+          BACKEND_DIGEST: ${{ needs.release-manifest.outputs.backend_digest }}
+          FRONTEND_DIGEST: ${{ needs.release-manifest.outputs.frontend_digest }}
+          AI_SERVICE_DIGEST: ${{ needs.release-manifest.outputs.ai_service_digest }}
+        run: |
+          node scripts/ci/verify-release-manifest.mjs \
+            --manifest release/release-manifest.json \
+            --source-sha "$SOURCE_SHA" \
+            --backend-image "$DOCKERHUB_NAMESPACE/starteria-backend@${BACKEND_DIGEST}" \
+            --frontend-image "$DOCKERHUB_NAMESPACE/starteria-frontend@${FRONTEND_DIGEST}" \
+            --ai-service-image "$DOCKERHUB_NAMESPACE/starteria-ai-service@${AI_SERVICE_DIGEST}"
+      - name: Release parity E1-E7 and Owner Handoff
+        env:
+          RELEASE_MANIFEST: ${{ github.workspace }}/release/release-manifest.json
+        run: bash scripts/ci/run-release-parity-e2e.sh
+      - name: Mark blocking UX mismatch
+        if: failure()
+        run: echo '::error::PROD_UX_FAIL — certified artifacts, flags or browser journey do not match; deployment remains blocked.'
+      - name: Upload parity browser evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: starteria-release-parity-evidence-${{ github.run_id }}
+          path: |
+            front/test-results/
+            front/playwright-report/
+          if-no-files-found: warn
+          retention-days: 30
 
   deploy:
     name: Deploy to Rackspace Spot
     # `resolve` is listed explicitly: needs.<job>.outputs is NOT inherited
     # transitively through build-and-push.
-    needs: [build-and-push, handoff-email-config, migration-authority, resolve, authorize]
+    needs: [release-parity, release-manifest, handoff-email-config, migration-authority, resolve, authorize]
     runs-on: ubuntu-latest
     timeout-minutes: 20
     # Keep the environment on the deploy job as a second protection boundary
@@ -244,6 +415,23 @@ jobs:
         with:
           ref: ${{ github.sha }}
           path: .cd-control-plane
+      - uses: actions/download-artifact@v4
+        with:
+          name: starteria-release-manifest-${{ github.run_id }}
+          path: .release
+      - name: Revalidate the certified release manifest
+        env:
+          SOURCE_SHA: ${{ needs.resolve.outputs.sha }}
+          BACKEND_DIGEST: ${{ needs.release-manifest.outputs.backend_digest }}
+          FRONTEND_DIGEST: ${{ needs.release-manifest.outputs.frontend_digest }}
+          AI_SERVICE_DIGEST: ${{ needs.release-manifest.outputs.ai_service_digest }}
+        run: |
+          node scripts/ci/verify-release-manifest.mjs \
+            --manifest .release/release-manifest.json \
+            --source-sha "$SOURCE_SHA" \
+            --backend-image "$DOCKERHUB_NAMESPACE/starteria-backend@${BACKEND_DIGEST}" \
+            --frontend-image "$DOCKERHUB_NAMESPACE/starteria-frontend@${FRONTEND_DIGEST}" \
+            --ai-service-image "$DOCKERHUB_NAMESPACE/starteria-ai-service@${AI_SERVICE_DIGEST}"
       - name: Check required credentials
         env:
           DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
@@ -377,9 +565,15 @@ jobs:
       - name: Apply manifests and set release images
         id: rollout
         env:
-          TAG: ${{ needs.resolve.outputs.tag }}
+          SOURCE_SHA: ${{ needs.resolve.outputs.sha }}
+          BACKEND_DIGEST: ${{ needs.release-manifest.outputs.backend_digest }}
+          FRONTEND_DIGEST: ${{ needs.release-manifest.outputs.frontend_digest }}
+          AI_SERVICE_DIGEST: ${{ needs.release-manifest.outputs.ai_service_digest }}
         run: |
           set -euo pipefail
+          backend_image="$DOCKERHUB_NAMESPACE/starteria-backend@${BACKEND_DIGEST}"
+          frontend_image="$DOCKERHUB_NAMESPACE/starteria-frontend@${FRONTEND_DIGEST}"
+          ai_service_image="$DOCKERHUB_NAMESPACE/starteria-ai-service@${AI_SERVICE_DIGEST}"
           # Use image-substituted manifests so apply never briefly rolls a service
           # back to the old hard-coded image or :latest placeholder.
           # The database is deliberately NOT applied here. k8s/postgres-statefulset.yaml
@@ -395,32 +589,53 @@ jobs:
           kubectl -n "$NAMESPACE" apply -f k8s/backend-storage-pvc.yaml
           for svc in backend frontend ai-service; do
             manifest="k8s/$svc-deployment.yaml"
+            case "$svc" in
+              backend) release_image="$backend_image" ;;
+              frontend) release_image="$frontend_image" ;;
+              ai-service) release_image="$ai_service_image" ;;
+            esac
             # Match any registry/namespace on the left. The old pattern hardcoded
             # `orlandogtp` while the replacement used $DOCKERHUB_NAMESPACE, so
             # changing the namespace made the substitution stop matching in
             # silence: apply would ship the manifest's old image and `set image`
             # would correct it a moment later, which is exactly the intermediate
             # rollout the comment above says to avoid. Fail loudly instead.
-            substituted=$(sed -E "s|image: [^[:space:]]+/starteria-$svc:[^[:space:]]+|image: ${DOCKERHUB_NAMESPACE}/starteria-$svc:${TAG}|" "$manifest")
-            printf '%s\n' "$substituted" | grep -q "image: ${DOCKERHUB_NAMESPACE}/starteria-$svc:${TAG}" \
+            substituted=$(sed -E "s|image: [^[:space:]]+/starteria-$svc(:[^[:space:]]+|@sha256:[a-f0-9]{64})|image: ${release_image}|" "$manifest")
+            printf '%s\n' "$substituted" | grep -Fq "image: ${release_image}" \
               || { echo "::error::Image substitution did not match in $manifest; refusing to apply"; exit 1; }
             printf '%s\n' "$substituted" | kubectl -n "$NAMESPACE" apply -f -
           done
           kubectl -n "$NAMESPACE" set env deployment/starteria-backend \
             --from=configmap/starteria-step-reasoning-qa
+          kubectl -n "$NAMESPACE" set env deployment/starteria-backend \
+            STARTERIA_RELEASE_SHA="$SOURCE_SHA" \
+            STARTERIA_RELEASE_VERSION=0.0.1 \
+            SEMANTIC_E1_ENABLED=false \
+            PORTFOLIO_GOAL_E2_LEDGER_ENABLED=false \
+            PORTFOLIO_GOAL_E2_MULTI_TURN_ENABLED=false \
+            PORTFOLIO_GOAL_E2_CHECKPOINT_ENABLED=false
           kubectl -n "$NAMESPACE" apply -f k8s/cloudflared-deployment.yaml
+          kubectl -n "$NAMESPACE" set image deployment/starteria-backend "backend=$backend_image"
+          kubectl -n "$NAMESPACE" set image deployment/starteria-frontend "frontend=$frontend_image"
+          kubectl -n "$NAMESPACE" set image deployment/starteria-ai-service "ai-service=$ai_service_image"
           for svc in backend frontend ai-service; do
-            kubectl -n "$NAMESPACE" set image "deployment/starteria-$svc" "$svc=${DOCKERHUB_NAMESPACE}/starteria-$svc:${TAG}"
+            kubectl -n "$NAMESPACE" annotate deployment/starteria-$svc \
+              starteria.io/release-sha="$SOURCE_SHA" \
+              starteria.io/release-manifest="starteria-release-manifest-${GITHUB_RUN_ID}" \
+              --overwrite
           done
           for svc in backend frontend ai-service; do
             kubectl -n "$NAMESPACE" rollout status "deployment/starteria-$svc" --timeout="$ROLLOUT_TIMEOUT"
           done
       - name: Verify database schema and API after rollout
         id: post_rollout
+        env:
+          RELEASE_MANIFEST: ${{ github.workspace }}/.release/release-manifest.json
         run: |
           set -euo pipefail
           scripts/ci/prod-db-migrate.sh verify
           bash scripts/ci/wait-for-http-health.sh https://starter-ia.com/api/health 12 5
+          bash scripts/ci/verify-deployed-release.sh
       # /api/health no toca la base; este smoke sí (portafolio con sesión). Se activa con la
       # variable E2E_PROD_TENANT_READY=true, que se pone después de crear el tenant con
       # e2e-prod-tenant.yml: el secret solo no alcanza (el 2026-10-07 estaba cargado antes que el
@@ -452,8 +667,11 @@ jobs:
           STATUS: ${{ steps.rollout.outcome }}
           MIGRATIONS: ${{ steps.migrate.outputs.pending || 'n/a' }}
           BACKUP: ${{ steps.migrate.outputs.backup || 'none' }}
+          BACKEND_DIGEST: ${{ needs.release-manifest.outputs.backend_digest }}
+          FRONTEND_DIGEST: ${{ needs.release-manifest.outputs.frontend_digest }}
+          AI_SERVICE_DIGEST: ${{ needs.release-manifest.outputs.ai_service_digest }}
         run: |
-          printf '## Starteria CD\n\n- Channel: `%s`\n- Source commit: `%s`\n- Image tag: `%s`\n- Docker Hub: `%s/starteria-{backend,frontend,ai-service}:%s`\n- Namespace: `%s`\n- Migrations applied: `%s` (backup: `%s`)\n- Rollout: `%s`\n' "$CHANNEL" "$SOURCE_SHA" "$TAG" "$DOCKERHUB_NAMESPACE" "$TAG" "$NAMESPACE" "$MIGRATIONS" "$BACKUP" "$STATUS" >> "$GITHUB_STEP_SUMMARY"
+          printf '## Starteria CD\n\n- Channel: `%s`\n- Source commit: `%s`\n- Human-readable tag: `%s`\n- Backend digest: `%s`\n- Frontend digest: `%s`\n- AI service digest: `%s`\n- Namespace: `%s`\n- Migrations applied: `%s` (backup: `%s`)\n- Rollout: `%s`\n' "$CHANNEL" "$SOURCE_SHA" "$TAG" "$BACKEND_DIGEST" "$FRONTEND_DIGEST" "$AI_SERVICE_DIGEST" "$NAMESPACE" "$MIGRATIONS" "$BACKUP" "$STATUS" >> "$GITHUB_STEP_SUMMARY"
       - name: Remove kubeconfig
         if: always()
         run: rm -f "$RUNNER_TEMP/kube/config" "$RUNNER_TEMP/spot-response.json"

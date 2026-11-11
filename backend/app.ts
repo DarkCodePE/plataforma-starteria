@@ -9,6 +9,7 @@ import { requestId } from './shared/middleware/request-id';
 import { errorHandler } from './shared/errors/error-handler';
 import { logger, redactSensitiveRequestUrl } from './shared/utils/logger';
 import { AppError } from './shared/errors/AppError';
+import { getReleaseMetadata } from './shared/release/release-metadata';
 
 import { authRouter } from './modules/auth/auth.router';
 import { projectRouter } from './modules/projects/project.router';
@@ -69,7 +70,7 @@ export function createApp(options: { portfolioEntryRouter?: ExpressRouter } = {}
 
   // Health check
   app.get('/api/health', (_req, res) => {
-    res.json({ status: 'ok', timestamp: new Date().toISOString() });
+    res.json({ status: 'ok', timestamp: new Date().toISOString(), release: getReleaseMetadata() });
   });
   app.get('/api/readiness/copilot', copilotReadinessHandler);
 
