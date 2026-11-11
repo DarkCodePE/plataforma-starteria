@@ -261,6 +261,7 @@ describe('portfolio-bootstrap router', () => {
         focus: 'Mejorar adopción y recurrencia',
         rationale: 'Agrupa el trabajo que reduce fricción en la activación.',
         coverage: '1 de 1 iniciativas',
+        strategicHorizon: '2027-12-31',
         challenges: [{
           candidateId: 'challenge-candidate-1',
           title: 'Reducir abandono inicial',
@@ -270,12 +271,25 @@ describe('portfolio-bootstrap router', () => {
           evidence: [],
           gaps: [],
           overlaps: [],
+          timeframe: '2027-06-30',
         }],
       }],
       outsideObjectiveInitiativeIds: [],
       ungroupedInitiativeIds: [],
       crossCuttingInitiativeIds: [],
     };
+
+    await request(makeApp())
+      .put('/api/v1/portfolio-bootstrap/sessions/bs-1/organization-proposal')
+      .send({ expectedVersion: 0, payload: { ...payload, fronts: [{ ...payload.fronts[0], strategicHorizon: '2027-99-99' }] } })
+      .expect(400);
+    await request(makeApp())
+      .put('/api/v1/portfolio-bootstrap/sessions/bs-1/organization-proposal')
+      .send({
+        expectedVersion: 0,
+        payload: { ...payload, fronts: [{ ...payload.fronts[0], challenges: [{ ...payload.fronts[0].challenges[0], timeframe: '2027-02-30' }] }] },
+      })
+      .expect(400);
 
     await request(makeApp())
       .get('/api/v1/portfolio-bootstrap/sessions/bs-1/organization-proposal')

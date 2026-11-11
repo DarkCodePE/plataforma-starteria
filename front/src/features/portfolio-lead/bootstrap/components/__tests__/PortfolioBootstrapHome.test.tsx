@@ -389,6 +389,29 @@ describe('PortfolioBootstrapHome — frozen Copilot-first composition', () => {
     })));
   });
 
+  it('KAN-311 reuses the confirmed E1 context in E2 with explicit provenance and no repeated questions', () => {
+    const review = confirmedContextReview();
+    review.effectiveContext!.situation = {
+      value: 'La cafetería pierde clientes después de la primera visita.',
+      provenance: 'user_declared',
+      sourceRef: { kind: 'user_input' },
+    };
+    review.effectiveContext!.area = { value: null, provenance: 'unknown' };
+    review.effectiveContext!.pilotExperience = {
+      value: 'No aplica: todavía no hubo piloto.',
+      provenance: 'user_declared',
+      sourceRef: { kind: 'user_input' },
+    };
+
+    render(<PortfolioBootstrapHome {...objectiveProps({ contextReview: review })} />);
+
+    expect(screen.getByRole('region', { name: 'Contexto confirmado en E1' })).toHaveTextContent('La cafetería pierde clientes después de la primera visita.');
+    expect(screen.getByRole('region', { name: 'Contexto confirmado en E1' })).toHaveTextContent('Declarado por ti');
+    expect(screen.getByRole('region', { name: 'Contexto confirmado en E1' })).toHaveTextContent('Desconocido');
+    expect(screen.getByRole('region', { name: 'Contexto confirmado en E1' })).toHaveTextContent('No aplica: todavía no hubo piloto.');
+    expect(screen.queryByText('Cuéntame qué está ocurriendo')).not.toBeInTheDocument();
+  });
+
   it('KAN-252 displays only persisted objective turns with answer origin and chronological order', () => {
     const data = makeBootstrap('anchor_insufficient');
     data.anchor!.outcomeStatement = 'Reducir abandono en los primeros 90 días.';
@@ -809,6 +832,7 @@ describe('PortfolioBootstrapHome — frozen Copilot-first composition', () => {
           focus: 'Reducir el abandono y aumentar la adopción durante la activación.',
           rationale: 'Estas iniciativas persiguen el mismo resultado de negocio y necesitan decisiones coordinadas.',
           coverage: '6 de 8 iniciativas revisadas',
+          strategicHorizon: '2027-06-30',
           challenges: [{
             candidateId: 'challenge-1',
             title: 'Entender y reducir la fricción de activación',
@@ -818,6 +842,7 @@ describe('PortfolioBootstrapHome — frozen Copilot-first composition', () => {
             evidence: ['El abandono aparece en la activación.'],
             gaps: ['Falta comparar cohortes.'],
             overlaps: ['Iniciativa 1 se solapa con Iniciativa 2 en la medición de activación.'],
+            timeframe: '2027-09-30',
           }],
         }],
         crossCuttingInitiativeIds: [],
@@ -862,6 +887,9 @@ describe('PortfolioBootstrapHome — frozen Copilot-first composition', () => {
     expect(screen.getByText('Iniciativas')).toBeInTheDocument();
     expect(screen.getByText(/Los trabajos existentes que aportan/i)).toBeInTheDocument();
     expect(screen.getByText('FRENTE ESTRATÉGICO PROPUESTO')).toBeInTheDocument();
+    expect(screen.getByLabelText('Horizonte estratégico del frente')).toHaveValue('2027-06-30');
+    expect(screen.getByRole('alert', { name: 'Conflicto de horizontes' })).toHaveTextContent('2027-09-30');
+    expect(screen.getByRole('region', { name: 'Procedencia de la propuesta estratégica' })).toHaveTextContent('No se han inferido sponsor, KPI, baseline ni área');
     expect(screen.getByText('RETO PROPUESTO')).toBeInTheDocument();
     expect(screen.getByText('INICIATIVAS EN ESTE RETO')).toBeInTheDocument();
     expect(screen.getByText('Dentro de este frente Startería identificó 1 reto principal.')).toBeInTheDocument();
@@ -918,6 +946,8 @@ describe('PortfolioBootstrapHome — frozen Copilot-first composition', () => {
     expect(screen.getAllByRole('button', { name: /^Revisar propuesta:/ })).toHaveLength(1);
     fireEvent.click(screen.getByRole('button', { name: 'Revisar propuesta: Entender y reducir la fricción de activación' }));
     expect(screen.getByRole('dialog', { name: 'Revisar propuesta de reto' })).toBeInTheDocument();
+    expect(screen.getByRole('dialog', { name: 'Revisar propuesta de reto' })).toHaveTextContent('Plazo propio del reto');
+    expect(screen.getByRole('dialog', { name: 'Revisar propuesta de reto' })).toHaveTextContent('2027-09-30');
     expect(screen.getByRole('button', { name: 'Entender por qué Startería lo propone' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Editar reto' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '+ Añadir otro reto' })).toBeInTheDocument();

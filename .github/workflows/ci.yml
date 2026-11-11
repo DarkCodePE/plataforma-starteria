@@ -404,6 +404,19 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
+      - name: KAN-311 E1-E2-E5 contextual UX - cafeteria, pyme and corporate
+        id: kan311_e2e
+        run: npm run test:e2e -- e2e/kan311-e1-e2-e5-contextual.spec.ts
+
+      - name: Preserve KAN-311 functional and visual evidence
+        if: ${{ always() && steps.kan311_e2e.outcome != 'skipped' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: kan-311-e1-e2-e5-contextual-ux-${{ github.run_id }}
+          path: front/test-results/
+          if-no-files-found: error
+          retention-days: 14
+
       - name: KAN-254 Owner handoff - identity, response, reentry and Lead trace
         env:
           E2E_WITH_MAILPIT: 'true'

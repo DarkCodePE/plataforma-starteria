@@ -503,7 +503,12 @@ export function PortfolioBootstrapContextConversation({
           <p className="text-sm text-emerald-950">El contexto confirmado está persistido. Continuar abre el objetivo; no crea trabajo ni omite guardas posteriores.</p>
           <button type="button" disabled={busy} onClick={onContinue} className="mt-3 rounded-lg bg-violet-700 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">Estoy de acuerdo, continuar al objetivo</button>
         </section>
-      ) : null}
+      ) : (
+        <section aria-label="Siguiente paso hacia el objetivo" className="rounded-xl border border-slate-200 bg-white p-4">
+          <p className="text-sm font-semibold text-slate-900">E2 se habilita después de tu confirmación</p>
+          <p className="mt-1 text-sm text-slate-600">{dirty ? 'Hay ajustes sin guardar. Guárdalos y confirma la síntesis.' : review?.status === 'draft' ? 'Revisa la síntesis y confirma el contexto; los desconocidos pueden quedar abiertos.' : 'Responde o marca las preguntas pendientes y revisa la síntesis.'}</p>
+        </section>
+      )}
     </div>
   );
 }
@@ -663,7 +668,7 @@ function SemanticContextReviewPanel({
           <p className="text-sm text-emerald-950">La confirmación persistida habilita E2; la convergencia semántica por sí sola no lo hace.</p>
           <button type="button" disabled={contextBusy} onClick={onContinue} className="mt-3 rounded-lg bg-violet-700 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">Continuar al objetivo</button>
         </div>
-      ) : null}
+      ) : <div aria-label="Siguiente paso hacia el objetivo" className="mt-4 rounded-lg border border-slate-200 bg-white p-3"><p className="text-sm font-semibold text-slate-900">E2 sigue bloqueado hasta confirmar el contexto</p><p className="mt-1 text-sm text-slate-600">La convergencia semántica no sustituye tu confirmación humana.</p></div>}
     </section>
   );
 }

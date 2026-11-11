@@ -293,6 +293,7 @@ export class PortfolioOrganizationService {
           description: frontCandidate.rationale,
           strategicObjective: frontCandidate.focus,
           whyNow: `Cobertura revisada: ${frontCandidate.coverage}`,
+          horizon: frontCandidate.strategicHorizon ?? undefined,
           organizationId,
           status: 'draft',
         }, { organizationId, actorUserId: input.authenticatedUserId });

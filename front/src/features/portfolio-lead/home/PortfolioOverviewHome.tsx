@@ -8,6 +8,7 @@ type Props = {
   model: PortfolioHomeReadModel;
   onOpenCopilot: () => void;
   onOpenAdditionalFront: () => void;
+  onOpenManualFront?: () => void;
   openingAdditionalFront?: boolean;
   copilotAvailable?: boolean;
   onStartOpportunity?: () => void;
@@ -37,6 +38,7 @@ export function PortfolioOverviewHome({
   model,
   onOpenCopilot,
   onOpenAdditionalFront,
+  onOpenManualFront,
   openingAdditionalFront = false,
   copilotAvailable = false,
   onStartOpportunity,
@@ -127,9 +129,12 @@ export function PortfolioOverviewHome({
       </div>
       <div className="mt-4 flex w-full flex-col gap-2 sm:w-auto sm:flex-row lg:mt-0 lg:shrink-0">
         {fronts.length > 0 ? (
-          <button type="button" disabled={openingAdditionalFront} onClick={onOpenAdditionalFront} className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-[#171b36] px-4 py-2.5 text-sm font-semibold text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 disabled:opacity-60 sm:w-auto">
-            <span aria-hidden="true">+</span>{openingAdditionalFront ? 'Abriendo…' : 'Crear nuevo frente estratégico'}<ArrowRight aria-hidden="true" size={16} />
-          </button>
+          <>
+            <button type="button" aria-label="Crear nuevo frente estratégico" disabled={openingAdditionalFront} onClick={onOpenAdditionalFront} className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-[#171b36] px-4 py-2.5 text-sm font-semibold text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 disabled:opacity-60 sm:w-auto">
+              <Sparkles size={17} /><span>{openingAdditionalFront ? 'Abriendo…' : 'Guiarme desde mi necesidad'}</span><ArrowRight aria-hidden="true" size={16} />
+            </button>
+            {onOpenManualFront ? <button type="button" onClick={onOpenManualFront} className="inline-flex w-full items-center justify-center rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 sm:w-auto">Crear manualmente</button> : null}
+          </>
         ) : resumableStatus === 'ready' && resumableSessions.length === 0 && onStartOpportunity ? (
           <button type="button" disabled={startingOpportunity} onClick={onStartOpportunity} className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-[#6446c0] px-4 py-2.5 text-sm font-semibold text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 disabled:opacity-60 sm:w-auto">
             <Sparkles size={17} />{startingOpportunity ? 'Abriendo…' : 'Preparar nueva oportunidad'}<ArrowRight aria-hidden="true" size={16}/>

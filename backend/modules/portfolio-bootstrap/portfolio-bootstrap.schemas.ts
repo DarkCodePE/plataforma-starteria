@@ -180,6 +180,13 @@ export const reviewProposedMutationBodySchema = z.object({
   reviewNote: z.string().min(1).max(2_000).optional(),
 }).strict();
 
+const isoCalendarDateSchema = z.string()
+  .regex(/^\d{4}-\d{2}-\d{2}$/, 'Debe usar el formato YYYY-MM-DD.')
+  .refine((value) => {
+    const parsed = new Date(`${value}T00:00:00.000Z`);
+    return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
+  }, 'Debe ser una fecha de calendario válida.');
+
 const organizationChallengeCandidateSchema = z.object({
   candidateId: z.string().min(1).max(160),
   title: z.string().min(1).max(240),
@@ -189,6 +196,7 @@ const organizationChallengeCandidateSchema = z.object({
   evidence: z.array(z.string().min(1).max(2_000)).max(100),
   gaps: z.array(z.string().min(1).max(2_000)).max(100),
   overlaps: z.array(z.string().min(1).max(2_000)).max(100),
+  timeframe: isoCalendarDateSchema.nullable().optional(),
 }).strict();
 
 const organizationFrontCandidateSchema = z.object({
@@ -197,6 +205,7 @@ const organizationFrontCandidateSchema = z.object({
   focus: z.string().min(1).max(2_000),
   rationale: z.string().min(1).max(2_000),
   coverage: z.string().min(1).max(500),
+  strategicHorizon: isoCalendarDateSchema.nullable().optional(),
   challenges: z.array(organizationChallengeCandidateSchema).min(1).max(100),
 }).strict();
 

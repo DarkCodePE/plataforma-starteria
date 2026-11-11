@@ -1,4 +1,5 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { useLocation, useNavigate } from 'react-router';
 import {
   Archive,
   ArrowRight,
@@ -37,8 +38,10 @@ import {
   PageHeader,
 } from '../components/design-system/patterns';
 import { Button } from '../components/ui/button';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '../components/ui/dialog';
 import { PortfolioLeadBreadcrumbs } from '../components/portfolio/PortfolioLeadPageElements';
 import { ChallengeSplitSuggestionPanel } from '../../features/portfolio-lead/components/cards/ChallengeSplitSuggestionPanel';
+import { openAdditionalPortfolioFrontSetup } from '../../features/portfolio-lead/bootstrap/services/portfolioBootstrapClient';
 
 type DrawerMode = 'create' | 'edit' | 'view' | null;
 type DrawerIntent = 'general' | 'sponsor' | 'status';
@@ -138,6 +141,8 @@ const EMPTY_FORM: StrategicFrontFormState = {
 
 export function PortfolioLeadStrategicFrontsPage() {
   const { strategicFronts, createStrategicFront, updateStrategicFront, updateStrategicFrontStatus } = usePortfolioLead();
+  const navigate = useNavigate();
+  const location = useLocation();
 
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<StrategicFrontStatus | 'all'>('all');
@@ -151,6 +156,12 @@ export function PortfolioLeadStrategicFrontsPage() {
   const [activeField, setActiveField] = useState<ActiveFrontField>(null);
   const [qualityReview, setQualityReview] = useState<StrategicFrontQualityReview | null>(null);
   const [pendingCreateStatus, setPendingCreateStatus] = useState<StrategicFrontStatus | null>(null);
+  const [createPathOpen, setCreatePathOpen] = useState(false);
+  const [openingContextual, setOpeningContextual] = useState(false);
+  const [contextualError, setContextualError] = useState<string | null>(null);
+  const additionalFrontIntentRef = useRef<string | null>(null);
+  const creationTriggerRef = useRef<HTMLElement | null>(null);
+  const manualQueryHandledRef = useRef(false);
 
   const activeFront = useMemo(
     () => strategicFronts.find(front => front.id === activeFrontId) ?? null,
@@ -205,6 +216,37 @@ export function PortfolioLeadStrategicFrontsPage() {
     setActiveField(null);
     setQualityReview(null);
     setPendingCreateStatus(null);
+  };
+
+  useEffect(() => {
+    if (manualQueryHandledRef.current) return;
+    if (new URLSearchParams(location.search).get('create') !== 'manual') return;
+    manualQueryHandledRef.current = true;
+    openCreateDrawer();
+  }, [location.search]);
+
+  const openCreationChoice = () => {
+    creationTriggerRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    setContextualError(null);
+    setCreatePathOpen(true);
+  };
+
+  const openContextualCreation = async () => {
+    if (openingContextual) return;
+    setOpeningContextual(true);
+    setContextualError(null);
+    try {
+      const intentKey = additionalFrontIntentRef.current ?? `portfolio-additional-front:${globalThis.crypto.randomUUID()}`;
+      additionalFrontIntentRef.current = intentKey;
+      const opened = await openAdditionalPortfolioFrontSetup(intentKey);
+      additionalFrontIntentRef.current = null;
+      setCreatePathOpen(false);
+      navigate(`/portfolio/inicio?setup=additional-front&bootstrapSessionId=${encodeURIComponent(opened.bootstrapSession.id)}`);
+    } catch (error) {
+      setContextualError(error instanceof Error ? error.message : 'No pudimos abrir un contexto nuevo para este frente.');
+    } finally {
+      setOpeningContextual(false);
+    }
   };
 
   const openEditDrawer = (front: StrategicFront, intent: DrawerIntent = 'general') => {
@@ -309,7 +351,7 @@ export function PortfolioLeadStrategicFrontsPage() {
           ariaLabel: 'Crear frente estrategico',
         }}
         onAction={actionId => {
-          if (actionId === 'create-front') openCreateDrawer();
+          if (actionId === 'create-front') openCreationChoice();
         }}
       />
 
@@ -335,7 +377,7 @@ export function PortfolioLeadStrategicFrontsPage() {
 
         {!hasFronts ? (
           <div className="mt-6">
-            <EmptyStrategicFrontsState onCreate={openCreateDrawer} />
+            <EmptyStrategicFrontsState onCreate={openCreationChoice} />
           </div>
         ) : !hasFilteredFronts ? (
           <div className="mt-6">
@@ -360,6 +402,35 @@ export function PortfolioLeadStrategicFrontsPage() {
           </div>
         )}
       </section>
+
+      <Dialog open={createPathOpen} onOpenChange={(open) => { if (!openingContextual) setCreatePathOpen(open); }}>
+        <DialogContent
+          className="max-w-2xl rounded-3xl border-slate-200 bg-white p-6 shadow-2xl md:p-8"
+          onCloseAutoFocus={(event) => {
+            event.preventDefault();
+            creationTriggerRef.current?.focus();
+          }}
+        >
+          <DialogHeader className="pr-8">
+            <p className="text-xs font-bold uppercase tracking-[0.14em] text-violet-700">Nuevo frente · contexto independiente</p>
+            <DialogTitle className="mt-2 text-2xl font-semibold text-slate-950">Crear un frente estratégico</DialogTitle>
+            <DialogDescription className="mt-2 text-sm leading-6 text-slate-600">Elige cómo empezar. Un frente nuevo conserva los anteriores como referencia, pero no mezcla sus respuestas ni decisiones.</DialogDescription>
+          </DialogHeader>
+            <div className="mt-6 grid gap-3 md:grid-cols-2">
+              <button type="button" aria-label="Guiarme desde mi necesidad" disabled={openingContextual} onClick={() => void openContextualCreation()} className="rounded-2xl border border-violet-300 bg-violet-50 p-5 text-left transition hover:border-violet-500 disabled:opacity-60">
+                <Sparkles size={20} className="text-violet-700" />
+                <span className="mt-3 block font-semibold text-slate-950">{openingContextual ? 'Abriendo contexto…' : 'Guiarme desde mi necesidad'}</span>
+                <span className="mt-1 block text-sm leading-5 text-slate-600">Recorre E1→E2 y recibe en E5 una propuesta editable de frente y retos con procedencia.</span>
+              </button>
+              <button type="button" aria-label="Crear manualmente" disabled={openingContextual} onClick={() => { setCreatePathOpen(false); openCreateDrawer(); }} className="rounded-2xl border border-slate-200 bg-white p-5 text-left transition hover:border-slate-400 disabled:opacity-60">
+                <PencilLine size={20} className="text-slate-700" />
+                <span className="mt-3 block font-semibold text-slate-950">Crear manualmente</span>
+                <span className="mt-1 block text-sm leading-5 text-slate-600">Abre el editor manual existente para completar directamente los datos que ya conoces.</span>
+              </button>
+            </div>
+            {contextualError ? <p role="alert" className="mt-4 rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-900">{contextualError} Puedes reintentar sin crear otra sesión.</p> : null}
+        </DialogContent>
+      </Dialog>
 
       {drawerMode === 'create' || drawerMode === 'edit' ? (
         <StrategicFrontFormDrawer

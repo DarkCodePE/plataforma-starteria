@@ -174,6 +174,7 @@ function OrdinaryPortfolioLeadHomePage() {
       model={home}
       onOpenCopilot={() => setCopilotOpen(true)}
       onOpenAdditionalFront={() => void openAdditionalFront()}
+      onOpenManualFront={() => navigate('/portfolio/frentes-estrategicos?create=manual')}
       openingAdditionalFront={openingAdditionalFront}
       onStartOpportunity={() => void startOpportunity()}
       startingOpportunity={startingOpportunity}

@@ -25,6 +25,7 @@ function reviewedPayload(workItemIds = ['pl04-work-1', 'pl04-work-2']) {
       focus: 'Reducir abandono y aumentar adopción.',
       rationale: 'Estas iniciativas persiguen el mismo resultado de negocio.',
       coverage: '2 de 2 iniciativas revisadas',
+      strategicHorizon: '2027-12-31',
       challenges: [{
         candidateId: 'challenge-candidate-1',
         title: 'Reducir barreras de activación',
@@ -34,6 +35,7 @@ function reviewedPayload(workItemIds = ['pl04-work-1', 'pl04-work-2']) {
         evidence: ['El abandono se concentra en activación.'],
         gaps: ['Falta comparar cohortes.'],
         overlaps: ['Ambas iniciativas miden activación.'],
+        timeframe: '2027-06-30',
       }],
     }],
     crossCuttingInitiativeIds: [],
@@ -82,14 +84,18 @@ describe.runIf(Boolean(process.env.DATABASE_URL)).sequential('PL-04 organization
   it('keeps zero canonical entities before confirmation and materializes the exact reviewed structure once', async () => {
     const service = new PortfolioOrganizationService(prisma);
     const proposal = await service.saveReviewedProposal({ ...authority, sessionId, expectedVersion: 0, payload: reviewedPayload() });
+    expect((proposal.payload as ReturnType<typeof reviewedPayload>).fronts[0]).toMatchObject({
+      strategicHorizon: '2027-12-31',
+      challenges: [expect.objectContaining({ timeframe: '2027-06-30' })],
+    });
     expect(await prisma.strategicFront.count({ where: { organizationId } })).toBe(0);
     expect(await prisma.challenge.count({ where: { strategicFront: { organizationId } } })).toBe(0);
 
     const result = await service.confirmAndMaterialize({ ...authority, sessionId, proposalVersion: proposal.version, idempotencyKey: 'confirm-pl04-1' });
-    expect(await prisma.strategicFront.findMany({ where: { organizationId }, select: { name: true, strategicObjective: true } }))
-      .toEqual([{ name: 'Adopción sostenible', strategicObjective: 'Reducir abandono y aumentar adopción.' }]);
-    expect(await prisma.challenge.findMany({ where: { strategicFront: { organizationId } }, select: { title: true, description: true, status: true } }))
-      .toEqual([{ title: 'Reducir barreras de activación', description: 'No sabemos qué fricciones explican el abandono inicial.', status: 'draft' }]);
+    expect(await prisma.strategicFront.findMany({ where: { organizationId }, select: { name: true, strategicObjective: true, horizon: true } }))
+      .toEqual([{ name: 'Adopción sostenible', strategicObjective: 'Reducir abandono y aumentar adopción.', horizon: '2027-12-31' }]);
+    expect(await prisma.challenge.findMany({ where: { strategicFront: { organizationId } }, select: { title: true, description: true, status: true, whyNow: true } }))
+      .toEqual([{ title: 'Reducir barreras de activación', description: 'No sabemos qué fricciones explican el abandono inicial.', status: 'draft', whyNow: null }]);
     expect(result.materialization.canonicalMappings).toEqual({
       fronts: [{ candidateId: 'front-candidate-1', canonicalId: expect.any(String) }],
       challenges: [{ candidateId: 'challenge-candidate-1', canonicalId: expect.any(String), relatedInitiativeIds: ['pl04-work-1', 'pl04-work-2'] }],
