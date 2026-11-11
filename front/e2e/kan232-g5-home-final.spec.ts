@@ -127,8 +127,9 @@ async function createAnchoredSession(api: APIRequestContext, lead: Lead) {
     },
   });
   expect(anchor.status(), await anchor.text()).toBe(200);
+  const anchorVersion = (await anchor.json()).data.anchor.version as number;
   const confirmed = await api.post(`/api/v1/portfolio-bootstrap/sessions/${sessionId}/anchor/confirm`, {
-    headers: auth, data: {},
+    headers: auth, data: { expectedVersion: anchorVersion },
   });
   expect(confirmed.status(), await confirmed.text()).toBe(200);
   return sessionId;
@@ -587,7 +588,7 @@ test.describe('KAN-232 G5 authenticated PostgreSQL certification', () => {
     await api.dispose();
   });
 
-  test('D · iniciativa avanzada → recorrido humano continuo E1–E7 → SMTP real → aceptación sin iniciar Steps → reentrada', async ({ browser, page }, testInfo) => {
+  test('D · iniciativa avanzada → recorrido humano continuo E1–E7 → SMTP sandbox Mailpit → aceptación sin iniciar Steps → reentrada', async ({ browser, page }, testInfo) => {
     const api = await pwRequest.newContext({ baseURL });
     const lead = await registerLead(api, 'scenario-d-advanced');
     const recipient = await registerViewer(api, 'advanced-owner');
@@ -652,24 +653,49 @@ test.describe('KAN-232 G5 authenticated PostgreSQL certification', () => {
       await response.fill(answer);
       const send = objectiveConversation.getByRole('button', { name: 'Enviar respuesta' });
       await expect(send).toBeEnabled();
+      const persisted = page.waitForResponse((candidate) => candidate.request().method() === 'PATCH'
+        && /\/portfolio-bootstrap\/sessions\/[^/]+\/anchor$/.test(new URL(candidate.url()).pathname));
       await send.click();
+      expect((await persisted).status()).toBe(200);
     }
     await expect(objectiveConversation.getByText(/cómo sabrás que el resultado está mejorando/i)).toBeVisible();
+    const finalSave = page.waitForResponse((candidate) => candidate.request().method() === 'PATCH'
+      && /\/portfolio-bootstrap\/sessions\/[^/]+\/anchor$/.test(new URL(candidate.url()).pathname));
     await objectiveConversation.getByRole('button', { name: /No lo s/i }).click();
+    expect((await finalSave).status()).toBe(200);
+    const confirmation = page.waitForResponse((candidate) => candidate.request().method() === 'POST'
+      && /\/portfolio-bootstrap\/sessions\/[^/]+\/anchor\/confirm$/.test(new URL(candidate.url()).pathname));
     await page.getByRole('button', { name: 'Confirmar este punto de partida y continuar' }).click();
-    await page.getByRole('button', { name: 'Continuar a Incorporación' }).click();
+    expect((await confirmation).status()).toBe(200);
+
+    const confirmedSession = await prisma.portfolioBootstrapSession.findFirstOrThrow({
+      where: { userId: lead.userId }, include: { anchor: true },
+    });
+    const sessionId = confirmedSession.id;
+    expect(confirmedSession).toMatchObject({ status: 'awaiting_work_intake', bootstrapPhase: 'B2_WORK_INTAKE' });
+    expect(confirmedSession.anchor).toMatchObject({ status: 'anchor_confirmed', provenanceStatus: 'user_confirmed' });
+    const continueToE3 = page.getByRole('button', { name: 'Continuar a Incorporación' });
+    await expect(continueToE3).toBeVisible();
+    await expect(continueToE3).toBeEnabled();
+    await continueToE3.click();
 
     // E3 · incorporación: la iniciativa se registra desde la UX y conserva procedencia manual.
     const workIntake = page.getByTestId('portfolio-bootstrap-work-intake');
     await expect(workIntake).toBeVisible({ timeout: 20_000 });
+    await page.screenshot({ path: testInfo.outputPath('D-E3-incorporacion-persistida.png'), fullPage: true });
+    await page.reload();
+    await expect(workIntake).toBeVisible({ timeout: 20_000 });
+    const reenteredSession = await prisma.portfolioBootstrapSession.findUniqueOrThrow({
+      where: { id: sessionId }, include: { anchor: true },
+    });
+    expect(reenteredSession).toMatchObject({ status: 'awaiting_work_intake', bootstrapPhase: 'B2_WORK_INTAKE' });
+    expect(reenteredSession.anchor).toMatchObject({ status: 'anchor_confirmed', provenanceStatus: 'user_confirmed' });
     await page.getByRole('button', { name: /A.adir manualmente/ }).click();
     await page.getByLabel(/Nombre o descripci.n breve/).fill('Iniciativa avanzada Step 2');
     await page.getByLabel(/Que intenta conseguir|Qu. intenta conseguir/).fill('Conservar el avance y reasignar con trazabilidad.');
     await page.getByRole('button', { name: 'Agregar trabajo' }).click();
     await page.getByRole('button', { name: 'Analizar 1 iniciativas' }).click();
 
-    const session = await prisma.portfolioBootstrapSession.findFirstOrThrow({ where: { userId: lead.userId } });
-    const sessionId = session.id;
     const sourceWorkItem = await prisma.portfolioBootstrapWorkItem.findFirstOrThrow({
       where: { bootstrapSessionId: sessionId, rawLabel: 'Iniciativa avanzada Step 2' },
     });

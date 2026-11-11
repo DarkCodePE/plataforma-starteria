@@ -191,9 +191,9 @@ export function usePortfolioBootstrap(
     setData(result);
   }, [data?.bootstrapSession.id]);
 
-  const confirmAnchor = useCallback(async () => {
+  const confirmAnchor = useCallback(async (expectedVersion: number) => {
     if (!data?.bootstrapSession.id) return;
-    const result = await confirmPortfolioBootstrapAnchor(data.bootstrapSession.id);
+    const result = await confirmPortfolioBootstrapAnchor(data.bootstrapSession.id, expectedVersion);
     setData(result);
   }, [data?.bootstrapSession.id]);
 

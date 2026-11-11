@@ -62,9 +62,10 @@ async function prepareConfirmedIntake(api: APIRequestContext, lead: Awaited<Retu
     failOnStatusCode: false,
   });
   expect(updated.status(), await updated.text()).toBe(200);
+  const updatedVersion = (await updated.json()).data.anchor.version as number;
   const confirmed = await api.post(`/api/v1/portfolio-bootstrap/sessions/${sessionId}/anchor/confirm`, {
     headers: auth,
-    data: {},
+    data: { expectedVersion: updatedVersion },
     failOnStatusCode: false,
   });
   expect(confirmed.status(), await confirmed.text()).toBe(200);

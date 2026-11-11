@@ -250,7 +250,7 @@ describeDb('KAN-253 B2 goal turn ledger with disposable PostgreSQL', () => {
       expect(ledger.body.data.version).toBe(4);
       expect(ledger.body.data.turns).toHaveLength(4);
 
-      const confirmed = await request(client).post(root + '/anchor/confirm').send({}).expect(200);
+      const confirmed = await request(client).post(root + '/anchor/confirm').send({ expectedVersion: 2 }).expect(200);
       expect(confirmed.body.data.anchor).toMatchObject({
         status: 'anchor_confirmed', version: 3, confirmedBy: userId,
       });

@@ -40,13 +40,15 @@ async function prepareConfirmedOrganization(api: APIRequestContext, lead: Awaite
   expect(direct.status(), await direct.text()).toBe(200);
   const directData = (await direct.json()).data;
   const sessionId = directData.bootstrapSession.id as string;
-  await api.patch(`/api/v1/portfolio-bootstrap/sessions/${sessionId}/anchor`, { headers: auth, data: {
+  const anchor = await api.patch(`/api/v1/portfolio-bootstrap/sessions/${sessionId}/anchor`, { headers: auth, data: {
     contextSummary: 'La organización necesita reducir la fricción de activación sin perder trazabilidad.',
     outcomeStatement: 'Aumentar la activación de clientes B2B.',
     decisionToEnable: 'Decidir qué barrera de activación abordar primero.',
     businessSignalStatus: 'confirmed', businessSignalValue: 'Activación a 30 días.',
-  } }).then(async (response) => expect(response.status(), await response.text()).toBe(200));
-  await api.post(`/api/v1/portfolio-bootstrap/sessions/${sessionId}/anchor/confirm`, { headers: auth, data: {} }).then(async (response) => expect(response.status(), await response.text()).toBe(200));
+  } });
+  expect(anchor.status(), await anchor.text()).toBe(200);
+  const anchorVersion = (await anchor.json()).data.anchor.version as number;
+  await api.post(`/api/v1/portfolio-bootstrap/sessions/${sessionId}/anchor/confirm`, { headers: auth, data: { expectedVersion: anchorVersion } }).then(async (response) => expect(response.status(), await response.text()).toBe(200));
   const added = await api.post(`/api/v1/portfolio-bootstrap/sessions/${sessionId}/work-items/manual`, { headers: auth, data: { label: 'Onboarding guiado', purpose: 'Reducir fricción durante la activación.', currentStateHint: 'active' } });
   expect(added.status(), await added.text()).toBe(200);
   const workItemId = ((await added.json()).data.items as Array<{ id: string; rawLabel: string }>).find((item) => item.rawLabel === 'Onboarding guiado')!.id;

@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import React from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -154,11 +154,12 @@ describe('PortfolioBootstrapHome — frozen Copilot-first composition', () => {
   it('CA-1 confirms Objetivo and requires the explicit CTA before showing Incorporación', async () => {
     const user = userEvent.setup();
     const onConfirmAnchor = vi.fn().mockResolvedValue(undefined);
-    const input = objectiveProps({ data: makeBootstrap('anchor_sufficient'), onConfirmAnchor });
+    const data = makeBootstrap('anchor_sufficient');
+    const input = objectiveProps({ data, onConfirmAnchor });
     const { rerender } = render(<PortfolioBootstrapHome {...input} />);
 
     await user.click(screen.getByRole('button', { name: /Confirmar este punto de partida y continuar/i }));
-    await waitFor(() => expect(onConfirmAnchor).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(onConfirmAnchor).toHaveBeenCalledWith(data.anchor!.version));
     rerender(<PortfolioBootstrapHome {...input} data={makeBootstrap('anchor_confirmed')} />);
 
     expect(screen.getByRole('heading', { name: 'Conversemos para definir qué queremos lograr' })).toBeInTheDocument();
@@ -167,6 +168,63 @@ describe('PortfolioBootstrapHome — frozen Copilot-first composition', () => {
 
     expect(screen.getByRole('heading', { name: '¿Qué está haciendo hoy tu organización?' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Continuar a Incorporación' })).not.toBeInTheDocument();
+  });
+
+  it('CA-1A serializes the final objective save before human confirmation', async () => {
+    const user = userEvent.setup();
+    let resolveSave!: () => void;
+    const pendingSave = new Promise<void>((resolve) => { resolveSave = resolve; });
+    const onUpdateAnchor = vi.fn().mockReturnValue(pendingSave);
+    const onConfirmAnchor = vi.fn().mockResolvedValue(undefined);
+    const data = makeBootstrap('anchor_sufficient');
+    data.anchor!.businessSignalStatus = 'unknown';
+    data.anchor!.businessSignalValue = null;
+
+    render(<PortfolioBootstrapHome {...objectiveProps({ data, onUpdateAnchor, onConfirmAnchor })} />);
+
+    const confirm = screen.getByRole('button', { name: /Confirmar este punto de partida y continuar/i });
+    await user.click(screen.getByRole('button', { name: /No lo s/i }));
+    expect(onUpdateAnchor).toHaveBeenCalledTimes(1);
+    expect(confirm).toBeDisabled();
+    expect(confirm).toHaveAccessibleName('Guardando respuesta…');
+
+    fireEvent.click(confirm);
+    expect(onConfirmAnchor).not.toHaveBeenCalled();
+
+    await act(async () => { resolveSave(); });
+    await waitFor(() => expect(confirm).toBeEnabled());
+    expect(confirm).toHaveAccessibleName('Confirmar este punto de partida y continuar');
+    await user.click(confirm);
+    expect(onConfirmAnchor).toHaveBeenCalledWith(data.anchor!.version);
+  });
+
+  it('CA-1B blocks confirmation after a failed objective save until the answer persists', async () => {
+    const user = userEvent.setup();
+    const onUpdateAnchor = vi.fn()
+      .mockRejectedValueOnce(new Error('Conflicto de versión.'))
+      .mockResolvedValueOnce(undefined);
+    const onConfirmAnchor = vi.fn().mockResolvedValue(undefined);
+    const data = makeBootstrap('anchor_sufficient');
+    data.anchor!.businessSignalStatus = 'unknown';
+    data.anchor!.businessSignalValue = null;
+
+    render(<PortfolioBootstrapHome {...objectiveProps({ data, onUpdateAnchor, onConfirmAnchor })} />);
+
+    const unknownAnswer = screen.getByRole('button', { name: /No lo s/i });
+    const confirm = screen.getByRole('button', { name: /Confirmar este punto de partida y continuar/i });
+    await user.click(unknownAnswer);
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('No pudimos guardar esta respuesta');
+    expect(confirm).toBeDisabled();
+    expect(confirm).toHaveAccessibleName('Guarda la respuesta antes de confirmar');
+    fireEvent.click(confirm);
+    expect(onConfirmAnchor).not.toHaveBeenCalled();
+
+    await user.click(unknownAnswer);
+    await waitFor(() => expect(confirm).toBeEnabled());
+    expect(screen.queryByText(/No pudimos guardar esta respuesta/)).not.toBeInTheDocument();
+    await user.click(confirm);
+    expect(onConfirmAnchor).toHaveBeenCalledWith(data.anchor!.version);
   });
 
   it('CA-2 clears a manual E2 review selection through the explicit continuation after confirmation', async () => {

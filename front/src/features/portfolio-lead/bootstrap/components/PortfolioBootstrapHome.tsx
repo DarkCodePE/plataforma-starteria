@@ -81,7 +81,7 @@ export function PortfolioBootstrapHome({
   analysisError?: string | null;
   onRetry: () => void;
   onUpdateAnchor: (input: UpdatePortfolioBootstrapAnchorInput) => Promise<void>;
-  onConfirmAnchor: () => Promise<void>;
+  onConfirmAnchor: (expectedVersion: number) => Promise<void>;
   onPasteWorkItems: (text: string) => Promise<void>;
   onUploadImportFile?: (file: File) => Promise<void>;
   onCommitImportBatch?: (batch: PortfolioBootstrapImportBatch, mapping: PortfolioBootstrapImportMapping) => Promise<void>;
@@ -362,7 +362,7 @@ function PortfolioCopilotWorkspace({
   bootstrapPhase: PortfolioBootstrapResponse['bootstrapSession']['bootstrapPhase'];
   onUpdateAnchor: (input: UpdatePortfolioBootstrapAnchorInput) => Promise<void>;
   onCheckpointApplied: () => void;
-  onConfirmAnchor: () => Promise<void>;
+  onConfirmAnchor: (expectedVersion: number) => Promise<void>;
   onPasteWorkItems: (text: string) => Promise<void>;
   onUploadImportFile: (file: File) => Promise<void>;
   onCommitImportBatch: (batch: PortfolioBootstrapImportBatch, mapping: PortfolioBootstrapImportMapping) => Promise<void>;
@@ -453,8 +453,8 @@ function PortfolioCopilotWorkspace({
     if (nextStage > lastAvailableStage) return;
     setSelectedStage(nextStage);
   };
-  const confirmObjective = useCallback(async () => {
-    await onConfirmAnchor();
+  const confirmObjective = useCallback(async (expectedVersion: number) => {
+    await onConfirmAnchor(expectedVersion);
     setSelectedStage(1);
   }, [onConfirmAnchor]);
   const confirmContext = useCallback(async () => {
@@ -595,7 +595,7 @@ function FrozenContextConversation(props: React.ComponentProps<typeof PortfolioB
   return <PortfolioBootstrapContextConversation {...props} />;
 }
 
-function FrozenObjectiveConversation({ projection, contextReview, onSave, onConfirm, onCheckpointApplied }: { projection: BootstrapProjection; contextReview: PortfolioBootstrapContextReview | null; onSave: (input: UpdatePortfolioBootstrapAnchorInput) => Promise<void>; onConfirm: () => Promise<void>; onCheckpointApplied: () => void }) {
+function FrozenObjectiveConversation({ projection, contextReview, onSave, onConfirm, onCheckpointApplied }: { projection: BootstrapProjection; contextReview: PortfolioBootstrapContextReview | null; onSave: (input: UpdatePortfolioBootstrapAnchorInput) => Promise<void>; onConfirm: (expectedVersion: number) => Promise<void>; onCheckpointApplied: () => void }) {
   const anchor = projection.anchor;
   const [useGuided, setUseGuided] = useState(false);
   // Both the frontend opt-in AND the backend's own ledger flag must be enabled.
@@ -1865,7 +1865,7 @@ function PortfolioBootstrapHomeA({
 }: {
   projection: NonNullable<ReturnType<typeof projectBootstrapHome>>;
   onUpdateAnchor: (input: UpdatePortfolioBootstrapAnchorInput) => Promise<void>;
-  onConfirmAnchor: () => Promise<void>;
+  onConfirmAnchor: (expectedVersion: number) => Promise<void>;
 }) {
   const conflict = projection.anchor.status === 'anchor_conflicting';
   return (
@@ -1883,7 +1883,7 @@ function PortfolioBootstrapHomeA({
       <PrimaryAction
         label={conflict ? 'Revisar contradiccion' : projection.canConfirm ? 'Confirmar punto de partida' : 'Ajustar Anchor'}
         description={projection.nextAction.reason}
-        onClick={projection.canConfirm ? onConfirmAnchor : undefined}
+        onClick={projection.canConfirm ? () => onConfirmAnchor(projection.anchor.version) : undefined}
         disabled={!projection.canConfirm && !conflict}
       />
     </section>
@@ -1898,7 +1898,7 @@ function PortfolioBootstrapHomeB({
 }: {
   projection: NonNullable<ReturnType<typeof projectBootstrapHome>>;
   onUpdateAnchor: (input: UpdatePortfolioBootstrapAnchorInput) => Promise<void>;
-  onConfirmAnchor: () => Promise<void>;
+  onConfirmAnchor: (expectedVersion: number) => Promise<void>;
   onOpenWorkIntake: () => void;
 }) {
   return (
@@ -1916,7 +1916,7 @@ function PortfolioBootstrapHomeB({
       {projection.anchor.status !== 'anchor_confirmed' ? (
         <button
           type="button"
-          onClick={onConfirmAnchor}
+          onClick={() => onConfirmAnchor(projection.anchor.version)}
           className="inline-flex items-center gap-2 rounded-lg border border-emerald-200 bg-white px-3 py-2 text-sm font-semibold text-emerald-900 hover:bg-emerald-50"
         >
           <CheckCircle2 size={16} />
@@ -3555,10 +3555,11 @@ function ObjectiveConversation({
   anchor: PortfolioBootstrapAnchor;
   onSave: (input: UpdatePortfolioBootstrapAnchorInput) => Promise<void>;
   canConfirm: boolean;
-  onConfirm: () => Promise<void>;
+  onConfirm: (expectedVersion: number) => Promise<void>;
 }) {
   const [answer, setAnswer] = useState('');
   const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [suggestion, setSuggestion] = useState<{ value: string; rationale: string } | null>(null);
   const [suggestionStatus, setSuggestionStatus] = useState<'idle' | 'loading' | 'error'>('idle');
@@ -3568,7 +3569,7 @@ function ObjectiveConversation({
   const [confirmationError, setConfirmationError] = useState<string | null>(null);
   const [helpPanel, setHelpPanel] = useState<'reason' | 'context' | null>(null);
   const submittedAnswers = useRef(new Set<string>());
-  useEffect(() => { setDraft(anchor); }, [anchor]);
+  useEffect(() => { setDraft(anchor); setSaveError(null); }, [anchor]);
   const question = nextObjectiveQuestion(draft);
   const history = objectiveTurnHistory(draft.sourceRefs);
   const questionReason = objectiveQuestionReason(question);
@@ -3583,11 +3584,12 @@ function ObjectiveConversation({
     }
     setSaving(true);
     setNotice(null);
+    setSaveError(null);
     try {
       if (!unknown && question.key !== 'businessSignalMeasure' && objectiveAnswerLooksIrrelevant(value)) {
         const sourceRefs = objectiveConversationSourceRefs(draft.sourceRefs, field, value, 'irrelevant');
-        submittedAnswers.current.add(answerKey);
         await onSave({ sourceRefs });
+        submittedAnswers.current.add(answerKey);
         setDraft((current) => applyObjectivePatch(current, { sourceRefs }));
         setNotice(`Lo que compartiste no parece describir ${question.label.toLowerCase()}. Cuéntame, con tus palabras, qué información de negocio te ayudaría a avanzar; si no la tienes, puedes indicar “No lo sé todavía”.`);
         return;
@@ -3625,6 +3627,9 @@ function ObjectiveConversation({
         : needsMeasureClarification
           ? 'He actualizado el borrador con esa señal. Para que sea útil, necesito precisar solo cómo la medirás.'
           : 'He actualizado el borrador con tu respuesta. Ahora seguimos con la siguiente pregunta que puede cambiar el trabajo.');
+    } catch (cause) {
+      const detail = cause instanceof Error && cause.message.trim() ? ` ${cause.message}` : '';
+      setSaveError(`No pudimos guardar esta respuesta. Vuelve a intentarlo antes de confirmar.${detail}`);
     } finally {
       setSaving(false);
     }
@@ -3660,11 +3665,11 @@ function ObjectiveConversation({
   };
 
   const confirmObjective = async () => {
-    if (confirming) return;
+    if (saving || saveError || confirming) return;
     setConfirming(true);
     setConfirmationError(null);
     try {
-      await onConfirm();
+      await onConfirm(anchor.version);
     } catch (cause) {
       const detail = cause instanceof Error && cause.message.trim() ? ` ${cause.message}` : '';
       setConfirmationError(`No pudimos confirmar el objetivo. Revisa la información e inténtalo de nuevo.${detail}`);
@@ -3771,6 +3776,7 @@ function ObjectiveConversation({
           </div>
         ) : null}
         {notice ? <p role="status" className="rounded-lg border border-sky-100 bg-white p-3 text-sm text-sky-950">{notice}</p> : null}
+        {saveError ? <p role="alert" className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-900">{saveError}</p> : null}
       </div>
       <div role="region" className="rounded-xl border border-[#e4e7f0] bg-white p-4" data-testid="portfolio-objective-card" aria-label="Borrador del objetivo">
         <p className="text-xs font-bold uppercase tracking-wide text-[#6446c0]">Ficha estratégica provisional</p>
@@ -3791,7 +3797,7 @@ function ObjectiveConversation({
             Las cifras o datos que no aparecen en la fuente permanecen pendientes de validar.
           </p>
         ) : null}
-        {canConfirm ? <button type="button" disabled={confirming} onClick={() => void confirmObjective()} className="mt-4 inline-flex items-center gap-2 rounded-lg bg-slate-950 px-4 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60"><CheckCircle2 size={16} />{confirming ? 'Confirmando objetivo…' : 'Confirmar este punto de partida y continuar'}</button> : <p className="mt-4 text-sm text-slate-600">Podrás confirmarlo cuando el borrador tenga información suficiente o los vacíos estén declarados.</p>}
+        {canConfirm ? <button type="button" disabled={saving || Boolean(saveError) || confirming} onClick={() => void confirmObjective()} className="mt-4 inline-flex items-center gap-2 rounded-lg bg-slate-950 px-4 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60"><CheckCircle2 size={16} />{saving ? 'Guardando respuesta…' : saveError ? 'Guarda la respuesta antes de confirmar' : confirming ? 'Confirmando objetivo…' : 'Confirmar este punto de partida y continuar'}</button> : <p className="mt-4 text-sm text-slate-600">Podrás confirmarlo cuando el borrador tenga información suficiente o los vacíos estén declarados.</p>}
         {confirmationError ? <p role="alert" className="mt-3 rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-900">{confirmationError}</p> : null}
         <div className="mt-3"><AnchorEditor anchor={draft} onSave={onSave} /></div>
       </div>

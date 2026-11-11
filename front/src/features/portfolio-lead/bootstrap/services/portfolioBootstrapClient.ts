@@ -656,11 +656,11 @@ export async function updatePortfolioBootstrapAnchor(
   }
 }
 
-export async function confirmPortfolioBootstrapAnchor(sessionId: string): Promise<PortfolioBootstrapResponse> {
+export async function confirmPortfolioBootstrapAnchor(sessionId: string, expectedVersion: number): Promise<PortfolioBootstrapResponse> {
   try {
     const { data } = await api.post<ApiResponse<PortfolioBootstrapResponse>>(
       `/portfolio-bootstrap/sessions/${encodeURIComponent(sessionId)}/anchor/confirm`,
-      {},
+      { expectedVersion },
     );
     return data.data;
   } catch (err) {

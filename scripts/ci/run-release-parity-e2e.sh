@@ -156,10 +156,13 @@ NODE
   E2E_WITH_MAILPIT=true \
   HANDOFF_EMAIL_TRANSPORT_MODE=sandbox \
   SEMANTIC_E1_ENABLED=false \
+  PORTFOLIO_ENTRY_RUNTIME_MODE=live \
+  KAN311_EXPECTED_RUNTIME_MODE=live \
   DATABASE_URL="$E2E_DATABASE_URL" \
   npx playwright test \
     e2e/kan232-g5-home-final.spec.ts \
     e2e/kan254-owner-handoff-acceptance.spec.ts \
+    e2e/kan311-e1-e2-e5-contextual.spec.ts \
     --workers=1 \
     --retries=0
 )

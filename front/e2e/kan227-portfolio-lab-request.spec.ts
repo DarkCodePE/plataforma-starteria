@@ -35,11 +35,12 @@ async function confirmedBrief(api: APIRequestContext, lead: Awaited<ReturnType<t
   const auth = bearer(lead.token);
   const direct = await api.post('/api/v1/portfolio-bootstrap/sessions/direct', { headers: auth, data: {} });
   const sessionId = (await direct.json()).data.bootstrapSession.id as string;
-  await api.patch(`/api/v1/portfolio-bootstrap/sessions/${sessionId}/anchor`, { headers: auth, data: {
+  const anchor = await api.patch(`/api/v1/portfolio-bootstrap/sessions/${sessionId}/anchor`, { headers: auth, data: {
     contextSummary: 'Contexto KAN-227 confirmado.', outcomeStatement: 'Aumentar activación B2B.',
     decisionToEnable: 'Elegir la primera barrera.', businessSignalStatus: 'confirmed', businessSignalValue: 'Activación a 30 días.',
   } });
-  await api.post(`/api/v1/portfolio-bootstrap/sessions/${sessionId}/anchor/confirm`, { headers: auth, data: {} });
+  const anchorVersion = (await anchor.json()).data.anchor.version as number;
+  await api.post(`/api/v1/portfolio-bootstrap/sessions/${sessionId}/anchor/confirm`, { headers: auth, data: { expectedVersion: anchorVersion } });
   const front = await api.post('/api/v1/portfolio/strategic-fronts', { headers: auth, data: { name: 'Activación sostenible', strategicObjective: 'Aumentar activación.' } });
   expect(front.status(), await front.text()).toBe(201);
   const frontId = (await front.json()).data.id as string;

@@ -125,7 +125,7 @@ const manifest = {
     },
   },
   e2e: {
-    approvedSuites: ['kan232-g5-home-final', 'kan254-owner-handoff-acceptance'],
+    approvedSuites: ['kan232-g5-home-final', 'kan254-owner-handoff-acceptance', 'kan311-e1-e2-e5-contextual'],
     portfolioInitiativeCounts: [0, 3, 25],
     viewportWidths: [375, 768, 1440],
     testOverrides: {

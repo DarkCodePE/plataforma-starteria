@@ -110,8 +110,9 @@ test.describe('KAN-222 G1 contextual Copilot V2_CONFORMANCE', () => {
       }, failOnStatusCode: false,
     });
     expect(anchor.status(), await anchor.text()).toBe(200);
+    const anchorVersion = (await anchor.json()).data.anchor.version as number;
     const anchorConfirmed = await api.post(`/api/v1/portfolio-bootstrap/sessions/${session.id}/anchor/confirm`, {
-      headers: auth, data: {}, failOnStatusCode: false,
+      headers: auth, data: { expectedVersion: anchorVersion }, failOnStatusCode: false,
     });
     expect(anchorConfirmed.status(), await anchorConfirmed.text()).toBe(200);
     await page.reload();

@@ -70,7 +70,7 @@ async function answerObjective(page: Page, value: string) {
   expect((await persisted).status()).toBe(200);
 }
 
-async function prepareAnalyzedSession(api: APIRequestContext, lead: Lead, initiativeCount: number) {
+async function prepareConfirmedSession(api: APIRequestContext, lead: Lead, initiativeCount: number) {
   const auth = { Authorization: `Bearer ${lead.token}` };
   const direct = await api.post('/api/v1/portfolio-bootstrap/sessions/direct', { headers: auth, data: {} });
   expect([200, 201]).toContain(direct.status());
@@ -102,9 +102,13 @@ async function prepareAnalyzedSession(api: APIRequestContext, lead: Lead, initia
     },
   });
   expect(anchor.status(), await anchor.text()).toBe(200);
-  const anchorConfirmed = await api.post(`/api/v1/portfolio-bootstrap/sessions/${sessionId}/anchor/confirm`, { headers: auth, data: {} });
+  const anchorVersion = (await anchor.json()).data.anchor.version as number;
+  const anchorConfirmed = await api.post(`/api/v1/portfolio-bootstrap/sessions/${sessionId}/anchor/confirm`, { headers: auth, data: { expectedVersion: anchorVersion } });
   expect(anchorConfirmed.status(), await anchorConfirmed.text()).toBe(200);
+  return sessionId;
+}
 
+async function seedAnalyzedWork(lead: Lead, sessionId: string, initiativeCount: number) {
   const source = await prisma.portfolioBootstrapWorkIntakeSource.create({
     data: { bootstrapSessionId: sessionId, sourceType: 'pasted_text', rawInput: `${initiativeCount} iniciativas KAN-311`, requestHash: `kan311-${lead.stamp}`, createdBy: lead.userId },
   });
@@ -130,13 +134,20 @@ async function prepareAnalyzedSession(api: APIRequestContext, lead: Lead, initia
   await prisma.portfolioBootstrapSession.update({
     where: { id: sessionId }, data: { existingWorkStatus: 'has_work', bootstrapPhase: 'B4_MATERIAL_REVIEW' },
   });
-  return sessionId;
+}
+
+async function expectConfirmedAnchor(sessionId: string) {
+  const persisted = await prisma.portfolioBootstrapSession.findUniqueOrThrow({
+    where: { id: sessionId }, include: { anchor: true },
+  });
+  expect(persisted).toMatchObject({ status: 'awaiting_work_intake', bootstrapPhase: 'B2_WORK_INTAKE' });
+  expect(persisted.anchor).toMatchObject({ status: 'anchor_confirmed', provenanceStatus: 'user_confirmed' });
 }
 
 test.describe('KAN-311 E1→E2→E5 contextual journey', () => {
   test.beforeAll(() => {
     expect(process.env.SEMANTIC_E1_ENABLED).toBe('false');
-    expect(process.env.PORTFOLIO_ENTRY_RUNTIME_MODE).toBe('deterministic');
+    expect(process.env.PORTFOLIO_ENTRY_RUNTIME_MODE).toBe(process.env.KAN311_EXPECTED_RUNTIME_MODE ?? 'deterministic');
   });
   test.afterAll(async () => { await prisma.$disconnect(); });
 
@@ -178,7 +189,17 @@ test.describe('KAN-311 E1→E2→E5 contextual journey', () => {
         && /\/portfolio-bootstrap\/sessions\/[^/]+\/anchor\/confirm$/.test(new URL(response.url()).pathname));
       await page.getByRole('button', { name: 'Confirmar este punto de partida y continuar' }).click();
       expect((await objectiveConfirm).status()).toBe(200);
-      await page.getByRole('button', { name: 'Continuar a Incorporación' }).click();
+      const confirmedSession = await prisma.portfolioBootstrapSession.findFirstOrThrow({ where: { userId: lead.userId } });
+      await expectConfirmedAnchor(confirmedSession.id);
+      const continueToE3 = page.getByRole('button', { name: 'Continuar a Incorporación' });
+      await expect(continueToE3).toBeVisible();
+      await expect(continueToE3).toBeEnabled();
+      await continueToE3.click();
+      await expect(page.getByTestId('portfolio-bootstrap-work-intake')).toBeVisible();
+      await captureViewports(page, testInfo, 'e3-cafeteria');
+      await page.reload();
+      await expect(page.getByTestId('portfolio-bootstrap-work-intake')).toBeVisible({ timeout: 20_000 });
+      await expectConfirmedAnchor(confirmedSession.id);
 
       await page.getByRole('button', { name: 'Todavia no tenemos iniciativas' }).click();
       const noWork = page.waitForResponse((response) => response.request().method() === 'POST'
@@ -283,13 +304,22 @@ test.describe('KAN-311 E1→E2→E5 contextual journey', () => {
   });
 
   for (const profile of [{ name: 'pyme', count: 3 }, { name: 'corporate', count: 25 }] as const) {
-    test(`${profile.name} con ${profile.count} iniciativas llega a E5 sin inventar campos`, async ({ page }) => {
+    test(`${profile.name} con ${profile.count} iniciativas persiste E3 y llega a E5 sin inventar campos`, async ({ page }, testInfo) => {
       const api = await pwRequest.newContext({ baseURL });
       try {
         const lead = await registerLead(api, profile.name);
-        const sessionId = await prepareAnalyzedSession(api, lead, profile.count);
+        const sessionId = await prepareConfirmedSession(api, lead, profile.count);
         await loginUi(page, lead);
         await page.getByRole('button', { name: 'Retomar este espacio' }).click();
+        await expect(page.getByTestId('portfolio-bootstrap-work-intake')).toBeVisible({ timeout: 20_000 });
+        await expectConfirmedAnchor(sessionId);
+        await page.screenshot({ path: testInfo.outputPath(`kan311-e3-${profile.name}-reentry.png`), fullPage: true });
+        await page.reload();
+        await expect(page.getByTestId('portfolio-bootstrap-work-intake')).toBeVisible({ timeout: 20_000 });
+        await expectConfirmedAnchor(sessionId);
+
+        await seedAnalyzedWork(lead, sessionId, profile.count);
+        await page.reload();
         const analyzed = page.waitForResponse((response) => response.request().method() === 'POST'
           && /\/portfolio-bootstrap\/sessions\/[^/]+\/analyze$/.test(new URL(response.url()).pathname));
         await page.getByRole('button', { name: `Analizar ${profile.count} iniciativas` }).click();
@@ -308,6 +338,7 @@ test.describe('KAN-311 E1→E2→E5 contextual journey', () => {
         await expect(proposal).toContainText('KPI / señal');
         await expect(proposal).toContainText('Por confirmar');
         expect(await prisma.strategicFront.count({ where: { organizationId: lead.organizationId } })).toBe(0);
+        await page.screenshot({ path: testInfo.outputPath(`kan311-e5-${profile.name}-provenance.png`), fullPage: true });
 
         await page.reload();
         await expect(page.getByTestId('portfolio-bootstrap-material-review')).toBeVisible({ timeout: 20_000 });

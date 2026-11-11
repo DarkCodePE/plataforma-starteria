@@ -26,7 +26,7 @@ type Props = {
   anchor: PortfolioBootstrapAnchor;
   canConfirm: boolean;
   onSave: (input: UpdatePortfolioBootstrapAnchorInput) => Promise<void>;
-  onConfirm: () => Promise<void>;
+  onConfirm: (expectedVersion: number) => Promise<void>;
   onUseGuided: () => void;
   onCheckpointApplied?: () => Promise<void> | void;
 };
@@ -307,7 +307,7 @@ export function PortfolioGoalLedgerConversation({ anchor, canConfirm, onSave, on
     lockRef.current = true;
     setConfirming(true);
     setError(null);
-    try { await onConfirm(); }
+    try { await onConfirm(anchor.version); }
     catch (cause) { setError(toError(cause)); }
     finally { lockRef.current = false; setConfirming(false); }
   }

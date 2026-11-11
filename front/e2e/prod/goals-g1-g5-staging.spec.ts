@@ -109,7 +109,7 @@ async function beginScenario(id: Scenario['id']): Promise<Scenario> {
   });
   expect(confirmedContext.status).toBe('confirmed');
 
-  await command('patch', `/api/v1/portfolio-bootstrap/sessions/${sessionId}/anchor`, {
+  const updatedAnchor = await command('patch', `/api/v1/portfolio-bootstrap/sessions/${sessionId}/anchor`, {
     token: lead.token,
     data: {
       contextSummary: `G1 ${id}: contexto empresarial confirmado.`,
@@ -121,7 +121,7 @@ async function beginScenario(id: Scenario['id']): Promise<Scenario> {
   });
   await command('post', `/api/v1/portfolio-bootstrap/sessions/${sessionId}/anchor/confirm`, {
     token: lead.token,
-    data: {},
+    data: { expectedVersion: updatedAnchor.anchor.version },
   });
   return { id, stamp, sessionId };
 }

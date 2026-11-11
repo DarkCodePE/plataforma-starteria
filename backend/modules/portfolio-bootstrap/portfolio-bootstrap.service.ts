@@ -635,7 +635,6 @@ export class PortfolioBootstrapService {
       }
 
       await validateGoalLedgerAnchorAdoption(db, session.id, anchor, input.body);
-      await this.recordHistory(db, anchor, 'portfolio_anchor_updated', input.authenticatedUserId);
       const nextData = {
         outcomeStatement: input.body.outcomeStatement ?? anchor.outcomeStatement,
         contextSummary: input.body.contextSummary === undefined ? anchor.contextSummary : input.body.contextSummary,
@@ -656,26 +655,25 @@ export class PortfolioBootstrapService {
           confirmedAt: null,
           version: { increment: 1 },
       };
-      let updated: any;
-      if (input.body.expectedVersion !== undefined) {
-        // Atomic CAS prevents another tab from silently replacing a newer
-        // provisional Anchor. A failed claim rolls back the audit history too.
-        const claimed = await db.portfolioAnchor.updateMany({
-          where: { id: anchor.id, version: input.body.expectedVersion },
-          data: updateData,
-        });
-        if (claimed.count !== 1) {
-          throw AppError.conflict('El objetivo cambió. Recarga antes de incorporar.', 'PORTFOLIO_ANCHOR_VERSION_CONFLICT');
-        }
-        updated = await db.portfolioAnchor.findUnique({ where: { id: anchor.id } });
-        if (!updated) throw AppError.conflict('El Anchor ya no está disponible.', 'PORTFOLIO_ANCHOR_VERSION_CONFLICT');
-      } else {
-        // Legacy E2 callers retain their established write path.
-        updated = await db.portfolioAnchor.update({
-          where: { id: anchor.id },
-          data: updateData,
-        });
+      // Every caller participates in the same compare-and-set, including the
+      // historic guided E2 UI. This prevents a stale PATCH from silently
+      // reverting a confirmation completed by another tab or client.
+      const claimed = await db.portfolioAnchor.updateMany({
+        where: {
+          id: anchor.id,
+          version: input.body.expectedVersion ?? anchor.version,
+          status: anchor.status,
+        },
+        data: updateData,
+      });
+      if (claimed.count !== 1) {
+        throw AppError.conflict('El objetivo cambió. Recarga antes de incorporar.', 'PORTFOLIO_ANCHOR_VERSION_CONFLICT');
       }
+      const updated = await db.portfolioAnchor.findUnique({ where: { id: anchor.id } });
+      if (!updated) throw AppError.conflict('El Anchor ya no está disponible.', 'PORTFOLIO_ANCHOR_VERSION_CONFLICT');
+      // Anchor first, history second: confirmation follows this same lock
+      // order, avoiding the 40P01 cycle observed in release parity.
+      await this.recordHistory(db, anchor, 'portfolio_anchor_updated', input.authenticatedUserId);
       const updatedSession = await db.portfolioBootstrapSession.update({
         where: { id: session.id },
         data: {
@@ -791,6 +789,7 @@ export class PortfolioBootstrapService {
     sessionId: string;
     authenticatedUserId: string;
     permissions: ReadonlySet<Permission>;
+    expectedVersion: number;
   }): Promise<PortfolioBootstrapDto> {
     const result = await this.prisma.$transaction(async (tx) => {
       const db = tx as any;
@@ -798,7 +797,10 @@ export class PortfolioBootstrapService {
       await this.authorizeSessionCapability({ db, session, authenticatedUserId: input.authenticatedUserId, permissions: input.permissions, capability: 'portfolio:write' });
       const anchor = session.anchor;
       if (!anchor) throw AppError.conflict('La sesion no tiene anchor.', 'PORTFOLIO_BOOTSTRAP_ANCHOR_MISSING');
-      if (anchor.status === 'anchor_confirmed') return session;
+      if (anchor.status === 'anchor_confirmed' && anchor.version === input.expectedVersion + 1) return session;
+      if (anchor.version !== input.expectedVersion) {
+        throw AppError.conflict('El objetivo cambio desde la revision visible. Revisalo antes de confirmar.', 'PORTFOLIO_ANCHOR_VERSION_CONFLICT');
+      }
       if (anchor.status !== 'anchor_sufficient') {
         throw AppError.conflict('El anchor aun no es confirmable.', 'PORTFOLIO_BOOTSTRAP_ANCHOR_NOT_CONFIRMABLE');
       }
@@ -806,21 +808,23 @@ export class PortfolioBootstrapService {
       // Claim this exact confirmable version before writing history. Concurrent
       // transactions may both have read the same version, but only one can
       // satisfy this compare-and-set after PostgreSQL serializes the row write.
-      const claimed = await db.portfolioAnchor.updateMany({
-        where: { id: anchor.id, version: anchor.version, status: 'anchor_sufficient' },
+      const confirmedAt = this.now();
+      const claimConfirmation = (candidate: any) => db.portfolioAnchor.updateMany({
+        where: { id: candidate.id, version: candidate.version, status: 'anchor_sufficient' },
         data: {
           status: 'anchor_confirmed',
           provenanceStatus: 'user_confirmed',
           confirmedBy: input.authenticatedUserId,
-          confirmedAt: this.now(),
+          confirmedAt,
           version: { increment: 1 },
         },
       });
+      const claimed = await claimConfirmation({ ...anchor, version: input.expectedVersion });
 
       if (claimed.count === 0) {
-        // Another authorized confirmation may have committed while this
-        // request waited on the conditional update. Re-read through the
-        // transaction and re-check access before returning its result.
+        // Re-read and re-authorize after waiting for the competing row lock.
+        // Another confirmation is idempotent, but a newer provisional version
+        // must be reviewed and explicitly confirmed by the person again.
         const current = await db.portfolioBootstrapSession.findUnique({
           where: { id: session.id },
           include: this.sessionInclude(),
@@ -833,7 +837,7 @@ export class PortfolioBootstrapService {
           permissions: input.permissions,
           capability: 'portfolio:write',
         });
-        if (current.anchor?.status === 'anchor_confirmed') return current;
+        if (current.anchor?.status === 'anchor_confirmed' && current.anchor.version === input.expectedVersion + 1) return current;
         throw AppError.conflict('El anchor cambio durante la confirmacion.', 'PORTFOLIO_BOOTSTRAP_ANCHOR_NOT_CONFIRMABLE');
       }
 

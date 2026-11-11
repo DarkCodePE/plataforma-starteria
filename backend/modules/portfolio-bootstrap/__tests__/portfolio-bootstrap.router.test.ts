@@ -528,13 +528,14 @@ describe('portfolio-bootstrap router', () => {
   it('confirms anchor through an explicit human action endpoint', async () => {
     const res = await request(makeApp())
       .post('/api/v1/portfolio-bootstrap/sessions/bs-1/anchor/confirm')
-      .send({})
+      .send({ expectedVersion: 1 })
       .expect(200);
 
     expect(res.body.data.anchor.status).toBe('anchor_confirmed');
     expect(service.confirmAnchor).toHaveBeenCalledWith(expect.objectContaining({
       sessionId: 'bs-1',
       authenticatedUserId: 'portfolio-lead-1',
+      expectedVersion: 1,
     }));
   });
 

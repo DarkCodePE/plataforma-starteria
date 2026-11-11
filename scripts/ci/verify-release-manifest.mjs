@@ -104,7 +104,7 @@ if (manifest.e2e?.testOverrides?.HANDOFF_EMAIL_TRANSPORT_MODE !== 'sandbox'
   || manifest.e2e.testOverrides.AUTH_RATE_LIMIT_DISABLED !== true) {
   throw new Error('Isolated E2E overrides must be explicit in the release manifest');
 }
-for (const suite of ['kan232-g5-home-final', 'kan254-owner-handoff-acceptance']) {
+for (const suite of ['kan232-g5-home-final', 'kan254-owner-handoff-acceptance', 'kan311-e1-e2-e5-contextual']) {
   if (!manifest.e2e?.approvedSuites?.includes(suite)) throw new Error(`Missing approved suite ${suite}`);
 }
 if (JSON.stringify(manifest).match(/"(?:password|secret|token|apiKey)"\s*:/i)) {

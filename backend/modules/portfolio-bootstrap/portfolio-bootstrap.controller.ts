@@ -21,6 +21,7 @@ import {
   advancementConditionParamsSchema,
   bootstrapSessionParamsSchema,
   completePortfolioSetupBodySchema,
+  confirmAnchorBodySchema,
   confirmPortfolioBootstrapContextBodySchema,
   confirmPortfolioOrganizationBodySchema,
   correctProposedMutationBodySchema,
@@ -530,10 +531,12 @@ export class PortfolioBootstrapController {
     try {
       if (!req.user?.id) throw AppError.unauthorized('No autorizado.', 'PORTFOLIO_BOOTSTRAP_AUTH_REQUIRED');
       const { sessionId } = bootstrapSessionParamsSchema.parse(req.params);
+      const body = confirmAnchorBodySchema.parse(req.body);
       const data = await this.service.confirmAnchor({
         sessionId,
         authenticatedUserId: req.user.id,
         permissions: req.user.permissions,
+        expectedVersion: body.expectedVersion,
       });
       res.json({ success: true, data });
     } catch (err) {

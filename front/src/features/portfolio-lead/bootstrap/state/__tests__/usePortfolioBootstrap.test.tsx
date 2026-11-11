@@ -190,10 +190,10 @@ describe('usePortfolioBootstrap', () => {
     await waitFor(() => expect(hook.result.current.status).toBe('ready'));
 
     await act(async () => {
-      await hook.result.current.confirmAnchor();
+      await hook.result.current.confirmAnchor(1);
     });
 
-    expect(confirmAnchor).toHaveBeenCalledWith('bs-1');
+    expect(confirmAnchor).toHaveBeenCalledWith('bs-1', 1);
     expect(hook.result.current.data?.anchor?.status).toBe('anchor_confirmed');
   });
 

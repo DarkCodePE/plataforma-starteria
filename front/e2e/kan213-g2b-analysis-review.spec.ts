@@ -50,7 +50,8 @@ async function prepareAnalyzedSession(api: APIRequestContext, lead: Awaited<Retu
     failOnStatusCode: false,
   });
   expect(anchor.status(), await anchor.text()).toBe(200);
-  const confirmed = await api.post(`/api/v1/portfolio-bootstrap/sessions/${sessionId}/anchor/confirm`, { headers: auth, data: {}, failOnStatusCode: false });
+  const anchorVersion = (await anchor.json()).data.anchor.version as number;
+  const confirmed = await api.post(`/api/v1/portfolio-bootstrap/sessions/${sessionId}/anchor/confirm`, { headers: auth, data: { expectedVersion: anchorVersion }, failOnStatusCode: false });
   expect(confirmed.status(), await confirmed.text()).toBe(200);
   const work = await api.post(`/api/v1/portfolio-bootstrap/sessions/${sessionId}/work-items/manual`, {
     headers: { ...auth, 'Idempotency-Key': `kan213-work-${sessionId}` },

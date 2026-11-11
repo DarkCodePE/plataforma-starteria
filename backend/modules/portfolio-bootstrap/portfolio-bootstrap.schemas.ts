@@ -112,6 +112,10 @@ export const updateAnchorBodySchema = z.object({
   message: 'Debe enviar al menos un campo de negocio para actualizar.',
 });
 
+export const confirmAnchorBodySchema = z.object({
+  expectedVersion: z.number().int().min(1),
+}).strict();
+
 export const pasteWorkItemsBodySchema = z.object({
   text: z.string().min(1).max(20_000),
 }).strict();

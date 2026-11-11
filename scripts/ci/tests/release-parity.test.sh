@@ -36,6 +36,9 @@ require_text .github/workflows/cd.yml 'PROD_UX_FAIL'
 require_text scripts/ci/run-release-parity-e2e.sh '--network-alias mailpit'
 require_text scripts/ci/run-release-parity-e2e.sh '--retries=0'
 require_text scripts/ci/run-release-parity-e2e.sh 'release-parity-runtime'
+require_text scripts/ci/run-release-parity-e2e.sh 'e2e/kan311-e1-e2-e5-contextual.spec.ts'
+runtime_mode_declarations=$(grep -c 'PORTFOLIO_ENTRY_RUNTIME_MODE=live' scripts/ci/run-release-parity-e2e.sh)
+[[ "$runtime_mode_declarations" -ge 2 ]] || fail 'live runtime mode must reach both backend and Playwright parity processes'
 
 for file in \
   scripts/ci/generate-release-manifest.mjs \
@@ -87,6 +90,9 @@ if (!manifest.e2e.approvedSuites.includes('kan232-g5-home-final')) {
 }
 if (!manifest.e2e.approvedSuites.includes('kan254-owner-handoff-acceptance')) {
   throw new Error('Owner Handoff suite missing');
+}
+if (!manifest.e2e.approvedSuites.includes('kan311-e1-e2-e5-contextual')) {
+  throw new Error('E1-E2-E5 contextual suite missing');
 }
 if (manifest.e2e.testOverrides.HANDOFF_EMAIL_PILOT_ENABLED !== false) {
   throw new Error('isolated gate must keep the productive email pilot disabled');

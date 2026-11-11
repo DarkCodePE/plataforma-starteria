@@ -82,11 +82,11 @@ describeIntegration('Portfolio Bootstrap persistence', () => {
 
     const confirmed = await request(app)
       .post(`${base}/sessions/${sessionId}/anchor/confirm`)
-      .send({})
+      .send({ expectedVersion: updated.body.data.anchor.version })
       .expect(200);
     const confirmedAgain = await request(app)
       .post(`${base}/sessions/${sessionId}/anchor/confirm`)
-      .send({})
+      .send({ expectedVersion: updated.body.data.anchor.version })
       .expect(200);
 
     expect(confirmed.body.data.anchor.status).toBe('anchor_confirmed');
@@ -112,11 +112,11 @@ describeIntegration('Portfolio Bootstrap persistence', () => {
 
     const first = await request(app)
       .post(`${base}/sessions/${sessionId}/anchor/confirm`)
-      .send({})
+      .send({ expectedVersion: before.version })
       .expect(200);
     const repeated = await request(app)
       .post(`${base}/sessions/${sessionId}/anchor/confirm`)
-      .send({})
+      .send({ expectedVersion: before.version })
       .expect(200);
     const anchor = await (prisma as any).portfolioAnchor.findUnique({ where: { id: before.id } });
     const histories = await (prisma as any).portfolioAnchorHistory.findMany({
@@ -155,8 +155,8 @@ describeIntegration('Portfolio Bootstrap persistence', () => {
       capturedErrors,
     });
     const responses = await Promise.all([
-      request(app).post(`${base}/sessions/${sessionId}/anchor/confirm`).send({}),
-      request(app).post(`${base}/sessions/${sessionId}/anchor/confirm`).send({}),
+      request(app).post(`${base}/sessions/${sessionId}/anchor/confirm`).send({ expectedVersion: before.version }),
+      request(app).post(`${base}/sessions/${sessionId}/anchor/confirm`).send({ expectedVersion: before.version }),
     ]);
     const anchor = await (prisma as any).portfolioAnchor.findUnique({ where: { id: before.id } });
     const histories = await (prisma as any).portfolioAnchorHistory.findMany({
@@ -200,6 +200,98 @@ describeIntegration('Portfolio Bootstrap persistence', () => {
     });
   });
 
+  it('confirms E2 without deadlock while the final provisional Anchor update is concurrent', async () => {
+    const setupApp = makeApp(userId);
+    const continuation = await seedContinuation(userId);
+    const created = await request(setupApp)
+      .post(`${base}/sessions/from-continuation`)
+      .send({ portfolioEntryContinuationId: continuation.id })
+      .expect(200);
+    const sessionId = created.body.data.bootstrapSession.id;
+    const anchorId = created.body.data.anchor.id;
+    const capturedErrors: Error[] = [];
+    const app = makeApp(userId, ['portfolio_lead'], {
+      service: makeSessionReadBarrierService(2),
+      capturedErrors,
+    });
+
+    const [updateResponse, confirmResponse] = await Promise.all([
+      request(app)
+        .patch(`${base}/sessions/${sessionId}/anchor`)
+        .send({
+          businessSignalStatus: 'unknown',
+          businessSignalValue: null,
+          sourceRefs: { objectiveConversation: { unknownFields: ['businessSignalValue'] } },
+        }),
+      request(app).post(`${base}/sessions/${sessionId}/anchor/confirm`).send({ expectedVersion: created.body.data.anchor.version }),
+    ]);
+    const persisted = await (prisma as any).portfolioBootstrapSession.findUnique({
+      where: { id: sessionId },
+      include: { anchor: true },
+    });
+    const histories = await (prisma as any).portfolioAnchorHistory.findMany({
+      where: { anchorId },
+      orderBy: { version: 'asc' },
+      select: { version: true, action: true },
+    });
+
+    expect([updateResponse.status, confirmResponse.status].sort()).toEqual([200, 409]);
+    expect(capturedErrors.some((error) => error.message.includes('deadlock detected'))).toBe(false);
+
+    if (confirmResponse.status === 200) {
+      expect(persisted).toMatchObject({
+        status: 'awaiting_work_intake',
+        bootstrapPhase: 'B2_WORK_INTAKE',
+        anchor: { status: 'anchor_confirmed', provenanceStatus: 'user_confirmed' },
+      });
+      expect(histories.at(-1)).toMatchObject({ action: 'portfolio_anchor_confirmed' });
+    } else {
+      expect(persisted).toMatchObject({
+        anchor: { status: 'anchor_sufficient', provenanceStatus: 'raw_entry' },
+      });
+      expect(histories.at(-1)).toMatchObject({ action: 'portfolio_anchor_updated' });
+      const reviewedRetry = await request(makeApp(userId))
+        .post(`${base}/sessions/${sessionId}/anchor/confirm`)
+        .send({ expectedVersion: persisted.anchor.version })
+        .expect(200);
+      expect(reviewedRetry.body.data.anchor).toMatchObject({
+        status: 'anchor_confirmed', provenanceStatus: 'user_confirmed',
+      });
+    }
+  });
+
+  it('rejects confirmation when a newer Anchor version committed before the POST began', async () => {
+    const app = makeApp(userId);
+    const continuation = await seedContinuation(userId);
+    const created = await request(app)
+      .post(`${base}/sessions/from-continuation`)
+      .send({ portfolioEntryContinuationId: continuation.id })
+      .expect(200);
+    const sessionId = created.body.data.bootstrapSession.id;
+    const reviewedVersion = created.body.data.anchor.version;
+
+    const newer = await request(app)
+      .patch(`${base}/sessions/${sessionId}/anchor`)
+      .send({ contextSummary: 'Contexto posterior que requiere una nueva revisión humana.' })
+      .expect(200);
+
+    const staleConfirmation = await request(app)
+      .post(`${base}/sessions/${sessionId}/anchor/confirm`)
+      .send({ expectedVersion: reviewedVersion })
+      .expect(409);
+    const persisted = await (prisma as any).portfolioAnchor.findUnique({
+      where: { bootstrapSessionId: sessionId },
+    });
+
+    expect(staleConfirmation.body.error.code).toBe('PORTFOLIO_ANCHOR_VERSION_CONFLICT');
+    expect(persisted).toMatchObject({
+      version: newer.body.data.anchor.version,
+      status: 'anchor_sufficient',
+      confirmedBy: null,
+      confirmedAt: null,
+    });
+  });
+
   it('rejects a concurrent caller who does not own the session without affecting the owner confirmation', async () => {
     const ownerApp = makeApp(userId);
     const unauthorizedApp = makeApp(otherUserId);
@@ -212,8 +304,8 @@ describeIntegration('Portfolio Bootstrap persistence', () => {
     const anchorId = created.body.data.anchor.id;
 
     const [ownerResponse, unauthorizedResponse] = await Promise.all([
-      request(ownerApp).post(`${base}/sessions/${sessionId}/anchor/confirm`).send({}),
-      request(unauthorizedApp).post(`${base}/sessions/${sessionId}/anchor/confirm`).send({}),
+      request(ownerApp).post(`${base}/sessions/${sessionId}/anchor/confirm`).send({ expectedVersion: created.body.data.anchor.version }),
+      request(unauthorizedApp).post(`${base}/sessions/${sessionId}/anchor/confirm`).send({ expectedVersion: created.body.data.anchor.version }),
     ]);
     const anchor = await (prisma as any).portfolioAnchor.findUnique({ where: { id: anchorId } });
     const histories = await (prisma as any).portfolioAnchorHistory.findMany({
