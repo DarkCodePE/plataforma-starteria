@@ -607,13 +607,15 @@ jobs:
               frontend) release_image="$frontend_image" ;;
               ai-service) release_image="$ai_service_image" ;;
             esac
+            [[ "$release_image" =~ ^${DOCKERHUB_NAMESPACE}/starteria-${svc}@sha256:[a-f0-9]{64}$ ]] \
+              || { echo "::error::Invalid certified image reference for $svc"; exit 1; }
             # Match any registry/namespace on the left. The old pattern hardcoded
             # `orlandogtp` while the replacement used $DOCKERHUB_NAMESPACE, so
             # changing the namespace made the substitution stop matching in
             # silence: apply would ship the manifest's old image and `set image`
             # would correct it a moment later, which is exactly the intermediate
             # rollout the comment above says to avoid. Fail loudly instead.
-            substituted=$(sed -E "s|image: [^[:space:]]+/starteria-$svc(:[^[:space:]]+|@sha256:[a-f0-9]{64})|image: ${release_image}|" "$manifest")
+            substituted=$(sed -E "s#image: [^[:space:]]+/starteria-$svc(:[^[:space:]]+|@sha256:[a-f0-9]{64})#image: ${release_image}#" "$manifest")
             printf '%s\n' "$substituted" | grep -Fq "image: ${release_image}" \
               || { echo "::error::Image substitution did not match in $manifest; refusing to apply"; exit 1; }
             printf '%s\n' "$substituted" | kubectl -n "$NAMESPACE" apply -f -
