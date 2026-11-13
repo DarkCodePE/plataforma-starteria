@@ -76,7 +76,7 @@ jobs:
         run: bash scripts/ci/tests/playwright-runtime.test.sh
 
       - name: Test production CD recovery guards
-        working-directory: .
+        working-directory: .ci-control-plane
         run: |
           bash scripts/ci/tests/cd-recovery.test.sh
           bash scripts/ci/tests/cd-image-substitution.test.sh

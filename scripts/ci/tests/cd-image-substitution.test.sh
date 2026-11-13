@@ -5,6 +5,54 @@ repo_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
 
+fail() {
+  echo "CD control-plane source test: $*" >&2
+  exit 1
+}
+
+step_working_directory() {
+  local step_name=$1
+  awk -v step_name="$step_name" '
+    $0 == "      - name: " step_name { in_step=1; next }
+    in_step && /^      - name:/ { exit }
+    in_step && /^        working-directory:/ {
+      sub(/^        working-directory:[[:space:]]*/, "")
+      print
+      exit
+    }
+  ' "$repo_root/.github/workflows/ci.yml"
+}
+
+# Model a reusable CI run whose release checkout predates this test while the
+# nested checkout contains the current control plane. Release tests stay bound
+# to the historical source; CD guard tests must resolve from the control plane.
+release_source_sha=82509bb6fb5611747be92ef6f25e86b4f94f2578
+historical_release="$tmp/release-$release_source_sha"
+mkdir -p \
+  "$historical_release/scripts/ci/tests" \
+  "$historical_release/.ci-control-plane/scripts/ci/tests"
+cp "$repo_root/scripts/ci/tests/release-parity.test.sh" "$historical_release/scripts/ci/tests/"
+cp "$repo_root/scripts/ci/tests/cd-recovery.test.sh" "$historical_release/scripts/ci/tests/"
+cp "$repo_root/scripts/ci/tests/cd-recovery.test.sh" "$historical_release/.ci-control-plane/scripts/ci/tests/"
+cp "$repo_root/scripts/ci/tests/cd-image-substitution.test.sh" "$historical_release/.ci-control-plane/scripts/ci/tests/"
+
+[[ ! -e "$historical_release/scripts/ci/tests/cd-image-substitution.test.sh" ]] \
+  || fail 'historical release fixture unexpectedly contains the new CD test'
+
+release_test_directory=$(step_working_directory 'Test immutable release parity contract')
+[[ "$release_test_directory" == '.' ]] \
+  || fail 'release parity test is not bound to the release checkout'
+[[ -f "$historical_release/$release_test_directory/scripts/ci/tests/release-parity.test.sh" ]] \
+  || fail 'release parity test does not resolve from the historical release checkout'
+
+cd_guard_directory=$(step_working_directory 'Test production CD recovery guards')
+[[ "$cd_guard_directory" == '.ci-control-plane' ]] \
+  || fail 'CD guard tests are not bound to the current control plane'
+for script in cd-recovery.test.sh cd-image-substitution.test.sh; do
+  [[ -f "$historical_release/$cd_guard_directory/scripts/ci/tests/$script" ]] \
+    || fail "$script does not resolve from the current control plane"
+done
+
 # Execute the real image-application shell block from cd.yml with a harmless
 # kubectl double. This catches shell syntax drift in the workflow itself rather
 # than validating a second copy of the substitution expression.
