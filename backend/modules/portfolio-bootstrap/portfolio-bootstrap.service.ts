@@ -21,6 +21,7 @@ import type {
   UpdateWorkItemBody,
   UploadImportBody,
 } from './portfolio-bootstrap.schemas';
+import { assertPortfolioBootstrapSessionActive } from './portfolio-bootstrap-session-state';
 
 export type PortfolioBootstrapDto = {
   sourceContinuation: { id: string; sessionId: string } | null;
@@ -263,6 +264,12 @@ export type PortfolioAdvancementConditionDto = {
   updatedAt: string;
 };
 
+function isRetryableBootstrapTransactionConflict(error: unknown): boolean {
+  const candidate = error as { code?: string; meta?: { code?: string } };
+  return candidate?.code === 'P2034'
+    || (candidate?.code === 'P2010' && ['40001', '40P01'].includes(candidate.meta?.code ?? ''));
+}
+
 export class PortfolioBootstrapService {
   constructor(
     private readonly prisma: PrismaClient,
@@ -338,6 +345,104 @@ export class PortfolioBootstrapService {
         contextStatus: row.contextReview?.status ?? null,
       };
     });
+  }
+
+  async abandonPreparation(input: {
+    sessionId: string;
+    authenticatedUserId: string;
+    permissions: ReadonlySet<Permission>;
+    idempotencyKey: string;
+  }): Promise<{ sessionId: string; status: 'abandoned'; idempotent: boolean }> {
+    if (!can(input.permissions, 'portfolio:write')) {
+      throw AppError.forbidden('No tienes permiso para modificar este Portfolio.', 'PORTFOLIO_BOOTSTRAP_WRITE_REQUIRED');
+    }
+    const idempotencyKey = input.idempotencyKey.trim();
+    if (!idempotencyKey) {
+      throw AppError.badRequest('Idempotency-Key es obligatorio.', 'PORTFOLIO_BOOTSTRAP_IDEMPOTENCY_KEY_REQUIRED');
+    }
+
+    const write = () => this.prisma.$transaction(async (tx) => {
+      const db = tx as any;
+      const actor = await db.user.findUnique({
+        where: { id: input.authenticatedUserId }, select: { organizationId: true },
+      });
+      if (!actor) throw AppError.unauthorized('No autorizado.', 'PORTFOLIO_BOOTSTRAP_AUTH_REQUIRED');
+
+      const session = await db.portfolioBootstrapSession.findUnique({
+        where: { id: input.sessionId },
+        select: {
+          id: true, userId: true, organizationId: true, status: true, setupCompletedAt: true,
+          _count: { select: { organizationMaterializations: true, importedInitiativeLinks: true } },
+        },
+      });
+      if (!session) throw AppError.notFound('Portfolio Bootstrap session', 'PORTFOLIO_BOOTSTRAP_SESSION_NOT_FOUND');
+      this.assertOwner(session, input.authenticatedUserId);
+      if (session.organizationId !== actor.organizationId) {
+        throw AppError.forbidden('La preparación pertenece a otra organización.', 'PORTFOLIO_BOOTSTRAP_ORGANIZATION_FORBIDDEN');
+      }
+      if (session.status === 'abandoned') {
+        return { sessionId: session.id, status: 'abandoned' as const, idempotent: true };
+      }
+      if (session.setupCompletedAt) {
+        throw AppError.conflict(
+          'Esta preparación ya fue completada y no puede descartarse.',
+          'PORTFOLIO_BOOTSTRAP_ABANDON_COMPLETED',
+        );
+      }
+
+      const linkedAssignments = await db.portfolioHandoffAssignment.count({
+        where: { portfolioScopeRef: session.id },
+      });
+      if (session._count.organizationMaterializations > 0
+        || session._count.importedInitiativeLinks > 0
+        || linkedAssignments > 0) {
+        throw AppError.conflict(
+          'Esta preparación ya tiene estructura canónica o encargos vinculados y no puede descartarse.',
+          'PORTFOLIO_BOOTSTRAP_ABANDON_LINKED_WORK',
+        );
+      }
+
+      const updated = await db.portfolioBootstrapSession.updateMany({
+        where: { id: session.id, status: { not: 'abandoned' }, setupCompletedAt: null },
+        data: { status: 'abandoned' },
+      });
+      if (updated.count === 0) {
+        const current = await db.portfolioBootstrapSession.findUnique({
+          where: { id: session.id }, select: { status: true },
+        });
+        if (current?.status === 'abandoned') {
+          return { sessionId: session.id, status: 'abandoned' as const, idempotent: true };
+        }
+        throw AppError.conflict(
+          'La preparación cambió mientras se intentaba descartar. Actualiza y vuelve a intentarlo.',
+          'PORTFOLIO_BOOTSTRAP_ABANDON_CONFLICT',
+        );
+      }
+
+      await this.writeAudit(db, input.authenticatedUserId, 'portfolio_bootstrap_session_abandoned', session.id, {
+        sessionId: session.id,
+        idempotencyKeyHash: crypto.createHash('sha256').update(idempotencyKey).digest('hex'),
+      });
+      return { sessionId: session.id, status: 'abandoned' as const, idempotent: false };
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable, timeout: 10_000 });
+
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      try {
+        return await write();
+      } catch (error) {
+        if (!isRetryableBootstrapTransactionConflict(error)) throw error;
+        if (attempt === 2) {
+          throw AppError.conflict(
+            'La preparación cambió mientras se intentaba descartar. Actualiza y vuelve a intentarlo.',
+            'PORTFOLIO_BOOTSTRAP_ABANDON_CONFLICT',
+          );
+        }
+      }
+    }
+    throw AppError.conflict(
+      'La preparación cambió mientras se intentaba descartar. Actualiza y vuelve a intentarlo.',
+      'PORTFOLIO_BOOTSTRAP_ABANDON_CONFLICT',
+    );
   }
 
   /**
@@ -1693,6 +1798,7 @@ export class PortfolioBootstrapService {
     capability: 'portfolio:read' | 'portfolio:write';
   }): Promise<void> {
     this.assertOwner(input.session, input.authenticatedUserId);
+    assertPortfolioBootstrapSessionActive(input.session);
     if (input.session.sourceContinuation?.snapshotFormat === 'PORTFOLIO_SETUP_114F_V1') {
       const validated = await validatePortfolioSetupArrival(input.db as Prisma.TransactionClient,
         input.session.sourceContinuationId, input.authenticatedUserId, this.now());

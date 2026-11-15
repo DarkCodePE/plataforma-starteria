@@ -4,6 +4,7 @@ import { can, type Permission } from '../../shared/authz/permissions';
 import { ScopedPortfolioAccessService } from '../../shared/authz/scoped-portfolio-access.service';
 import { AppError } from '../../shared/errors/AppError';
 import type { PortfolioBootstrapContextPayload } from './portfolio-bootstrap.schemas';
+import { assertPortfolioBootstrapSessionActive } from './portfolio-bootstrap-session-state';
 
 type SourceCompanyContext = { companyId: string; versionId: string; versionNumber: number } | null;
 
@@ -212,9 +213,10 @@ export class PortfolioBootstrapContextService {
   private async requireOwnedSession(db: any, sessionId: string, userId: string): Promise<any> {
     const session = await db.portfolioBootstrapSession.findFirst({
       where: { id: sessionId, userId },
-      select: { id: true, userId: true, organizationId: true },
+      select: { id: true, userId: true, organizationId: true, status: true },
     });
     if (!session) throw AppError.notFound('Portfolio Bootstrap session', 'PORTFOLIO_BOOTSTRAP_SESSION_NOT_FOUND');
+    assertPortfolioBootstrapSessionActive(session);
     return session;
   }
 

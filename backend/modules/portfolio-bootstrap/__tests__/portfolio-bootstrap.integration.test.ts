@@ -15,6 +15,7 @@ const userId = 'user-portfolio-bootstrap-pr2';
 const otherUserId = 'user-portfolio-bootstrap-other';
 const organizationId = 'org-portfolio-bootstrap-integration';
 const touchedEntrySessionIds = new Set<string>();
+const touchedDirectSessionIds = new Set<string>();
 
 describeIntegration('Portfolio Bootstrap persistence', () => {
   afterEach(async () => {
@@ -57,6 +58,63 @@ describeIntegration('Portfolio Bootstrap persistence', () => {
       .expect(403);
 
     expect(await (prisma as any).portfolioBootstrapSession.count()).toBe(before);
+  });
+
+  it('abandons an unfinished preparation idempotently and prevents later resumption or mutation', async () => {
+    const app = makeApp(userId);
+    const continuation = await seedContinuation(userId);
+    await prisma.user.update({ where: { id: userId }, data: { organizationId } });
+    const created = await request(app)
+      .post(`${base}/sessions/from-continuation`)
+      .send({ portfolioEntryContinuationId: continuation.id })
+      .expect(200);
+    const sessionId = created.body.data.bootstrapSession.id;
+
+    const [first, concurrent] = await Promise.all([
+      request(app)
+        .post(`${base}/sessions/${sessionId}/abandon`)
+        .set('Idempotency-Key', `discard-${sessionId}`)
+        .send({})
+        .expect(200),
+      request(app)
+        .post(`${base}/sessions/${sessionId}/abandon`)
+        .set('Idempotency-Key', `discard-${sessionId}`)
+        .send({})
+        .expect(200),
+    ]);
+    const retry = await request(app)
+      .post(`${base}/sessions/${sessionId}/abandon`)
+      .set('Idempotency-Key', `discard-${sessionId}`)
+      .send({})
+      .expect(200);
+
+    expect([first.body.data.idempotent, concurrent.body.data.idempotent].sort()).toEqual([false, true]);
+    expect(first.body.data).toMatchObject({ sessionId, status: 'abandoned' });
+    expect(concurrent.body.data).toMatchObject({ sessionId, status: 'abandoned' });
+    expect(retry.body.data).toEqual({ sessionId, status: 'abandoned', idempotent: true });
+    expect(await prisma.portfolioBootstrapSession.findUnique({ where: { id: sessionId }, select: { status: true } }))
+      .toEqual({ status: 'abandoned' });
+    const resumable = await request(app).get(`${base}/sessions/resumable`).expect(200);
+    expect(resumable.body.data).not.toEqual(expect.arrayContaining([expect.objectContaining({ sessionId })]));
+    await request(app).get(`${base}/sessions/${sessionId}`).expect(409);
+    await request(app).patch(`${base}/sessions/${sessionId}/anchor`)
+      .send({ outcomeStatement: 'No debe persistirse' })
+      .expect(409);
+    const fresh = await request(app).post(`${base}/sessions/direct`).send({}).expect(200);
+    touchedDirectSessionIds.add(fresh.body.data.bootstrapSession.id);
+    expect(fresh.body.data).toMatchObject({
+      bootstrapSession: { status: 'awaiting_anchor_review', bootstrapPhase: 'B1_ANCHOR' },
+      anchor: {
+        outcomeStatement: 'Resultado de negocio por definir',
+        contextSummary: null,
+        status: 'anchor_insufficient',
+      },
+      workItems: [],
+    });
+    expect(fresh.body.data.bootstrapSession.id).not.toBe(sessionId);
+    expect(await prisma.auditLog.count({
+      where: { resource: 'PortfolioBootstrap', resourceId: sessionId, action: 'portfolio_bootstrap_session_abandoned' },
+    })).toBe(1);
   });
 
   it('updates and confirms anchor with version history and idempotent double confirm', async () => {
@@ -1271,16 +1329,20 @@ async function cleanup() {
     where: { bootstrapSessionId: { in: await touchedBootstrapSessionIds() } },
   });
   await (prisma as any).portfolioAnchor.deleteMany({
-    where: { bootstrapSession: { sourceContinuation: { sessionId: { in: [...touchedEntrySessionIds] } } } },
+    where: { bootstrapSessionId: { in: await touchedBootstrapSessionIds() } },
   });
   await (prisma as any).portfolioBootstrapSession.deleteMany({
-    where: { sourceContinuation: { sessionId: { in: [...touchedEntrySessionIds] } } },
+    where: { id: { in: await touchedBootstrapSessionIds() } },
   });
   await prisma.portfolioEntryPortfolioContinuation.deleteMany({
     where: { sessionId: { in: [...touchedEntrySessionIds] } },
   });
   await prisma.portfolioEntrySession.deleteMany({
     where: { id: { in: [...touchedEntrySessionIds] } },
+  });
+  await prisma.user.updateMany({
+    where: { id: { in: [userId, otherUserId] } },
+    data: { organizationId: null },
   });
   await prisma.organization.deleteMany({ where: { id: organizationId } });
 }
@@ -1290,5 +1352,8 @@ async function touchedBootstrapSessionIds(): Promise<string[]> {
     where: { sourceContinuation: { sessionId: { in: [...touchedEntrySessionIds] } } },
     select: { id: true },
   });
-  return rows.map((row: { id: string }) => row.id);
+  return Array.from(new Set([
+    ...rows.map((row: { id: string }) => row.id),
+    ...touchedDirectSessionIds,
+  ]));
 }

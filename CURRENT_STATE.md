@@ -12,6 +12,14 @@ No debe leerse como runtime productivo certificado por defecto. La presencia de 
 
 La autoridad actual permite cambios frontend de producto solo cuando exista decision explicita y documentada de slice, con alcance acotado y sin modificar Core, AI, permisos, esquemas, rutas ni semantica de producto salvo autorizacion especifica. DS-05 y DS-06 son evidencia documental de pilotos frontend autorizados por slice.
 
+## HU — descarte gobernado de preparaciones Bootstrap (2026-11-15)
+
+La HU autoriza retirar de Portfolio Home una preparación inacabada mediante una transición lógica a `PortfolioBootstrapSession.status=abandoned`. La operación pertenece a Portfolio Bootstrap, exige propietario, misma organización y permiso `portfolio:write`, es idempotente y conserva una entrada de auditoría. Falla con conflicto sin modificar datos cuando la sesión ya completó la preparación o tiene materializaciones, iniciativas importadas o encargos vinculados.
+
+Las sesiones abandonadas quedan excluidas de «Preparaciones y conversaciones» y no pueden leerse, reanudarse ni modificarse. «Crear objetivo» conserva el mecanismo vigente y, al no poder recuperar una sesión abandonada, crea una preparación nueva con Contexto vacío. No hay borrado físico, cambios de Prisma, Core, E1–E7, proveedores ni despliegue.
+
+Evidencia local de la rama: pruebas focalizadas backend 93/93 y frontend 26/26, integración PostgreSQL desechable 26/26 —incluido conflicto serializable concurrente—, recorrido Playwright autenticado 1/1, suites completas backend/frontend, typecheck, lint y build aprobados. PR #317 abierto; CI #43765304814 aprobado sobre el commit de implementación `85dcb68`. No se ha realizado merge ni CD.
+
 ## HU-E1-PILOT-GATE — gate por organización preparado, sin activación (2026-11-15)
 
 La HU autorizó un gate operativo aditivo para la E1 congelada ya integrada. La implementación en rama exige simultáneamente `SEMANTIC_E1_ENABLED=true` y que la organización propietaria de la sesión figure en `SEMANTIC_E1_PILOT_ORGANIZATION_ALLOWLIST`. Propiedad de sesión y permisos se validan antes del gate tanto en lectura como antes de cualquier inferencia; fuera del piloto, el GET devuelve la modalidad semántica deshabilitada sin estado y el POST falla cerrado, conservando la experiencia guiada existente.

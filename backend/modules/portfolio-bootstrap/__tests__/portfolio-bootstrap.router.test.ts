@@ -8,6 +8,7 @@ import { buildPortfolioBootstrapRouter } from '../portfolio-bootstrap.router';
 
 const service = {
   createOrReuseDirect: vi.fn(),
+  abandonPreparation: vi.fn(),
   getCurrent: vi.fn(),
   listResumable: vi.fn(),
   createOrReuseFromContinuation: vi.fn(),
@@ -98,6 +99,7 @@ describe('portfolio-bootstrap router', () => {
       permissions: permissionsForRoles(['portfolio_lead']),
     };
     service.createOrReuseDirect.mockResolvedValue({ bootstrapSession: { id: 'bs-direct' }, anchor: { id: 'anchor-direct' } });
+    service.abandonPreparation.mockResolvedValue({ sessionId: 'bs-unfinished', status: 'abandoned', idempotent: false });
     service.getCurrent.mockResolvedValue({ bootstrapSession: { id: 'bs-current' }, anchor: { id: 'anchor-current' } });
     service.listResumable.mockResolvedValue([{ sessionId: 'bs-unfinished', title: 'Trabajo en preparación' }]);
     service.createOrReuseFromContinuation.mockResolvedValue({ bootstrapSession: { id: 'bs-1' }, anchor: { id: 'a-1' } });
@@ -482,6 +484,20 @@ describe('portfolio-bootstrap router', () => {
     expect(result.body.data).toEqual([{ sessionId: 'bs-unfinished', title: 'Trabajo en preparación' }]);
     expect(service.listResumable).toHaveBeenCalledWith(expect.objectContaining({ authenticatedUserId: 'portfolio-lead-1' }));
     expect(service.createOrReuseDirect).not.toHaveBeenCalled();
+  });
+
+  it('discards an unfinished preparation through the authenticated, idempotent command', async () => {
+    const res = await request(makeApp())
+      .post('/api/v1/portfolio-bootstrap/sessions/bs-unfinished/abandon')
+      .set('Idempotency-Key', 'discard-bs-unfinished')
+      .send({})
+      .expect(200);
+
+    expect(res.body.data).toEqual({ sessionId: 'bs-unfinished', status: 'abandoned', idempotent: false });
+    expect(service.abandonPreparation).toHaveBeenCalledWith(expect.objectContaining({
+      sessionId: 'bs-unfinished', authenticatedUserId: 'portfolio-lead-1',
+      idempotencyKey: 'discard-bs-unfinished',
+    }));
   });
 
   it('recovers the current Copilot workspace without provisioning another session', async () => {

@@ -6,6 +6,7 @@ import { canonicalContextHash, isRetryableContextWriteConflict } from './portfol
 import { buildGoalQuestionPlan, type GoalPlanContextReview, type GoalPlanAnchor } from './portfolio-bootstrap-goal-question-planner';
 import { buildProvisionalGoalQuestionPlan } from './portfolio-bootstrap-goal-provisional-planner';
 import { portfolioBootstrapGoalTurnBodySchema, type PortfolioBootstrapGoalTurnBody } from './portfolio-bootstrap-goal-turn.schemas';
+import { assertPortfolioBootstrapSessionActive } from './portfolio-bootstrap-session-state';
 
 type GoalAccess = {
   sessionId: string;
@@ -226,6 +227,7 @@ export class PortfolioBootstrapGoalTurnService {
       include: { anchor: true, contextReview: true },
     });
     if (!session) throw AppError.notFound('Portfolio Bootstrap session', 'PORTFOLIO_BOOTSTRAP_SESSION_NOT_FOUND');
+    assertPortfolioBootstrapSessionActive(session);
     if (can(input.permissions, capability)) return session;
     const allowed = session.organizationId && await new ScopedPortfolioAccessService(db).canUserAccessPortfolio({
       userId: input.authenticatedUserId,

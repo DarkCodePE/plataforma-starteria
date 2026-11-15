@@ -3,6 +3,7 @@ import { Prisma, type PrismaClient } from '@prisma/client';
 import { can, type Permission } from '../../shared/authz/permissions';
 import { AppError } from '../../shared/errors/AppError';
 import { LAB_RECIPIENTS } from '../portfolio-lab/portfolio-lab-request.service';
+import { assertPortfolioBootstrapSessionActive } from './portfolio-bootstrap-session-state';
 
 type CompletionSummary = { sent: number; unsent: number; failed: number };
 type LabCompletionSummary = { notified: number };
@@ -55,6 +56,7 @@ export class PortfolioSetupCompletionService {
         include: { anchor: true, organizationMaterializations: true },
       });
       if (!session) throw AppError.notFound('Configuración de Portfolio', 'PORTFOLIO_SETUP_NOT_FOUND');
+      assertPortfolioBootstrapSessionActive(session);
       const challengeIds = canonicalChallengeIds(session.organizationMaterializations);
       if (challengeIds.length === 0) {
         throw AppError.conflict('La configuración todavía no tiene un frente y un reto canónicos.', 'PORTFOLIO_SETUP_STRUCTURE_REQUIRED');

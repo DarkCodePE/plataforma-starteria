@@ -77,6 +77,58 @@ test.describe('G02 authenticated overview-first and resumable Bootstrap', () => 
     } finally { await api.dispose(); }
   });
 
+  test('descarta una preparación, no la recupera y comienza Contexto en una sesión nueva', async ({ page }) => {
+    const api = await pwRequest.newContext({ baseURL });
+    try {
+      const lead = await registerLead(api, 'abandon');
+      const direct = await api.post('/api/v1/portfolio-bootstrap/sessions/direct', {
+        headers: { Authorization: `Bearer ${lead.token}` },
+        data: {}, failOnStatusCode: false,
+      });
+      expect(direct.status(), await direct.text()).toBe(200);
+      const abandonedSessionId = (await direct.json()).data.bootstrapSession.id as string;
+
+      await loginBrowser(page, lead);
+      const discard = page.getByRole('button', { name: 'Descartar preparación' });
+      await expect(discard).toBeVisible();
+      await discard.click();
+      const dialog = page.getByRole('alertdialog', { name: '¿Descartar esta preparación?' });
+      await expect(dialog).toBeVisible();
+      await dialog.getByRole('button', { name: 'Cancelar' }).click();
+      await expect(discard).toBeFocused();
+      expect((await prisma.portfolioBootstrapSession.findUniqueOrThrow({
+        where: { id: abandonedSessionId },
+      })).status).not.toBe('abandoned');
+
+      await discard.click();
+      const abandonResponse = page.waitForResponse((response) =>
+        response.request().method() === 'POST'
+        && new URL(response.url()).pathname.endsWith(`/sessions/${abandonedSessionId}/abandon`));
+      await page.getByRole('alertdialog').getByRole('button', { name: 'Sí, descartar preparación' }).click();
+      expect((await abandonResponse).status()).toBe(200);
+      await expect(page.getByTestId('portfolio-resumable-session')).toHaveCount(0);
+      await expect(page.getByRole('button', { name: 'Crear objetivo' })).toBeVisible();
+      expect((await prisma.portfolioBootstrapSession.findUniqueOrThrow({
+        where: { id: abandonedSessionId },
+      })).status).toBe('abandoned');
+
+      await page.reload();
+      await expect(page.getByTestId('portfolio-resumable-session')).toHaveCount(0);
+      await page.getByRole('button', { name: 'Crear objetivo' }).click();
+      await expect(page).toHaveURL(/bootstrapSessionId=/, { timeout: 20000 });
+      const newSessionId = new URL(page.url()).searchParams.get('bootstrapSessionId');
+      expect(newSessionId).toBeTruthy();
+      expect(newSessionId).not.toBe(abandonedSessionId);
+      await expect(page.getByTestId('portfolio-context-conversation')).toBeVisible({ timeout: 20000 });
+      const progress = page.getByRole('complementary', { name: 'Tu avance' });
+      await expect(progress.getByRole('button', { name: /Contexto/ })).toBeEnabled();
+      await expect(progress.getByRole('button', { name: /^2 Objetivo/ })).toBeDisabled();
+      expect(await prisma.portfolioBootstrapSession.count({
+        where: { userId: lead.userId, status: { not: 'abandoned' } },
+      })).toBe(1);
+    } finally { await api.dispose(); }
+  });
+
   test('E1 confirmado retoma directamente en E2 sin crear otra sesión ni confirmar el objetivo', async ({ page }) => {
     const api = await pwRequest.newContext({ baseURL });
     try {

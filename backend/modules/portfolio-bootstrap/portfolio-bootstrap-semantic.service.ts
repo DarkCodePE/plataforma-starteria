@@ -8,6 +8,7 @@ import {
   companyEntryFingerprint,
   isRetryableContextWriteConflict,
 } from './portfolio-bootstrap-context.service';
+import { assertPortfolioBootstrapSessionActive } from './portfolio-bootstrap-session-state';
 import {
   portfolioBootstrapSemanticTurnInputSchema,
   semanticE1EnabledForOrganization,
@@ -703,9 +704,10 @@ export class PortfolioBootstrapSemanticService {
   private async requireOwnedSession(db: any, sessionId: string, userId: string): Promise<any> {
     const session = await db.portfolioBootstrapSession.findFirst({
       where: { id: sessionId, userId },
-      select: { id: true, userId: true, organizationId: true },
+      select: { id: true, userId: true, organizationId: true, status: true },
     });
     if (!session) throw AppError.notFound('Portfolio Bootstrap session', 'PORTFOLIO_BOOTSTRAP_SESSION_NOT_FOUND');
+    assertPortfolioBootstrapSessionActive(session);
     return session;
   }
 

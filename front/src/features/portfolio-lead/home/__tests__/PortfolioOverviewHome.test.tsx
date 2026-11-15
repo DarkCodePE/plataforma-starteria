@@ -1,4 +1,5 @@
 import { fireEvent, render, screen, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import { PortfolioOverviewHome } from '../PortfolioOverviewHome';
 
@@ -130,6 +131,58 @@ describe('PortfolioOverviewHome', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Retomar este espacio' }));
     expect(resume).toHaveBeenCalledTimes(1);
     expect(resume).toHaveBeenCalledWith('saved-1');
+  });
+
+  it('asks for keyboard-accessible confirmation before discarding a resumable preparation', async () => {
+    const discard = vi.fn();
+    const user = userEvent.setup();
+    render(<PortfolioOverviewHome
+      model={model as any} onOpenCopilot={vi.fn()} onOpenAdditionalFront={vi.fn()}
+      resumableStatus="ready"
+      resumableSessions={[{
+        sessionId: 'saved-1', title: 'Preparación pendiente',
+        bootstrapPhase: 'B1_ANCHOR', status: 'awaiting_anchor_review', source: 'direct',
+        createdAt: '2026-11-07T10:00:00.000Z', updatedAt: '2026-11-08T10:00:00.000Z',
+        contextVersion: null, contextUpdatedAt: null, contextStatus: null,
+      }]}
+      onDiscardSession={discard}
+    />);
+
+    const trigger = screen.getByRole('button', { name: 'Descartar preparación' });
+    await user.click(trigger);
+    expect(screen.getByRole('alertdialog')).toBeInTheDocument();
+    expect(screen.getByText('¿Descartar esta preparación?')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Cancelar' }));
+    expect(discard).not.toHaveBeenCalled();
+    expect(trigger).toHaveFocus();
+
+    await user.click(trigger);
+    await user.click(screen.getByRole('button', { name: 'Sí, descartar preparación' }));
+    expect(discard).toHaveBeenCalledWith('saved-1');
+  });
+
+  it('disables every preparation action while one discard request is pending', () => {
+    const first = {
+      sessionId: 'saved-1', title: 'Preparación pendiente',
+      bootstrapPhase: 'B1_ANCHOR', status: 'awaiting_anchor_review', source: 'direct',
+      createdAt: '2026-11-07T10:00:00.000Z', updatedAt: '2026-11-08T10:00:00.000Z',
+      contextVersion: null, contextUpdatedAt: null, contextStatus: null,
+    } as const;
+    render(<PortfolioOverviewHome
+      model={model as any} onOpenCopilot={vi.fn()} onOpenAdditionalFront={vi.fn()}
+      resumableStatus="ready"
+      resumableSessions={[first, { ...first, sessionId: 'saved-2', title: 'Otra preparación' }]}
+      onDiscardSession={vi.fn()}
+      onResumeSession={vi.fn()}
+      discardingSessionId="saved-1"
+    />);
+
+    for (const button of screen.getAllByRole('button', { name: /Descartar preparación|Descartando/ })) {
+      expect(button).toBeDisabled();
+    }
+    for (const button of screen.getAllByRole('button', { name: 'Retomar este espacio' })) {
+      expect(button).toBeDisabled();
+    }
   });
 
   it('opens another contextual front from an explicit action', () => {
