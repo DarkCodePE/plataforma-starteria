@@ -12,6 +12,16 @@ No debe leerse como runtime productivo certificado por defecto. La presencia de 
 
 La autoridad actual permite cambios frontend de producto solo cuando exista decision explicita y documentada de slice, con alcance acotado y sin modificar Core, AI, permisos, esquemas, rutas ni semantica de producto salvo autorizacion especifica. DS-05 y DS-06 son evidencia documental de pilotos frontend autorizados por slice.
 
+## HU-E1-V1 — E1 congelada integrada en main (2026-11-15)
+
+El PR #314 fue fusionado en `main` mediante el commit `6d32394f4b356aefdbe0478c208ea6141146248a`. La integración adapta la experiencia E1 congelada al propietario semántico existente, Portfolio Bootstrap, y conserva la ruta `/portfolio/inicio?bootstrapSessionId=…`, ContextReview, CAS, idempotencia, persistencia y snapshot confirmado para E2.
+
+El alcance integrado comprende el CTA Home «Crear objetivo», chat inicial vacío, aclaración por suficiencia material, síntesis de aterrizaje revisable con procedencia, corrección, confirmación y continuidad E1→E2. No incorpora otro runtime de Contexto, no crea objetos canónicos durante E1 y no modifica Core, Prisma, proveedores ni la implementación de E2–E7.
+
+`SEMANTIC_E1_ENABLED=false` permanece como valor por defecto y el fallback guiado continúa disponible. Por tanto, este estado acredita código integrado y CI del PR, pero **no acredita despliegue, activación del modo semántico ni validación con IA real**. Evidencia determinista: CI #43687840991 SUCCESS, incluyendo suites backend/frontend, PostgreSQL, build, E2E light y artefactos E1. Las entradas anteriores de KAN-247/KAN-251 se conservan como trazabilidad histórica y quedan superadas por este estado para la integración de E1.
+
+Siguiente gate: revisión pre-CD y autorización manual separada; no se ha ejecutado CD ni activado ninguna bandera.
+
 ## KAN-247 — Estado E1 después de KAN-248 (2026-11-08)
 
 Baseline integrada: `main@2ab78569d5559f19cd1bbb1e861efe0cc532c890` (KAN-248 #271 fusionado, CI #42511467700 SUCCESS).
