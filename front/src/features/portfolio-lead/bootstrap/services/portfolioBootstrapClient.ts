@@ -518,6 +518,27 @@ export async function getResumablePortfolioBootstrapSessions(): Promise<Portfoli
   }
 }
 
+export type PortfolioBootstrapAbandonResult = {
+  sessionId: string;
+  status: 'abandoned';
+  idempotent: boolean;
+};
+
+export async function abandonPortfolioBootstrapPreparation(
+  sessionId: string,
+): Promise<PortfolioBootstrapAbandonResult> {
+  try {
+    const { data } = await api.post<ApiResponse<PortfolioBootstrapAbandonResult>>(
+      `/portfolio-bootstrap/sessions/${encodeURIComponent(sessionId)}/abandon`,
+      {},
+      { headers: { 'Idempotency-Key': `portfolio-bootstrap-abandon:${sessionId}` } },
+    );
+    return data.data;
+  } catch (err) {
+    throw new PortfolioBootstrapClientError(parseApiError(err));
+  }
+}
+
 /** Opens the existing provisional bootstrap workflow from normal Portfolio Lead entry. */
 export async function createOrReuseDirectPortfolioBootstrapSession(): Promise<PortfolioBootstrapResponse> {
   try {

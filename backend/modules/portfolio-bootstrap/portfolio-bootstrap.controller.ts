@@ -441,6 +441,20 @@ export class PortfolioBootstrapController {
     } catch (err) { next(err); }
   };
 
+  abandonPreparation = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      if (!req.user?.id) throw AppError.unauthorized('No autorizado.', 'PORTFOLIO_BOOTSTRAP_AUTH_REQUIRED');
+      const { sessionId } = bootstrapSessionParamsSchema.parse(req.params);
+      const data = await this.service.abandonPreparation({
+        sessionId,
+        authenticatedUserId: req.user.id,
+        permissions: req.user.permissions,
+        idempotencyKey: req.get('Idempotency-Key') ?? '',
+      });
+      res.json({ success: true, data });
+    } catch (err) { next(err); }
+  };
+
   getCurrent = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
       if (!req.user?.id) throw AppError.unauthorized('No autorizado.', 'PORTFOLIO_BOOTSTRAP_AUTH_REQUIRED');

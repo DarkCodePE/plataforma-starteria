@@ -688,6 +688,37 @@ Este gate modifica únicamente autorización y operación del runtime ya existen
 
 ---
 
+## Slice PORTFOLIO_BOOTSTRAP_PREPARATION_ABANDONMENT (HU directa)
+
+**Registro:** 2026-11-15 sobre `main@fb248fe31d59a40bd13ab111f4d4810c558bd0a9`; implementación preparada para PR, sin merge ni despliegue.
+
+```text
+slice_id: PORTFOLIO_BOOTSTRAP_PREPARATION_ABANDONMENT
+authority: HU explícita «Descartar preparación y empezar desde cero»
+semantic_owner: Portfolio Bootstrap
+logic_status: ACTIVE_V2_SLICE
+implementation_status: IMPLEMENTED_IN_BRANCH_CI_PENDING
+visual_status: EXISTING_PORTFOLIO_HOME_PATTERN_EXTENDED_WITH_CONFIRMATION
+route: /portfolio/inicio and POST /api/v1/portfolio-bootstrap/sessions/:sessionId/abandon
+operation: logical transition to existing PortfolioBootstrapSession.status=abandoned; no physical deletion
+authorization: authenticated owner; actor current organization equals session organization; portfolio:write required
+eligibility: unfinished Bootstrap only, with zero organization materializations, imported initiative links and linked Portfolio Handoff assignments
+conflict_behavior: explanatory HTTP 409 and no mutation for completed or linked sessions
+idempotency: required Idempotency-Key; retries return the same abandoned outcome; one abandonment audit event
+abandoned_guard: abandoned sessions are excluded from resumable reads and rejected by Bootstrap read/write capabilities
+home_behavior: explicit confirmation; cancel is inert; success removes and refreshes the card; server failure preserves it for retry
+fresh_start: existing Crear objetivo flow is preserved; abandoned sessions cannot be selected and a direct session begins at empty Contexto
+preserves: E1-E7 frozen experience; ContextReview; CAS; Bootstrap persistence; other sessions and business entities
+scope_excluded: physical deletion; Core; Prisma/migrations; providers/models; E1-E7 behavior; additional Home redesign; merge/CD
+local_evidence: backend focused 93/93; frontend focused 26/26; PostgreSQL integration 26/26 including concurrent Serializable retry; authenticated Playwright abandonment/fresh-start journey 1/1; complete backend/frontend suites PASS; typecheck, lint and build PASS
+retirement_action: KEEP_COMPAT
+migration_status: V2_MIGRATED for this bounded Home/Bootstrap capability; no data migration
+```
+
+La capacidad amplía el read model y la operación gobernada de Portfolio Bootstrap sin convertir Home en propietario del estado ni alterar contratos canónicos de E1–E7.
+
+---
+
 ## Slice PORTFOLIO_E2_LEDGER_CONVERSATION_UI (KAN-253 B3)
 
 **Registro:** 2026-11-09, PR de UX separado; base main@82f06c1cf7a8fb30d5fa6c4ed6a5bcb583c32dbb. No desplegado.

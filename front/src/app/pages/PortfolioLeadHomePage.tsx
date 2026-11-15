@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router';
 import { usePortfolioLead } from '../../features/portfolio-lead';
 import { PortfolioBootstrapHome, usePortfolioBootstrap } from '../../features/portfolio-lead/bootstrap';
-import { completePortfolioSetup, createOrReuseDirectPortfolioBootstrapSession, getResumablePortfolioBootstrapSessions, openAdditionalPortfolioFrontSetup, type PortfolioResumableSession } from '../../features/portfolio-lead/bootstrap/services/portfolioBootstrapClient';
+import { abandonPortfolioBootstrapPreparation, completePortfolioSetup, createOrReuseDirectPortfolioBootstrapSession, getResumablePortfolioBootstrapSessions, openAdditionalPortfolioFrontSetup, type PortfolioResumableSession } from '../../features/portfolio-lead/bootstrap/services/portfolioBootstrapClient';
 import type { ChallengeAssignmentTarget } from '../../features/portfolio-lead/challenge-activation-brief/ChallengeActivationBriefPanel';
 import { PortfolioOverviewHome } from '../../features/portfolio-lead/home/PortfolioOverviewHome';
 import { PortfolioCopilotDrawer } from '../../features/copilot';
@@ -32,6 +32,8 @@ function OrdinaryPortfolioLeadHomePage() {
   const [resumableSessions, setResumableSessions] = useState<PortfolioResumableSession[]>([]);
   const [resumableStatus, setResumableStatus] = useState<'loading' | 'ready' | 'error'>('loading');
   const [resumableError, setResumableError] = useState<string | null>(null);
+  const [discardingSessionId, setDiscardingSessionId] = useState<string | null>(null);
+  const [discardError, setDiscardError] = useState<{ sessionId: string; message: string } | null>(null);
   const additionalFrontIntentRef = useRef<string | null>(null);
   const copilotAvailable = isPortfolioCopilotEnabled();
 
@@ -98,6 +100,23 @@ function OrdinaryPortfolioLeadHomePage() {
   };
   const resumeOpportunity = (sessionId: string) => {
     navigate(`/portfolio/inicio?bootstrapSessionId=${encodeURIComponent(sessionId)}`);
+  };
+  const discardOpportunity = async (sessionId: string) => {
+    if (discardingSessionId) return;
+    setDiscardingSessionId(sessionId);
+    setDiscardError(null);
+    try {
+      await abandonPortfolioBootstrapPreparation(sessionId);
+      setResumableSessions((current) => current.filter((session) => session.sessionId !== sessionId));
+      await loadResumable();
+    } catch (error) {
+      setDiscardError({
+        sessionId,
+        message: error instanceof Error ? error.message : 'No pudimos descartar la preparación. Puedes volver a intentarlo.',
+      });
+    } finally {
+      setDiscardingSessionId(null);
+    }
   };
 
   const openAssignment = (target: ChallengeAssignmentTarget) => {
@@ -183,6 +202,9 @@ function OrdinaryPortfolioLeadHomePage() {
       resumableError={resumableError}
       onRetryResumable={() => void loadResumable()}
       onResumeSession={resumeOpportunity}
+      onDiscardSession={(sessionId) => void discardOpportunity(sessionId)}
+      discardingSessionId={discardingSessionId}
+      discardError={discardError}
       copilotAvailable={copilotAvailable}
     />
     {homeError ? <p role="alert" className="mx-auto mb-4 max-w-[1500px] px-6 text-sm text-rose-800">{homeError}</p> : null}

@@ -8,6 +8,7 @@ const createOrReuse = vi.fn();
 const createDirect = vi.fn();
 const getCurrent = vi.fn();
 const getResumable = vi.fn();
+const abandonPreparation = vi.fn();
 const getSession = vi.fn();
 const getHome = vi.fn();
 const openAdditional = vi.fn();
@@ -39,6 +40,7 @@ vi.mock('../../../features/portfolio-lead/bootstrap/services/portfolioBootstrapC
   createOrReuseDirectPortfolioBootstrapSession: (...args: unknown[]) => createDirect(...args),
   getCurrentPortfolioBootstrapSession: (...args: unknown[]) => getCurrent(...args),
   getResumablePortfolioBootstrapSessions: (...args: unknown[]) => getResumable(...args),
+  abandonPortfolioBootstrapPreparation: (...args: unknown[]) => abandonPreparation(...args),
   getPortfolioBootstrapSession: (...args: unknown[]) => getSession(...args),
   getPortfolioOrganizationProposal: vi.fn().mockResolvedValue(null),
   createOrReusePortfolioSetupBootstrapSession: vi.fn(),
@@ -124,6 +126,7 @@ describe('PortfolioLeadHomePage Bootstrap integration', () => {
     createDirect.mockResolvedValue(makeBootstrap('anchor_sufficient'));
     getCurrent.mockResolvedValue(null);
     getResumable.mockResolvedValue([]);
+    abandonPreparation.mockResolvedValue({ sessionId: 'existing-session', status: 'abandoned', idempotent: false });
     getSession.mockResolvedValue(makeBootstrap('anchor_sufficient'));
     openAdditional.mockResolvedValue(makeBootstrap('anchor_insufficient'));
     getHome.mockResolvedValue({
@@ -184,5 +187,42 @@ describe('PortfolioLeadHomePage Bootstrap integration', () => {
     fireEvent.click(start);
     await waitFor(() => expect(createDirect).toHaveBeenCalledOnce());
     expect(await screen.findByTestId('portfolio-bootstrap-home-a')).toBeInTheDocument();
+  });
+
+  it('discards a preparation after confirmation, removes its card and starts a fresh Contexto session', async () => {
+    getResumable.mockResolvedValueOnce([{
+      sessionId: 'existing-session', title: 'Preparación anterior',
+      bootstrapPhase: 'B1_ANCHOR', status: 'awaiting_anchor_review', source: 'direct',
+      createdAt: '2026-11-07T10:00:00.000Z', updatedAt: '2026-11-08T10:00:00.000Z',
+    }]).mockResolvedValueOnce([]);
+    renderPage('/portfolio/inicio');
+    expect(await screen.findByText('Preparación anterior')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Descartar preparación' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Sí, descartar preparación' }));
+
+    await waitFor(() => expect(abandonPreparation).toHaveBeenCalledWith('existing-session'));
+    expect(screen.queryByText('Preparación anterior')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Crear objetivo' }));
+    await waitFor(() => expect(createDirect).toHaveBeenCalledOnce());
+    expect(await screen.findByTestId('portfolio-bootstrap-home-a')).toBeInTheDocument();
+  });
+
+  it('keeps the preparation visible when discard fails and allows retry', async () => {
+    abandonPreparation.mockRejectedValueOnce(new Error('No se pudo descartar la preparación.'));
+    getResumable.mockResolvedValue([{
+      sessionId: 'existing-session', title: 'Preparación recuperable',
+      bootstrapPhase: 'B1_ANCHOR', status: 'awaiting_anchor_review', source: 'direct',
+      createdAt: '2026-11-07T10:00:00.000Z', updatedAt: '2026-11-08T10:00:00.000Z',
+    }]);
+    renderPage('/portfolio/inicio');
+    expect(await screen.findByText('Preparación recuperable')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Descartar preparación' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Sí, descartar preparación' }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('No se pudo descartar la preparación.');
+    expect(screen.getByText('Preparación recuperable')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Descartar preparación' })).toBeEnabled();
   });
 });

@@ -3,6 +3,17 @@ import { AlertTriangle, ArrowRight, BriefcaseBusiness, CheckSquare, Gauge, Spark
 import type { PortfolioHomeReadModel } from '../../../app/services/portfolioService';
 import type { PortfolioResumableSession } from '../bootstrap/services/portfolioBootstrapClient';
 import { PortfolioAttentionPanel } from './PortfolioAttentionPanel';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '../../../app/components/ui/alert-dialog';
 
 type Props = {
   model: PortfolioHomeReadModel;
@@ -18,6 +29,9 @@ type Props = {
   resumableError?: string | null;
   onRetryResumable?: () => void;
   onResumeSession?: (sessionId: string) => void;
+  onDiscardSession?: (sessionId: string) => void;
+  discardingSessionId?: string | null;
+  discardError?: { sessionId: string; message: string } | null;
 };
 
 type OverviewItem = { key: string; title: string; detail: string };
@@ -48,6 +62,9 @@ export function PortfolioOverviewHome({
   resumableError = null,
   onRetryResumable,
   onResumeSession,
+  onDiscardSession,
+  discardingSessionId = null,
+  discardError = null,
 }: Props) {
   const fronts = model.strategicUnits ?? [];
   const linkedInitiatives = fronts.flatMap((front) => front.challenges.flatMap((challenge) => challenge.initiatives));
@@ -186,10 +203,42 @@ export function PortfolioOverviewHome({
                   : `Sesión actualizada ${resumeDateLabel(session.updatedAt)}`}
                 {' · '}La información pendiente se revisará antes de confirmar.
               </p>
-              <button type="button" onClick={() => onResumeSession?.(session.sessionId)} disabled={!onResumeSession}
-                className="mt-4 inline-flex items-center gap-2 rounded-lg bg-[#6446c0] px-4 py-2.5 text-sm font-bold text-white disabled:opacity-50">
-                Retomar este espacio <ArrowRight aria-hidden="true" size={16}/>
-              </button>
+              <div className="mt-4 flex flex-wrap gap-2">
+                <button type="button" onClick={() => onResumeSession?.(session.sessionId)} disabled={!onResumeSession || discardingSessionId !== null}
+                  className="inline-flex min-h-11 items-center gap-2 rounded-lg bg-[#6446c0] px-4 py-2.5 text-sm font-bold text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 disabled:opacity-50">
+                  Retomar este espacio <ArrowRight aria-hidden="true" size={16}/>
+                </button>
+                <AlertDialog>
+                  <AlertDialogTrigger asChild>
+                    <button type="button" disabled={!onDiscardSession || discardingSessionId !== null}
+                      className="inline-flex min-h-11 items-center rounded-lg border border-rose-300 bg-white px-4 py-2.5 text-sm font-semibold text-rose-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 disabled:opacity-50">
+                      {discardingSessionId === session.sessionId ? 'Descartando…' : 'Descartar preparación'}
+                    </button>
+                  </AlertDialogTrigger>
+                  <AlertDialogContent>
+                    <AlertDialogHeader>
+                      <AlertDialogTitle>¿Descartar esta preparación?</AlertDialogTitle>
+                      <AlertDialogDescription>
+                        Se retirará «{session.title}» de tu Home y no podrás retomarla. La información se conservará para trazabilidad.
+                      </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                      <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                      <AlertDialogAction
+                        className="bg-rose-700 text-white hover:bg-rose-800 focus-visible:ring-rose-700/30"
+                        onClick={() => onDiscardSession?.(session.sessionId)}
+                      >
+                        Sí, descartar preparación
+                      </AlertDialogAction>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
+              </div>
+              {discardError?.sessionId === session.sessionId ? (
+                <p role="alert" className="mt-3 rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-900">
+                  {discardError.message}
+                </p>
+              ) : null}
             </article>
           ))}
         </div>

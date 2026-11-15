@@ -4,6 +4,7 @@ import { AppError } from '../../shared/errors/AppError';
 import { PortfolioService } from '../portfolio/portfolio.service';
 import type { PortfolioOrganizationPayload } from './portfolio-bootstrap.schemas';
 import { evaluatePortfolioE5Eligibility, type PortfolioE5Eligibility } from './portfolio-e5-eligibility';
+import { assertPortfolioBootstrapSessionActive } from './portfolio-bootstrap-session-state';
 
 type Authority = {
   authenticatedUserId: string;
@@ -369,6 +370,7 @@ export class PortfolioOrganizationService {
     if (!session || session.userId !== input.authenticatedUserId) {
       throw AppError.notFound('Sesión Bootstrap', 'PORTFOLIO_ORGANIZATION_SESSION_NOT_FOUND');
     }
+    assertPortfolioBootstrapSessionActive(session);
     if (!session.organizationId) {
       throw AppError.conflict('La sesión no tiene tenant resuelto.', 'PORTFOLIO_ORGANIZATION_TENANT_REQUIRED');
     }
