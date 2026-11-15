@@ -18,7 +18,7 @@ La HU autorizó un gate operativo aditivo para la E1 congelada ya integrada. La 
 
 El CD continúa publicando `SEMANTIC_E1_ENABLED=false` y únicamente sincroniza la allowlist desde un secret protegido del environment `production`. La activación o desactivación posterior se realiza mediante un workflow manual, protegido por el mismo environment y serializado con el CD. No se ha ejecutado CD, no se ha activado el flag y no se afirma disponibilidad productiva. El procedimiento operativo está en `docs/operations/SEMANTIC_E1_PILOT_GATE_RUNBOOK_v1.0.md`.
 
-Evidencia de rama: tests-first del gate y autorización, integración PostgreSQL desechable 12/12, regresión E1 frontend 54/54, suite backend completa, typecheck, lint, build y contratos shell aprobados. Revisión independiente ronda 2: `approved`, sin hallazgos. CI remoto y PR permanecen pendientes.
+Evidencia de rama: tests-first del gate y autorización, integración PostgreSQL desechable 12/12, regresión E1 frontend 54/54, suite backend completa, typecheck, lint, build y contratos shell aprobados. Revisión independiente ronda 2: `approved`, sin hallazgos. PR #316 abierto; CI remoto pendiente. Sin merge, CD ni activación.
 
 ## HU-E1-V1 — E1 congelada integrada en main (2026-11-15)
 

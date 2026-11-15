@@ -658,14 +658,14 @@ Esta entrada actualiza el estado operativo de E1 sin reescribir los registros hi
 
 ## Slice PORTFOLIO_BOOTSTRAP_E1_PILOT_GATE (HU-E1-PILOT-GATE)
 
-**Estado:** implementado en rama, pendiente de PR/CI/revisión; no fusionado, no desplegado y no activado.
+**Estado:** PR #316 abierto, revisión independiente aprobada y CI pendiente; no fusionado, no desplegado y no activado.
 
 ```text
 slice_id: PORTFOLIO_BOOTSTRAP_E1_PILOT_GATE_HU_E1_PILOT_GATE
 authority: HU-E1-PILOT-GATE; HU-E1-V1; experiencia E1 congelada integrada por PR #314
 semantic_owner: Portfolio Bootstrap E1
 logic_status: ACTIVE_V2_SLICE
-implementation_status: IMPLEMENTED_IN_BRANCH_AWAITING_PR_CI
+implementation_status: PR_316_OPEN_CI_PENDING
 visual_status: UNCHANGED_FROZEN_E1
 authorization_rule: semantic E1 is enabled iff SEMANTIC_E1_ENABLED=true AND the owned session organization ID is in SEMANTIC_E1_PILOT_ORGANIZATION_ALLOWLIST
 authorization_order: authenticate; require session ownership; authorize portfolio read/write; evaluate organization gate; only then read semantic state or invoke inference
