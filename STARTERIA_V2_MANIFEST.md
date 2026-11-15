@@ -621,6 +621,41 @@ petición ni por una configuración productiva y el flag continúa apagado fuera
 
 ---
 
+## Slice PORTFOLIO_BOOTSTRAP_E1_FROZEN_CONTEXT (HU-E1-V1)
+
+**Registro posmerge:** 2026-11-15, PR #314 fusionado en `main@6d32394f4b356aefdbe0478c208ea6141146248a`. No desplegado.
+
+```text
+slice_id: PORTFOLIO_BOOTSTRAP_E1_FROZEN_CONTEXT_HU_E1_V1
+authority: HU-E1-V1; experiencia E1 congelada; autoridad vigente de Portfolio Bootstrap E1
+semantic_owner: Portfolio Bootstrap E1
+logic_status: ACTIVE_V2_SLICE
+implementation_status: MERGED_TO_MAIN_CI_SUCCESS_NOT_DEPLOYED
+visual_status: FROZEN_E1_ADAPTED_TO_DESTINATION_DESIGN_SYSTEM
+route: /portfolio/inicio?bootstrapSessionId=…
+entry: Home CTA Crear objetivo; session creation mechanism unchanged; empty initial chat
+conversation: chronological turns; material clarification only when required; no fixed minimum turns
+sufficiency: grounded material anchor plus concrete direction; generic intent is insufficient; one-turn completion remains possible
+result: revisable Tu punto de partida with situation, intent, main uncertainty, provisional E2 direction, facts, inferences and pending matters
+confirmation_guard: server sufficiency plus grounded current synthesis and current ContextReview semantic revision
+canonical_boundary: ContextReview, CAS, idempotency, persistence and confirmed snapshot remain authoritative; zero canonical Project/Step objects are created in E1
+handoff: confirmed ContextReview enables Definir mi objetivo and preserves the confirmed snapshot consumed by E2
+contract_change: additive landing synthesis within existing convergence JSON; no Core or Prisma contract change
+fallback: guided E1 remains KEEP_COMPAT while SEMANTIC_E1_ENABLED=false
+feature_flag: SEMANTIC_E1_ENABLED=false by default; no flag activation authorized
+provider_boundary: existing orchestrator only; no new provider, secret, API configuration or live-model validation
+evidence: PR #314; merge 6d32394f4b356aefdbe0478c208ea6141146248a; CI #43687840991 SUCCESS; deterministic E1 artifacts
+acceptance_cases: insufficient committee intent asks material clarification; sufficiently described breakfast opportunity may advance; unknown operational cause and open growth exploration retain uncertainty
+tests: backend/frontend suites, PostgreSQL E1 integration, build, E2E light, keyboard/focus and regression coverage all green in required PR checks
+scope_excluded: E2-E7 implementation; Core; Prisma; migrations; providers; payments; flag activation; CD; production claim
+retirement_action: KEEP_COMPAT
+migration_status: PARTIAL — frozen E1 is in main, semantic rollout remains OFF and deployment is separately gated
+```
+
+Esta entrada actualiza el estado operativo de E1 sin reescribir los registros históricos KAN-241–KAN-251 ni convertir la HU en un contrato nuevo. La integración de código no equivale a activación o despliegue.
+
+---
+
 ## Slice PORTFOLIO_E2_LEDGER_CONVERSATION_UI (KAN-253 B3)
 
 **Registro:** 2026-11-09, PR de UX separado; base main@82f06c1cf7a8fb30d5fa6c4ed6a5bcb583c32dbb. No desplegado.
