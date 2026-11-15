@@ -86,10 +86,9 @@ describe('PortfolioBootstrapSemanticConversation', () => {
     const onSubmit = vi.fn().mockResolvedValue(null);
     render(<PortfolioBootstrapSemanticConversation {...props({ onSubmit })} />);
 
-    expect(screen.getByText('Todavía no conocido: formal area')).toBeVisible();
-    expect(screen.getByRole('region', { name: 'Hechos observados' })).not.toHaveTextContent('formal area');
+    expect(screen.getByRole('region', { name: 'Claridad ganada' })).toHaveTextContent('1 dato pendiente');
     await user.type(screen.getByLabelText('Tu respuesta'), 'Queremos validar demanda sin ampliar el local.');
-    await user.click(screen.getByRole('button', { name: 'Enviar respuesta' }));
+    await user.click(screen.getByRole('button', { name: 'Enviar' }));
 
     expect(onSubmit).toHaveBeenCalledWith('Queremos validar demanda sin ampliar el local.');
   });
@@ -101,7 +100,7 @@ describe('PortfolioBootstrapSemanticConversation', () => {
 
     expect(screen.getByRole('status')).toHaveTextContent('procesando');
     expect(screen.getByLabelText('Tu respuesta')).toHaveValue('Respuesta conservada');
-    expect(screen.getByRole('button', { name: 'Enviar respuesta' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Enviar' })).toBeDisabled();
 
     rerender(<PortfolioBootstrapSemanticConversation {...props({
       status: 'error', error: 'El proveedor no está disponible.', pendingInputText: 'Respuesta conservada',
@@ -128,7 +127,7 @@ describe('PortfolioBootstrapSemanticConversation', () => {
     expect(screen.queryByText('El contexto está listo para revisión humana')).not.toBeInTheDocument();
     expect(screen.getByRole('alert')).toHaveTextContent('Proveedor no disponible');
     expect(screen.getByLabelText('Tu respuesta')).toHaveValue('Relato conservado');
-    expect(screen.getByRole('button', { name: 'Enviar respuesta' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Enviar' })).toBeDisabled();
     expect(screen.getByRole('button', { name: 'Reintentar el mismo turno' })).toBeEnabled();
   });
 
@@ -139,7 +138,7 @@ describe('PortfolioBootstrapSemanticConversation', () => {
     render(<PortfolioBootstrapSemanticConversation {...props({ onSubmit, onRetry })} />);
 
     await user.type(screen.getByLabelText('Tu respuesta'), 'Relato conservado');
-    await user.click(screen.getByRole('button', { name: 'Enviar respuesta' }));
+    await user.click(screen.getByRole('button', { name: 'Enviar' }));
     expect(await screen.findByRole('alert')).toHaveTextContent('Fallo transitorio local.');
 
     await user.click(screen.getByRole('button', { name: 'Reintentar el mismo turno' }));
@@ -154,9 +153,9 @@ describe('PortfolioBootstrapSemanticConversation', () => {
 
     const input = screen.getByLabelText('Tu respuesta');
     expect(input).toHaveAttribute('maxLength', '20000');
-    expect(screen.getByRole('button', { name: 'Enviar respuesta' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Enviar' })).toBeDisabled();
     await user.type(input, '   ');
-    expect(screen.getByRole('button', { name: 'Enviar respuesta' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Enviar' })).toBeDisabled();
     expect(onSubmit).not.toHaveBeenCalled();
   });
   it('KAN-251 helps explain and structure an answer without making up facts or sending a turn', async () => {
@@ -184,7 +183,7 @@ describe('PortfolioBootstrapSemanticConversation', () => {
     await user.click(screen.getByRole('button', { name: 'No lo sé todavía' }));
     expect(screen.getByLabelText('Tu respuesta')).toHaveValue('No lo sé todavía.');
     expect(submit).not.toHaveBeenCalled();
-    await user.click(screen.getByRole('button', { name: 'Enviar respuesta' }));
+    await user.click(screen.getByRole('button', { name: 'Enviar' }));
     expect(submit).toHaveBeenCalledOnce();
     expect(submit).toHaveBeenCalledWith('No lo sé todavía.');
   });
@@ -206,7 +205,7 @@ describe('PortfolioBootstrapSemanticConversation', () => {
     expect(summary).toHaveTextContent('1 hecho observado');
     expect(summary).toHaveTextContent('1 dato pendiente');
     expect(summary).toHaveTextContent('Pendiente de confirmación humana');
-    expect(screen.getByRole('region', { name: 'Hechos observados' })).toHaveTextContent('pilot experience');
+    expect(screen.getByRole('region', { name: 'Claridad ganada' })).toHaveTextContent('1 hecho observado');
   });
 
 });

@@ -115,7 +115,7 @@ export function PortfolioBootstrapHome({
   contextStatus?: PortfolioBootstrapContextStatus;
   contextError?: string | null;
   onSaveContextDraft?: (context: PortfolioBootstrapContextPayload, sourceCompanyContext: PortfolioBootstrapCompanyContextSource | null) => Promise<unknown>;
-  onConfirmContext?: () => Promise<unknown>;
+  onConfirmContext?: (expectedVersion?: number) => Promise<unknown>;
   onRetryContext?: () => Promise<unknown>;
   semantic?: PortfolioBootstrapSemanticController;
 }) {
@@ -398,7 +398,7 @@ function PortfolioCopilotWorkspace({
   contextStatus: PortfolioBootstrapContextStatus;
   contextError: string | null;
   onSaveContextDraft: (context: PortfolioBootstrapContextPayload, sourceCompanyContext: PortfolioBootstrapCompanyContextSource | null) => Promise<unknown>;
-  onConfirmContext: () => Promise<unknown>;
+  onConfirmContext: (expectedVersion?: number) => Promise<unknown>;
   onRetryContext: () => Promise<unknown>;
   semantic?: PortfolioBootstrapSemanticController;
 }) {
@@ -457,8 +457,8 @@ function PortfolioCopilotWorkspace({
     await onConfirmAnchor(expectedVersion);
     setSelectedStage(1);
   }, [onConfirmAnchor]);
-  const confirmContext = useCallback(async () => {
-    await onConfirmContext();
+  const confirmContext = useCallback(async (expectedVersion?: number) => {
+    await onConfirmContext(expectedVersion);
     setSelectedStage(0);
   }, [onConfirmContext]);
   const analyzeAndOpenReview = useCallback(async () => {

@@ -1,8 +1,11 @@
 import { PrismaClient } from '@prisma/client';
 import { expect, request as pwRequest, test, type APIRequestContext, type Page } from '@playwright/test';
+import { mkdir } from 'node:fs/promises';
+import { resolve } from 'node:path';
 
 const prisma = new PrismaClient();
 const baseURL = process.env.E2E_BASE_URL ?? 'http://127.0.0.1:5176';
+const evidenceDir = resolve(process.cwd(), '..', 'artifacts', 'hu-e1-v1', 'screenshots');
 
 function accessToken(body: any): string {
   return body?.data?.tokens?.accessToken ?? body?.data?.accessToken ?? '';
@@ -47,7 +50,7 @@ async function loginUi(page: Page, lead: { email: string; password: string }) {
   await page.getByRole('button', { name: 'Entrar' }).click();
   await expect(page).toHaveURL(/\/portfolio\/inicio/, { timeout: 20_000 });
   await expect(page.getByTestId('portfolio-overview-home')).toBeVisible({ timeout: 20_000 });
-  await page.getByRole('button', { name: 'Preparar nueva oportunidad' }).click();
+  await page.getByRole('button', { name: 'Crear objetivo' }).click();
   await expect(page.getByTestId('portfolio-semantic-conversation')).toBeVisible({ timeout: 20_000 });
 }
 
@@ -64,9 +67,15 @@ test.describe('KAN-246 semantic E1 with authenticated disposable PostgreSQL', ()
   test.afterAll(async () => { await prisma.$disconnect(); });
 
   test('CA01..CA10 persists the narrative, reviews canonical context and preserves E1→E2→E3', async ({ page }) => {
+    await mkdir(evidenceDir, { recursive: true });
+    await page.setViewportSize({ width: 1440, height: 960 });
     const api = await pwRequest.newContext({ baseURL });
     const lead = await registerLead(api);
     await loginUi(page, lead);
+    await page.screenshot({ path: resolve(evidenceDir, '01-entry-desktop-1440.png'), fullPage: true, animations: 'disabled' });
+    await page.setViewportSize({ width: 375, height: 1800 });
+    await page.screenshot({ path: resolve(evidenceDir, '05-entry-mobile-page-375.png'), fullPage: true, animations: 'disabled' });
+    await page.setViewportSize({ width: 1440, height: 960 });
     const session = await prisma.portfolioBootstrapSession.findFirstOrThrow({ where: { userId: lead.userId } });
     const semanticPosts: string[] = [];
     page.on('request', (request) => {
@@ -79,14 +88,14 @@ test.describe('KAN-246 semantic E1 with authenticated disposable PostgreSQL', ()
     await page.getByTestId('portfolio-semantic-conversation').getByLabel('Tu respuesta').fill(narrative);
     const firstTurn = page.waitForResponse((response) => response.request().method() === 'POST'
       && new URL(response.url()).pathname.endsWith(`/sessions/${session.id}/context/semantic/turns`));
-    await page.getByTestId('portfolio-semantic-conversation').getByRole('button', { name: 'Enviar respuesta' }).dblclick();
+    await page.getByTestId('portfolio-semantic-conversation').getByRole('button', { name: 'Enviar' }).dblclick();
     expect((await firstTurn).status()).toBe(200);
-    await expect(page.getByRole('region', { name: 'Hechos observados' })).toContainText('situation');
-    await expect(page.getByRole('region', { name: 'Hechos observados' })).toContainText('pilot experience: false');
     await expect(page.getByRole('region', { name: 'Pregunta activa' })).toContainText('resultado concreto');
     await expect(page.getByRole('region', { name: 'Pregunta activa' })).toContainText('Para qué:');
     await expect(page.getByRole('region', { name: 'Pregunta activa' })).not.toContainText(/piloto|departamento|área formal/i);
     expect(semanticPosts).toHaveLength(1);
+    await page.setViewportSize({ width: 768, height: 1024 });
+    await page.screenshot({ path: resolve(evidenceDir, '02-conversation-tablet-768.png'), fullPage: true, animations: 'disabled' });
 
     await page.reload();
     await expect(page.getByText(narrative, { exact: true })).toBeVisible({ timeout: 20_000 });
@@ -96,26 +105,38 @@ test.describe('KAN-246 semantic E1 with authenticated disposable PostgreSQL', ()
     await page.getByTestId('portfolio-semantic-conversation').getByLabel('Tu respuesta').fill(direction);
     const secondTurn = page.waitForResponse((response) => response.request().method() === 'POST'
       && new URL(response.url()).pathname.endsWith(`/sessions/${session.id}/context/semantic/turns`));
-    await page.getByTestId('portfolio-semantic-conversation').getByRole('button', { name: 'Enviar respuesta' }).click();
+    await page.getByTestId('portfolio-semantic-conversation').getByRole('button', { name: 'Enviar' }).click();
     expect((await secondTurn).status()).toBe(200);
-    await expect(page.getByRole('region', { name: 'Convergencia semántica' })).toBeVisible();
-
-    const canonical = page.getByRole('region', { name: 'Síntesis canónica editable' });
-    await canonical.getByLabel('Situación actual').fill(narrative);
-    await canonical.getByLabel('Área o proceso').fill('Preparación y reparto de desayunos');
-    await canonical.getByLabel('Personas implicadas').fill('La propietaria y las personas de oficinas cercanas');
-    await canonical.getByLabel('Experiencia previa o piloto').fill('Todavía no se ha realizado un piloto formal');
-    await canonical.getByLabel('Restricciones conocidas').fill('No ampliar el local durante la prueba');
+    const canonical = page.getByRole('region', { name: 'Tu punto de partida' });
+    await expect(canonical).toContainText('Incertidumbre principal');
+    await expect(canonical).toContainText('Dirección provisional para E2');
+    await canonical.scrollIntoViewIfNeeded();
+    await page.setViewportSize({ width: 1440, height: 960 });
+    await page.screenshot({ path: resolve(evidenceDir, '03-analysis-desktop-1440.png'), fullPage: true, animations: 'disabled' });
     const saveDraft = page.waitForResponse((response) => response.request().method() === 'PUT'
       && new URL(response.url()).pathname.endsWith(`/sessions/${session.id}/context/draft`));
-    await canonical.getByRole('button', { name: 'Guardar síntesis editable' }).click();
-    expect((await saveDraft).status()).toBe(200);
-
     const confirmContext = page.waitForResponse((response) => response.request().method() === 'POST'
       && new URL(response.url()).pathname.endsWith(`/sessions/${session.id}/context/confirm`));
-    await canonical.getByRole('button', { name: 'Confirmar contexto revisado' }).click();
+    await canonical.getByRole('button', { name: 'Confirmar mi punto de partida' }).click();
+    expect((await saveDraft).status()).toBe(200);
     expect((await confirmContext).status()).toBe(200);
-    await canonical.getByRole('button', { name: 'Continuar al objetivo' }).click();
+    const confirmedStatus = canonical.getByRole('status');
+    await expect(confirmedStatus).toContainText('Contexto confirmado');
+    await canonical.getByRole('button', { name: 'Corregir contexto confirmado' }).click();
+    const correction = canonical.getByRole('textbox', { name: /Corrige la interpretación/ });
+    await expect(correction).toBeFocused();
+    await correction.fill('La cafetería quiere validar pedidos recurrentes de desayunos sin ampliar el local.');
+    const saveCorrection = page.waitForResponse((response) => response.request().method() === 'PUT'
+      && new URL(response.url()).pathname.endsWith(`/sessions/${session.id}/context/draft`));
+    const reconfirmContext = page.waitForResponse((response) => response.request().method() === 'POST'
+      && new URL(response.url()).pathname.endsWith(`/sessions/${session.id}/context/confirm`));
+    await canonical.getByRole('button', { name: 'Guardar corrección y reconfirmar' }).click();
+    expect((await saveCorrection).status()).toBe(200);
+    expect((await reconfirmContext).status()).toBe(200);
+    await expect(canonical.getByRole('status')).toContainText('Contexto confirmado');
+    await page.setViewportSize({ width: 375, height: 1600 });
+    await canonical.screenshot({ path: resolve(evidenceDir, '04-confirmed-mobile-375.png'), animations: 'disabled' });
+    await canonical.getByRole('button', { name: 'Definir mi objetivo' }).click();
     await expect(page.getByTestId('portfolio-objective-conversation')).toBeVisible();
     await expect(page.getByText('Configurar con Copilot · 2 de 7')).toBeVisible();
 

@@ -12,23 +12,6 @@ export type PortfolioBootstrapSemanticConversationProps = {
   children?: ReactNode;
 };
 
-function conceptLabel(conceptId: string): string {
-  return conceptId.replace(/[._-]+/g, ' ');
-}
-
-function factValue(value: unknown): string {
-  if (typeof value === 'string') return value;
-  if (typeof value === 'number' || typeof value === 'boolean') return String(value);
-  if (value === null) return 'Sin valor declarado';
-  try { return JSON.stringify(value); } catch { return 'Valor estructurado'; }
-}
-
-function evidenceLabel(kind: 'user_input' | 'context_review_field' | 'company_context_entry'): string {
-  if (kind === 'user_input') return 'declarado por la persona';
-  if (kind === 'context_review_field') return 'ContextReview confirmado';
-  return 'Company Context publicado';
-}
-
 export function PortfolioBootstrapSemanticConversation({
   snapshot,
   status,
@@ -49,8 +32,8 @@ export function PortfolioBootstrapSemanticConversation({
   const groundedQuotes = [...new Set(openFacts.flatMap((fact) => fact.evidenceRefs.flatMap((ref) =>
     ref.kind === 'user_input' ? [ref.quote] : [])))];
   const reviewConvergence = state && !state.activeQuestion && status !== 'error'
-    && state.convergence.status !== 'provider_retryable_failure'
-    && state.convergence.status !== 'safety_stop';
+    && state.convergence.status === 'ready_for_human_review'
+    && Boolean(state.convergence.synthesis);
 
   useEffect(() => {
     if (pendingInputText !== null) setInputText(pendingInputText);
@@ -85,9 +68,9 @@ export function PortfolioBootstrapSemanticConversation({
     <div className="space-y-5" data-testid="portfolio-semantic-conversation" aria-busy={busy}>
       <section aria-label="Historial de conversación" className="space-y-4">
         <div>
-          <p className="text-xs font-extrabold uppercase tracking-[0.14em] text-[#6446c0]">Contexto empresarial · Conversación</p>
-          <h3 className="mt-1 text-lg font-semibold text-[#182246]">Construyamos el contexto desde tu relato</h3>
-          <p className="mt-1 text-sm text-[#6c7695]">Revisamos juntos lo declarado, lo pendiente y la siguiente pregunta. Tu síntesis permanece provisional hasta que la confirmes.</p>
+          <p className="text-xs font-extrabold uppercase tracking-[0.14em] text-[#6446c0]">Contexto · 1 de 7</p>
+          <h3 className="mt-1 text-lg font-semibold text-[#182246]">Cuéntame qué quieres abordar</h3>
+          <p className="mt-1 text-sm leading-6 text-[#6c7695]">Puedes empezar con un problema, una oportunidad, una idea o algo que ya estás haciendo. Startería te ayudará a entender tu punto de partida para decidir cómo avanzar.</p>
         </div>
         {snapshot?.turns.map((turn) => (
           <div key={turn.id} className="space-y-2">
@@ -116,11 +99,6 @@ export function PortfolioBootstrapSemanticConversation({
           <p className="mt-2 text-sm leading-6 text-[#493297]">{state.activeQuestion.recap}</p>
           <h3 className="mt-2 text-lg font-semibold text-[#182246]">{state.activeQuestion.question}</h3>
           <p className="mt-2 text-sm text-[#6d6097]"><span className="font-semibold">Para qué:</span> {state.activeQuestion.reasonToAsk}</p>
-        </section>
-      ) : reviewConvergence ? (
-        <section className="rounded-xl border border-emerald-200 bg-emerald-50 p-4" aria-label="Convergencia semántica">
-          <h3 className="font-semibold text-emerald-950">El contexto está listo para revisión humana</h3>
-          <p className="mt-1 text-sm text-emerald-900">{state.convergence.reason}</p>
         </section>
       ) : null}
 
@@ -187,7 +165,7 @@ export function PortfolioBootstrapSemanticConversation({
         </section>
       ) : null}
 
-      {state && snapshot?.turns.length ? (
+      {state && snapshot?.turns.length && !reviewConvergence ? (
         <section role="region" aria-label="Claridad ganada" className="rounded-xl border border-[#ceeae0] bg-[#eaf7f2] p-4 text-sm text-[#276b56]">
           <p className="font-semibold">Claridad ganada hasta ahora</p>
           <p className="mt-1">{openFacts.length} {openFacts.length === 1 ? 'hecho observado' : 'hechos observados'} · {unknownCount} {unknownCount === 1 ? 'dato pendiente' : 'datos pendientes'} · {state.hypotheses.length} {state.hypotheses.length === 1 ? 'hipótesis' : 'hipótesis'}</p>
@@ -195,7 +173,7 @@ export function PortfolioBootstrapSemanticConversation({
         </section>
       ) : null}
 
-      <form onSubmit={(event) => { event.preventDefault(); void submit(); }} className="space-y-3">
+      {!reviewConvergence ? <form onSubmit={(event) => { event.preventDefault(); void submit(); }} className="space-y-3">
         <label className="block text-sm font-semibold text-slate-800">
           Tu respuesta
           <textarea
@@ -204,51 +182,14 @@ export function PortfolioBootstrapSemanticConversation({
             disabled={submissionBlocked}
             onChange={(event) => setInputText(event.target.value)}
             rows={4}
-            placeholder="Cuéntamelo con tus palabras; puedes decir que aún no lo sabes."
+            placeholder="Cuéntame con tus palabras qué está pasando y qué te gustaría abordar…"
             className="mt-2 w-full rounded-lg border border-[#dbe0ef] bg-white px-3 py-2 font-normal text-[#182246] focus:border-[#8865dc] focus:ring-2 focus:ring-[#eee8ff] disabled:opacity-60"
           />
         </label>
         <button type="submit" disabled={submissionBlocked || !inputText.trim()} className="rounded-lg bg-[#6446c0] px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">
-          Enviar respuesta
+          Enviar
         </button>
-      </form>
-
-      <section role="region" aria-label="Hechos observados" className="rounded-xl border border-slate-200 bg-white p-4">
-        <h3 className="font-semibold text-slate-950">Hechos observados</h3>
-        <p className="mt-1 text-sm text-slate-600">Sólo aparecen afirmaciones con evidencia persistida.</p>
-        {state?.factLedger.some((fact) => fact.status !== 'retracted') ? (
-          <ul className="mt-3 space-y-3">
-            {state.factLedger.filter((fact) => fact.status !== 'retracted').map((fact) => (
-              <li key={`${fact.turnId}:${fact.conceptId}`} className="rounded-lg border border-slate-100 bg-slate-50 p-3 text-sm">
-                <p className="font-semibold text-slate-900">{conceptLabel(fact.conceptId)}: {factValue(fact.value)}</p>
-                <p className="mt-1 text-xs text-slate-600">Fuente: {fact.evidenceRefs.map((ref) => evidenceLabel(ref.kind)).join(' · ')}</p>
-              </li>
-            ))}
-          </ul>
-        ) : <p className="mt-3 text-sm text-slate-600">Aún no hay hechos observados.</p>}
-      </section>
-
-      {state?.dispositions.length ? (
-        <section aria-label="Desconocidos y no aplicables" className="rounded-xl border border-amber-200 bg-amber-50 p-4">
-          <h3 className="font-semibold text-amber-950">Desconocidos y no aplicables</h3>
-          <ul className="mt-2 space-y-1 text-sm text-amber-950">
-            {state.dispositions.map((item) => (
-              <li key={`${item.turnId}:${item.conceptId}`}>
-                {item.disposition === 'unknown' ? 'Todavía no conocido' : 'No aplica'}: {conceptLabel(item.conceptId)}
-              </li>
-            ))}
-          </ul>
-        </section>
-      ) : null}
-
-      {state?.hypotheses.length ? (
-        <section aria-label="Hipótesis por revisar" className="rounded-xl border border-indigo-200 bg-indigo-50 p-4">
-          <h3 className="font-semibold text-indigo-950">Hipótesis por revisar</h3>
-          <ul className="mt-2 space-y-2 text-sm text-indigo-950">
-            {state.hypotheses.map((hypothesis) => <li key={hypothesis.hypothesisId}>{hypothesis.statement}</li>)}
-          </ul>
-        </section>
-      ) : null}
+      </form> : null}
 
       {children}
 

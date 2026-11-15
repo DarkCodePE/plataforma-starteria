@@ -101,15 +101,28 @@ class DeterministicSemanticE1TestModel implements StructuredModelAdapter {
       ? semanticState.factLedger
       : [];
     const isFollowUp = priorFacts.length > 0;
+    const genericCommittee = /\b(comit[eé]|portafolio)\b/i.test(rawInput)
+      && !/\b(problema|oportunidad|iniciativa|trabajo concreto|retrasos?|cafeter[ií]a)\b/i.test(rawInput);
+    const completeCafeteria = /\bcafeter[ií]a\b/i.test(rawInput)
+      && /\bdesayunos?\b/i.test(rawInput)
+      && /\bsin ampliar (?:el )?local\b/i.test(rawInput)
+      && /\binter[eé]s\b/i.test(rawInput)
+      && /\brecursos?\b/i.test(rawInput);
     const explicitNoPilot = /\b(?:nunca|no)\s+(?:hemos\s+)?probado\b/i.test(rawInput);
     const facts = [{
-      conceptId: isFollowUp ? 'direction' : 'situation',
+      conceptId: isFollowUp ? 'direction' : completeCafeteria ? 'opportunity' : genericCommittee ? 'intention' : 'situation',
       value: rawInput,
       provenance: 'user_declared',
       evidenceRefs: [{ kind: 'user_input', quote }],
       confidence: 1,
       status: 'observed',
-    }, ...(!isFollowUp && explicitNoPilot ? [{
+    }, ...(completeCafeteria ? [{
+      conceptId: 'desired_outcome', value: 'crecer sin ampliar el local', provenance: 'user_declared',
+      evidenceRefs: [{ kind: 'user_input', quote }], confidence: 1, status: 'observed',
+    }, {
+      conceptId: 'uncertainty', value: 'interés y recursos por validar', provenance: 'user_declared',
+      evidenceRefs: [{ kind: 'user_input', quote }], confidence: 1, status: 'observed',
+    }] : []), ...(!isFollowUp && explicitNoPilot ? [{
       conceptId: 'pilot_experience',
       value: false,
       provenance: 'user_declared',
@@ -121,13 +134,23 @@ class DeterministicSemanticE1TestModel implements StructuredModelAdapter {
       facts,
       hypotheses: [],
       dispositions: [],
-      questionPlan: isFollowUp ? null : {
+      questionPlan: isFollowUp || completeCafeteria || genericCommittee ? null : {
         question: '¿Qué resultado concreto queréis conseguir con esta oportunidad?',
         reasonToAsk: 'La situación está descrita, pero falta la dirección que orientará la revisión humana.',
         resolves: ['direction'],
       },
-      readyForHumanReview: isFollowUp,
-      reason: isFollowUp
+      synthesis: isFollowUp || completeCafeteria ? {
+        summary: `El punto de partida combina la situación ya descrita con esta dirección: ${rawInput}`,
+        situation: 'La situación está respaldada por la primera respuesta de la conversación.',
+        intention: rawInput,
+        mainUncertainty: 'Queda por validar la evidencia necesaria antes de comprometer una solución.',
+        directionForE2: 'Convertir esta lectura en un objetivo revisable sin asumir resultados.',
+        evidenceConceptIds: completeCafeteria
+          ? ['opportunity', 'desired_outcome', 'uncertainty']
+          : ['situation', 'direction'],
+      } : null,
+      readyForHumanReview: isFollowUp || completeCafeteria,
+      reason: isFollowUp || completeCafeteria
         ? 'La situación y la dirección tienen evidencia declarada y pueden pasar a revisión humana.'
         : 'Hay evidencia de la situación y queda una incertidumbre material sobre la dirección.',
     };

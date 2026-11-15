@@ -92,11 +92,12 @@ export function usePortfolioBootstrapContext(sessionId: string | null) {
     return complete(operation, 'saving', true);
   }, [activeReview?.draftSourceCompanyContext, activeReview?.version, complete, sessionId]);
 
-  const confirm = useCallback(async () => {
+  const confirm = useCallback(async (expectedVersionOverride?: number) => {
     if (!sessionId) throw new Error('Bootstrap session unavailable');
-    if (!activeReview) throw new Error('Guarda primero una síntesis de contexto.');
-    if (activeReview.status === 'confirmed' && !activeReview.hasPendingCorrection) return activeReview;
-    const expectedVersion = activeReview.version;
+    if (!activeReview && expectedVersionOverride === undefined) throw new Error('Guarda primero una síntesis de contexto.');
+    if (expectedVersionOverride === undefined && activeReview?.status === 'confirmed' && !activeReview.hasPendingCorrection) return activeReview;
+    const expectedVersion = expectedVersionOverride ?? activeReview?.version;
+    if (expectedVersion === undefined) throw new Error('Guarda primero una síntesis de contexto.');
     const idempotencyKey = operationKey('confirm', sessionId);
     const operation = () => confirmPortfolioBootstrapContext(sessionId, expectedVersion, idempotencyKey);
     pendingOperation.current = () => complete(operation, 'confirming', true);

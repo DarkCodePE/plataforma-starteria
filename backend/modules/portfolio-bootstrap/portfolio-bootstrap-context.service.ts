@@ -173,6 +173,7 @@ export class PortfolioBootstrapContextService {
       } : null;
       await this.validateSource(db, session, input.authenticatedUserId, source, current.draftJson, true);
       await this.validateProjectedQuoteRefs(db, session, current.draftJson as PortfolioBootstrapContextPayload);
+      await this.validateSemanticConfirmation(db, session, current.draftJson as PortfolioBootstrapContextPayload);
       const nextVersion = current.version + 1;
       const confirmedAt = new Date();
       const changed = await db.portfolioBootstrapContextReview.updateMany({
@@ -318,6 +319,46 @@ export class PortfolioBootstrapContextService {
         ))
       ));
       if (!turn || !turn.inputText.includes(ref.quote) || !grounded) throw invalid();
+    }
+  }
+
+  private async validateSemanticConfirmation(
+    db: any,
+    session: { id: string },
+    context: PortfolioBootstrapContextPayload,
+  ): Promise<void> {
+    const state = await db.portfolioBootstrapSemanticState.findUnique({
+      where: { bootstrapSessionId: session.id },
+      select: { id: true, version: true, convergenceJson: true },
+    });
+    if (!state) return;
+    const convergence = state.convergenceJson as {
+      status?: unknown;
+      synthesis?: { summary?: unknown } | null;
+    } | null;
+    if (convergence?.status !== 'ready_for_human_review' || typeof convergence.synthesis?.summary !== 'string') {
+      throw new AppError(
+        422,
+        'El contexto semántico aún necesita una aclaración material antes de confirmarse.',
+        'PORTFOLIO_CONTEXT_SEMANTIC_INSUFFICIENT',
+      );
+    }
+    const reference = context.situation.sourceRef?.kind === 'copilot_suggestion'
+      || context.situation.sourceRef?.kind === 'copilot_inference'
+      ? context.situation.sourceRef.reference
+      : null;
+    if (reference && reference !== `portfolio-bootstrap-semantic:${state.id}:${state.version}`) {
+      throw AppError.conflict(
+        'La síntesis pertenece a una revisión semántica anterior; vuelve a revisar el resultado vigente.',
+        'PORTFOLIO_CONTEXT_SEMANTIC_REVISION_STALE',
+      );
+    }
+    if (reference && context.situation.value !== convergence.synthesis.summary) {
+      throw new AppError(
+        422,
+        'La síntesis propuesta no coincide con el análisis semántico vigente.',
+        'PORTFOLIO_CONTEXT_SEMANTIC_SYNTHESIS_MISMATCH',
+      );
     }
   }
 

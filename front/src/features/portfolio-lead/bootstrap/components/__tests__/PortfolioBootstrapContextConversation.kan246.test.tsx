@@ -36,7 +36,14 @@ function semantic(enabled = true): PortfolioBootstrapSemanticSnapshot {
         supportConceptIds: ['business.situation'], confidence: 0.5, status: 'proposed', turnId: 'turn-1', semanticVersion: 1,
       }],
       dispositions: [], answeredGaps: ['business.situation'], questionHistory: [], answeredQuestionIds: [], activeQuestion: null,
-      convergence: { status: 'ready_for_human_review', reason: 'Hay claridad suficiente para revisar.' },
+      convergence: { status: 'ready_for_human_review', reason: 'Hay claridad suficiente para revisar.', synthesis: {
+        summary: 'La cafetería valora desayunos para responder a una oportunidad sin ampliar el local.',
+        situation: 'Clientes piden desayunos para llevar.',
+        intention: 'Validar una oportunidad de crecimiento.',
+        mainUncertainty: 'No se conoce todavía la demanda recurrente.',
+        directionForE2: 'Definir qué objetivo permitiría validar la oportunidad.',
+        evidenceConceptIds: ['business.situation'],
+      } },
       questionBudget: { limit: 3, used: 0 },
       createdAt: '2026-11-08T00:00:00.000Z', updatedAt: '2026-11-08T00:00:00.000Z',
     },
@@ -58,27 +65,30 @@ function props(overrides: Record<string, unknown> = {}) {
 }
 
 describe('PortfolioBootstrapContextConversation KAN-246 integration', () => {
-  it('S4 keeps ledger facts and hypotheses separate from the manually editable canonical draft', async () => {
+  it('S4 presents a grounded landing synthesis that can be corrected and confirmed', async () => {
     const user = userEvent.setup();
-    const onSaveDraft = vi.fn().mockResolvedValue(null);
+    const saved = review({ version: 2 });
+    const onSaveDraft = vi.fn().mockResolvedValue(saved);
     const onConfirm = vi.fn().mockResolvedValue(null);
     render(<PortfolioBootstrapContextConversation {...props({ onSaveDraft, onConfirm }) as any} />);
 
-    expect(screen.getByRole('region', { name: 'Hechos observados' })).toHaveTextContent('Clientes piden desayunos para llevar.');
-    expect(screen.getByRole('region', { name: 'Hechos observados' })).not.toHaveTextContent('Podría existir demanda recurrente.');
-    expect(screen.getByRole('region', { name: 'Hipótesis por revisar' })).toHaveTextContent('Podría existir demanda recurrente.');
-    expect(screen.getByLabelText('Situación actual')).toHaveValue('');
-
-    await user.type(screen.getByLabelText('Situación actual'), 'La persona revisa y redacta el contexto canónico.');
-    expect(screen.getByRole('button', { name: 'Confirmar contexto revisado' })).toBeDisabled();
-    await user.click(screen.getByRole('button', { name: 'Guardar síntesis editable' }));
+    const card = screen.getByRole('region', { name: 'Tu punto de partida' });
+    expect(card).toHaveTextContent('La cafetería valora desayunos');
+    expect(card).toHaveTextContent('No se conoce todavía la demanda recurrente');
+    expect(screen.getByLabelText('Procedencia del análisis')).toHaveTextContent('Hechos con evidencia: 1');
+    expect(screen.getByLabelText('Procedencia del análisis')).toHaveTextContent('Inferencias propuestas: 1');
+    await user.click(screen.getByRole('button', { name: 'Corregir interpretación' }));
+    const correction = screen.getByRole('textbox', { name: /Corrige la interpretación/ });
+    expect(correction).toHaveFocus();
+    await user.clear(correction);
+    await user.type(correction, 'La persona corrige la interpretación de contexto.');
+    await user.click(screen.getByRole('button', { name: 'Confirmar mi punto de partida' }));
     await waitFor(() => expect(onSaveDraft).toHaveBeenCalledWith(
-      expect.objectContaining({ situation: expect.objectContaining({ value: 'La persona revisa y redacta el contexto canónico.' }) }),
+      expect.objectContaining({ situation: expect.objectContaining({ value: 'La persona corrige la interpretación de contexto.', provenance: 'user_declared' }) }),
       null,
     ));
-    await user.click(screen.getByRole('button', { name: 'Confirmar contexto revisado' }));
-    expect(onConfirm).toHaveBeenCalledOnce();
-    expect(screen.queryByRole('button', { name: 'Continuar al objetivo' })).not.toBeInTheDocument();
+    expect(onConfirm).toHaveBeenCalledWith(2);
+    expect(screen.queryByRole('button', { name: 'Definir mi objetivo' })).not.toBeInTheDocument();
   });
 
   it('S4 unlocks E2 only from the persisted effective ContextReview', async () => {
@@ -91,8 +101,35 @@ describe('PortfolioBootstrapContextConversation KAN-246 integration', () => {
       onContinue,
     }) as any} />);
 
-    await user.click(screen.getByRole('button', { name: 'Continuar al objetivo' }));
+    await user.click(screen.getByRole('button', { name: 'Definir mi objetivo' }));
     expect(onContinue).toHaveBeenCalledOnce();
+  });
+
+  it('allows a confirmed context to be corrected and reconfirmed with the saved CAS version', async () => {
+    const user = userEvent.setup();
+    const effective = createEmptyPortfolioBootstrapContext();
+    effective.situation = { value: 'Contexto confirmado inicialmente.', provenance: 'user_declared' };
+    const saved = review({ version: 4, status: 'draft' });
+    const onSaveDraft = vi.fn().mockResolvedValue(saved);
+    const onConfirm = vi.fn().mockResolvedValue(null);
+    render(<PortfolioBootstrapContextConversation {...props({
+      review: review({ version: 3, status: 'confirmed', confirmedSnapshot: effective, effectiveContext: effective }),
+      onSaveDraft,
+      onConfirm,
+    }) as any} />);
+
+    await user.click(screen.getByRole('button', { name: 'Corregir contexto confirmado' }));
+    const correction = screen.getByRole('textbox', { name: /Corrige la interpretación/ });
+    expect(correction).toHaveFocus();
+    await user.clear(correction);
+    await user.type(correction, 'Contexto corregido después de la reentrada.');
+    await user.click(screen.getByRole('button', { name: 'Guardar corrección y reconfirmar' }));
+
+    await waitFor(() => expect(onSaveDraft).toHaveBeenCalledWith(
+      expect.objectContaining({ situation: expect.objectContaining({ value: 'Contexto corregido después de la reentrada.', provenance: 'user_declared' }) }),
+      null,
+    ));
+    expect(onConfirm).toHaveBeenCalledWith(4);
   });
 
   it('S3 keeps the KAN-241 guided sequence exclusively as the flag-OFF fallback', () => {

@@ -1,0 +1,69 @@
+{
+  "contract": "HU-E1-V1 · experiencia E1 congelada adaptada al runtime Portfolio Bootstrap; SEMANTIC_E1_ENABLED permanece false por defecto",
+  "targetViewports": [
+    "desktop-1440",
+    "tablet-768",
+    "mobile-375"
+  ],
+  "accessibility": {
+    "status": "pass",
+    "evidence": "Regiones y estados tienen nombres accesibles; la corrección recibe foco; el recorrido completo se opera con controles nativos de teclado. Validado por tests de Testing Library y Playwright."
+  },
+  "responsive": {
+    "status": "pass",
+    "evidence": "Inspección renderizada en 1440 px, 768 px y 375 px sin pérdida del chat, la síntesis o el CTA confirmado."
+  },
+  "contentStates": {
+    "loading": {
+      "status": "pass",
+      "evidence": "Los estados aria-busy y los controles deshabilitados existentes se conservan y están cubiertos por las pruebas del componente."
+    },
+    "empty": {
+      "status": "pass",
+      "evidence": "01-entry-desktop-1440.png muestra chat vacío, explicación de valor y Tu avance con Contexto activo."
+    },
+    "error": {
+      "status": "pass",
+      "evidence": "Las pruebas deterministas verifican preservación de entrada y reintento sin falsa confirmación."
+    },
+    "partial": {
+      "status": "pass",
+      "evidence": "02-conversation-tablet-768.png muestra conversación cronológica y aclaración material antes de converger."
+    },
+    "success": {
+      "status": "pass",
+      "evidence": "03-analysis-desktop-1440.png y 04-confirmed-mobile-375.png muestran análisis revisable y confirmación humana con avance a E2."
+    },
+    "permission": {
+      "status": "not-applicable",
+      "reason": "La HU no cambia permisos; la ruta autenticada y portfolio:write existentes se preservan y sus regresiones permanecen fuera del cambio visual."
+    }
+  },
+  "renderedEvidence": [
+    {
+      "viewport": "desktop-1440",
+      "artifact": "screenshots/01-entry-desktop-1440.png",
+      "observation": "Entrada vacía con explicación E1, campo libre y panel Tu avance de siete etapas."
+    },
+    {
+      "viewport": "tablet-768",
+      "artifact": "screenshots/02-conversation-tablet-768.png",
+      "observation": "Conversación y aclaración material mantienen jerarquía y controles utilizables."
+    },
+    {
+      "viewport": "desktop-1440",
+      "artifact": "screenshots/03-analysis-desktop-1440.png",
+      "observation": "Card Tu punto de partida diferencia situación, intención, incertidumbre y dirección provisional."
+    },
+    {
+      "viewport": "mobile-375",
+      "artifact": "screenshots/04-confirmed-mobile-375.png",
+      "observation": "Estado confirmado conserva el CTA Definir mi objetivo en anchura móvil."
+    },
+    {
+      "viewport": "mobile-375",
+      "artifact": "screenshots/05-entry-mobile-page-375.png",
+      "observation": "Página móvil completa con cabecera E1, entrada vacía y Tu avance reordenado sin pérdida funcional."
+    }
+  ]
+}
