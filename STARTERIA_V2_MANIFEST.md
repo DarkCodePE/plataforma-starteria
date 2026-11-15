@@ -690,14 +690,14 @@ Este gate modifica únicamente autorización y operación del runtime ya existen
 
 ## Slice PORTFOLIO_BOOTSTRAP_PREPARATION_ABANDONMENT (HU directa)
 
-**Registro:** 2026-11-15 sobre `main@fb248fe31d59a40bd13ab111f4d4810c558bd0a9`; implementación preparada para PR, sin merge ni despliegue.
+**Registro:** 2026-11-15 sobre `main@fb248fe31d59a40bd13ab111f4d4810c558bd0a9`; PR #317 abierto con CI #43765304814 aprobado sobre `85dcb68`, sin merge ni despliegue.
 
 ```text
 slice_id: PORTFOLIO_BOOTSTRAP_PREPARATION_ABANDONMENT
 authority: HU explícita «Descartar preparación y empezar desde cero»
 semantic_owner: Portfolio Bootstrap
 logic_status: ACTIVE_V2_SLICE
-implementation_status: IMPLEMENTED_IN_BRANCH_CI_PENDING
+implementation_status: PR_317_OPEN_CI_SUCCESS
 visual_status: EXISTING_PORTFOLIO_HOME_PATTERN_EXTENDED_WITH_CONFIRMATION
 route: /portfolio/inicio and POST /api/v1/portfolio-bootstrap/sessions/:sessionId/abandon
 operation: logical transition to existing PortfolioBootstrapSession.status=abandoned; no physical deletion
@@ -711,6 +711,7 @@ fresh_start: existing Crear objetivo flow is preserved; abandoned sessions canno
 preserves: E1-E7 frozen experience; ContextReview; CAS; Bootstrap persistence; other sessions and business entities
 scope_excluded: physical deletion; Core; Prisma/migrations; providers/models; E1-E7 behavior; additional Home redesign; merge/CD
 local_evidence: backend focused 93/93; frontend focused 26/26; PostgreSQL integration 26/26 including concurrent Serializable retry; authenticated Playwright abandonment/fresh-start journey 1/1; complete backend/frontend suites PASS; typecheck, lint and build PASS
+remote_evidence: PR #317; CI run 43765304814 SUCCESS on implementation commit 85dcb68
 retirement_action: KEEP_COMPAT
 migration_status: V2_MIGRATED for this bounded Home/Bootstrap capability; no data migration
 ```

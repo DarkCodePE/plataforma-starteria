@@ -18,7 +18,7 @@ La HU autoriza retirar de Portfolio Home una preparación inacabada mediante una
 
 Las sesiones abandonadas quedan excluidas de «Preparaciones y conversaciones» y no pueden leerse, reanudarse ni modificarse. «Crear objetivo» conserva el mecanismo vigente y, al no poder recuperar una sesión abandonada, crea una preparación nueva con Contexto vacío. No hay borrado físico, cambios de Prisma, Core, E1–E7, proveedores ni despliegue.
 
-Evidencia local de la rama: pruebas focalizadas backend 93/93 y frontend 26/26, integración PostgreSQL desechable 26/26 —incluido conflicto serializable concurrente—, recorrido Playwright autenticado 1/1, suites completas backend/frontend, typecheck, lint y build aprobados. El PR y su CI remoto permanecen pendientes; no se ha realizado merge ni CD.
+Evidencia local de la rama: pruebas focalizadas backend 93/93 y frontend 26/26, integración PostgreSQL desechable 26/26 —incluido conflicto serializable concurrente—, recorrido Playwright autenticado 1/1, suites completas backend/frontend, typecheck, lint y build aprobados. PR #317 abierto; CI #43765304814 aprobado sobre el commit de implementación `85dcb68`. No se ha realizado merge ni CD.
 
 ## HU-E1-PILOT-GATE — gate por organización preparado, sin activación (2026-11-15)
 
