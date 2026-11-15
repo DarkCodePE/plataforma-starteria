@@ -201,6 +201,23 @@ export function semanticE1Enabled(env: { SEMANTIC_E1_ENABLED?: string } = proces
   return env.SEMANTIC_E1_ENABLED?.trim().toLowerCase() === 'true';
 }
 
+export function semanticE1EnabledForOrganization(
+  organizationId: string | null | undefined,
+  env: {
+    SEMANTIC_E1_ENABLED?: string;
+    SEMANTIC_E1_PILOT_ORGANIZATION_ALLOWLIST?: string;
+  } = process.env,
+): boolean {
+  if (!semanticE1Enabled(env) || !organizationId?.trim()) return false;
+  const allowedOrganizations = new Set(
+    (env.SEMANTIC_E1_PILOT_ORGANIZATION_ALLOWLIST ?? '')
+      .split(',')
+      .map((value) => value.trim())
+      .filter(Boolean),
+  );
+  return allowedOrganizations.has(organizationId);
+}
+
 function normalizeEvidence(value: string): string {
   return value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/\s+/g, ' ').trim();
 }

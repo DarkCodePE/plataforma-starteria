@@ -14,7 +14,6 @@ import { buildProvisionalGoalQuestionPlan } from './portfolio-bootstrap-goal-pro
 import { buildE2ConversationContext } from './portfolio-bootstrap-e2-conversation-context';
 import {
   portfolioBootstrapSemanticTurnRequestSchema,
-  semanticE1Enabled,
 } from './portfolio-bootstrap-semantic.schemas';
 import {
   analyzeBodySchema,
@@ -57,9 +56,6 @@ export class PortfolioBootstrapController {
   submitSemanticTurn = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
       if (!req.user?.id) throw AppError.unauthorized('No autorizado.', 'PORTFOLIO_BOOTSTRAP_AUTH_REQUIRED');
-      if (!semanticE1Enabled()) {
-        throw new AppError(503, 'La interpretación semántica E1 no está habilitada.', 'PORTFOLIO_SEMANTIC_DISABLED');
-      }
       const idempotencyKey = req.get('Idempotency-Key') ?? '';
       if (!idempotencyKey.trim()) {
         throw AppError.badRequest('Falta Idempotency-Key.', 'PORTFOLIO_SEMANTIC_IDEMPOTENCY_REQUIRED');

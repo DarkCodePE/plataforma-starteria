@@ -19,7 +19,7 @@ const base = `/api/v1/portfolio-bootstrap/sessions/${sessionId}/context/semantic
 const permissions = permissionsForRoles(['portfolio_lead']);
 
 describeIntegration('KAN-244 E1 semantic persistence', () => {
-  afterEach(cleanup);
+  afterEach(async () => { vi.unstubAllEnvs(); await cleanup(); });
   afterAll(async () => { await cleanup(); await prisma.$disconnect(); });
 
   it('persists an evidence-bound fact ledger and owner-scoped reentry without changing ContextReview', async () => {
@@ -34,14 +34,18 @@ describeIntegration('KAN-244 E1 semantic persistence', () => {
     expect(result.state).toMatchObject({ version: 1, answeredGaps: ['pilot_experience'] });
     expect(result.state.factLedger[0]).toMatchObject({ conceptId: 'pilot_experience', provenance: 'user_declared' });
     expect(result.state.hypotheses).toHaveLength(1);
+    const hidden = await request(makeApp(userId)).get(base).expect(200);
+    expect(hidden.body.data).toEqual({ enabled: false, state: null, turns: [] });
+    enablePilot();
     const read = await request(makeApp(userId)).get(base).expect(200);
-    expect(read.body.data).toMatchObject({ enabled: false, state: { version: 1 }, turns: [{ semanticVersion: 1 }] });
+    expect(read.body.data).toMatchObject({ enabled: true, state: { version: 1 }, turns: [{ semanticVersion: 1 }] });
     expect(await prisma.portfolioBootstrapContextReview.findUnique({ where: { bootstrapSessionId: sessionId } }))
       .toMatchObject({ version: 1, status: 'confirmed', confirmedSnapshotJson: { legacy: true } });
   });
 
   it('feeds inference the exact confirmed history version while a later correction remains draft', async () => {
     await seed();
+    enablePilot();
     const review = await prisma.portfolioBootstrapContextReview.update({
       where: { bootstrapSessionId: sessionId },
       data: { version: 2, status: 'draft', draftJson: { legacy: false, corrected: true } },
@@ -174,6 +178,7 @@ describeIntegration('KAN-244 E1 semantic persistence', () => {
 
   it('runs the cafeteria B2 path with one fake structured call and creates no canonical work objects', async () => {
     await seed();
+    enablePilot();
     const store = new PortfolioBootstrapSemanticService(prisma);
     const generated = {
       facts: [fact('pilot_experience', 'nunca hemos probado pedidos a oficinas')],
@@ -236,6 +241,28 @@ describeIntegration('KAN-244 E1 semantic persistence', () => {
       .rejects.toMatchObject({ statusCode: 403, code: 'PORTFOLIO_BOOTSTRAP_WRITE_REQUIRED' });
     await request(makeApp(otherUserId)).get(base).expect(404);
     await request(makeApp(userId, ['viewer'])).get(base).expect(403);
+    enablePilot();
+    const turn = { expectedVersion: 0, inputText: 'Contexto material.', answeredQuestionId: null };
+    await request(makeApp(otherUserId)).post(`${base}/turns`)
+      .set('Idempotency-Key', 'foreign-owner-turn').send(turn).expect(404);
+    await request(makeApp(userId, ['viewer'])).post(`${base}/turns`)
+      .set('Idempotency-Key', 'viewer-turn').send(turn).expect(403);
+  });
+
+  it('rejects POST turns for an organization outside the allowlist without exposing pilot membership', async () => {
+    await seed();
+    vi.stubEnv('SEMANTIC_E1_ENABLED', 'true');
+    vi.stubEnv('SEMANTIC_E1_PILOT_ORGANIZATION_ALLOWLIST', 'another-organization');
+
+    const response = await request(makeApp(userId))
+      .post(`${base}/turns`)
+      .set('Idempotency-Key', 'non-pilot-turn')
+      .send({ expectedVersion: 0, inputText: 'Contexto material.', answeredQuestionId: null })
+      .expect(503);
+
+    expect(response.body.error).toMatchObject({ code: 'PORTFOLIO_SEMANTIC_DISABLED' });
+    expect(response.body.error.message).not.toMatch(/allowlist|piloto|organizaci[oó]n/i);
+    expect(await (prisma as any).portfolioBootstrapSemanticTurn.count()).toBe(0);
   });
 
   it('persists one retryable failure with usage/retry/fallback metrics and no invented semantic output', async () => {
@@ -418,4 +445,9 @@ async function cleanup() {
   await prisma.user.deleteMany({ where: { id: { in: [userId, otherUserId] } } });
   await prisma.organization.deleteMany({ where: { id: organizationId } });
   await prisma.organization.deleteMany({ where: { id: 'kan244-foreign-org' } });
+}
+
+function enablePilot() {
+  vi.stubEnv('SEMANTIC_E1_ENABLED', 'true');
+  vi.stubEnv('SEMANTIC_E1_PILOT_ORGANIZATION_ALLOWLIST', organizationId);
 }

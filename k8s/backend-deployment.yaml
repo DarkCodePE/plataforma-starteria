@@ -55,7 +55,8 @@ spec:
         # Secret synced by .github/workflows/cd.yml at deploy time.
         # Provides: DATABASE_URL, JWT_SECRET, AI_SERVICE_TOKEN, AI_SERVICE_URL,
         # BRIDGE_SHARED_SECRET, BILLING_WEBHOOK_SECRET, PILOT_CODE_SECRET,
-        # SMTP_HOST, SMTP_USER, SMTP_PASS, PILOT_LEAD_NOTIFY_FROM.
+        # SEMANTIC_E1_PILOT_ORGANIZATION_ALLOWLIST, SMTP_HOST, SMTP_USER,
+        # SMTP_PASS, PILOT_LEAD_NOTIFY_FROM.
         - secretRef:
             name: starteria-backend-secrets
         env:

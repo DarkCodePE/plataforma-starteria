@@ -523,6 +523,8 @@ jobs:
           PILOT_CODE_SECRET: ${{ secrets.STARTERIA_PILOT_CODE_SECRET }}
           BILLING_WEBHOOKS_ENABLED: ${{ vars.BILLING_WEBHOOKS_ENABLED || 'false' }}
           PORTFOLIO_ENTRY_API_KEY: ${{ secrets.PORTFOLIO_ENTRY_API_KEY }}
+          # Protected pilot scope only. CD always deploys SEMANTIC_E1_ENABLED=false below.
+          SEMANTIC_E1_PILOT_ORGANIZATION_ALLOWLIST: ${{ secrets.SEMANTIC_E1_PILOT_ORGANIZATION_ALLOWLIST }}
           GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
           JEV_API_KEY: ${{ secrets.JEV_API_KEY }}
