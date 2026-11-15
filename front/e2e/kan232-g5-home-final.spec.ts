@@ -622,7 +622,7 @@ test.describe('KAN-232 G5 authenticated PostgreSQL certification', () => {
 
     await loginUi(page, lead);
     await expect(page.getByTestId('portfolio-overview-home')).toBeVisible({ timeout: 20_000 });
-    await page.getByRole('button', { name: 'Preparar nueva oportunidad' }).click();
+    await page.getByRole('button', { name: 'Crear objetivo' }).click();
     await expect(page.getByText('Configurar con Copilot · 1 de 7')).toBeVisible({ timeout: 20_000 });
 
     // E1 · contexto: la persona responde, revisa y confirma; Copilot no decide por ella.

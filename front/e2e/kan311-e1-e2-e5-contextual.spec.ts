@@ -156,7 +156,7 @@ test.describe('KAN-311 E1→E2→E5 contextual journey', () => {
     try {
       const lead = await registerLead(api, 'cafeteria');
       await loginUi(page, lead);
-      await page.getByRole('button', { name: 'Preparar nueva oportunidad' }).click();
+      await page.getByRole('button', { name: 'Crear objetivo' }).click();
       await expect(page.getByText('Guía estructurada · sin IA de pago')).toBeVisible();
       await captureViewports(page, testInfo, 'e1-cafeteria');
 

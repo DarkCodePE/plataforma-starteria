@@ -42,7 +42,7 @@ async function loginUi(page: Page, lead: { email: string; password: string; user
   if (lead.userId) {
     expect(await prisma.portfolioBootstrapSession.count({ where: { userId: lead.userId } })).toBe(0);
   }
-  await page.getByRole('button', { name: 'Preparar nueva oportunidad' }).click();
+  await page.getByRole('button', { name: 'Crear objetivo' }).click();
   await expect(page.getByText('Cuéntame qué está ocurriendo')).toBeVisible({ timeout: 20_000 });
 }
 

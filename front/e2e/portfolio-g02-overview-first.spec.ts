@@ -68,7 +68,7 @@ test.describe('G02 authenticated overview-first and resumable Bootstrap', () => 
       await expect(page.getByRole('heading', { name: '¿Qué necesita tu atención para mover el negocio?' })).toBeVisible();
       await expect(page.getByTestId('portfolio-resumable-workspaces')).toBeVisible();
       await expect(page.getByText('No hay preparaciones pendientes')).toBeVisible();
-      await expect(page.getByRole('button', { name: 'Preparar nueva oportunidad' })).toBeVisible();
+      await expect(page.getByRole('button', { name: 'Crear objetivo' })).toBeVisible();
       expect(await prisma.portfolioBootstrapSession.count({ where: { userId: lead.userId } })).toBe(0);
 
       await page.reload();

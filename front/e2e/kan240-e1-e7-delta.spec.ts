@@ -52,7 +52,7 @@ async function loginUi(page: Page, lead: { email: string; password: string }, ex
   await expect(page.getByTestId('portfolio-overview-home')).toBeVisible({ timeout: 20_000 });
   if (expectedStep) {
     // No Bootstrap session exists yet: start only after a deliberate user click.
-    await page.getByRole('button', { name: 'Preparar nueva oportunidad' }).click();
+    await page.getByRole('button', { name: 'Crear objetivo' }).click();
     await expect(page.getByText(`Configurar con Copilot · ${expectedStep} de 7`)).toBeVisible({ timeout: 20_000 });
   } else {
     // The distribuidora already has a persisted unfinished context.
