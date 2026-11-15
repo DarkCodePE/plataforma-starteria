@@ -179,7 +179,7 @@ describe('PortfolioLeadHomePage Bootstrap integration', () => {
 
   it('KAN-250 opens a new workspace only when a human chooses to start', async () => {
     renderPage('/portfolio/inicio');
-    const start = await screen.findByRole('button', { name: 'Preparar nueva oportunidad' });
+    const start = await screen.findByRole('button', { name: 'Crear objetivo' });
     expect(createDirect).not.toHaveBeenCalled();
     fireEvent.click(start);
     await waitFor(() => expect(createDirect).toHaveBeenCalledOnce());

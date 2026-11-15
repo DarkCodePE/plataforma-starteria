@@ -162,4 +162,44 @@ describe('PortfolioBootstrapContextService', () => {
     }, 'save_draft', 'payload-1', { code: 'P2002' })).resolves.toBe(stored);
     expect(db.portfolioBootstrapSession.findFirst).toHaveBeenCalledWith(expect.objectContaining({ where: { id: 'session-1', userId: 'actor' } }));
   });
+
+  it('blocks confirmation while an existing semantic E1 state is not materially sufficient', async () => {
+    const service = new PortfolioBootstrapContextService({} as any);
+    const db = { portfolioBootstrapSemanticState: { findUnique: vi.fn().mockResolvedValue({
+      id: 'semantic-1', version: 1,
+      convergenceJson: { status: 'question_required', reason: 'Falta una aclaración material.', synthesis: null },
+    }) } };
+
+    await expect((service as any).validateSemanticConfirmation(db, { id: 'session-1' }, {
+      situation: { value: 'Preparar comité', provenance: 'user_declared', sourceRef: { kind: 'user_input' } },
+      area: { value: null, provenance: 'unknown' }, stakeholder: { value: null, provenance: 'unknown' },
+      pilotExperience: { value: null, provenance: 'unknown' }, constraints: [], assumptions: [], gaps: [],
+    })).rejects.toMatchObject({ statusCode: 422, code: 'PORTFOLIO_CONTEXT_SEMANTIC_INSUFFICIENT' });
+  });
+
+  it('allows confirmation only against the current ready semantic revision', async () => {
+    const service = new PortfolioBootstrapContextService({} as any);
+    const db = { portfolioBootstrapSemanticState: { findUnique: vi.fn().mockResolvedValue({
+      id: 'semantic-1', version: 2,
+      convergenceJson: {
+        status: 'ready_for_human_review', reason: 'Suficiente',
+        synthesis: {
+          summary: 'Lectura de aterrizaje', situation: 'Situación', intention: 'Intención',
+          mainUncertainty: 'Incertidumbre', directionForE2: 'Dirección', evidenceConceptIds: ['situation', 'direction'],
+        },
+      },
+    }) } };
+    const context = {
+      situation: { value: 'Lectura de aterrizaje', provenance: 'copilot_suggested', sourceRef: {
+        kind: 'copilot_suggestion', reference: 'portfolio-bootstrap-semantic:semantic-1:2',
+      } },
+      area: { value: null, provenance: 'unknown' }, stakeholder: { value: null, provenance: 'unknown' },
+      pilotExperience: { value: null, provenance: 'unknown' }, constraints: [], assumptions: [], gaps: [],
+    };
+
+    await expect((service as any).validateSemanticConfirmation(db, { id: 'session-1' }, context)).resolves.toBeUndefined();
+    context.situation.sourceRef.reference = 'portfolio-bootstrap-semantic:semantic-1:1';
+    await expect((service as any).validateSemanticConfirmation(db, { id: 'session-1' }, context))
+      .rejects.toMatchObject({ statusCode: 409, code: 'PORTFOLIO_CONTEXT_SEMANTIC_REVISION_STALE' });
+  });
 });

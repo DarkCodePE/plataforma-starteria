@@ -137,6 +137,7 @@ describe('PortfolioBootstrapSemanticOrchestratorService', () => {
     const model = fakeModel({
       facts: [fact('team_size', '50 personas', 'tenemos 50 personas')],
       hypotheses: [], dispositions: [], questionPlan: null,
+      synthesis: synthesis(['team_size']),
       readyForHumanReview: true, reason: 'Supuestamente suficiente.',
     });
     const service = new PortfolioBootstrapSemanticOrchestratorService(store, model, config);
@@ -175,24 +176,26 @@ describe('PortfolioBootstrapSemanticOrchestratorService', () => {
     const emptyStore = fakeStore();
     const emptyModel = fakeModel({
       facts: [], hypotheses: [], dispositions: [], questionPlan: null,
+      synthesis: synthesis(['situation']),
       readyForHumanReview: true, reason: 'El proveedor dice que basta.',
     });
     await new PortfolioBootstrapSemanticOrchestratorService(emptyStore, emptyModel, config)
       .processTurn(command('Quiero explorar una idea.'));
     expect(emptyStore.completeInference).toHaveBeenCalledWith(expect.objectContaining({
-      convergence: expect.objectContaining({ status: 'budget_checkpoint' }),
+      convergence: expect.objectContaining({ status: 'question_required' }),
     }));
 
     const partialStore = fakeStore();
     const partialModel = fakeModel({
       facts: [fact('situation', 'Hay colas', 'Hay colas')],
       hypotheses: [], dispositions: [], questionPlan: null,
+      synthesis: synthesis(['situation']),
       readyForHumanReview: true, reason: 'El proveedor dice que basta.',
     });
     await new PortfolioBootstrapSemanticOrchestratorService(partialStore, partialModel, config)
       .processTurn(command('Hay colas.'));
     expect(partialStore.completeInference).toHaveBeenCalledWith(expect.objectContaining({
-      convergence: expect.objectContaining({ status: 'budget_checkpoint' }),
+      convergence: expect.objectContaining({ status: 'question_required' }),
     }));
   });
 
@@ -204,15 +207,129 @@ describe('PortfolioBootstrapSemanticOrchestratorService', () => {
       answeredGaps: ['situation'],
     }));
     const model = fakeModel({
-      facts: [fact('stakeholder', 'clientes del mediodía', 'clientes del mediodía')],
+      facts: [fact('desired_outcome', 'reducir la espera', 'reducir la espera')],
       hypotheses: [], dispositions: [], questionPlan: null,
+      synthesis: synthesis(['situation', 'desired_outcome']),
       readyForHumanReview: true, reason: 'Hay situación y dirección suficientes para revisión humana.',
     });
     await new PortfolioBootstrapSemanticOrchestratorService(store, model, config)
-      .processTurn(command('Afecta a los clientes del mediodía.'));
+      .processTurn(command('Queremos reducir la espera.'));
     expect(store.completeInference).toHaveBeenCalledWith(expect.objectContaining({
       convergence: expect.objectContaining({ status: 'ready_for_human_review' }),
     }));
+  });
+
+  it('asks a material clarification for a generic committee intention instead of enabling review', async () => {
+    const input = 'Tengo que preparar comité y explicar qué decisiones necesita el portafolio';
+    const store = fakeStore();
+    const model = fakeModel({
+      facts: [
+        fact('decision', 'preparar comité', 'preparar comité'),
+        fact('intention', 'explicar decisiones', 'explicar qué decisiones necesita el portafolio'),
+      ],
+      hypotheses: [], dispositions: [], questionPlan: null,
+      synthesis: synthesis(['decision', 'intention']),
+      readyForHumanReview: true, reason: 'El proveedor confundió intención con contexto material.',
+    });
+
+    await new PortfolioBootstrapSemanticOrchestratorService(store, model, config).processTurn(command(input));
+
+    const persisted = vi.mocked(store.completeInference).mock.calls[0][0];
+    expect(persisted.convergence.status).toBe('question_required');
+    expect(persisted.convergence.synthesis).toBeNull();
+    expect(persisted.emittedQuestion?.question.toLowerCase()).toContain('qué trabajo, problema u oportunidad');
+  });
+
+  it('allows a complete cafeteria opportunity to reach a grounded landing synthesis in one turn', async () => {
+    const input = 'Somos una cafetería pequeña, queremos vender desayunos para crecer sin ampliar el local y necesitamos validar el interés y los recursos.';
+    const store = fakeStore();
+    const model = fakeModel({
+      facts: [
+        fact('opportunity', 'vender desayunos', 'vender desayunos'),
+        fact('desired_outcome', 'crecer sin ampliar el local', 'crecer sin ampliar el local'),
+        fact('uncertainty', 'interés y recursos', 'validar el interés y los recursos'),
+      ],
+      hypotheses: [], dispositions: [], questionPlan: null,
+      synthesis: synthesis(['opportunity', 'desired_outcome', 'uncertainty']),
+      readyForHumanReview: true, reason: 'Existe contexto material suficiente.',
+    });
+
+    await new PortfolioBootstrapSemanticOrchestratorService(store, model, config).processTurn(command(input));
+
+    const persisted = vi.mocked(store.completeInference).mock.calls[0][0];
+    expect(persisted.emittedQuestion).toBeNull();
+    expect(persisted.convergence).toMatchObject({
+      status: 'ready_for_human_review',
+      synthesis: { evidenceConceptIds: ['opportunity', 'desired_outcome', 'uncertainty'] },
+    });
+  });
+
+  it('keeps an unknown operational cause explicit and asks for material context without inventing it', async () => {
+    const input = 'Tenemos retrasos operativos recurrentes y no conocemos la causa principal.';
+    const store = fakeStore();
+    const model = fakeModel({
+      facts: [fact('problem', 'retrasos operativos recurrentes', 'retrasos operativos recurrentes')],
+      hypotheses: [],
+      dispositions: [{
+        conceptId: 'root_cause', disposition: 'unknown', provenance: 'user_declared',
+        evidenceRefs: [{ kind: 'user_input', quote: 'no conocemos la causa principal' }],
+      }],
+      questionPlan: {
+        question: '¿En qué parte del trabajo se producen los retrasos y qué decisión necesitáis poder tomar?',
+        reasonToAsk: 'Delimita la situación sin suponer una causa.',
+        resolves: ['affected_work', 'decision_to_enable'],
+      },
+      readyForHumanReview: false,
+      reason: 'La necesidad está declarada, pero falta delimitar el trabajo afectado.',
+    });
+
+    await new PortfolioBootstrapSemanticOrchestratorService(store, model, config).processTurn(command(input));
+
+    const persisted = vi.mocked(store.completeInference).mock.calls[0][0];
+    expect(persisted.facts).toEqual([expect.objectContaining({ conceptId: 'problem' })]);
+    expect(persisted.hypotheses).toEqual([]);
+    expect(persisted.dispositions).toEqual([expect.objectContaining({ conceptId: 'root_cause', disposition: 'unknown' })]);
+    expect(persisted.convergence).toMatchObject({ status: 'question_required', synthesis: null });
+    expect(persisted.emittedQuestion?.question).toContain('qué decisión');
+  });
+
+  it('preserves exploration uncertainty without inventing an initiative or solution', async () => {
+    const input = 'Queremos explorar oportunidades de crecimiento, sin iniciativa ni solución definida.';
+    const store = fakeStore();
+    const model = fakeModel({
+      facts: [
+        fact('opportunity', 'oportunidades de crecimiento', 'oportunidades de crecimiento'),
+        fact('intention', 'explorar oportunidades', 'explorar oportunidades'),
+      ],
+      hypotheses: [],
+      dispositions: [{
+        conceptId: 'solution', disposition: 'unknown', provenance: 'user_declared',
+        evidenceRefs: [{ kind: 'user_input', quote: 'sin iniciativa ni solución definida' }],
+      }],
+      questionPlan: null,
+      synthesis: {
+        ...synthesis(['opportunity', 'intention']),
+        situation: 'Se está explorando dónde podría existir crecimiento.',
+        intention: 'Descubrir oportunidades antes de definir una iniciativa.',
+        mainUncertainty: 'No existe todavía una iniciativa ni una solución definida.',
+        directionForE2: 'Definir un objetivo de exploración sin presuponer una solución.',
+      },
+      readyForHumanReview: true,
+      reason: 'La exploración y su incertidumbre están suficientemente delimitadas para revisión humana.',
+    });
+
+    await new PortfolioBootstrapSemanticOrchestratorService(store, model, config).processTurn(command(input));
+
+    const persisted = vi.mocked(store.completeInference).mock.calls[0][0];
+    expect(persisted.hypotheses).toEqual([]);
+    expect(persisted.dispositions).toEqual([expect.objectContaining({ conceptId: 'solution', disposition: 'unknown' })]);
+    expect(persisted.convergence).toMatchObject({
+      status: 'ready_for_human_review',
+      synthesis: {
+        mainUncertainty: 'No existe todavía una iniciativa ni una solución definida.',
+        directionForE2: 'Definir un objetivo de exploración sin presuponer una solución.',
+      },
+    });
   });
 
   it('does not count unknown anchor and direction dispositions as sufficient evidence', async () => {
@@ -230,6 +347,7 @@ describe('PortfolioBootstrapSemanticOrchestratorService', () => {
         },
       ],
       questionPlan: null,
+      synthesis: synthesis(['situation', 'stakeholder']),
       readyForHumanReview: true, reason: 'El proveedor propone revisar con incógnitas.',
     });
 
@@ -237,7 +355,7 @@ describe('PortfolioBootstrapSemanticOrchestratorService', () => {
       .processTurn(command('No sé la situación ni a quién afecta.'));
 
     expect(store.completeInference).toHaveBeenCalledWith(expect.objectContaining({
-      convergence: expect.objectContaining({ status: 'budget_checkpoint' }),
+      convergence: expect.objectContaining({ status: 'question_required' }),
     }));
   });
 
@@ -336,9 +454,10 @@ describe('PortfolioBootstrapSemanticOrchestratorService', () => {
         output: {
           facts: [
             fact('situation', 'reducir colas', 'reducir colas'),
-            fact('stakeholder', 'clientes del mediodía', 'clientes del mediodía'),
+            fact('desired_outcome', 'clientes del mediodía', 'clientes del mediodía'),
           ],
           hypotheses: [], dispositions: [], questionPlan: null,
+          synthesis: synthesis(['situation', 'desired_outcome']),
           readyForHumanReview: true, reason: 'Suficiente para revisión.',
         },
         passes: (turn: any) => turn.answeredGaps.length === 2
@@ -380,6 +499,7 @@ describe('PortfolioBootstrapSemanticOrchestratorService', () => {
         output: {
           facts: [fact('team_size', '50', 'somos 50 personas')],
           hypotheses: [], dispositions: [], questionPlan: null,
+          synthesis: synthesis(['team_size']),
           readyForHumanReview: true, reason: 'Suficiente.',
         },
         passes: (turn: any) => turn.status === 'failed_retryable'
@@ -483,5 +603,16 @@ function fact(conceptId: string, value: string, quote: string) {
     conceptId, value, provenance: 'user_declared' as const,
     evidenceRefs: [{ kind: 'user_input' as const, quote }],
     confidence: 1, status: 'observed' as const,
+  };
+}
+
+function synthesis(evidenceConceptIds: string[]) {
+  return {
+    summary: 'Una lectura útil del punto de partida.',
+    situation: 'Existe una situación material declarada.',
+    intention: 'La persona quiere poder decidir cómo avanzar.',
+    mainUncertainty: 'La evidencia pendiente sigue explícita.',
+    directionForE2: 'Definir un objetivo provisional sin asumir resultados.',
+    evidenceConceptIds,
   };
 }

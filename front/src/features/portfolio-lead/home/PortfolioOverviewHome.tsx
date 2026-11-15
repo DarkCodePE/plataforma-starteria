@@ -137,7 +137,7 @@ export function PortfolioOverviewHome({
           </>
         ) : resumableStatus === 'ready' && resumableSessions.length === 0 && onStartOpportunity ? (
           <button type="button" disabled={startingOpportunity} onClick={onStartOpportunity} className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-[#6446c0] px-4 py-2.5 text-sm font-semibold text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 disabled:opacity-60 sm:w-auto">
-            <Sparkles size={17} />{startingOpportunity ? 'Abriendo…' : 'Preparar nueva oportunidad'}<ArrowRight aria-hidden="true" size={16}/>
+            <Sparkles size={17} />{startingOpportunity ? 'Abriendo…' : 'Crear objetivo'}<ArrowRight aria-hidden="true" size={16}/>
           </button>
         ) : null}
         {copilotAvailable ? <button type="button" onClick={onOpenCopilot} className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-violet-200 bg-violet-50 px-4 py-2.5 text-sm font-semibold text-violet-950 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-800 sm:w-auto"><Sparkles size={17} />Abrir Copilot de portafolio</button> : null}

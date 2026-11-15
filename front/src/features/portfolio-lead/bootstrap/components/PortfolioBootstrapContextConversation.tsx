@@ -184,7 +184,7 @@ export function PortfolioBootstrapContextConversation({
   status: PortfolioBootstrapContextStatus;
   error: string | null;
   onSaveDraft: (context: PortfolioBootstrapContextPayload, sourceCompanyContext: PortfolioBootstrapCompanyContextSource | null) => Promise<unknown>;
-  onConfirm: () => Promise<unknown>;
+  onConfirm: (expectedVersion?: number) => Promise<unknown>;
   onRetry: () => Promise<unknown>;
   onContinue: () => void;
   semantic?: PortfolioBootstrapSemanticController;
@@ -355,6 +355,7 @@ export function PortfolioBootstrapContextConversation({
           onRetry={onRetry}
           onContinue={onContinue}
           proposal={proposalToReview}
+          semanticState={semantic.snapshot?.state ?? null}
         />
       </PortfolioBootstrapSemanticConversation>
     );
@@ -523,6 +524,7 @@ function SemanticContextReviewPanel({
   onConfirm,
   onRetry,
   onContinue,
+  semanticState,
 }: {
   proposal?: PortfolioBootstrapContextProposal | null;
   operationScope: string;
@@ -530,18 +532,26 @@ function SemanticContextReviewPanel({
   status: PortfolioBootstrapContextStatus;
   error: string | null;
   onSaveDraft: (context: PortfolioBootstrapContextPayload, sourceCompanyContext: PortfolioBootstrapCompanyContextSource | null) => Promise<unknown>;
-  onConfirm: () => Promise<unknown>;
+  onConfirm: (expectedVersion?: number) => Promise<unknown>;
   onRetry: () => Promise<unknown>;
   onContinue: () => void;
+  semanticState: PortfolioBootstrapSemanticSnapshot['state'];
 }) {
   const persistedDraft = review?.draft ?? createEmptyPortfolioBootstrapContext();
   const [draft, setDraft] = useState<PortfolioBootstrapContextPayload>(persistedDraft);
   const [dirty, setDirty] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [editing, setEditing] = useState(false);
   const [localError, setLocalError] = useState<string | null>(null);
   const epoch = useRef(0);
   const sourceCompany = review?.draftSourceCompanyContext ?? review?.sourceCompanyContext ?? null;
   const contextBusy = busy || status === 'loading' || status === 'saving' || status === 'confirming';
+  const synthesis = semanticState?.convergence.status === 'ready_for_human_review'
+    ? semanticState.convergence.synthesis ?? null
+    : null;
+  const semanticReference = semanticState
+    ? `portfolio-bootstrap-semantic:${semanticState.id}:${semanticState.version}`
+    : null;
 
   useEffect(() => {
     setDraft(persistedDraft);
@@ -553,6 +563,30 @@ function SemanticContextReviewPanel({
     epoch.current += 1;
     setBusy(false);
   }, [operationScope]);
+
+  useEffect(() => {
+    if (!synthesis || !semanticReference || review) return;
+    setDraft({
+      ...createEmptyPortfolioBootstrapContext(),
+      situation: {
+        value: synthesis.summary,
+        provenance: 'copilot_suggested',
+        sourceRef: { kind: 'copilot_suggestion', reference: semanticReference },
+      },
+      area: {
+        value: synthesis.intention,
+        provenance: 'copilot_suggested',
+        sourceRef: { kind: 'copilot_suggestion', reference: semanticReference },
+      },
+      assumptions: [{
+        value: synthesis.directionForE2,
+        provenance: 'copilot_suggested',
+        sourceRef: { kind: 'copilot_suggestion', reference: semanticReference },
+      }],
+      gaps: [synthesis.mainUncertainty],
+    });
+    setDirty(true);
+  }, [review, semanticReference, synthesis]);
 
   const updateField = (field: ContextField, value: string) => {
     setDraft((current) => ({
@@ -591,12 +625,66 @@ function SemanticContextReviewPanel({
     }
   };
 
+  const confirmLanding = () => run(async () => {
+    let expectedVersion = review?.version;
+    if (dirty || !review) {
+      const saved = await onSaveDraft(draft, sourceCompany) as PortfolioBootstrapContextReview;
+      expectedVersion = saved.version;
+    }
+    await onConfirm(expectedVersion);
+  }, () => {
+    setDirty(false);
+    setEditing(false);
+  });
+
+  if (!synthesis && !review?.effectiveContext) return null;
+
+  if (review?.status === 'confirmed' && review.effectiveContext && !editing) {
+    return (
+      <section role="region" aria-label="Tu punto de partida" className="rounded-2xl border border-emerald-200 bg-emerald-50 p-5 shadow-sm">
+        <div className="flex items-start gap-3 text-emerald-950">
+          <span aria-hidden="true" className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full border-2 border-emerald-600 text-sm font-bold text-emerald-700">✓</span>
+          <div>
+            <div role="status">
+              <h3 className="text-xl font-semibold">Contexto confirmado</h3>
+              <p className="mt-2 max-w-xl text-sm leading-6">Tu punto de partida y tus correcciones han quedado guardados. El siguiente paso reutilizará este contexto para que definas el objetivo sin volver a empezar.</p>
+            </div>
+            <div className="mt-5 flex flex-wrap gap-2">
+              <button type="button" disabled={contextBusy} onClick={onContinue} className="rounded-lg bg-violet-700 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50">
+                Definir mi objetivo <span aria-hidden="true" className="ml-1">→</span>
+              </button>
+              <button type="button" disabled={contextBusy} onClick={() => setEditing(true)} className="rounded-lg border border-emerald-300 bg-white px-4 py-2.5 text-sm font-semibold text-emerald-900 disabled:opacity-50">
+                Corregir contexto confirmado
+              </button>
+            </div>
+          </div>
+        </div>
+      </section>
+    );
+  }
+
   return (
-    <section role="region" aria-label="Síntesis canónica editable" className="rounded-xl border border-slate-300 bg-white p-4">
-      <h3 className="font-semibold text-slate-950">Síntesis canónica editable</h3>
-      <p className="mt-1 text-sm text-slate-600">
-        Revisa y redacta el ContextReview. Starteria no convierte automáticamente conceptos del ledger en estos campos.
-      </p>
+    <section role="region" aria-label="Tu punto de partida" className="rounded-2xl border border-[#dfe3ee] bg-white p-5 shadow-sm">
+      <p className="text-xs font-extrabold uppercase tracking-[0.14em] text-[#6446c0]">Análisis de aterrizaje</p>
+      <h3 className="mt-1 text-xl font-semibold text-slate-950">Tu punto de partida</h3>
+      <p className="mt-1 text-sm text-slate-600">Esta lectura está fundamentada en lo que has compartido. Revísala, corrígela si hace falta y confírmala tú.</p>
+      {synthesis ? (
+        <div className="mt-5 space-y-4">
+          <p className="text-base leading-7 text-slate-900">{draft.situation.value ?? synthesis.summary}</p>
+          <dl className="grid gap-3 sm:grid-cols-2">
+            <div className="rounded-xl bg-slate-50 p-3"><dt className="text-xs font-bold uppercase tracking-wide text-slate-500">Situación</dt><dd className="mt-1 text-sm leading-6 text-slate-800">{synthesis.situation}</dd></div>
+            <div className="rounded-xl bg-slate-50 p-3"><dt className="text-xs font-bold uppercase tracking-wide text-slate-500">Intención</dt><dd className="mt-1 text-sm leading-6 text-slate-800">{synthesis.intention}</dd></div>
+            <div className="rounded-xl border border-amber-100 bg-amber-50 p-3"><dt className="text-xs font-bold uppercase tracking-wide text-amber-700">Incertidumbre principal</dt><dd className="mt-1 text-sm leading-6 text-amber-950">{synthesis.mainUncertainty}</dd></div>
+            <div className="rounded-xl border border-violet-100 bg-violet-50 p-3"><dt className="text-xs font-bold uppercase tracking-wide text-violet-700">Dirección provisional para E2</dt><dd className="mt-1 text-sm leading-6 text-violet-950">{synthesis.directionForE2}</dd></div>
+          </dl>
+          <div aria-label="Procedencia del análisis" className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-500">
+            <span>Hechos con evidencia: {semanticState?.factLedger.length ?? 0}</span>
+            <span>Inferencias propuestas: {semanticState?.hypotheses.length ?? 0}</span>
+            <span>Pendientes explícitos: {Math.max(1, semanticState?.dispositions.filter((item) => item.disposition === 'unknown').length ?? 0)}</span>
+          </div>
+          <p className="text-xs text-slate-500">Propuesta del Copilot · las inferencias no se presentan como hechos · pendiente de tu confirmación</p>
+        </div>
+      ) : null}
       {proposal && !draft.pilotExperience.value ? (
         <section aria-label="Propuesta de experiencia previa" className="mt-4 rounded-lg border border-violet-200 bg-violet-50 p-3">
           <p className="font-semibold text-violet-950">Posible información ya declarada</p>
@@ -613,44 +701,26 @@ function SemanticContextReviewPanel({
             }}>Incorporar a mi borrador</button>
         </section>
       ) : null}
-      <div className="mt-4 grid gap-4 md:grid-cols-2">
-        {CONTEXT_FIELDS.map((field) => (
-          <label key={field} className="text-sm font-semibold text-slate-800">
-            {FIELD_LABELS[field]}
-            <textarea
-              disabled={contextBusy}
-              value={fieldValue(draft[field])}
-              onChange={(event) => updateField(field, event.target.value)}
-              rows={field === 'situation' ? 3 : 2}
-              className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 font-normal text-slate-950 disabled:opacity-60"
-            />
-          </label>
-        ))}
-        <label className="text-sm font-semibold text-slate-800">
-          Restricciones conocidas
-          <textarea disabled={contextBusy} value={draft.constraints.map(fieldValue).join('\n')} onChange={(event) => updateList('constraints', event.target.value)} rows={3} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 font-normal text-slate-950 disabled:opacity-60" />
+      {editing ? (
+        <label className="mt-5 block text-sm font-semibold text-slate-800">
+          Corrige la interpretación
+          <textarea
+            autoFocus
+            disabled={contextBusy}
+            value={fieldValue(draft.situation)}
+            onChange={(event) => updateField('situation', event.target.value)}
+            rows={5}
+            className="mt-2 w-full rounded-xl border border-slate-300 px-3 py-2 font-normal leading-6 text-slate-950 focus:border-violet-600 focus:ring-2 focus:ring-violet-100 disabled:opacity-60"
+          />
+          <span className="mt-1 block text-xs font-normal text-slate-500">Tu corrección quedará identificada como declaración humana y sustituirá la propuesta en la revisión vigente.</span>
         </label>
-        <label className="text-sm font-semibold text-slate-800">
-          Hipótesis aceptadas o supuestos por validar
-          <textarea disabled={contextBusy} value={draft.assumptions.map(fieldValue).join('\n')} onChange={(event) => updateList('assumptions', event.target.value)} rows={3} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 font-normal text-slate-950 disabled:opacity-60" />
-        </label>
-        <label className="text-sm font-semibold text-slate-800 md:col-span-2">
-          Pendientes explícitos
-          <textarea disabled={contextBusy} value={userGaps(draft.gaps).join('\n')} onChange={(event) => {
-            setDraft((current) => ({ ...current, gaps: [...dispositionGaps(current.gaps), ...event.target.value.split('\n').map((item) => item.trim()).filter(Boolean)] }));
-            setDirty(true);
-            setLocalError(null);
-          }} rows={3} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 font-normal text-slate-950 disabled:opacity-60" />
-        </label>
-      </div>
+      ) : null}
 
       <div className="mt-4 flex flex-wrap gap-2">
-        <button type="button" disabled={contextBusy || !dirty} onClick={() => void run(() => onSaveDraft(draft, sourceCompany), () => setDirty(false))} className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-800 disabled:opacity-50">
-          Guardar síntesis editable
-        </button>
-        {review?.status === 'draft' ? (
-          <button type="button" disabled={contextBusy || dirty} onClick={() => void run(onConfirm)} className="rounded-lg bg-slate-950 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">
-            Confirmar contexto revisado
+        {synthesis && review?.status !== 'confirmed' ? <button type="button" disabled={contextBusy} onClick={() => setEditing(true)} className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-800 disabled:opacity-50">Corregir interpretación</button> : null}
+        {synthesis && (review?.status !== 'confirmed' || editing) ? (
+          <button type="button" disabled={contextBusy || !draft.situation.value?.trim()} onClick={() => void confirmLanding()} className="rounded-lg bg-slate-950 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">
+            {review?.status === 'confirmed' ? 'Guardar corrección y reconfirmar' : 'Confirmar mi punto de partida'}
           </button>
         ) : null}
         {review?.status === 'confirmed' ? <p role="status" className="self-center text-sm font-semibold text-emerald-800">Contexto confirmado por una persona</p> : null}
@@ -666,7 +736,7 @@ function SemanticContextReviewPanel({
       {review?.effectiveContext ? (
         <div className="mt-4 rounded-lg border border-emerald-200 bg-emerald-50 p-3">
           <p className="text-sm text-emerald-950">La confirmación persistida habilita E2; la convergencia semántica por sí sola no lo hace.</p>
-          <button type="button" disabled={contextBusy} onClick={onContinue} className="mt-3 rounded-lg bg-violet-700 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">Continuar al objetivo</button>
+          <button type="button" disabled={contextBusy} onClick={onContinue} className="mt-3 rounded-lg bg-violet-700 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">Definir mi objetivo</button>
         </div>
       ) : <div aria-label="Siguiente paso hacia el objetivo" className="mt-4 rounded-lg border border-slate-200 bg-white p-3"><p className="text-sm font-semibold text-slate-900">E2 sigue bloqueado hasta confirmar el contexto</p><p className="mt-1 text-sm text-slate-600">La convergencia semántica no sustituye tu confirmación humana.</p></div>}
     </section>

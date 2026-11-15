@@ -136,4 +136,14 @@ describe('usePortfolioBootstrapContext', () => {
     expect(confirmContext).not.toHaveBeenCalled();
     expect(hook.result.current.review?.status).toBe('confirmed');
   });
+
+  it('reconfirms a just-saved correction even when the callback still sees the prior confirmed review', async () => {
+    confirmContext.mockResolvedValue(review({ version: 4, status: 'confirmed', hasPendingCorrection: false }));
+    const hook = renderHook(() => usePortfolioBootstrapContext('session-1'));
+    await waitFor(() => expect(hook.result.current.status).toBe('ready'));
+
+    await act(async () => { await hook.result.current.confirm(3); });
+
+    expect(confirmContext).toHaveBeenCalledWith('session-1', 3, expect.stringMatching(/^portfolio-context-confirm:/));
+  });
 });

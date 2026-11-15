@@ -3,6 +3,7 @@ import { AppError } from '../../shared/errors/AppError';
 import { z } from 'zod/v3';
 import type { StructuredModelAdapter } from '../portfolio-entry-runtime/model/structured-model-adapter';
 import {
+  portfolioBootstrapLandingSynthesisSchema,
   portfolioBootstrapSemanticDispositionSchema,
   portfolioBootstrapSemanticFactSchema,
   portfolioBootstrapSemanticHypothesisSchema,
@@ -26,6 +27,7 @@ export const portfolioBootstrapSemanticInferenceSchema = z.object({
   hypotheses: z.array(portfolioBootstrapSemanticHypothesisSchema).max(100),
   dispositions: z.array(portfolioBootstrapSemanticDispositionSchema).max(100),
   questionPlan: questionPlanSchema.nullable(),
+  synthesis: portfolioBootstrapLandingSynthesisSchema.nullable().optional(),
   readyForHumanReview: z.boolean(),
   reason: z.string().trim().min(1).max(2_000),
 }).strict().superRefine((output, context) => {
@@ -37,6 +39,12 @@ export const portfolioBootstrapSemanticInferenceSchema = z.object({
       });
     }
   });
+  if (output.readyForHumanReview && !output.synthesis) {
+    context.addIssue({ code: 'custom', path: ['synthesis'], message: 'La revisión humana requiere una síntesis de aterrizaje.' });
+  }
+  if (!output.readyForHumanReview && output.synthesis) {
+    context.addIssue({ code: 'custom', path: ['synthesis'], message: 'Una salida insuficiente no puede anticipar una síntesis final.' });
+  }
 });
 
 type SemanticInference = z.infer<typeof portfolioBootstrapSemanticInferenceSchema>;
@@ -45,9 +53,13 @@ const SEMANTIC_E1_SYSTEM_PROMPT = `Eres el intérprete acotado del contexto E1 d
 Devuelve un único objeto JSON que cumpla el schema. Extrae hechos sólo cuando una cita literal del
 input los respalda. Mantén hipótesis separadas y siempre proposed. Una negación explícita como
 "nunca lo hemos probado" resuelve pilot_experience aunque aparezca dentro de una narración general.
-No inventes cifras, equipo, departamentos, KPI ni piloto. unknown y not_applicable requieren una
-declaración literal. Propón como máximo una pregunta material; no preguntes por conceptos resueltos,
-retirados o ya preguntados. No confirmes E1 ni avances a E2.`;
+No inventes cifras, equipo, departamentos, KPI, causas, demanda, recursos, resultados ni soluciones
+validadas. unknown y not_applicable requieren una declaración literal. Propón como máximo una pregunta
+material; no preguntes por conceptos resueltos, retirados o ya preguntados. No confirmes E1 ni avances
+a E2. readyForHumanReview sólo puede ser true si existe una situación material y una dirección concreta.
+En ese caso produce synthesis: una interpretación útil, no una paráfrasis, que distinga situación,
+intención, incertidumbre y dirección provisional para E2, enlazada a evidenceConceptIds. Si falta
+información que cambie la interpretación, synthesis debe ser null y debes formular una aclaración.`;
 
 export interface PortfolioBootstrapSemanticTurnStore {
   getInferenceContext(input: {
@@ -329,10 +341,18 @@ function applyDeterministicPolicy(input: {
   ]);
   const currentBudget = input.state?.questionBudget ?? { limit: null, used: 0 };
   const limit = currentBudget.limit ?? input.questionLimit;
+  const materialEvidence = materialEvidenceStatus(input.state, facts);
+  const sufficientForReview = materialEvidence.hasAnchor && materialEvidence.hasDirection;
+  const fallbackPlan = !sufficientForReview && !input.inference.questionPlan
+    ? materialClarificationPlan(input.rawInput, materialEvidence)
+    : null;
+  const questionPlan = input.inference.questionPlan ?? fallbackPlan;
   const candidateResolves = input.inference.questionPlan?.resolves
     .filter((conceptId) => !blockedConcepts.has(conceptId)) ?? [];
-  const repeated = candidateResolves.length > 0 && (input.state?.questionHistory ?? []).some((question) => (
-    sameConceptSet(question.resolves, candidateResolves)
+  const fallbackResolves = fallbackPlan?.resolves.filter((conceptId) => !blockedConcepts.has(conceptId)) ?? [];
+  const resolves = input.inference.questionPlan ? candidateResolves : fallbackResolves;
+  const repeated = resolves.length > 0 && (input.state?.questionHistory ?? []).some((question) => (
+    sameConceptSet(question.resolves, resolves)
   ));
   const unsafeQuestion = input.inference.questionPlan
     ? !questionGroundedForBusiness(
@@ -342,35 +362,42 @@ function applyDeterministicPolicy(input: {
       input.state,
     )
     : false;
-  const canAsk = Boolean(input.inference.questionPlan)
-    && candidateResolves.length > 0
+  const canAsk = Boolean(questionPlan)
+    && resolves.length > 0
     && !repeated
     && !unsafeQuestion
     && currentBudget.used < limit;
-  const emittedQuestion = canAsk && input.inference.questionPlan ? {
-    id: `e1-q-${input.nextVersion}-${canonicalContextHash(candidateResolves).slice(0, 12)}`,
+  const emittedQuestion = canAsk && questionPlan ? {
+    id: `e1-q-${input.nextVersion}-${canonicalContextHash(resolves).slice(0, 12)}`,
     recap: groundedRecap(facts, dispositions, input.rawInput),
-    question: input.inference.questionPlan.question,
-    reasonToAsk: input.inference.questionPlan.reasonToAsk,
-    resolves: [...new Set(candidateResolves)],
+    question: questionPlan.question,
+    reasonToAsk: questionPlan.reasonToAsk,
+    resolves: [...new Set(resolves)],
   } : null;
   const questionBudget = { limit, used: currentBudget.used + (emittedQuestion ? 1 : 0) };
-  const sufficientForReview = hasSufficientEvidenceForHumanReview(input.state, facts);
+  const synthesis = input.inference.synthesis ?? null;
+  const synthesisGrounded = synthesis ? synthesis.evidenceConceptIds.every((conceptId) => (
+    [...(input.state?.factLedger ?? []), ...facts]
+      .some((fact) => fact.status !== 'retracted' && fact.conceptId === conceptId)
+  )) : false;
   const convergence = emittedQuestion ? {
     status: 'question_required' as const,
     reason: input.inference.reason,
-  } : input.inference.readyForHumanReview && sufficientForReview ? {
+    synthesis: null,
+  } : input.inference.readyForHumanReview && sufficientForReview && synthesisGrounded ? {
     status: 'ready_for_human_review' as const,
     reason: input.inference.reason,
+    synthesis,
   } : {
     status: 'budget_checkpoint' as const,
     reason: unsafeQuestion
       ? 'La pregunta propuesta no superó el guardrail de proporcionalidad y no invención.'
       : input.inference.readyForHumanReview && !sufficientForReview
       ? 'La salida no reúne todavía evidencia suficiente de situación y dirección para revisión humana.'
-      : candidateResolves.length === 0 || repeated
+      : resolves.length === 0 || repeated
       ? 'La pregunta propuesta repetía o reabría conceptos ya tratados; se requiere revisión humana.'
       : 'Se alcanzó el presupuesto de preguntas configurado.',
+    synthesis: null,
   };
   return { facts, hypotheses, dispositions, answeredGaps, emittedQuestion, convergence, questionBudget };
 }
@@ -512,18 +539,37 @@ function questionGroundedForBusiness(
   return (proposed.match(/\b\d+(?:[.,]\d+)?\b/g) ?? []).every((number) => rawNumbers.has(number));
 }
 
-function hasSufficientEvidenceForHumanReview(
+function materialEvidenceStatus(
   state: SemanticStateDto | null,
   facts: SemanticInference['facts'],
-): boolean {
+) {
   const resolved = new Set([
     ...(state?.factLedger ?? []).filter((fact) => fact.status !== 'retracted').map((fact) => fact.conceptId),
     ...facts.filter((fact) => fact.status !== 'retracted').map((fact) => fact.conceptId),
   ]);
-  const hasAnchor = ['situation', 'opportunity', 'decision', 'problem'].some((concept) => resolved.has(concept));
-  const hasDirection = ['area', 'stakeholder', 'desired_outcome', 'objective', 'direction']
+  const hasAnchor = ['situation', 'opportunity', 'problem', 'need', 'existing_work', 'initiative', 'business_signal']
     .some((concept) => resolved.has(concept));
-  return hasAnchor && hasDirection;
+  const hasDirection = ['desired_outcome', 'objective', 'direction', 'decision_to_enable', 'concrete_decision', 'intention']
+    .some((concept) => resolved.has(concept));
+  return { hasAnchor, hasDirection };
+}
+
+function materialClarificationPlan(rawInput: string, evidence: { hasAnchor: boolean; hasDirection: boolean }) {
+  const committee = /\b(comit[eé]|portafolio|decisiones?)\b/i.test(rawInput);
+  if (evidence.hasAnchor && !evidence.hasDirection) {
+    return {
+      question: '¿Qué decisión o cambio concreto te gustaría poder orientar a partir de esta situación?',
+      reasonToAsk: 'La situación está descrita, pero falta la dirección que permitirá convertirla en un objetivo provisional.',
+      resolves: ['decision_to_enable'],
+    };
+  }
+  return {
+    question: committee
+      ? '¿Qué trabajo, problema u oportunidad debe quedar claro y qué decisión concreta debería poder tomar el comité?'
+      : '¿Qué situación, problema u oportunidad concreta quieres abordar y qué te gustaría poder decidir después?',
+    reasonToAsk: 'Esta información cambia la interpretación del punto de partida y evita cerrar E1 con una intención genérica.',
+    resolves: ['material_subject', 'decision_to_enable'],
+  };
 }
 
 async function withDeadline<T>(operation: Promise<T>, timeoutMs: number): Promise<T> {

@@ -59,6 +59,15 @@ export const portfolioBootstrapSemanticQuestionSchema = z.object({
   resolves: z.array(conceptIdSchema).min(1).max(20),
 }).strict();
 
+export const portfolioBootstrapLandingSynthesisSchema = z.object({
+  summary: z.string().trim().min(1).max(2_000),
+  situation: z.string().trim().min(1).max(1_000),
+  intention: z.string().trim().min(1).max(1_000),
+  mainUncertainty: z.string().trim().min(1).max(1_000),
+  directionForE2: z.string().trim().min(1).max(1_000),
+  evidenceConceptIds: z.array(conceptIdSchema).min(1).max(50),
+}).strict();
+
 export const portfolioBootstrapSemanticConvergenceSchema = z.object({
   status: z.enum([
     'question_required',
@@ -69,6 +78,7 @@ export const portfolioBootstrapSemanticConvergenceSchema = z.object({
     'safety_stop',
   ]),
   reason: z.string().trim().min(1).max(2_000),
+  synthesis: portfolioBootstrapLandingSynthesisSchema.nullable().optional(),
 }).strict();
 
 export const portfolioBootstrapSemanticQuestionBudgetSchema = z.object({
@@ -183,6 +193,7 @@ export type PortfolioBootstrapSemanticFact = z.infer<typeof portfolioBootstrapSe
 export type PortfolioBootstrapSemanticHypothesis = z.infer<typeof portfolioBootstrapSemanticHypothesisSchema>;
 export type PortfolioBootstrapSemanticDisposition = z.infer<typeof portfolioBootstrapSemanticDispositionSchema>;
 export type PortfolioBootstrapSemanticQuestion = z.infer<typeof portfolioBootstrapSemanticQuestionSchema>;
+export type PortfolioBootstrapLandingSynthesis = z.infer<typeof portfolioBootstrapLandingSynthesisSchema>;
 export type PortfolioBootstrapSemanticConvergence = z.infer<typeof portfolioBootstrapSemanticConvergenceSchema>;
 export type PortfolioBootstrapSemanticQuestionBudget = z.infer<typeof portfolioBootstrapSemanticQuestionBudgetSchema>;
 

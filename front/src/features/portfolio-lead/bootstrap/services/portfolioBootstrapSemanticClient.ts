@@ -51,6 +51,14 @@ export type PortfolioBootstrapSemanticConvergence = {
     | 'provider_retryable_failure'
     | 'safety_stop';
   reason: string;
+  synthesis?: {
+    summary: string;
+    situation: string;
+    intention: string;
+    mainUncertainty: string;
+    directionForE2: string;
+    evidenceConceptIds: string[];
+  } | null;
 };
 
 export type PortfolioBootstrapSemanticQuestionBudget = { limit: number | null; used: number };
