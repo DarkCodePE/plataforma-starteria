@@ -656,6 +656,38 @@ Esta entrada actualiza el estado operativo de E1 sin reescribir los registros hi
 
 ---
 
+## Slice PORTFOLIO_BOOTSTRAP_E1_PILOT_GATE (HU-E1-PILOT-GATE)
+
+**Estado:** PR #316 abierto, revisión independiente aprobada y CI pendiente; no fusionado, no desplegado y no activado.
+
+```text
+slice_id: PORTFOLIO_BOOTSTRAP_E1_PILOT_GATE_HU_E1_PILOT_GATE
+authority: HU-E1-PILOT-GATE; HU-E1-V1; experiencia E1 congelada integrada por PR #314
+semantic_owner: Portfolio Bootstrap E1
+logic_status: ACTIVE_V2_SLICE
+implementation_status: PR_316_OPEN_CI_PENDING
+visual_status: UNCHANGED_FROZEN_E1
+authorization_rule: semantic E1 is enabled iff SEMANTIC_E1_ENABLED=true AND the owned session organization ID is in SEMANTIC_E1_PILOT_ORGANIZATION_ALLOWLIST
+authorization_order: authenticate; require session ownership; authorize portfolio read/write; evaluate organization gate; only then read semantic state or invoke inference
+read_behavior_denied: HTTP success with enabled=false, state=null and turns=[] so guided E1 remains active and pilot membership/state are not exposed
+write_behavior_denied: generic PORTFOLIO_SEMANTIC_DISABLED before model/provider execution
+configuration: protected comma-separated organization IDs in the production environment; empty allowlist denies all; no table or migration
+deployment: CD synchronizes protected allowlist but always publishes SEMANTIC_E1_ENABLED=false
+activation: separate workflow_dispatch on main, production environment approval, exact confirmation and starteria-production concurrency
+rollback: same governed workflow sets SEMANTIC_E1_ENABLED=false, waits for backend rollout and verifies the public release flag
+preserves: frozen E1 UX/UI; ContextReview; CAS; idempotency; persistence; confirmed E2 snapshot; existing guided fallback
+scope_excluded: E2-E7; Core; Prisma; migrations; reasoning/synthesis; providers/models/credentials; payments; automatic merge/CD; global activation
+tests_required: flag off; empty allowlist; pilot GET/POST; different organization; foreign owner/no permission; kill-switch disable; E1 regression and V2 controls
+local_evidence: schema/service/router 49/49; PostgreSQL semantic integration 12/12; frozen/guided E1 frontend regression 54/54; backend suite, backend typecheck, lint, build and shell contracts PASS
+independent_review: round 2 APPROVED; no blocking or minor findings; real GitHub Actions/environment/cluster deliberately not executed
+runbook: docs/operations/SEMANTIC_E1_PILOT_GATE_RUNBOOK_v1.0.md
+migration_status: PARTIAL — gate prepared, production activation remains explicitly unexecuted
+```
+
+Este gate modifica únicamente autorización y operación del runtime ya existente. No cambia el contrato HTTP, la semántica congelada ni la autoridad canónica de ContextReview.
+
+---
+
 ## Slice PORTFOLIO_E2_LEDGER_CONVERSATION_UI (KAN-253 B3)
 
 **Registro:** 2026-11-09, PR de UX separado; base main@82f06c1cf7a8fb30d5fa6c4ed6a5bcb583c32dbb. No desplegado.

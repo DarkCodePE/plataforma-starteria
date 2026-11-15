@@ -2,6 +2,7 @@ import express, { type RequestHandler } from 'express';
 import request from 'supertest';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { permissionsForRoles } from '../../../shared/authz/permissions';
+import { AppError } from '../../../shared/errors/AppError';
 import { errorHandler } from '../../../shared/errors/error-handler';
 import { buildPortfolioBootstrapRouter } from '../portfolio-bootstrap.router';
 
@@ -174,8 +175,12 @@ describe('portfolio-bootstrap router', () => {
     }));
   });
 
-  it('keeps semantic inference fail-closed while the rollout flag is off', async () => {
-    vi.stubEnv('SEMANTIC_E1_ENABLED', 'false');
+  it('returns the server-side semantic gate denial without exposing pilot configuration', async () => {
+    semanticOrchestrator.processTurn.mockRejectedValueOnce(new AppError(
+      503,
+      'La interpretación semántica E1 no está habilitada.',
+      'PORTFOLIO_SEMANTIC_DISABLED',
+    ));
 
     await request(makeApp())
       .post('/api/v1/portfolio-bootstrap/sessions/bs-1/context/semantic/turns')
@@ -183,7 +188,7 @@ describe('portfolio-bootstrap router', () => {
       .send({ expectedVersion: 0, inputText: 'Texto suficiente.', answeredQuestionId: null })
       .expect(503);
 
-    expect(semanticOrchestrator.processTurn).not.toHaveBeenCalled();
+    expect(semanticOrchestrator.processTurn).toHaveBeenCalledOnce();
   });
 
   it('requires idempotency and rejects client-supplied semantic facts', async () => {

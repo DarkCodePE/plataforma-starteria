@@ -10,7 +10,7 @@ import {
 } from './portfolio-bootstrap-context.service';
 import {
   portfolioBootstrapSemanticTurnInputSchema,
-  semanticE1Enabled,
+  semanticE1EnabledForOrganization,
   type PortfolioBootstrapSemanticConvergence,
   type PortfolioBootstrapSemanticDisposition,
   type PortfolioBootstrapSemanticFact,
@@ -187,12 +187,14 @@ export class PortfolioBootstrapSemanticService {
     const db = this.prisma as any;
     const session = await this.requireOwnedSession(db, input.sessionId, input.authenticatedUserId);
     await this.authorize(db, session, input.authenticatedUserId, input.permissions, 'portfolio:read');
+    const enabled = semanticE1EnabledForOrganization(session.organizationId);
+    if (!enabled) return { enabled: false, state: null, turns: [] };
     const state = await db.portfolioBootstrapSemanticState.findUnique({
       where: { bootstrapSessionId: session.id },
       include: { turns: { orderBy: { semanticVersion: 'asc' } } },
     });
     return {
-      enabled: semanticE1Enabled(),
+      enabled: true,
       state: state ? this.stateDto(state) : null,
       turns: state ? state.turns.map((turn: any) => this.turnDto(turn)) : [],
     };
@@ -206,12 +208,21 @@ export class PortfolioBootstrapSemanticService {
     state: SemanticStateDto | null;
     confirmedContext: { version: number; context: unknown; provenance: unknown } | null;
   }> {
-    const snapshot = await this.getState(input);
-    const review = await (this.prisma as any).portfolioBootstrapContextReview.findUnique({
+    const db = this.prisma as any;
+    const session = await this.requireOwnedSession(db, input.sessionId, input.authenticatedUserId);
+    await this.authorize(db, session, input.authenticatedUserId, input.permissions, 'portfolio:write');
+    if (!semanticE1EnabledForOrganization(session.organizationId)) {
+      throw new AppError(503, 'La interpretación semántica E1 no está habilitada.', 'PORTFOLIO_SEMANTIC_DISABLED');
+    }
+    const state = await db.portfolioBootstrapSemanticState.findUnique({
+      where: { bootstrapSessionId: session.id },
+      include: { turns: { orderBy: { semanticVersion: 'asc' } } },
+    });
+    const review = await db.portfolioBootstrapContextReview.findUnique({
       where: { bootstrapSessionId: input.sessionId },
       select: { id: true },
     });
-    const confirmedVersion = review ? await (this.prisma as any).portfolioBootstrapContextReviewVersion.findFirst({
+    const confirmedVersion = review ? await db.portfolioBootstrapContextReviewVersion.findFirst({
       where: { reviewId: review.id, action: 'confirmed' },
       orderBy: { version: 'desc' },
       select: { version: true, snapshotJson: true },
@@ -220,7 +231,7 @@ export class PortfolioBootstrapSemanticService {
       status?: unknown; context?: unknown; provenance?: unknown;
     } | null;
     return {
-      state: snapshot.state,
+      state: state ? this.stateDto(state) : null,
       confirmedContext: confirmedVersion && confirmedSnapshot?.status === 'confirmed' ? {
         version: confirmedVersion.version,
         context: confirmedSnapshot.context,

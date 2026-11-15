@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   portfolioBootstrapSemanticTurnInputSchema,
   semanticE1Enabled,
+  semanticE1EnabledForOrganization,
 } from '../portfolio-bootstrap-semantic.schemas';
 
 const validTurn = () => ({
@@ -110,5 +111,28 @@ describe('Portfolio Bootstrap E1 semantic contracts', () => {
     expect(semanticE1Enabled({})).toBe(false);
     expect(semanticE1Enabled({ SEMANTIC_E1_ENABLED: 'false' })).toBe(false);
     expect(semanticE1Enabled({ SEMANTIC_E1_ENABLED: 'true' })).toBe(true);
+  });
+
+  it('requires both the global kill switch and an exact organization allowlist match', () => {
+    expect(semanticE1EnabledForOrganization('org-pilot', {
+      SEMANTIC_E1_ENABLED: 'false',
+      SEMANTIC_E1_PILOT_ORGANIZATION_ALLOWLIST: 'org-pilot',
+    })).toBe(false);
+    expect(semanticE1EnabledForOrganization('org-pilot', {
+      SEMANTIC_E1_ENABLED: 'true',
+      SEMANTIC_E1_PILOT_ORGANIZATION_ALLOWLIST: '',
+    })).toBe(false);
+    expect(semanticE1EnabledForOrganization('org-pilot', {
+      SEMANTIC_E1_ENABLED: 'true',
+      SEMANTIC_E1_PILOT_ORGANIZATION_ALLOWLIST: ' org-other, org-pilot ,org-pilot',
+    })).toBe(true);
+    expect(semanticE1EnabledForOrganization('org-other', {
+      SEMANTIC_E1_ENABLED: 'true',
+      SEMANTIC_E1_PILOT_ORGANIZATION_ALLOWLIST: 'org-pilot',
+    })).toBe(false);
+    expect(semanticE1EnabledForOrganization(null, {
+      SEMANTIC_E1_ENABLED: 'true',
+      SEMANTIC_E1_PILOT_ORGANIZATION_ALLOWLIST: 'org-pilot',
+    })).toBe(false);
   });
 });

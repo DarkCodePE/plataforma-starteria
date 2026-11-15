@@ -1,0 +1,109 @@
+name: Semantic E1 Pilot Gate
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: 'Activate or immediately deactivate semantic E1 for the protected organization allowlist.'
+        required: true
+        type: choice
+        options:
+          - deactivate
+          - activate
+      confirmation:
+        description: 'Enter ACTIVATE_E1_PILOT or DEACTIVATE_E1_PILOT to confirm.'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: starteria-production
+  cancel-in-progress: false
+
+env:
+  NAMESPACE: starteria
+
+jobs:
+  gate:
+    name: Apply governed E1 pilot gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: production
+    env:
+      ACTION: ${{ inputs.action }}
+      CONFIRMATION: ${{ inputs.confirmation }}
+    steps:
+      - name: Validate governed request
+        run: |
+          set -euo pipefail
+          [[ "$GITHUB_REF" == refs/heads/main ]] || { echo '::error::Pilot gate may only run from main'; exit 1; }
+          case "$ACTION" in
+            activate) expected=ACTIVATE_E1_PILOT ;;
+            deactivate) expected=DEACTIVATE_E1_PILOT ;;
+            *) echo '::error::Unsupported pilot gate action'; exit 1 ;;
+          esac
+          [[ "$CONFIRMATION" == "$expected" ]] || { echo '::error::Confirmation does not match the selected action'; exit 1; }
+
+      - uses: azure/setup-kubectl@v4
+        with:
+          version: v1.30.0
+
+      - name: Fetch kubeconfig from Rackspace Spot
+        id: kubeconfig
+        env:
+          RACKSPACE_REFRESH_TOKEN: ${{ secrets.RACKSPACE_REFRESH_TOKEN }}
+          RACKSPACE_ORG_NAME: ${{ secrets.RACKSPACE_ORG_NAME }}
+          RACKSPACE_CLOUDSPACE_NAME: ${{ secrets.RACKSPACE_CLOUDSPACE_NAME }}
+        run: |
+          set -euo pipefail
+          payload=$(jq -nc --arg org "$RACKSPACE_ORG_NAME" --arg cs "$RACKSPACE_CLOUDSPACE_NAME" --arg rt "$RACKSPACE_REFRESH_TOKEN" '{organization_name:$org,cloudspace_name:$cs,refresh_token:$rt}')
+          response="$RUNNER_TEMP/spot-response.json"
+          status=$(curl --silent --show-error --output "$response" --write-out '%{http_code}' --request POST 'https://spot.rackspace.com/apis/auth.ngpc.rxt.io/v1/generate-kubeconfig' --header 'Content-Type: application/json' --data "$payload")
+          [[ "$status" == 200 ]] || { echo "::error::Rackspace kubeconfig request failed (HTTP $status)"; exit 1; }
+          mkdir -p "$RUNNER_TEMP/kube"
+          jq -er '.data.kubeconfig' "$response" > "$RUNNER_TEMP/kube/config"
+          chmod 600 "$RUNNER_TEMP/kube/config"
+          rm -f "$response"
+          echo "KUBECONFIG=$RUNNER_TEMP/kube/config" >> "$GITHUB_ENV"
+
+      - name: Validate protected pilot scope
+        if: inputs.action == 'activate'
+        run: |
+          set -euo pipefail
+          encoded=$(kubectl -n "$NAMESPACE" get secret starteria-backend-secrets -o json | jq -er '.data.SEMANTIC_E1_PILOT_ORGANIZATION_ALLOWLIST // empty')
+          allowlist=$(printf '%s' "$encoded" | base64 --decode)
+          [[ -n "${allowlist//[[:space:],]/}" ]] || { echo '::error::Protected E1 organization allowlist is empty'; exit 1; }
+          unset encoded allowlist
+
+      - name: Apply kill switch and verify rollout
+        id: apply
+        run: |
+          set -euo pipefail
+          before_image=$(kubectl -n "$NAMESPACE" get deployment/starteria-backend -o "jsonpath={.spec.template.spec.containers[?(@.name=='backend')].image}")
+          [[ -n "$before_image" ]] || { echo '::error::Backend image not found'; exit 1; }
+          if [[ "$ACTION" == activate ]]; then desired=true; else desired=false; fi
+          kubectl -n "$NAMESPACE" set env deployment/starteria-backend SEMANTIC_E1_ENABLED="$desired"
+          kubectl -n "$NAMESPACE" rollout status deployment/starteria-backend --timeout=5m
+          after_image=$(kubectl -n "$NAMESPACE" get deployment/starteria-backend -o "jsonpath={.spec.template.spec.containers[?(@.name=='backend')].image}")
+          [[ "$after_image" == "$before_image" ]] || { echo '::error::Pilot gate must not change the backend image'; exit 1; }
+
+          for attempt in {1..12}; do
+            actual=$(curl --silent --show-error --fail https://starter-ia.com/api/health | jq -er '.release.flags.SEMANTIC_E1_ENABLED' 2>/dev/null || true)
+            [[ "$actual" == "$desired" ]] && exit 0
+            sleep 5
+          done
+          echo '::error::Public health metadata does not report the requested E1 kill-switch state'
+          exit 1
+
+      - name: Fail closed after an unsuccessful activation
+        if: always() && inputs.action == 'activate' && steps.kubeconfig.outcome == 'success' && steps.apply.outcome != 'success'
+        run: |
+          set -euo pipefail
+          kubectl -n "$NAMESPACE" set env deployment/starteria-backend SEMANTIC_E1_ENABLED=false
+          kubectl -n "$NAMESPACE" rollout status deployment/starteria-backend --timeout=5m
+
+      - name: Remove kubeconfig
+        if: always()
+        run: rm -rf "$RUNNER_TEMP/kube"

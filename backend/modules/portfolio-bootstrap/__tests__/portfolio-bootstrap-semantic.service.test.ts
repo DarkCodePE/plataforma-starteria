@@ -1,7 +1,9 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { permissionsForRoles } from '../../../shared/authz/permissions';
 import {
   applySemanticTurnProjection,
   emptySemanticStateProjection,
+  PortfolioBootstrapSemanticService,
 } from '../portfolio-bootstrap-semantic.service';
 
 describe('Portfolio Bootstrap E1 semantic projection', () => {
@@ -146,6 +148,63 @@ describe('Portfolio Bootstrap E1 semantic projection', () => {
   });
 });
 
+describe('Portfolio Bootstrap E1 pilot authorization', () => {
+  afterEach(() => vi.unstubAllEnvs());
+
+  it.each([
+    ['global switch off', 'false', 'org-pilot'],
+    ['empty allowlist', 'true', ''],
+    ['different organization', 'true', 'org-other'],
+  ])('hides semantic state when %s', async (_case, flag, allowlist) => {
+    vi.stubEnv('SEMANTIC_E1_ENABLED', flag);
+    vi.stubEnv('SEMANTIC_E1_PILOT_ORGANIZATION_ALLOWLIST', allowlist);
+    const prisma = fakeGatePrisma('org-pilot');
+    const service = new PortfolioBootstrapSemanticService(prisma as any);
+
+    await expect(service.getState(gateInput())).resolves.toEqual({
+      enabled: false,
+      state: null,
+      turns: [],
+    });
+    expect(prisma.portfolioBootstrapSession.findFirst).toHaveBeenCalledOnce();
+    expect(prisma.portfolioBootstrapSemanticState.findUnique).not.toHaveBeenCalled();
+  });
+
+  it('enables GET and inference only for an owned, permitted session in the allowlist', async () => {
+    vi.stubEnv('SEMANTIC_E1_ENABLED', 'true');
+    vi.stubEnv('SEMANTIC_E1_PILOT_ORGANIZATION_ALLOWLIST', 'org-pilot');
+    const prisma = fakeGatePrisma('org-pilot');
+    const service = new PortfolioBootstrapSemanticService(prisma as any);
+
+    await expect(service.getState(gateInput())).resolves.toEqual({
+      enabled: true,
+      state: null,
+      turns: [],
+    });
+    await expect(service.getInferenceContext(gateInput())).resolves.toEqual({
+      state: null,
+      confirmedContext: null,
+    });
+    expect(prisma.portfolioBootstrapSemanticState.findUnique).toHaveBeenCalledTimes(2);
+  });
+
+  it('blocks inference after the kill switch is disabled without reaching semantic state', async () => {
+    vi.stubEnv('SEMANTIC_E1_ENABLED', 'true');
+    vi.stubEnv('SEMANTIC_E1_PILOT_ORGANIZATION_ALLOWLIST', 'org-pilot');
+    const prisma = fakeGatePrisma('org-pilot');
+    const service = new PortfolioBootstrapSemanticService(prisma as any);
+    await expect(service.getInferenceContext(gateInput())).resolves.toMatchObject({ state: null });
+
+    prisma.portfolioBootstrapSemanticState.findUnique.mockClear();
+    vi.stubEnv('SEMANTIC_E1_ENABLED', 'false');
+    await expect(service.getInferenceContext(gateInput())).rejects.toMatchObject({
+      statusCode: 503,
+      code: 'PORTFOLIO_SEMANTIC_DISABLED',
+    });
+    expect(prisma.portfolioBootstrapSemanticState.findUnique).not.toHaveBeenCalled();
+  });
+});
+
 function fact(conceptId: string, value: string) {
   return {
     conceptId, value, provenance: 'user_declared' as const,
@@ -158,5 +217,34 @@ function question(resolve: string) {
   return {
     id: `question-${resolve}`, recap: 'Recap factual', question: `Question about ${resolve}?`,
     reasonToAsk: 'It can change E2 framing.', resolves: [resolve],
+  };
+}
+
+function gateInput() {
+  return {
+    sessionId: 'session-pilot',
+    authenticatedUserId: 'user-pilot',
+    permissions: permissionsForRoles(['portfolio_lead']),
+  };
+}
+
+function fakeGatePrisma(organizationId: string) {
+  return {
+    portfolioBootstrapSession: {
+      findFirst: vi.fn().mockResolvedValue({
+        id: 'session-pilot',
+        userId: 'user-pilot',
+        organizationId,
+      }),
+    },
+    portfolioBootstrapSemanticState: {
+      findUnique: vi.fn().mockResolvedValue(null),
+    },
+    portfolioBootstrapContextReview: {
+      findUnique: vi.fn().mockResolvedValue(null),
+    },
+    portfolioBootstrapContextReviewVersion: {
+      findFirst: vi.fn().mockResolvedValue(null),
+    },
   };
 }
