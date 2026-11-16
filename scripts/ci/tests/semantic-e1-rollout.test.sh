@@ -32,6 +32,7 @@ fi
 
 grep -Fq "SEMANTIC_E1_ENABLED: \${{ vars.SEMANTIC_E1_ENABLED || 'false' }}" "$cd_workflow"
 grep -q '^  semantic-e1-provider-preflight:$' "$cd_workflow"
+grep -Fq "SEMANTIC_E1_MAX_OUTPUT_TOKENS: '1200'" "$cd_workflow"
 grep -q -- '--semantic-e1-enabled "$SEMANTIC_E1_ENABLED"' "$cd_workflow"
 grep -q 'backend/scripts/semantic-e1-live-smoke.ts' "$cd_workflow"
 grep -Fq 'NODE_PATH: ${{ github.workspace }}/front/node_modules' "$cd_workflow"
