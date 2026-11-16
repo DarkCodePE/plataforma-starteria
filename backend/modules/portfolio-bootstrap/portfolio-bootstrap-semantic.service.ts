@@ -11,7 +11,7 @@ import {
 import { assertPortfolioBootstrapSessionActive } from './portfolio-bootstrap-session-state';
 import {
   portfolioBootstrapSemanticTurnInputSchema,
-  semanticE1EnabledForOrganization,
+  semanticE1Enabled,
   type PortfolioBootstrapSemanticConvergence,
   type PortfolioBootstrapSemanticDisposition,
   type PortfolioBootstrapSemanticFact,
@@ -188,7 +188,7 @@ export class PortfolioBootstrapSemanticService {
     const db = this.prisma as any;
     const session = await this.requireOwnedSession(db, input.sessionId, input.authenticatedUserId);
     await this.authorize(db, session, input.authenticatedUserId, input.permissions, 'portfolio:read');
-    const enabled = semanticE1EnabledForOrganization(session.organizationId);
+    const enabled = semanticE1Enabled();
     if (!enabled) return { enabled: false, state: null, turns: [] };
     const state = await db.portfolioBootstrapSemanticState.findUnique({
       where: { bootstrapSessionId: session.id },
@@ -212,7 +212,7 @@ export class PortfolioBootstrapSemanticService {
     const db = this.prisma as any;
     const session = await this.requireOwnedSession(db, input.sessionId, input.authenticatedUserId);
     await this.authorize(db, session, input.authenticatedUserId, input.permissions, 'portfolio:write');
-    if (!semanticE1EnabledForOrganization(session.organizationId)) {
+    if (!semanticE1Enabled()) {
       throw new AppError(503, 'La interpretación semántica E1 no está habilitada.', 'PORTFOLIO_SEMANTIC_DISABLED');
     }
     const state = await db.portfolioBootstrapSemanticState.findUnique({

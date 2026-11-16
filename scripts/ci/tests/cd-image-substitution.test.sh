@@ -92,6 +92,7 @@ run_image_application() {
     NAMESPACE=starteria \
     ROLLOUT_TIMEOUT=1s \
     SOURCE_SHA=82509bb6fb5611747be92ef6f25e86b4f94f2578 \
+    SEMANTIC_E1_ENABLED=false \
     BACKEND_DIGEST="$backend" \
     FRONTEND_DIGEST="$frontend_digest" \
     AI_SERVICE_DIGEST="$ai_digest" \

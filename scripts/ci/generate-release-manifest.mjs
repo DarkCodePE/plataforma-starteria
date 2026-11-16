@@ -116,7 +116,7 @@ const manifest = {
     },
     backend: {
       PORTFOLIO_ENTRY_RUNTIME_MODE: 'live',
-      SEMANTIC_E1_ENABLED: false,
+      SEMANTIC_E1_ENABLED: bool(values['semantic-e1-enabled'] ?? 'false', 'semantic-e1-enabled'),
       PORTFOLIO_GOAL_E2_LEDGER_ENABLED: false,
       PORTFOLIO_GOAL_E2_MULTI_TURN_ENABLED: false,
       PORTFOLIO_GOAL_E2_CHECKPOINT_ENABLED: false,
@@ -131,6 +131,7 @@ const manifest = {
     testOverrides: {
       HANDOFF_EMAIL_TRANSPORT_MODE: 'sandbox',
       HANDOFF_EMAIL_PILOT_ENABLED: false,
+      SEMANTIC_E1_ENABLED: false,
       AUTH_DISABLE_WAITLIST: true,
       AUTH_RATE_LIMIT_DISABLED: true,
       reason: 'Mailpit transport evidence only; no productive email is sent by the parity gate.',

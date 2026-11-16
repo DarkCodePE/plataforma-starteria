@@ -148,16 +148,11 @@ describe('Portfolio Bootstrap E1 semantic projection', () => {
   });
 });
 
-describe('Portfolio Bootstrap E1 pilot authorization', () => {
+describe('Portfolio Bootstrap E1 capability authorization', () => {
   afterEach(() => vi.unstubAllEnvs());
 
-  it.each([
-    ['global switch off', 'false', 'org-pilot'],
-    ['empty allowlist', 'true', ''],
-    ['different organization', 'true', 'org-other'],
-  ])('hides semantic state when %s', async (_case, flag, allowlist) => {
-    vi.stubEnv('SEMANTIC_E1_ENABLED', flag);
-    vi.stubEnv('SEMANTIC_E1_PILOT_ORGANIZATION_ALLOWLIST', allowlist);
+  it('hides semantic state when the global kill switch is off', async () => {
+    vi.stubEnv('SEMANTIC_E1_ENABLED', 'false');
     const prisma = fakeGatePrisma('org-pilot');
     const service = new PortfolioBootstrapSemanticService(prisma as any);
 
@@ -170,9 +165,8 @@ describe('Portfolio Bootstrap E1 pilot authorization', () => {
     expect(prisma.portfolioBootstrapSemanticState.findUnique).not.toHaveBeenCalled();
   });
 
-  it('enables GET and inference only for an owned, permitted session in the allowlist', async () => {
+  it('enables GET and inference for an owned, permitted session without an organization allowlist', async () => {
     vi.stubEnv('SEMANTIC_E1_ENABLED', 'true');
-    vi.stubEnv('SEMANTIC_E1_PILOT_ORGANIZATION_ALLOWLIST', 'org-pilot');
     const prisma = fakeGatePrisma('org-pilot');
     const service = new PortfolioBootstrapSemanticService(prisma as any);
 
@@ -190,7 +184,6 @@ describe('Portfolio Bootstrap E1 pilot authorization', () => {
 
   it('blocks inference after the kill switch is disabled without reaching semantic state', async () => {
     vi.stubEnv('SEMANTIC_E1_ENABLED', 'true');
-    vi.stubEnv('SEMANTIC_E1_PILOT_ORGANIZATION_ALLOWLIST', 'org-pilot');
     const prisma = fakeGatePrisma('org-pilot');
     const service = new PortfolioBootstrapSemanticService(prisma as any);
     await expect(service.getInferenceContext(gateInput())).resolves.toMatchObject({ state: null });

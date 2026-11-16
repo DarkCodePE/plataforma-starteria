@@ -621,6 +621,31 @@ petición ni por una configuración productiva y el flag continúa apagado fuera
 
 ---
 
+## Slice PORTFOLIO_LEAD_E1_SEMANTIC_GENERAL_ROLLOUT
+
+**Registrado:** 2026-11-16 sobre `main@8991ea4d896cf3af11dd5bd4afd039bf23c53df2`; PR #319 abierto, sin merge, CD ni activación.
+
+```text
+slice_id: PORTFOLIO_LEAD_E1_SEMANTIC_GENERAL_ROLLOUT
+authority: GOAL de integración definitiva E1 + HU-E1-V1 + KAN-242/244/245/246
+semantic_owner: Portfolio Bootstrap E1; ContextReview conserva autoridad canónica
+logic_status: ACTIVE_V2_SLICE
+implementation_status: PR_319_OPEN_CI_IN_PROGRESS
+route: /portfolio/inicio?bootstrapSessionId=…
+behavior: SEMANTIC_E1_ENABLED=true habilita E1 para sesiones propias con capacidades Portfolio; no existe gate por organización piloto
+authorization: autenticación, propiedad de sesión, organización persistida y portfolio:read/write existentes
+deployment: CD manual lee SEMANTIC_E1_ENABLED desde el environment production; valor ausente = false
+provider_gate: preflight real de bajo consumo antes de publicar true; adaptador determinista no acredita disponibilidad
+post_rollout_gate: smoke autenticado real; cualquier fallo desactiva el kill switch y falla el CD
+rollback: workflow manual de solo desactivación, protegido por production y sin cambio de imagen/datos
+preserves: orquestador/prompt #318, límites, timeout, retry, circuit breaker, UX E1, Core, Prisma y E2–E7
+excluded: nuevos proveedores/credenciales/pagos, rediseño, motor alternativo, activación fuera del CD normal
+quality_status: NOT_PRODUCT_ACCEPTED — requiere validación personal posterior de Producto
+evidence: pruebas focalizadas 48/48; integración PostgreSQL 12/12; suites backend/frontend, typecheck, lint, build y contratos de CD PASS; revisión independiente R2 APPROVED; CI de PR en curso
+```
+
+---
+
 ## Slice PORTFOLIO_BOOTSTRAP_E1_FROZEN_CONTEXT (HU-E1-V1)
 
 **Registro posmerge:** 2026-11-15, PR #314 fusionado en `main@6d32394f4b356aefdbe0478c208ea6141146248a`. No desplegado.
@@ -664,8 +689,8 @@ Esta entrada actualiza el estado operativo de E1 sin reescribir los registros hi
 slice_id: PORTFOLIO_BOOTSTRAP_E1_PILOT_GATE_HU_E1_PILOT_GATE
 authority: HU-E1-PILOT-GATE; HU-E1-V1; experiencia E1 congelada integrada por PR #314
 semantic_owner: Portfolio Bootstrap E1
-logic_status: ACTIVE_V2_SLICE
-implementation_status: PR_316_OPEN_CI_PENDING
+logic_status: HISTORICAL_SUPERSEDED
+implementation_status: MERGED_THEN_RETIRED_BY_GENERAL_ROLLOUT
 visual_status: UNCHANGED_FROZEN_E1
 authorization_rule: semantic E1 is enabled iff SEMANTIC_E1_ENABLED=true AND the owned session organization ID is in SEMANTIC_E1_PILOT_ORGANIZATION_ALLOWLIST
 authorization_order: authenticate; require session ownership; authorize portfolio read/write; evaluate organization gate; only then read semantic state or invoke inference
@@ -680,8 +705,8 @@ scope_excluded: E2-E7; Core; Prisma; migrations; reasoning/synthesis; providers/
 tests_required: flag off; empty allowlist; pilot GET/POST; different organization; foreign owner/no permission; kill-switch disable; E1 regression and V2 controls
 local_evidence: schema/service/router 49/49; PostgreSQL semantic integration 12/12; frozen/guided E1 frontend regression 54/54; backend suite, backend typecheck, lint, build and shell contracts PASS
 independent_review: round 2 APPROVED; no blocking or minor findings; real GitHub Actions/environment/cluster deliberately not executed
-runbook: docs/operations/SEMANTIC_E1_PILOT_GATE_RUNBOOK_v1.0.md
-migration_status: PARTIAL — gate prepared, production activation remains explicitly unexecuted
+runbook: retired; replacement docs/operations/SEMANTIC_E1_ROLLOUT_RUNBOOK_v1.0.md
+migration_status: SUPERSEDED — el gate piloto queda como evidencia histórica y no gobierna el runtime general
 ```
 
 Este gate modifica únicamente autorización y operación del runtime ya existente. No cambia el contrato HTTP, la semántica congelada ni la autoridad canónica de ContextReview.
