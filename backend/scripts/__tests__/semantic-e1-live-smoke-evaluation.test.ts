@@ -83,6 +83,57 @@ describe('Semantic E1 live-provider preflight evaluation', () => {
     expect(result.failedPredicates).toEqual([]);
   });
 
+  it('accepts a grounded material question while the main uncertainty is still open', () => {
+    const input = inputWithMainUncertaintyFact();
+    input.turn.facts = input.turn.facts.filter((fact) => fact.conceptId !== 'main_uncertainty');
+    input.turn.convergence = {
+      status: 'question_required',
+      reason: 'Falta aclarar qué valoran los clientes entre semana.',
+      synthesis: null,
+    };
+    input.turn.emittedQuestion = {
+      id: 'e1-q-1',
+      recap: 'El restaurante tiene capacidad disponible entre semana.',
+      question: '¿Qué limita hoy las ventas entre semana?',
+      reasonToAsk: 'La respuesta aclara la incertidumbre principal de crecimiento.',
+      resolves: ['main_uncertainty'],
+    };
+
+    const result = evaluateSemanticE1Preflight(input);
+    expect(result.passed).toBe(true);
+    expect(result.predicates.mainUncertainty).toBe(true);
+    expect(result.diagnostics.convergenceStatus).toBe('question_required');
+    expect(result.diagnostics.emittedQuestion).toBe(true);
+  });
+
+  it('does not accept an absent uncertainty without a material question', () => {
+    const input = inputWithMainUncertaintyFact();
+    input.turn.facts = input.turn.facts.filter((fact) => fact.conceptId !== 'main_uncertainty');
+    input.turn.convergence = { status: 'budget_checkpoint', reason: 'Sin evidencia material.', synthesis: null };
+
+    const result = evaluateSemanticE1Preflight(input);
+    expect(result.passed).toBe(false);
+    expect(result.failedPredicates).toContain('mainUncertainty');
+    expect(result.failedPredicates).toContain('hasNextStep');
+  });
+
+  it('does not treat a question outside question_required as proof of a material clarification', () => {
+    const input = inputWithMainUncertaintyFact();
+    input.turn.facts = input.turn.facts.filter((fact) => fact.conceptId !== 'main_uncertainty');
+    input.turn.convergence = { status: 'budget_checkpoint', reason: 'No concluyente.', synthesis: null };
+    input.turn.emittedQuestion = {
+      id: 'e1-q-2',
+      recap: 'Situación inicial.',
+      question: '¿Qué falta comprender?',
+      reasonToAsk: 'Aclaración.',
+      resolves: ['main_uncertainty'],
+    };
+
+    const result = evaluateSemanticE1Preflight(input);
+    expect(result.passed).toBe(false);
+    expect(result.failedPredicates).toContain('mainUncertainty');
+  });
+
   it.each<[SemanticE1PreflightPredicate, (input: SemanticE1PreflightInput) => void]>([
     ['processing', (input) => { input.processing = true; }],
     ['status', (input) => { input.turn.status = 'failed_retryable'; }],
