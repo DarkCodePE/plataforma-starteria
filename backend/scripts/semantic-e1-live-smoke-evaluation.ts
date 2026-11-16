@@ -54,10 +54,13 @@ export function evaluateSemanticE1Preflight(input: SemanticE1PreflightInput): Se
     tokenUsage: turn.execution.totalTokens > 0,
     facts: turn.facts.length > 0,
     startingPoint: turn.hypotheses.some((item) => item.hypothesisId.startsWith('starting_point.')),
+    // A material question is a valid E1 outcome before the main uncertainty is resolved.
+    // The orchestrator has already applied the question relevance and grounding guardrails.
     mainUncertainty: turn.hypotheses.some((item) => item.hypothesisId === 'main_uncertainty')
       || turn.facts.some((item) => (
         item.conceptId === 'main_uncertainty' || item.conceptId === 'uncertainty'
-      )),
+      ))
+      || (turn.convergence.status === 'question_required' && Boolean(turn.emittedQuestion)),
     hasNextStep: Boolean(turn.emittedQuestion) || Boolean(turn.convergence.synthesis),
   };
   const failedPredicates = semanticE1PreflightPredicates.filter((predicate) => !predicates[predicate]);
