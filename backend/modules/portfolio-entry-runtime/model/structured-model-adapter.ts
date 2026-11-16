@@ -7,6 +7,7 @@ export type StructuredModelGenerateInput<T> = {
   outputSchema: ZodType<T>;
   providerJsonSchema?: unknown;
   preserveProviderNulls?: boolean;
+  requireProviderParameters?: boolean;
   metadata: LiveCandidateMetadata;
   limits?: {
     maxOutputTokens?: number;

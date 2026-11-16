@@ -83,6 +83,9 @@ export class FetchStructuredModelAdapter implements StructuredModelAdapter {
             reasoning: { effort: this.config.reasoningEffort },
             provider: { require_parameters: true },
           } : {}),
+          ...(input.requireProviderParameters && isOpenRouterEndpoint(this.config.baseUrl) ? {
+            provider: { require_parameters: true },
+          } : {}),
           ...(this.config.temperature !== undefined ? { temperature: this.config.temperature } : {}),
           ...(input.limits?.maxOutputTokens !== undefined ? { max_output_tokens: input.limits.maxOutputTokens } : {}),
           input: [
@@ -191,6 +194,14 @@ function safeEndpoint(baseUrl: string): string {
     return endpoint.origin + endpoint.pathname;
   } catch {
     return 'invalid-url';
+  }
+}
+
+function isOpenRouterEndpoint(baseUrl: string): boolean {
+  try {
+    return new URL(baseUrl).hostname.toLowerCase() === 'openrouter.ai';
+  } catch {
+    return false;
   }
 }
 
