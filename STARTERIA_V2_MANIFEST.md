@@ -623,14 +623,14 @@ petición ni por una configuración productiva y el flag continúa apagado fuera
 
 ## Slice PORTFOLIO_LEAD_E1_SEMANTIC_GENERAL_ROLLOUT
 
-**Registrado:** 2026-11-16 sobre `main@8991ea4d896cf3af11dd5bd4afd039bf23c53df2`; implementación local pendiente de PR/CI.
+**Registrado:** 2026-11-16 sobre `main@8991ea4d896cf3af11dd5bd4afd039bf23c53df2`; PR #319 abierto, sin merge, CD ni activación.
 
 ```text
 slice_id: PORTFOLIO_LEAD_E1_SEMANTIC_GENERAL_ROLLOUT
 authority: GOAL de integración definitiva E1 + HU-E1-V1 + KAN-242/244/245/246
 semantic_owner: Portfolio Bootstrap E1; ContextReview conserva autoridad canónica
 logic_status: ACTIVE_V2_SLICE
-implementation_status: LOCAL_VALIDATION_IN_PROGRESS
+implementation_status: PR_319_OPEN_CI_IN_PROGRESS
 route: /portfolio/inicio?bootstrapSessionId=…
 behavior: SEMANTIC_E1_ENABLED=true habilita E1 para sesiones propias con capacidades Portfolio; no existe gate por organización piloto
 authorization: autenticación, propiedad de sesión, organización persistida y portfolio:read/write existentes
@@ -641,6 +641,7 @@ rollback: workflow manual de solo desactivación, protegido por production y sin
 preserves: orquestador/prompt #318, límites, timeout, retry, circuit breaker, UX E1, Core, Prisma y E2–E7
 excluded: nuevos proveedores/credenciales/pagos, rediseño, motor alternativo, activación fuera del CD normal
 quality_status: NOT_PRODUCT_ACCEPTED — requiere validación personal posterior de Producto
+evidence: pruebas focalizadas 48/48; integración PostgreSQL 12/12; suites backend/frontend, typecheck, lint, build y contratos de CD PASS; revisión independiente R2 APPROVED; CI de PR en curso
 ```
 
 ---

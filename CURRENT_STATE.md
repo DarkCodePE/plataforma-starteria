@@ -18,7 +18,7 @@ La rama `feat/e1-semantic-default` prepara la retirada del gate por organizació
 
 El CD normal obtiene `SEMANTIC_E1_ENABLED` de la configuración protegida de `production`, con `false` como valor fail-closed. Antes de desplegar `true` ejecuta un preflight de bajo consumo a través del orquestador y proveedor reales; tras el rollout ejecuta un smoke autenticado y desactiva el flag si falla. La desactivación inmediata se mantiene mediante `Semantic E1 Kill Switch`, que no puede activar, cambiar imágenes ni tocar datos.
 
-Estado: implementación local en validación; sin PR, merge, CD ni activación todavía. La calidad semántica queda pendiente de validación personal de Producto.
+Estado: PR #319 abierto para revisión sobre `feat/e1-semantic-default`; merge, CD y activación continúan pendientes. La validación local, PostgreSQL y la revisión independiente están aprobadas; la calidad semántica queda pendiente de validación personal de Producto.
 
 ## HU — descarte gobernado de preparaciones Bootstrap (2026-11-15)
 
