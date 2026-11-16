@@ -1,12 +1,19 @@
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { logger } from '../../../shared/utils/logger';
 import type { Permission } from '../../../shared/authz/permissions';
 import type { ModelExecutionResult } from '../../portfolio-entry-runtime/model/model-execution-types';
 import type { StructuredModelAdapter } from '../../portfolio-entry-runtime/model/structured-model-adapter';
 import {
   PortfolioBootstrapSemanticOrchestratorService,
+  portfolioBootstrapSemanticInferenceSchema,
   type PortfolioBootstrapSemanticTurnStore,
 } from '../portfolio-bootstrap-semantic-orchestrator.service';
+import { portfolioBootstrapSemanticProviderJsonSchema } from '../portfolio-bootstrap-semantic-provider-schema';
 import { emptySemanticStateProjection, type SemanticStateDto, type SemanticTurnResult } from '../portfolio-bootstrap-semantic.service';
+
+vi.mock('../../../shared/utils/logger', () => ({
+  logger: { warn: vi.fn(), info: vi.fn(), error: vi.fn(), debug: vi.fn() },
+}));
 
 const permissions = new Set<Permission>(['portfolio:read', 'portfolio:write']);
 const config = {
@@ -20,6 +27,10 @@ const config = {
 };
 
 describe('PortfolioBootstrapSemanticOrchestratorService', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
   it('resolves a cafeteria negative cross-field fact and never asks pilot experience again', async () => {
     const store = fakeStore();
     const model = fakeModel({
@@ -42,6 +53,13 @@ describe('PortfolioBootstrapSemanticOrchestratorService', () => {
     const output = await service.processTurn(command('Somos una cafetería pequeña y nunca hemos probado pedidos a oficinas.'));
 
     expect(model.generate).toHaveBeenCalledTimes(1);
+    expect(model.generate).toHaveBeenCalledWith(expect.objectContaining({
+      outputSchema: portfolioBootstrapSemanticInferenceSchema,
+      providerJsonSchema: portfolioBootstrapSemanticProviderJsonSchema,
+      preserveProviderNulls: true,
+      requireProviderParameters: true,
+      limits: { maxOutputTokens: 800 },
+    }));
     expect(store.completeInference).toHaveBeenCalledWith(expect.objectContaining({
       status: 'completed',
       answeredGaps: ['pilot_experience'],
@@ -102,6 +120,7 @@ describe('PortfolioBootstrapSemanticOrchestratorService', () => {
       convergence: expect.objectContaining({ status: 'provider_retryable_failure' }),
       execution: expect.objectContaining({ durationMs: 321, retryCount: 1, fallbackUsed: true }),
     }));
+    expect(logger.warn).not.toHaveBeenCalled();
   });
 
   it('returns the durable in-flight result without issuing a second model call', async () => {
@@ -342,6 +361,105 @@ describe('PortfolioBootstrapSemanticOrchestratorService', () => {
     const systemPrompt = vi.mocked(model.generate).mock.calls[0][0].systemPrompt;
     expect(systemPrompt).toContain('necesidad, oportunidad, exploración o iniciativa existente');
     expect(systemPrompt).toContain('una sola pregunta material por turno');
+  });
+
+  it('asks one material question when the restaurant situation lacks the intended change', async () => {
+    const input = 'El restaurante tiene alta demanda y capacidad limitada los fines de semana.';
+    const store = fakeStore();
+    const model = fakeModel({
+      facts: [
+        fact('business_signal', 'alta demanda los fines de semana', 'alta demanda'),
+        fact('constraint', 'capacidad limitada los fines de semana', 'capacidad limitada los fines de semana'),
+      ],
+      hypotheses: [startingPoint('need', ['business_signal', 'constraint'])],
+      dispositions: [],
+      questionPlan: {
+        question: '¿Qué cambio os gustaría conseguir fuera de los fines de semana?',
+        reasonToAsk: 'La respuesta delimita el propósito material antes de preparar la dirección para E2.',
+        resolves: ['desired_outcome'],
+      },
+      synthesis: null,
+      readyForHumanReview: false,
+      reason: 'La situación está delimitada, pero falta el cambio que se quiere conseguir.',
+    });
+
+    await new PortfolioBootstrapSemanticOrchestratorService(store, model, config).processTurn(command(input));
+
+    const persisted = vi.mocked(store.completeInference).mock.calls[0][0];
+    expect(persisted.convergence.status).toBe('question_required');
+    expect(persisted.convergence.synthesis).toBeNull();
+    expect(persisted.emittedQuestion).toMatchObject({
+      question: expect.stringContaining('Qué cambio'),
+      resolves: ['desired_outcome'],
+    });
+  });
+
+  it('logs only safe structured diagnostics for an invalid provider schema response', async () => {
+    const secretMarker = 'raw-user-or-provider-text-must-not-be-logged';
+    const store = fakeStore();
+    const model: StructuredModelAdapter = {
+      generate: vi.fn().mockResolvedValue({
+        ...execution(null),
+        provider_raw: {
+          status: 'incomplete',
+          incomplete_details: { reason: 'max_output_tokens' },
+          output_text: secretMarker,
+          usage: { input_tokens: 320, output_tokens: 900, total_tokens: 1_220 },
+        },
+        parsed_output: {
+          facts: [], hypotheses: [], dispositions: [],
+          synthesis: null, readyForHumanReview: false, reason: secretMarker,
+        },
+        validated_output: null,
+        schema_errors: [`questionPlan: ${secretMarker}`],
+        error_type: 'SCHEMA_ERROR' as const,
+        execution_metadata: {
+          ...execution(null).execution_metadata,
+          usage: { input_tokens: 320, output_tokens: 900, total_tokens: 1_220 },
+        },
+      }),
+    };
+
+    await new PortfolioBootstrapSemanticOrchestratorService(store, model, config)
+      .processTurn(command('El texto del usuario tampoco debe aparecer en logs.'));
+
+    expect(logger.warn).toHaveBeenCalledWith(expect.objectContaining({
+      event: 'portfolio_bootstrap_semantic_schema_invalid',
+      validationStage: 'adapter',
+      issues: [{ path: 'questionPlan', category: 'invalid_type' }],
+      completionStatus: 'incomplete',
+      incompleteReason: 'max_output_tokens',
+      inputTokens: 320,
+      outputTokens: 900,
+      totalTokens: 1_220,
+    }), 'portfolio_bootstrap_semantic_schema_invalid');
+    const logged = JSON.stringify(vi.mocked(logger.warn).mock.calls);
+    expect(logged).not.toContain(secretMarker);
+    expect(logged).not.toContain('El texto del usuario');
+    expect(logged).not.toContain('session-1');
+  });
+
+  it('redacts an unknown provider incomplete reason from schema diagnostics', async () => {
+    const secretReason = 'provider-detail-must-not-be-logged';
+    const store = fakeStore();
+    const model: StructuredModelAdapter = {
+      generate: vi.fn().mockResolvedValue({
+        ...execution(null),
+        provider_raw: { status: 'incomplete', incomplete_details: { reason: secretReason } },
+        parsed_output: {},
+        validated_output: null,
+        schema_errors: ['facts: Required'],
+        error_type: 'SCHEMA_ERROR' as const,
+      }),
+    };
+
+    await new PortfolioBootstrapSemanticOrchestratorService(store, model, config)
+      .processTurn(command('Entrada no registrable.'));
+
+    expect(logger.warn).toHaveBeenCalledWith(expect.objectContaining({
+      incompleteReason: 'unknown',
+    }), 'portfolio_bootstrap_semantic_schema_invalid');
+    expect(JSON.stringify(vi.mocked(logger.warn).mock.calls)).not.toContain(secretReason);
   });
 
   it('asks a material clarification for a generic committee intention instead of enabling review', async () => {

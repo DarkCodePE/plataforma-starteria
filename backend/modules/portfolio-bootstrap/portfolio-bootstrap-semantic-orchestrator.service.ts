@@ -1,5 +1,6 @@
 import type { Permission } from '../../shared/authz/permissions';
 import { AppError } from '../../shared/errors/AppError';
+import { logger } from '../../shared/utils/logger';
 import { z } from 'zod/v3';
 import type { StructuredModelAdapter } from '../portfolio-entry-runtime/model/structured-model-adapter';
 import {
@@ -15,6 +16,7 @@ import type {
   SemanticTurnResult,
 } from './portfolio-bootstrap-semantic.service';
 import { canonicalContextHash } from './portfolio-bootstrap-context.service';
+import { portfolioBootstrapSemanticProviderJsonSchema } from './portfolio-bootstrap-semantic-provider-schema';
 
 const questionPlanSchema = z.object({
   question: z.string().trim().min(1).max(1_000),
@@ -228,6 +230,9 @@ export class PortfolioBootstrapSemanticOrchestratorService {
         systemPrompt: SEMANTIC_E1_SYSTEM_PROMPT,
         userPayload,
         outputSchema: portfolioBootstrapSemanticInferenceSchema,
+        providerJsonSchema: portfolioBootstrapSemanticProviderJsonSchema,
+        preserveProviderNulls: true,
+        requireProviderParameters: true,
         metadata: { provider: 'configured', model: 'configured', seed_support: 'not_requested' },
         limits: { maxOutputTokens: this.config.maxOutputTokens },
         call: {
@@ -249,6 +254,15 @@ export class PortfolioBootstrapSemanticOrchestratorService {
     }
     const measuredExecution = executionFrom(modelResult.execution_metadata);
     if (!modelResult.validated_output) {
+      if (modelResult.error_type === 'SCHEMA_ERROR') {
+        logSchemaValidationFailure({
+          validationStage: 'adapter',
+          providerRaw: modelResult.provider_raw,
+          parsedOutput: modelResult.parsed_output,
+          schemaErrors: modelResult.schema_errors,
+          execution: measuredExecution,
+        });
+      }
       this.recordFailure();
       return {
         processing: false,
@@ -263,6 +277,12 @@ export class PortfolioBootstrapSemanticOrchestratorService {
 
     const validatedInference = portfolioBootstrapSemanticInferenceSchema.safeParse(modelResult.validated_output);
     if (!validatedInference.success) {
+      logSchemaValidationFailure({
+        validationStage: 'orchestrator',
+        providerRaw: modelResult.provider_raw,
+        issues: validatedInference.error.issues,
+        execution: measuredExecution,
+      });
       this.recordFailure();
       return {
         processing: false,
@@ -588,6 +608,70 @@ function estimateTokens(value: string): number {
 function nonNegativeInteger(value: unknown): number {
   const number = typeof value === 'number' ? value : Number(value);
   return Number.isFinite(number) && number >= 0 ? Math.round(number) : 0;
+}
+
+function logSchemaValidationFailure(input: {
+  validationStage: 'adapter' | 'orchestrator';
+  providerRaw: unknown;
+  parsedOutput?: unknown;
+  schemaErrors?: string[];
+  issues?: z.ZodIssue[];
+  execution: PortfolioBootstrapSemanticTurnInput['execution'];
+}): void {
+  const parsed = input.issues
+    ? { success: false as const, error: { issues: input.issues } }
+    : portfolioBootstrapSemanticInferenceSchema.safeParse(input.parsedOutput);
+  const adapterIssues = (input.schemaErrors ?? []).slice(0, 20).map((entry) => {
+    const rawPath = entry.split(':', 1)[0]?.trim() ?? '';
+    return {
+      path: /^[a-z0-9_.[\]-]{1,240}$/i.test(rawPath) ? rawPath : '$',
+      category: 'adapter_schema_error',
+    };
+  });
+  let issues: Array<{ path: string; category: string }>;
+  if (parsed.success) {
+    issues = adapterIssues.length ? adapterIssues : [{ path: '$', category: 'adapter_schema_error' }];
+  } else {
+    issues = parsed.error.issues.slice(0, 20).map((issue) => ({
+      path: issue.path.length ? issue.path.map(String).join('.') : '$',
+      category: issue.code,
+    }));
+  }
+  const completion = safeProviderCompletion(input.providerRaw);
+  logger.warn({
+    event: 'portfolio_bootstrap_semantic_schema_invalid',
+    validationStage: input.validationStage,
+    issues,
+    completionStatus: completion.status,
+    incompleteReason: completion.incompleteReason,
+    inputTokens: input.execution.inputTokens,
+    outputTokens: input.execution.outputTokens,
+    totalTokens: input.execution.totalTokens,
+  }, 'portfolio_bootstrap_semantic_schema_invalid');
+}
+
+function safeProviderCompletion(providerRaw: unknown): {
+  status: string;
+  incompleteReason: string | null;
+} {
+  if (!providerRaw || typeof providerRaw !== 'object') {
+    return { status: 'unknown', incompleteReason: null };
+  }
+  const record = providerRaw as Record<string, unknown>;
+  const allowedStatuses = new Set(['completed', 'incomplete', 'failed', 'cancelled', 'in_progress', 'queued']);
+  const status = typeof record.status === 'string' && allowedStatuses.has(record.status)
+    ? record.status
+    : 'unknown';
+  const details = record.incomplete_details && typeof record.incomplete_details === 'object'
+    ? record.incomplete_details as Record<string, unknown>
+    : null;
+  const rawReason = details?.reason;
+  const allowedReasons = new Set(['max_output_tokens', 'content_filter']);
+  let incompleteReason: string | null = null;
+  if (typeof rawReason === 'string') {
+    incompleteReason = allowedReasons.has(rawReason) ? rawReason : 'unknown';
+  }
+  return { status, incompleteReason };
 }
 
 function sameConceptSet(left: string[], right: string[]): boolean {
