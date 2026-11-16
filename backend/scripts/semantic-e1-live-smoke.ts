@@ -12,6 +12,7 @@ import {
   type SemanticStateDto,
   type SemanticTurnResult,
 } from '../modules/portfolio-bootstrap/portfolio-bootstrap-semantic.service';
+import { evaluateSemanticE1Preflight } from './semantic-e1-live-smoke-evaluation';
 
 const permissions = new Set<Permission>(['portfolio:read', 'portfolio:write']);
 const config = loadSemanticE1OrchestratorConfig();
@@ -34,36 +35,32 @@ async function main(): Promise<void> {
   });
 
   const turn = output.result.turn;
-  const startingPoint = turn.hypotheses.some((item) => item.hypothesisId.startsWith('starting_point.'));
-  const mainUncertainty = turn.hypotheses.some((item) => item.hypothesisId === 'main_uncertainty')
-    || turn.facts.some((item) => item.conceptId === 'uncertainty');
-  const hasNextStep = Boolean(turn.emittedQuestion) || Boolean(turn.convergence.synthesis);
-  if (
-    output.processing
-    || turn.status !== 'completed'
-    || !turn.execution.provider
-    || turn.execution.provider === 'deterministic_test_adapter'
-    || !turn.execution.model
-    || turn.execution.totalTokens <= 0
-    || turn.facts.length === 0
-    || !startingPoint
-    || !mainUncertainty
-    || !hasNextStep
-  ) {
+  const evaluation = evaluateSemanticE1Preflight({ processing: output.processing, turn });
+  if (!evaluation.passed) {
+    process.stderr.write(`${JSON.stringify({
+      event: 'semantic_e1_provider_preflight_failed',
+      failedPredicates: evaluation.failedPredicates,
+      predicates: evaluation.predicates,
+      ...evaluation.diagnostics,
+      errorCode: turn.error?.code ?? null,
+    })}\n`);
     throw new Error(`Semantic E1 provider preflight failed: status=${turn.status} code=${turn.error?.code ?? 'none'}`);
   }
 
   process.stdout.write(`${JSON.stringify({
-    provider: turn.execution.provider,
-    model: turn.execution.model,
-    inputTokens: turn.execution.inputTokens,
-    outputTokens: turn.execution.outputTokens,
-    totalTokens: turn.execution.totalTokens,
+    event: 'semantic_e1_provider_preflight_passed',
+    predicates: evaluation.predicates,
+    status: evaluation.diagnostics.status,
+    provider: evaluation.diagnostics.provider,
+    model: evaluation.diagnostics.model,
+    inputTokens: evaluation.diagnostics.tokenUsage.inputTokens,
+    outputTokens: evaluation.diagnostics.tokenUsage.outputTokens,
+    totalTokens: evaluation.diagnostics.tokenUsage.totalTokens,
     retryCount: turn.execution.retryCount,
     fallbackUsed: turn.execution.fallbackUsed,
-    convergence: turn.convergence.status,
-    emittedQuestion: Boolean(turn.emittedQuestion),
-    synthesis: Boolean(turn.convergence.synthesis),
+    convergence: evaluation.diagnostics.convergenceStatus,
+    emittedQuestion: evaluation.diagnostics.emittedQuestion,
+    synthesis: evaluation.diagnostics.synthesis,
   })}\n`);
 }
 
