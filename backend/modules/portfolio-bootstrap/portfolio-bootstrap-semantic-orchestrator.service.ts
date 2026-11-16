@@ -50,16 +50,35 @@ export const portfolioBootstrapSemanticInferenceSchema = z.object({
 type SemanticInference = z.infer<typeof portfolioBootstrapSemanticInferenceSchema>;
 
 const SEMANTIC_E1_SYSTEM_PROMPT = `Eres el intérprete acotado del contexto E1 de Portfolio Bootstrap.
-Devuelve un único objeto JSON que cumpla el schema. Extrae hechos sólo cuando una cita literal del
-input los respalda. Mantén hipótesis separadas y siempre proposed. Una negación explícita como
-"nunca lo hemos probado" resuelve pilot_experience aunque aparezca dentro de una narración general.
-No inventes cifras, equipo, departamentos, KPI, causas, demanda, recursos, resultados ni soluciones
-validadas. unknown y not_applicable requieren una declaración literal. Propón como máximo una pregunta
-material; no preguntes por conceptos resueltos, retirados o ya preguntados. No confirmes E1 ni avances
-a E2. readyForHumanReview sólo puede ser true si existe una situación material y una dirección concreta.
-En ese caso produce synthesis: una interpretación útil, no una paráfrasis, que distinga situación,
-intención, incertidumbre y dirección provisional para E2, enlazada a evidenceConceptIds. Si falta
-información que cambie la interpretación, synthesis debe ser null y debes formular una aclaración.`;
+Tu trabajo es comprender el punto de partida y el propósito del usuario, no extraer palabras ni rellenar
+una plantilla. Devuelve un único objeto JSON que cumpla el schema y sigue este orden de razonamiento:
+
+1. Distingue si el punto de partida es una necesidad, oportunidad, exploración o iniciativa existente.
+   Registra exactamente una clasificación como hipótesis proposed, con hypothesisId
+   starting_point.need, starting_point.opportunity, starting_point.exploration o
+   starting_point.existing_initiative. Susténtala sólo con supportConceptIds de hechos declarados.
+2. Identifica qué quiere poder comprender, decidir o cambiar el usuario. No confundas una actividad
+   genérica (por ejemplo, preparar un comité) con el asunto material que debe abordar.
+3. Identifica la incertidumbre principal que condiciona el siguiente paso. Si no está declarada,
+   formúlala como hipótesis proposed con hypothesisId main_uncertainty y supportConceptIds trazables.
+4. Decide suficiencia por el significado acumulado, nunca por longitud, palabras clave o número de
+   turnos. Si naturaleza, situación, propósito e incertidumbre están suficientemente delimitados,
+   finaliza en este turno aunque sea el primero.
+5. Formula como máximo una sola pregunta material por turno, únicamente si la respuesta puede cambiar
+   la clasificación, el propósito, la incertidumbre principal o la dirección provisional. No preguntes
+   por detalles útiles para E2 o la ejecución cuando E1 ya puede interpretarse.
+
+Extrae hechos sólo cuando una cita literal del input los respalda. Mantén hipótesis separadas y siempre
+proposed. Una negación explícita como "nunca lo hemos probado" resuelve pilot_experience aunque aparezca
+dentro de una narración general. No inventes cifras, equipo, departamentos, KPI, causas, demanda,
+recursos, resultados ni soluciones validadas. unknown y not_applicable requieren una declaración literal.
+No preguntes por conceptos resueltos, retirados o ya preguntados. No confirmes E1, no definas el objetivo
+ni avances a E2. readyForHumanReview sólo puede ser true si existe una situación material, una dirección
+concreta, una clasificación trazable y una incertidumbre principal explícita. En ese caso produce
+synthesis: una interpretación específica del caso, no una paráfrasis ni una plantilla genérica, que
+explique la relación entre situación, intención, incertidumbre y dirección provisional para E2, enlazada
+a evidenceConceptIds. Si falta información que pueda cambiar esa interpretación, synthesis debe ser null
+y debes formular la única aclaración material necesaria.`;
 
 export interface PortfolioBootstrapSemanticTurnStore {
   getInferenceContext(input: {
@@ -262,6 +281,18 @@ export class PortfolioBootstrapSemanticOrchestratorService {
       nextVersion: claim.result.state.version + 1,
       questionLimit: this.config.questionLimit,
     });
+    if (policy.interpretationIncomplete) {
+      this.recordFailure();
+      return {
+        processing: false,
+        result: await complete(failedTurn({
+          code: 'semantic_interpretation_incomplete',
+          retryable: true,
+          reason: 'El modelo no produjo una naturaleza e incertidumbre principal trazables; el turno puede reintentarse.',
+          execution: measuredExecution,
+        })),
+      };
+    }
     const completedTurn = {
       status: 'completed' as const,
       facts: policy.facts,
@@ -341,22 +372,35 @@ function applyDeterministicPolicy(input: {
   ]);
   const currentBudget = input.state?.questionBudget ?? { limit: null, used: 0 };
   const limit = currentBudget.limit ?? input.questionLimit;
-  const materialEvidence = materialEvidenceStatus(input.state, facts);
-  const sufficientForReview = materialEvidence.hasAnchor && materialEvidence.hasDirection;
-  const fallbackPlan = !sufficientForReview && !input.inference.questionPlan
+  const materialEvidence = materialEvidenceStatus(input.state, facts, hypotheses, dispositions);
+  const sufficientForReview = materialEvidence.hasAnchor
+    && materialEvidence.hasDirection
+    && materialEvidence.hasStartingPoint
+    && materialEvidence.hasMainUncertainty;
+  const proposedQuestionPlan = sufficientForReview ? null : input.inference.questionPlan;
+  const providerQuestionPlan = proposedQuestionPlan
+    && questionCanChangeInterpretation(proposedQuestionPlan.resolves, materialEvidence)
+    ? proposedQuestionPlan
+    : null;
+  const fallbackPlan = !sufficientForReview && !proposedQuestionPlan
     ? materialClarificationPlan(input.rawInput, materialEvidence)
     : null;
-  const questionPlan = input.inference.questionPlan ?? fallbackPlan;
-  const candidateResolves = input.inference.questionPlan?.resolves
+  const interpretationIncomplete = materialEvidence.hasAnchor
+    && materialEvidence.hasDirection
+    && (!materialEvidence.hasStartingPoint || !materialEvidence.hasMainUncertainty)
+    && !providerQuestionPlan
+    && !fallbackPlan;
+  const questionPlan = providerQuestionPlan ?? fallbackPlan;
+  const candidateResolves = providerQuestionPlan?.resolves
     .filter((conceptId) => !blockedConcepts.has(conceptId)) ?? [];
   const fallbackResolves = fallbackPlan?.resolves.filter((conceptId) => !blockedConcepts.has(conceptId)) ?? [];
-  const resolves = input.inference.questionPlan ? candidateResolves : fallbackResolves;
+  const resolves = providerQuestionPlan ? candidateResolves : fallbackResolves;
   const repeated = resolves.length > 0 && (input.state?.questionHistory ?? []).some((question) => (
     sameConceptSet(question.resolves, resolves)
   ));
-  const unsafeQuestion = input.inference.questionPlan
+  const unsafeQuestion = providerQuestionPlan
     ? !questionGroundedForBusiness(
-      input.inference.questionPlan as { question: string; reasonToAsk: string },
+      providerQuestionPlan as { question: string; reasonToAsk: string },
       input.rawInput,
       dispositions,
       input.state,
@@ -376,9 +420,11 @@ function applyDeterministicPolicy(input: {
   } : null;
   const questionBudget = { limit, used: currentBudget.used + (emittedQuestion ? 1 : 0) };
   const synthesis = input.inference.synthesis ?? null;
+  const activeFactConcepts = new Set(latestFactsByConcept(input.state?.factLedger ?? [], facts)
+    .filter((fact) => fact.status !== 'retracted')
+    .map((fact) => fact.conceptId));
   const synthesisGrounded = synthesis ? synthesis.evidenceConceptIds.every((conceptId) => (
-    [...(input.state?.factLedger ?? []), ...facts]
-      .some((fact) => fact.status !== 'retracted' && fact.conceptId === conceptId)
+    activeFactConcepts.has(conceptId)
   )) : false;
   const convergence = emittedQuestion ? {
     status: 'question_required' as const,
@@ -393,13 +439,16 @@ function applyDeterministicPolicy(input: {
     reason: unsafeQuestion
       ? 'La pregunta propuesta no superó el guardrail de proporcionalidad y no invención.'
       : input.inference.readyForHumanReview && !sufficientForReview
-      ? 'La salida no reúne todavía evidencia suficiente de situación y dirección para revisión humana.'
+      ? 'La salida no reúne todavía situación, dirección, naturaleza e incertidumbre principal trazables para revisión humana.'
       : resolves.length === 0 || repeated
       ? 'La pregunta propuesta repetía o reabría conceptos ya tratados; se requiere revisión humana.'
       : 'Se alcanzó el presupuesto de preguntas configurado.',
     synthesis: null,
   };
-  return { facts, hypotheses, dispositions, answeredGaps, emittedQuestion, convergence, questionBudget };
+  return {
+    facts, hypotheses, dispositions, answeredGaps, emittedQuestion, convergence, questionBudget,
+    interpretationIncomplete,
+  };
 }
 
 function dedupeFacts(facts: SemanticInference['facts'], state: SemanticStateDto | null) {
@@ -413,8 +462,36 @@ function dedupeFacts(facts: SemanticInference['facts'], state: SemanticStateDto 
 }
 
 function dedupeHypotheses(hypotheses: SemanticInference['hypotheses'], state: SemanticStateDto | null) {
-  const seen = new Set((state?.hypotheses ?? []).map((item) => item.hypothesisId));
-  return hypotheses.filter((item) => !seen.has(item.hypothesisId) && Boolean(seen.add(item.hypothesisId)));
+  const previousById = new Map((state?.hypotheses ?? []).map((item) => [item.hypothesisId, item]));
+  const seenThisTurn = new Set<string>();
+  return hypotheses.filter((item) => {
+    if (seenThisTurn.has(item.hypothesisId)) return false;
+    seenThisTurn.add(item.hypothesisId);
+    const previous = previousById.get(item.hypothesisId);
+    if (!previous) return true;
+    if (!isInterpretationHypothesis(item.hypothesisId)) return false;
+    return hypothesisKey(previous) !== hypothesisKey(item);
+  });
+}
+
+function isInterpretationHypothesis(hypothesisId: string): boolean {
+  return hypothesisId === 'main_uncertainty' || hypothesisId.startsWith('starting_point.');
+}
+
+function hypothesisKey(hypothesis: {
+  hypothesisId?: string;
+  statement?: string;
+  supportConceptIds?: string[];
+  confidence?: number;
+  status?: string;
+}): string {
+  return canonicalContextHash({
+    hypothesisId: hypothesis.hypothesisId,
+    statement: hypothesis.statement,
+    supportConceptIds: hypothesis.supportConceptIds,
+    confidence: hypothesis.confidence,
+    status: hypothesis.status,
+  });
 }
 
 function dedupeDispositions(dispositions: SemanticInference['dispositions'], state: SemanticStateDto | null) {
@@ -542,19 +619,81 @@ function questionGroundedForBusiness(
 function materialEvidenceStatus(
   state: SemanticStateDto | null,
   facts: SemanticInference['facts'],
+  hypotheses: SemanticInference['hypotheses'],
+  dispositions: SemanticInference['dispositions'],
 ) {
-  const resolved = new Set([
-    ...(state?.factLedger ?? []).filter((fact) => fact.status !== 'retracted').map((fact) => fact.conceptId),
-    ...facts.filter((fact) => fact.status !== 'retracted').map((fact) => fact.conceptId),
+  const activeFacts = latestFactsByConcept(state?.factLedger ?? [], facts);
+  const resolved = new Set(activeFacts
+    .filter((fact) => fact.status !== 'retracted')
+    .map((fact) => fact.conceptId));
+  const dispositionConcepts = new Set([
+    ...(state?.dispositions ?? []).map((item) => item.conceptId),
+    ...dispositions.map((item) => item.conceptId),
   ]);
+  const groundedConcepts = new Set([...resolved, ...dispositionConcepts]);
+  const priorHypotheses = (state?.hypotheses ?? [])
+    .filter((hypothesis) => hypothesis.status !== 'rejected')
+    .filter((hypothesis) => hypothesis.supportConceptIds.length > 0
+      && hypothesis.supportConceptIds.every((conceptId) => groundedConcepts.has(conceptId)));
+  const currentHypotheses = hypotheses
+    .filter((hypothesis) => hypothesis.status !== 'rejected')
+    .filter((hypothesis) => hypothesis.supportConceptIds.length > 0
+      && hypothesis.supportConceptIds.every((conceptId) => groundedConcepts.has(conceptId)));
   const hasAnchor = ['situation', 'opportunity', 'problem', 'need', 'existing_work', 'initiative', 'business_signal']
     .some((concept) => resolved.has(concept));
   const hasDirection = ['desired_outcome', 'objective', 'direction', 'decision_to_enable', 'concrete_decision', 'intention']
     .some((concept) => resolved.has(concept));
-  return { hasAnchor, hasDirection };
+  const currentStartingPoints = currentHypotheses.filter((hypothesis) => hypothesis.hypothesisId.startsWith('starting_point.'));
+  const priorStartingPoints = latestSemanticHypotheses(
+    priorHypotheses.filter((hypothesis) => hypothesis.hypothesisId.startsWith('starting_point.')),
+  );
+  const startingPointSource = currentStartingPoints.length > 0 ? currentStartingPoints : priorStartingPoints;
+  const startingPoints = new Set(startingPointSource
+    .map((hypothesis) => /^starting_point\.(need|opportunity|exploration|existing_initiative)$/.exec(hypothesis.hypothesisId)?.[1])
+    .filter((kind): kind is string => Boolean(kind)));
+  const hasStartingPoint = startingPoints.size === 1;
+  const materialUnknownConcepts = new Set(['main_uncertainty', 'uncertainty', 'root_cause', 'solution']);
+  const hasExplicitUncertainty = ['uncertainty', 'main_uncertainty']
+    .some((concept) => resolved.has(concept))
+    || [...(state?.dispositions ?? []), ...dispositions].some((item) => (
+      item.disposition === 'unknown'
+      && materialUnknownConcepts.has(item.conceptId)
+      && !resolved.has(item.conceptId)
+    ));
+  const currentMainUncertainty = currentHypotheses.filter((hypothesis) => hypothesis.hypothesisId === 'main_uncertainty');
+  const priorMainUncertainty = latestSemanticHypotheses(
+    priorHypotheses.filter((hypothesis) => hypothesis.hypothesisId === 'main_uncertainty'),
+  );
+  const hasMainUncertainty = hasExplicitUncertainty
+    || (currentMainUncertainty.length > 0 ? currentMainUncertainty : priorMainUncertainty).length === 1;
+  return { hasAnchor, hasDirection, hasStartingPoint, hasMainUncertainty };
 }
 
-function materialClarificationPlan(rawInput: string, evidence: { hasAnchor: boolean; hasDirection: boolean }) {
+function latestFactsByConcept(
+  priorFacts: SemanticStateDto['factLedger'],
+  currentFacts: SemanticInference['facts'],
+) {
+  const latest = new Map<string, SemanticStateDto['factLedger'][number] | SemanticInference['facts'][number]>();
+  for (const fact of priorFacts) {
+    const previous = latest.get(fact.conceptId) as SemanticStateDto['factLedger'][number] | undefined;
+    if (!previous || fact.semanticVersion >= (previous.semanticVersion ?? 0)) latest.set(fact.conceptId, fact);
+  }
+  for (const fact of currentFacts) latest.set(fact.conceptId, fact);
+  return [...latest.values()];
+}
+
+function latestSemanticHypotheses<T extends { semanticVersion?: number }>(hypotheses: T[]): T[] {
+  if (hypotheses.length === 0) return [];
+  const latestVersion = Math.max(...hypotheses.map((hypothesis) => hypothesis.semanticVersion ?? 0));
+  return hypotheses.filter((hypothesis) => (hypothesis.semanticVersion ?? 0) === latestVersion);
+}
+
+function materialClarificationPlan(rawInput: string, evidence: {
+  hasAnchor: boolean;
+  hasDirection: boolean;
+  hasStartingPoint: boolean;
+  hasMainUncertainty: boolean;
+}) {
   const committee = /\b(comit[eé]|portafolio|decisiones?)\b/i.test(rawInput);
   if (evidence.hasAnchor && !evidence.hasDirection) {
     return {
@@ -563,6 +702,7 @@ function materialClarificationPlan(rawInput: string, evidence: { hasAnchor: bool
       resolves: ['decision_to_enable'],
     };
   }
+  if (evidence.hasAnchor && evidence.hasDirection) return null;
   return {
     question: committee
       ? '¿Qué trabajo, problema u oportunidad debe quedar claro y qué decisión concreta debería poder tomar el comité?'
@@ -570,6 +710,32 @@ function materialClarificationPlan(rawInput: string, evidence: { hasAnchor: bool
     reasonToAsk: 'Esta información cambia la interpretación del punto de partida y evita cerrar E1 con una intención genérica.',
     resolves: ['material_subject', 'decision_to_enable'],
   };
+}
+
+function questionCanChangeInterpretation(resolves: string[], evidence: {
+  hasAnchor: boolean;
+  hasDirection: boolean;
+  hasStartingPoint: boolean;
+  hasMainUncertainty: boolean;
+}): boolean {
+  const missingMaterialConcepts = new Set<string>();
+  if (!evidence.hasAnchor) {
+    ['material_subject', 'affected_work', 'situation', 'opportunity', 'problem', 'need', 'existing_work', 'initiative', 'business_signal']
+      .forEach((concept) => missingMaterialConcepts.add(concept));
+  }
+  if (!evidence.hasDirection) {
+    ['desired_outcome', 'objective', 'direction', 'decision_to_enable', 'concrete_decision', 'intention']
+      .forEach((concept) => missingMaterialConcepts.add(concept));
+  }
+  if (!evidence.hasStartingPoint) {
+    ['starting_point', 'starting_point_kind', 'material_subject', 'affected_work', 'root_cause']
+      .forEach((concept) => missingMaterialConcepts.add(concept));
+  }
+  if (!evidence.hasMainUncertainty) {
+    ['main_uncertainty', 'uncertainty', 'root_cause', 'solution']
+      .forEach((concept) => missingMaterialConcepts.add(concept));
+  }
+  return resolves.some((conceptId) => missingMaterialConcepts.has(conceptId));
 }
 
 async function withDeadline<T>(operation: Promise<T>, timeoutMs: number): Promise<T> {
