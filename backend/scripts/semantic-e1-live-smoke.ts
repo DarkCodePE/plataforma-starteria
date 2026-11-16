@@ -22,48 +22,56 @@ const orchestrator = new PortfolioBootstrapSemanticOrchestratorService(
   config,
 );
 
-const output = await orchestrator.processTurn({
-  sessionId: 'semantic-e1-provider-preflight',
-  authenticatedUserId: 'semantic-e1-provider-preflight',
-  permissions,
-  idempotencyKey: 'semantic-e1-provider-preflight-v1',
-  expectedVersion: 0,
-  inputText: 'Nuestro restaurante tiene alta demanda los fines de semana y capacidad disponible entre semana. Queremos aumentar las ventas entre semana sin asumir todavía una solución. Necesitamos comprender qué propuesta valorarían los clientes en esos días y qué evidencia deberíamos validar antes de decidir.',
-  answeredQuestionId: null,
-});
+async function main(): Promise<void> {
+  const output = await orchestrator.processTurn({
+    sessionId: 'semantic-e1-provider-preflight',
+    authenticatedUserId: 'semantic-e1-provider-preflight',
+    permissions,
+    idempotencyKey: 'semantic-e1-provider-preflight-v1',
+    expectedVersion: 0,
+    inputText: 'Nuestro restaurante tiene alta demanda los fines de semana y capacidad disponible entre semana. Queremos aumentar las ventas entre semana sin asumir todavía una solución. Necesitamos comprender qué propuesta valorarían los clientes en esos días y qué evidencia deberíamos validar antes de decidir.',
+    answeredQuestionId: null,
+  });
 
-const turn = output.result.turn;
-const startingPoint = turn.hypotheses.some((item) => item.hypothesisId.startsWith('starting_point.'));
-const mainUncertainty = turn.hypotheses.some((item) => item.hypothesisId === 'main_uncertainty')
-  || turn.facts.some((item) => item.conceptId === 'uncertainty');
-const hasNextStep = Boolean(turn.emittedQuestion) || Boolean(turn.convergence.synthesis);
-if (
-  output.processing
-  || turn.status !== 'completed'
-  || !turn.execution.provider
-  || turn.execution.provider === 'deterministic_test_adapter'
-  || !turn.execution.model
-  || turn.execution.totalTokens <= 0
-  || turn.facts.length === 0
-  || !startingPoint
-  || !mainUncertainty
-  || !hasNextStep
-) {
-  throw new Error(`Semantic E1 provider preflight failed: status=${turn.status} code=${turn.error?.code ?? 'none'}`);
+  const turn = output.result.turn;
+  const startingPoint = turn.hypotheses.some((item) => item.hypothesisId.startsWith('starting_point.'));
+  const mainUncertainty = turn.hypotheses.some((item) => item.hypothesisId === 'main_uncertainty')
+    || turn.facts.some((item) => item.conceptId === 'uncertainty');
+  const hasNextStep = Boolean(turn.emittedQuestion) || Boolean(turn.convergence.synthesis);
+  if (
+    output.processing
+    || turn.status !== 'completed'
+    || !turn.execution.provider
+    || turn.execution.provider === 'deterministic_test_adapter'
+    || !turn.execution.model
+    || turn.execution.totalTokens <= 0
+    || turn.facts.length === 0
+    || !startingPoint
+    || !mainUncertainty
+    || !hasNextStep
+  ) {
+    throw new Error(`Semantic E1 provider preflight failed: status=${turn.status} code=${turn.error?.code ?? 'none'}`);
+  }
+
+  process.stdout.write(`${JSON.stringify({
+    provider: turn.execution.provider,
+    model: turn.execution.model,
+    inputTokens: turn.execution.inputTokens,
+    outputTokens: turn.execution.outputTokens,
+    totalTokens: turn.execution.totalTokens,
+    retryCount: turn.execution.retryCount,
+    fallbackUsed: turn.execution.fallbackUsed,
+    convergence: turn.convergence.status,
+    emittedQuestion: Boolean(turn.emittedQuestion),
+    synthesis: Boolean(turn.convergence.synthesis),
+  })}\n`);
 }
 
-process.stdout.write(`${JSON.stringify({
-  provider: turn.execution.provider,
-  model: turn.execution.model,
-  inputTokens: turn.execution.inputTokens,
-  outputTokens: turn.execution.outputTokens,
-  totalTokens: turn.execution.totalTokens,
-  retryCount: turn.execution.retryCount,
-  fallbackUsed: turn.execution.fallbackUsed,
-  convergence: turn.convergence.status,
-  emittedQuestion: Boolean(turn.emittedQuestion),
-  synthesis: Boolean(turn.convergence.synthesis),
-})}\n`);
+void main().catch((error: unknown) => {
+  const message = error instanceof Error ? error.message : 'Semantic E1 provider preflight failed unexpectedly.';
+  process.stderr.write(`${message}\n`);
+  process.exitCode = 1;
+});
 
 function inMemoryStore(): PortfolioBootstrapSemanticTurnStore {
   const initialState = semanticState(0);

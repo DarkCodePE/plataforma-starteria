@@ -8,6 +8,7 @@ secret_sync="$repo_root/scripts/ci/sync-backend-secret.sh"
 env_example="$repo_root/backend/.env.example"
 deployment="$repo_root/k8s/backend-deployment.yaml"
 prod_smoke="$repo_root/scripts/ci/semantic-e1-prod-smoke.sh"
+provider_smoke="$repo_root/backend/scripts/semantic-e1-live-smoke.ts"
 
 [[ -f "$kill_switch" ]]
 [[ -f "$prod_smoke" ]]
@@ -33,6 +34,7 @@ grep -Fq "SEMANTIC_E1_ENABLED: \${{ vars.SEMANTIC_E1_ENABLED || 'false' }}" "$cd
 grep -q '^  semantic-e1-provider-preflight:$' "$cd_workflow"
 grep -q -- '--semantic-e1-enabled "$SEMANTIC_E1_ENABLED"' "$cd_workflow"
 grep -q 'backend/scripts/semantic-e1-live-smoke.ts' "$cd_workflow"
+grep -Fq 'NODE_PATH: ${{ github.workspace }}/front/node_modules' "$cd_workflow"
 grep -q 'scripts/ci/semantic-e1-prod-smoke.sh' "$cd_workflow"
 grep -q 'Fail closed after unsuccessful Semantic E1 smoke' "$cd_workflow"
 grep -Fq "steps.rollout.outcome == 'failure'" "$cd_workflow"
@@ -45,6 +47,9 @@ if grep -Fq 'SEMANTIC_E1_ENABLED=false \' "$cd_workflow"; then
   echo 'CD must not force Semantic E1 off during every rollout' >&2
   exit 1
 fi
+
+grep -Fq 'async function main(): Promise<void>' "$provider_smoke"
+grep -Fq 'void main().catch' "$provider_smoke"
 
 ! grep -q 'SEMANTIC_E1_PILOT_ORGANIZATION_ALLOWLIST' "$secret_sync"
 ! grep -q 'SEMANTIC_E1_PILOT_ORGANIZATION_ALLOWLIST' "$env_example"
