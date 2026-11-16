@@ -151,22 +151,38 @@ describe('PortfolioBootstrapSemanticOrchestratorService', () => {
     }));
   });
 
-  it('turns fabricated evidence into a retryable validation failure without persisting facts', async () => {
+  it('turns fabricated evidence into a retryable failure and logs only safe post-policy schema paths', async () => {
     const store = fakeStore();
+    const fabricatedQuote = 'tenemos 50 personas';
+    const userText = 'Somos una cafetería pequeña.';
     const model = fakeModel({
-      facts: [fact('team_size', '50 personas', 'tenemos 50 personas')],
+      facts: [fact('team_size', '50 personas', fabricatedQuote)],
       hypotheses: [], dispositions: [], questionPlan: null,
       synthesis: synthesis(['team_size']),
       readyForHumanReview: true, reason: 'Supuestamente suficiente.',
     });
     const service = new PortfolioBootstrapSemanticOrchestratorService(store, model, config);
 
-    await service.processTurn(command('Somos una cafetería pequeña.'));
+    await service.processTurn(command(userText));
 
     expect(store.completeInference).toHaveBeenCalledWith(expect.objectContaining({
       status: 'failed_retryable', facts: [], hypotheses: [], answeredGaps: [],
       error: { code: 'semantic_output_invalid', retryable: true },
     }));
+    expect(logger.warn).toHaveBeenCalledWith(expect.objectContaining({
+      event: 'portfolio_bootstrap_semantic_schema_invalid',
+      validationStage: 'semantic_turn',
+      issues: expect.arrayContaining([
+        { path: 'facts.0.evidenceRefs.0.quote', category: 'custom' },
+      ]),
+      inputTokens: 20,
+      outputTokens: 10,
+      totalTokens: 30,
+    }), 'portfolio_bootstrap_semantic_schema_invalid');
+    const logged = JSON.stringify(vi.mocked(logger.warn).mock.calls);
+    expect(logged).not.toContain(fabricatedQuote);
+    expect(logged).not.toContain(userText);
+    expect(logged).not.toContain('session-1');
   });
 
   it('suppresses formal-department questions for an explicitly small business', async () => {
