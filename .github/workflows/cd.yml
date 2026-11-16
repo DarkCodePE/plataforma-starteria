@@ -108,6 +108,51 @@ jobs:
         run: |
           printf '## Production authorization\n\n- Authorized commit: `%s`\n- Authorized image tag: `%s`\n- No image publication, migration, or deployment occurred before this gate.\n' "$SOURCE_SHA" "$TAG" >> "$GITHUB_STEP_SUMMARY"
 
+  semantic-e1-provider-preflight:
+    name: Semantic E1 real-provider preflight
+    needs: [resolve, authorize]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: production
+    env:
+      SEMANTIC_E1_ENABLED: ${{ vars.SEMANTIC_E1_ENABLED || 'false' }}
+      PORTFOLIO_ENTRY_API_KEY: ${{ secrets.PORTFOLIO_ENTRY_API_KEY }}
+      PORTFOLIO_ENTRY_PROVIDER: openai_responses
+      PORTFOLIO_ENTRY_MODEL: openai/gpt-5.6-luna
+      PORTFOLIO_ENTRY_BASE_URL: https://openrouter.ai/api/v1
+      SEMANTIC_E1_MAX_OUTPUT_TOKENS: '900'
+      SEMANTIC_E1_TOTAL_TIMEOUT_MS: '30000'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.resolve.outputs.sha }}
+      - name: Validate normal Semantic E1 deployment configuration
+        run: |
+          set -euo pipefail
+          [[ "$SEMANTIC_E1_ENABLED" == true || "$SEMANTIC_E1_ENABLED" == false ]] \
+            || { echo '::error::production variable SEMANTIC_E1_ENABLED must be true or false'; exit 1; }
+      - uses: actions/setup-node@v4
+        if: env.SEMANTIC_E1_ENABLED == 'true'
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: front/package-lock.json
+      - name: Install backend verification dependencies
+        if: env.SEMANTIC_E1_ENABLED == 'true'
+        working-directory: front
+        run: npm ci
+      - name: Generate Prisma client
+        if: env.SEMANTIC_E1_ENABLED == 'true'
+        working-directory: front
+        run: npm run db:generate
+      - name: Verify configured provider through the real E1 orchestrator
+        if: env.SEMANTIC_E1_ENABLED == 'true'
+        working-directory: front
+        run: npx tsx ../backend/scripts/semantic-e1-live-smoke.ts
+      - name: Record disabled state
+        if: env.SEMANTIC_E1_ENABLED != 'true'
+        run: echo 'Semantic E1 remains disabled; no provider call was made.'
+
   handoff-email-config:
     name: Validate fail-closed Handoff email configuration
     needs: [resolve, authorize]
@@ -188,7 +233,7 @@ jobs:
 
   build-and-push:
     name: Build and push ${{ matrix.service }}
-    needs: [tests, step-reasoning-qa-config, handoff-email-config, migration-authority, resolve, authorize]
+    needs: [tests, step-reasoning-qa-config, handoff-email-config, migration-authority, semantic-e1-provider-preflight, resolve, authorize]
     runs-on: ubuntu-latest
     timeout-minutes: 30
     environment: production
@@ -303,6 +348,7 @@ jobs:
           AI_SERVICE_DIGEST: ${{ steps.digests.outputs.ai_service_digest }}
           HANDOFF_EMAIL_TRANSPORT_MODE: ${{ vars.HANDOFF_EMAIL_TRANSPORT_MODE || 'disabled' }}
           HANDOFF_EMAIL_PILOT_ENABLED: ${{ vars.HANDOFF_EMAIL_PILOT_ENABLED || 'false' }}
+          SEMANTIC_E1_ENABLED: ${{ vars.SEMANTIC_E1_ENABLED || 'false' }}
           GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
         run: |
           set -euo pipefail
@@ -319,6 +365,7 @@ jobs:
             --ai-service-image "$ai_image" \
             --handoff-email-mode "$HANDOFF_EMAIL_TRANSPORT_MODE" \
             --handoff-email-pilot-enabled "$HANDOFF_EMAIL_PILOT_ENABLED" \
+            --semantic-e1-enabled "$SEMANTIC_E1_ENABLED" \
             --google-login-enabled "$google_login_enabled"
           node scripts/ci/verify-release-manifest.mjs \
             --manifest release-manifest.json \
@@ -420,6 +467,8 @@ jobs:
     # Keep the environment on the deploy job as a second protection boundary
     # and as the source of production-scoped secrets.
     environment: production
+    env:
+      SEMANTIC_E1_ENABLED: ${{ vars.SEMANTIC_E1_ENABLED || 'false' }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -523,8 +572,6 @@ jobs:
           PILOT_CODE_SECRET: ${{ secrets.STARTERIA_PILOT_CODE_SECRET }}
           BILLING_WEBHOOKS_ENABLED: ${{ vars.BILLING_WEBHOOKS_ENABLED || 'false' }}
           PORTFOLIO_ENTRY_API_KEY: ${{ secrets.PORTFOLIO_ENTRY_API_KEY }}
-          # Protected pilot scope only. CD always deploys SEMANTIC_E1_ENABLED=false below.
-          SEMANTIC_E1_PILOT_ORGANIZATION_ALLOWLIST: ${{ secrets.SEMANTIC_E1_PILOT_ORGANIZATION_ALLOWLIST }}
           GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
           JEV_API_KEY: ${{ secrets.JEV_API_KEY }}
@@ -627,7 +674,7 @@ jobs:
           kubectl -n "$NAMESPACE" set env deployment/starteria-backend \
             STARTERIA_RELEASE_SHA="$SOURCE_SHA" \
             STARTERIA_RELEASE_VERSION=0.0.1 \
-            SEMANTIC_E1_ENABLED=false \
+            SEMANTIC_E1_ENABLED="$SEMANTIC_E1_ENABLED" \
             PORTFOLIO_GOAL_E2_LEDGER_ENABLED=false \
             PORTFOLIO_GOAL_E2_MULTI_TURN_ENABLED=false \
             PORTFOLIO_GOAL_E2_CHECKPOINT_ENABLED=false
@@ -666,6 +713,25 @@ jobs:
             echo "::warning::tenant E2E no habilitado (vars.E2E_PROD_TENANT_READY): se omite el smoke con sesión"; exit 0
           fi
           scripts/ci/prod-api-smoke.sh
+      - name: Semantic E1 authenticated production smoke
+        id: semantic_e1_smoke
+        if: env.SEMANTIC_E1_ENABLED == 'true'
+        env:
+          E2E_PROD_LEAD_PASSWORD: ${{ secrets.E2E_PROD_LEAD_PASSWORD }}
+        run: scripts/ci/semantic-e1-prod-smoke.sh
+      - name: Fail closed after unsuccessful Semantic E1 smoke
+        if: always() && env.SEMANTIC_E1_ENABLED == 'true' && (steps.rollout.outcome == 'success' || steps.rollout.outcome == 'failure' || steps.rollout.outcome == 'cancelled') && steps.semantic_e1_smoke.outcome != 'success'
+        run: |
+          set -euo pipefail
+          kubectl -n "$NAMESPACE" set env deployment/starteria-backend SEMANTIC_E1_ENABLED=false
+          kubectl -n "$NAMESPACE" rollout status deployment/starteria-backend --timeout="$ROLLOUT_TIMEOUT"
+          for attempt in {1..12}; do
+            actual=$(curl --silent --show-error --fail https://starter-ia.com/api/health | jq -er '.release.flags.SEMANTIC_E1_ENABLED' 2>/dev/null || true)
+            [[ "$actual" == false ]] && exit 0
+            sleep 5
+          done
+          echo '::error::Semantic E1 fail-closed verification did not observe the disabled flag'
+          exit 1
       - name: Report recoverable production incident
         if: ${{ failure() && steps.rollout.outcome == 'success' }}
         run: |

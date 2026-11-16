@@ -12,6 +12,14 @@ No debe leerse como runtime productivo certificado por defecto. La presencia de 
 
 La autoridad actual permite cambios frontend de producto solo cuando exista decision explicita y documentada de slice, con alcance acotado y sin modificar Core, AI, permisos, esquemas, rutas ni semantica de producto salvo autorizacion especifica. DS-05 y DS-06 son evidencia documental de pilotos frontend autorizados por slice.
 
+## GOAL — activación general del razonamiento semántico E1 (2026-11-16)
+
+La rama `feat/e1-semantic-default` prepara la retirada del gate por organización de HU-E1-PILOT-GATE. Cuando el kill switch global está activo, Portfolio Bootstrap E1 autoriza la semántica mediante la propiedad de sesión y las capacidades `portfolio:read`/`portfolio:write` ya existentes; ContextReview, CAS, idempotencia, persistencia, UX congelada y E2–E7 no cambian.
+
+El CD normal obtiene `SEMANTIC_E1_ENABLED` de la configuración protegida de `production`, con `false` como valor fail-closed. Antes de desplegar `true` ejecuta un preflight de bajo consumo a través del orquestador y proveedor reales; tras el rollout ejecuta un smoke autenticado y desactiva el flag si falla. La desactivación inmediata se mantiene mediante `Semantic E1 Kill Switch`, que no puede activar, cambiar imágenes ni tocar datos.
+
+Estado: implementación local en validación; sin PR, merge, CD ni activación todavía. La calidad semántica queda pendiente de validación personal de Producto.
+
 ## HU — descarte gobernado de preparaciones Bootstrap (2026-11-15)
 
 La HU autoriza retirar de Portfolio Home una preparación inacabada mediante una transición lógica a `PortfolioBootstrapSession.status=abandoned`. La operación pertenece a Portfolio Bootstrap, exige propietario, misma organización y permiso `portfolio:write`, es idempotente y conserva una entrada de auditoría. Falla con conflicto sin modificar datos cuando la sesión ya completó la preparación o tiene materializaciones, iniciativas importadas o encargos vinculados.

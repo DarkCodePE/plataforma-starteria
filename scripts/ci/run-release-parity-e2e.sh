@@ -137,7 +137,7 @@ for (const [name, value] of Object.entries(manifest.flags.frontend)) {
   if (front.flags?.[name] !== value) throw new Error(`frontend flag mismatch: ${name}`);
 }
 for (const [name, value] of Object.entries(manifest.flags.backend)) {
-  if (name.startsWith('HANDOFF_EMAIL_')) continue;
+  if (name.startsWith('HANDOFF_EMAIL_') || name === 'SEMANTIC_E1_ENABLED') continue;
   if (back.release.flags?.[name] !== value) throw new Error(`backend flag mismatch: ${name}`);
 }
 if (back.release.flags?.HANDOFF_EMAIL_TRANSPORT_MODE !== manifest.e2e.testOverrides.HANDOFF_EMAIL_TRANSPORT_MODE) {
@@ -145,6 +145,9 @@ if (back.release.flags?.HANDOFF_EMAIL_TRANSPORT_MODE !== manifest.e2e.testOverri
 }
 if (back.release.flags?.HANDOFF_EMAIL_PILOT_ENABLED !== manifest.e2e.testOverrides.HANDOFF_EMAIL_PILOT_ENABLED) {
   throw new Error('undeclared Handoff pilot override');
+}
+if (back.release.flags?.SEMANTIC_E1_ENABLED !== manifest.e2e.testOverrides.SEMANTIC_E1_ENABLED) {
+  throw new Error('undeclared Semantic E1 parity override');
 }
 NODE
 

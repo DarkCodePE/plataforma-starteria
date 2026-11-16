@@ -126,7 +126,6 @@ jq -n '
       PORTFOLIO_ENTRY_PROVIDER: ("openai_responses" | @base64),
       PORTFOLIO_ENTRY_MODEL: ("openai/gpt-5.6-luna" | @base64),
       PORTFOLIO_ENTRY_BASE_URL: ("https://openrouter.ai/api/v1" | @base64),
-      SEMANTIC_E1_PILOT_ORGANIZATION_ALLOWLIST: ((env.SEMANTIC_E1_PILOT_ORGANIZATION_ALLOWLIST // "") | @base64),
       JEV_API_KEY: encoded("JEV_API_KEY"),
       PORTFOLIO_ENTRY_CLASSIFIER: ("jev" | @base64),
       GOOGLE_CLIENT_ID: encoded("GOOGLE_CLIENT_ID")

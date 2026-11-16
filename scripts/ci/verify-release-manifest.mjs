@@ -91,6 +91,10 @@ if (manifest.flags?.backend?.PORTFOLIO_GOAL_E2_LEDGER_ENABLED !== false
   || manifest.flags?.backend?.PORTFOLIO_GOAL_E2_CHECKPOINT_ENABLED !== false) {
   throw new Error('Experimental backend E2 flags must remain off');
 }
+if (typeof manifest.flags?.backend?.SEMANTIC_E1_ENABLED !== 'boolean'
+  || manifest.e2e?.testOverrides?.SEMANTIC_E1_ENABLED !== false) {
+  throw new Error('Semantic E1 release and isolated parity flags must be explicit');
+}
 if (!['disabled', 'pilot'].includes(manifest.flags?.backend?.HANDOFF_EMAIL_TRANSPORT_MODE)) {
   throw new Error('Invalid productive Handoff transport mode');
 }

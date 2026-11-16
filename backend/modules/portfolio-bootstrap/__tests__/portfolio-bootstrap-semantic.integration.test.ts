@@ -249,20 +249,19 @@ describeIntegration('KAN-244 E1 semantic persistence', () => {
       .set('Idempotency-Key', 'viewer-turn').send(turn).expect(403);
   });
 
-  it('rejects POST turns for an organization outside the allowlist without exposing pilot membership', async () => {
+  it('accepts POST turns for an owned organization when the global switch is enabled', async () => {
     await seed();
     vi.stubEnv('SEMANTIC_E1_ENABLED', 'true');
-    vi.stubEnv('SEMANTIC_E1_PILOT_ORGANIZATION_ALLOWLIST', 'another-organization');
+    vi.stubEnv('PORTFOLIO_ENTRY_E2E_TEST', 'true');
 
     const response = await request(makeApp(userId))
       .post(`${base}/turns`)
       .set('Idempotency-Key', 'non-pilot-turn')
       .send({ expectedVersion: 0, inputText: 'Contexto material.', answeredQuestionId: null })
-      .expect(503);
+      .expect(200);
 
-    expect(response.body.error).toMatchObject({ code: 'PORTFOLIO_SEMANTIC_DISABLED' });
-    expect(response.body.error.message).not.toMatch(/allowlist|piloto|organizaci[oó]n/i);
-    expect(await (prisma as any).portfolioBootstrapSemanticTurn.count()).toBe(0);
+    expect(response.body.data.turn.execution.provider).toBe('deterministic_test_adapter');
+    expect(await (prisma as any).portfolioBootstrapSemanticTurn.count()).toBe(1);
   });
 
   it('persists one retryable failure with usage/retry/fallback metrics and no invented semantic output', async () => {
@@ -449,5 +448,4 @@ async function cleanup() {
 
 function enablePilot() {
   vi.stubEnv('SEMANTIC_E1_ENABLED', 'true');
-  vi.stubEnv('SEMANTIC_E1_PILOT_ORGANIZATION_ALLOWLIST', organizationId);
 }

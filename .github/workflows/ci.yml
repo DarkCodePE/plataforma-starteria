@@ -85,9 +85,9 @@ jobs:
         working-directory: .
         run: bash scripts/ci/tests/handoff-email-pilot-config.test.sh
 
-      - name: Test production Semantic E1 pilot gate
+      - name: Test production Semantic E1 rollout controls
         working-directory: .
-        run: bash scripts/ci/tests/semantic-e1-pilot-gate.test.sh
+        run: bash scripts/ci/tests/semantic-e1-rollout.test.sh
 
       - name: Test production migration authority gate
         working-directory: .
