@@ -332,6 +332,14 @@ export class PortfolioBootstrapSemanticOrchestratorService {
       ...completedTurn,
     });
     if (!verifiedTurn.success) {
+      // The provider output passed its own schema, but the final governed turn did not.
+      // Log only the schema issue paths/categories; never the user text or provider payload.
+      logSchemaValidationFailure({
+        validationStage: 'semantic_turn',
+        providerRaw: modelResult.provider_raw,
+        issues: verifiedTurn.error.issues,
+        execution: measuredExecution,
+      });
       this.recordFailure();
       return {
         processing: false,
@@ -611,7 +619,7 @@ function nonNegativeInteger(value: unknown): number {
 }
 
 function logSchemaValidationFailure(input: {
-  validationStage: 'adapter' | 'orchestrator';
+  validationStage: 'adapter' | 'orchestrator' | 'semantic_turn';
   providerRaw: unknown;
   parsedOutput?: unknown;
   schemaErrors?: string[];
