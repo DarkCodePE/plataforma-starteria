@@ -33,7 +33,7 @@ report_failure() {
       totalTokens: (.data.turn.execution.totalTokens // null),
       factsCount: (if (.data.turn.facts | type) == "array" then (.data.turn.facts | length) else null end),
       hasStartingPoint: (if (.data.turn.hypotheses | type) == "array" then any(.data.turn.hypotheses[]; (.hypothesisId | type) == "string" and (.hypothesisId | startswith("starting_point."))) else null end),
-      hasMainUncertainty: (if (.data.turn.hypotheses | type) == "array" and (.data.turn.facts | type) == "array" then (any(.data.turn.hypotheses[]; .hypothesisId == "main_uncertainty") or any(.data.turn.facts[]; .conceptId == "uncertainty")) else null end),
+      hasMainUncertainty: (if (.data.turn.hypotheses | type) == "array" and (.data.turn.facts | type) == "array" then (any(.data.turn.hypotheses[]; .hypothesisId == "main_uncertainty") or any(.data.turn.facts[]; (.conceptId == "main_uncertainty" or .conceptId == "uncertainty"))) else null end),
       hasNextStep: (if (.data.turn | type) == "object" then (.data.turn.emittedQuestion != null or .data.turn.convergence.synthesis != null) else null end),
       semanticVersion: (.data.state.version // null)
     }' <<<"$diagnostic_response" || true
@@ -118,7 +118,7 @@ jq -e '
   and (.data.turn.facts | length) > 0
   and any(.data.turn.hypotheses[]; .hypothesisId | startswith("starting_point."))
   and (any(.data.turn.hypotheses[]; .hypothesisId == "main_uncertainty")
-    or any(.data.turn.facts[]; .conceptId == "uncertainty"))
+    or any(.data.turn.facts[]; (.conceptId == "main_uncertainty" or .conceptId == "uncertainty")))
   and (.data.turn.emittedQuestion != null or .data.turn.convergence.synthesis != null)
 ' >/dev/null <<<"$first"
 
