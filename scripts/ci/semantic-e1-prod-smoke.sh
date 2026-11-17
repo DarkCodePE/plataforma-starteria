@@ -22,7 +22,9 @@ report_failure() {
     "$failure_stage" "$exit_code"
 
   if [[ -n "$diagnostic_response" ]] && jq -e . >/dev/null 2>&1 <<<"$diagnostic_response"; then
-    jq -c --arg stage "$failure_stage" '{
+    jq -c --arg stage "$failure_stage" '
+      .data.turn as $turn
+      | {
       event: "semantic_e1_prod_smoke_failed",
       stage: $stage,
       apiCode: (.error.code // .data.error.code // .data.turn.error.code // null),
@@ -33,7 +35,15 @@ report_failure() {
       totalTokens: (.data.turn.execution.totalTokens // null),
       factsCount: (if (.data.turn.facts | type) == "array" then (.data.turn.facts | length) else null end),
       hasStartingPoint: (if (.data.turn.hypotheses | type) == "array" then any(.data.turn.hypotheses[]; (.hypothesisId | type) == "string" and (.hypothesisId | startswith("starting_point."))) else null end),
-      hasMainUncertainty: (if (.data.turn.hypotheses | type) == "array" and (.data.turn.facts | type) == "array" then (any(.data.turn.hypotheses[]; .hypothesisId == "main_uncertainty") or any(.data.turn.facts[]; (.conceptId == "main_uncertainty" or .conceptId == "uncertainty"))) else null end),
+      hasMainUncertainty: (if ($turn.hypotheses | type) == "array" and ($turn.facts | type) == "array" then (
+        any($turn.hypotheses[]; .hypothesisId == "main_uncertainty")
+        or any($turn.facts[]; (.conceptId == "main_uncertainty" or .conceptId == "uncertainty"))
+        or any(($turn.dispositions // [])[];
+          .disposition == "unknown"
+          and (.conceptId == "main_uncertainty" or .conceptId == "uncertainty" or .conceptId == "root_cause" or .conceptId == "solution")
+          and (.conceptId as $concept | all($turn.facts[]; .conceptId != $concept or .status == "retracted"))
+        )
+      ) else null end),
       hasNextStep: (if (.data.turn | type) == "object" then (.data.turn.emittedQuestion != null or .data.turn.convergence.synthesis != null) else null end),
       semanticVersion: (.data.state.version // null)
     }' <<<"$diagnostic_response" || true
@@ -110,16 +120,22 @@ first="$diagnostic_response"
 
 failure_stage='first_turn_contract'
 jq -e '
-  .data.turn.status == "completed"
-  and (.data.turn.execution.provider | type == "string" and length > 0)
-  and .data.turn.execution.provider != "deterministic_test_adapter"
-  and (.data.turn.execution.model | type == "string" and length > 0)
-  and .data.turn.execution.totalTokens > 0
-  and (.data.turn.facts | length) > 0
-  and any(.data.turn.hypotheses[]; .hypothesisId | startswith("starting_point."))
-  and (any(.data.turn.hypotheses[]; .hypothesisId == "main_uncertainty")
-    or any(.data.turn.facts[]; (.conceptId == "main_uncertainty" or .conceptId == "uncertainty")))
-  and (.data.turn.emittedQuestion != null or .data.turn.convergence.synthesis != null)
+  .data.turn as $turn
+  | $turn.status == "completed"
+  and ($turn.execution.provider | type == "string" and length > 0)
+  and $turn.execution.provider != "deterministic_test_adapter"
+  and ($turn.execution.model | type == "string" and length > 0)
+  and $turn.execution.totalTokens > 0
+  and ($turn.facts | length) > 0
+  and any($turn.hypotheses[]; .hypothesisId | startswith("starting_point."))
+  and (any($turn.hypotheses[]; .hypothesisId == "main_uncertainty")
+    or any($turn.facts[]; (.conceptId == "main_uncertainty" or .conceptId == "uncertainty"))
+    or any(($turn.dispositions // [])[];
+      .disposition == "unknown"
+      and (.conceptId == "main_uncertainty" or .conceptId == "uncertainty" or .conceptId == "root_cause" or .conceptId == "solution")
+      and (.conceptId as $concept | all($turn.facts[]; .conceptId != $concept or .status == "retracted"))
+    ))
+  and ($turn.emittedQuestion != null or $turn.convergence.synthesis != null)
 ' >/dev/null <<<"$first"
 
 first_version=$(jq -er '.data.state.version' <<<"$first")

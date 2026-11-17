@@ -16,7 +16,7 @@ export type SemanticE1PreflightPredicate = typeof semanticE1PreflightPredicates[
 
 type PreflightTurn = Pick<
   SemanticTurnDto,
-  'status' | 'facts' | 'hypotheses' | 'emittedQuestion' | 'convergence' | 'execution'
+  'status' | 'facts' | 'hypotheses' | 'dispositions' | 'emittedQuestion' | 'convergence' | 'execution'
 >;
 
 export interface SemanticE1PreflightInput {
@@ -45,6 +45,15 @@ export interface SemanticE1PreflightEvaluation {
 
 export function evaluateSemanticE1Preflight(input: SemanticE1PreflightInput): SemanticE1PreflightEvaluation {
   const { turn } = input;
+  const activeFactConcepts = new Set(turn.facts
+    .filter((fact) => fact.status !== 'retracted')
+    .map((fact) => fact.conceptId));
+  const materialUnknownConcepts = new Set(['main_uncertainty', 'uncertainty', 'root_cause', 'solution']);
+  const hasUnknownMaterialUncertainty = turn.dispositions.some((item) => (
+    item.disposition === 'unknown'
+    && materialUnknownConcepts.has(item.conceptId)
+    && !activeFactConcepts.has(item.conceptId)
+  ));
   const predicates: Record<SemanticE1PreflightPredicate, boolean> = {
     processing: !input.processing,
     status: turn.status === 'completed',
@@ -60,6 +69,7 @@ export function evaluateSemanticE1Preflight(input: SemanticE1PreflightInput): Se
       || turn.facts.some((item) => (
         item.conceptId === 'main_uncertainty' || item.conceptId === 'uncertainty'
       ))
+      || hasUnknownMaterialUncertainty
       || (turn.convergence.status === 'question_required' && Boolean(turn.emittedQuestion)),
     hasNextStep: Boolean(turn.emittedQuestion) || Boolean(turn.convergence.synthesis),
   };
