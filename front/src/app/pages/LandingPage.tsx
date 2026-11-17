@@ -1,125 +1,109 @@
-import type { CSSProperties, ReactNode } from 'react';
+import type { ReactNode } from 'react';
 import {
   ArrowRight,
   ArrowUpRight,
   BarChart3,
-  CircleCheck,
-  FileText,
-  LayoutGrid,
-  Lock,
+  CheckCircle2,
+  Code2,
+  Compass,
+  FileCheck2,
+  Layers3,
+  Lightbulb,
   ShieldCheck,
   Target,
-  UserRound,
-  Users,
-  Zap,
   type LucideIcon,
 } from 'lucide-react';
 import { Link } from 'react-router';
 import { Button } from '../components/ui/button';
 import { useApp } from '../context/AppContext';
-import { ConceptMap } from '../components/landing/ConceptMap';
 import { StarteriaMark } from '../components/landing/StarteriaMark';
 import { StarteriaProductPreview } from '../components/landing/StarteriaProductPreview';
 import { PUBLIC_LANDING_CONFIG } from '../config/publicLanding';
 import '../components/landing/landing.css';
 
 const NAV_LINKS = [
-  { href: '#vista-producto', label: 'Producto' },
-  { href: '#como-funciona', label: 'Cómo funciona' },
-  { href: '#metodologia', label: 'Metodología' },
-  { href: '#confianza', label: 'Confianza' },
+  { href: '#desafios', label: 'Desafíos' },
+  { href: '#soluciones', label: 'Soluciones' },
+  { href: '#como-trabajamos', label: 'Cómo trabajamos' },
+  { href: '#casos', label: 'Casos de uso' },
 ];
 
-const QUICK_BENEFITS: { label: string; Icon: LucideIcon }[] = [
-  { label: 'Más claridad en menos tiempo', Icon: Zap },
-  { label: 'Equipos alineados de verdad', Icon: Users },
-  { label: 'Decisiones con evidencia', Icon: BarChart3 },
-];
-
-const VALUE_FLOW: { title: string; description: string; Icon: LucideIcon }[] = [
+const CHALLENGES: { title: string; description: string; Icon: LucideIcon }[] = [
   {
-    title: 'Define la meta',
-    description: 'Convierte una intención en un objetivo claro y accionable.',
-    Icon: Target,
+    title: 'Hay iniciativas, pero no está claro qué aportan.',
+    description: 'Ideas, proyectos y reportes dispersos impiden ver qué avanza, qué está bloqueado y qué merece atención.',
+    Icon: Layers3,
   },
   {
-    title: 'Alinea el trabajo',
-    description: 'Conecta iniciativas, personas y recursos.',
-    Icon: LayoutGrid,
+    title: 'Existe una oportunidad, pero no la capacidad para desarrollarla.',
+    description: 'El equipo detecta mejoras o productos posibles, pero depende de recursos técnicos que no están disponibles.',
+    Icon: Code2,
   },
   {
-    title: 'Hazlas realidad',
-    description: 'Ejecuta con visibilidad, colaboración y evidencia.',
-    Icon: Users,
+    title: 'Se apuesta por soluciones antes de comprobar su valor.',
+    description: 'Se invierte tiempo y presupuesto sin suficiente claridad sobre qué problema resolver o qué señal observar.',
+    Icon: Lightbulb,
   },
   {
-    title: 'Decide',
-    description: 'Visualiza opciones y toma decisiones con contexto.',
+    title: 'El avance no se convierte en una decisión.',
+    description: 'Las reuniones muestran actividad, pero cuesta conectar evidencia, responsables y el siguiente paso.',
     Icon: BarChart3,
   },
 ];
 
-const TODAY_FRAGMENTED: { label: string; Icon: LucideIcon }[] = [
-  { label: 'Objetivos aislados', Icon: Target },
-  { label: 'Equipos desconectados', Icon: Users },
-  { label: 'Contexto perdido', Icon: LayoutGrid },
-  { label: 'Decisiones tardías', Icon: CircleCheck },
-];
-
-const WITH_STARTERIA: { label: string; Icon: LucideIcon }[] = [
-  { label: 'Foco compartido', Icon: Target },
-  { label: 'Trabajo coordinado', Icon: Users },
-  { label: 'Evidencia conectada', Icon: BarChart3 },
-  { label: 'Decisiones trazables', Icon: CircleCheck },
-];
-
-const START_PATH = [
+const PROCESS: { title: string; description: string }[] = [
   {
-    stage: 'Entrada pública',
-    title: 'Cuéntanos qué quieres mover',
-    body: 'Describe tu objetivo o tu situación con tus palabras. No necesitas tenerlo todo resuelto para empezar.',
-    tags: ['Texto libre', 'Contexto incompleto vale'],
+    title: 'Entender',
+    description: 'Partimos de tu contexto, problema u oportunidad. Aclaramos qué necesita cambiar y por qué.',
   },
   {
-    stage: 'Primera lectura',
-    title: 'Recibe una lectura ordenada',
-    body: 'Starteria ordena lo que contaste: qué está claro, qué falta aclarar y por dónde conviene seguir.',
-    tags: ['Pública', 'Revisable'],
+    title: 'Enfocar',
+    description: 'Definimos la iniciativa o intervención y las evidencias necesarias para orientarla.',
   },
   {
-    stage: 'Trabajo formal',
-    title: 'Formaliza con tu equipo',
-    body: 'Cuando decides continuar, la lectura se convierte en iniciativas, equipos y evidencia dentro de la plataforma.',
-    tags: ['Revisión humana', 'Trazable'],
+    title: 'Desarrollar',
+    description: 'Activamos el trabajo con tus equipos o abordamos la implementación tecnológica según el alcance.',
+  },
+  {
+    title: 'Aprender y decidir',
+    description: 'Conectamos los resultados observados con la decisión de continuar, ajustar, escalar o cerrar.',
   },
 ];
 
-const TRUST_PRINCIPLES: { title: string; detail: string; Icon: LucideIcon }[] = [
+const USE_CASES = [
   {
-    title: 'Puedes empezar con contexto incompleto.',
-    detail: 'No necesitas tener todo resuelto para comenzar.',
-    Icon: ShieldCheck,
+    label: 'Empresa con un problema operativo',
+    title: 'Automatizar sin comprar tecnología a ciegas.',
+    description: 'Aterrizar una fricción, definir una intervención y desarrollar un flujo o MVP cuando exista una apuesta justificable.',
   },
   {
-    title: 'Nada se convierte en trabajo formal sin revisión.',
-    detail: 'Tú mantienes el control en todo momento.',
-    Icon: FileText,
+    label: 'Equipo con varias iniciativas',
+    title: 'Saber qué está avanzando y qué requiere decisión.',
+    description: 'Ordenar trabajo existente, conectar objetivos, detectar bloqueos y preparar una lectura ejecutiva.',
   },
   {
-    title: 'La IA estructura y propone; las decisiones siguen siendo humanas.',
-    detail: 'Tu experiencia y criterio son insustituibles.',
-    Icon: UserRound,
-  },
-  {
-    title: 'Tu entrada pública no crea iniciativas automáticamente.',
-    detail: 'Tú decides qué se formaliza y qué avanza.',
-    Icon: Lock,
+    label: 'Organización explorando crecimiento',
+    title: 'Probar una oportunidad antes de escalar.',
+    description: 'Estructurar una hipótesis, reunir evidencia y decidir qué merece más inversión o desarrollo.',
   },
 ];
 
-const eyebrow = 'text-[11px] font-semibold uppercase tracking-[0.18em] text-brand-primary';
-const sectionTitle = 'landing-display text-3xl font-semibold leading-[1.12] text-[#0D1333] sm:text-[2.5rem]';
-const sectionLead = 'text-base leading-7 text-[#5D6585]';
+const eyebrow = 'text-xs font-semibold uppercase tracking-[0.18em] text-[#4F46E5]';
+const sectionTitle = 'landing-display text-3xl font-semibold leading-[1.08] text-[#0D1333] sm:text-[2.75rem]';
+const sectionLead = 'mt-5 max-w-2xl text-base leading-7 text-[#5D6585]';
+
+function DemoLink({ children, className = '' }: { children: ReactNode; className?: string }) {
+  return (
+    <a
+      href={PUBLIC_LANDING_CONFIG.demoBookingUrl}
+      target="_blank"
+      rel="noopener noreferrer"
+      className={className}
+    >
+      {children}
+    </a>
+  );
+}
 
 export function LandingPage() {
   const { isAuthenticated } = useApp();
@@ -128,441 +112,272 @@ export function LandingPage() {
     <div className="landing-root min-h-screen">
       <a
         href="#contenido"
-        className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-50 focus:rounded-ds-sm focus:bg-surface-default focus:px-4 focus:py-3 focus:text-text-primary focus:shadow-elevation-overlay"
+        className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-50 focus:rounded-lg focus:bg-white focus:px-4 focus:py-3 focus:text-[#0D1333]"
       >
         Saltar al contenido
       </a>
 
-      <header className="sticky top-0 z-40 border-b border-[#E4E7F5]/70 bg-[#FBFCFF]/85 backdrop-blur-md">
-        <div className="mx-auto flex max-w-7xl items-center justify-between gap-3 px-4 py-3.5 sm:gap-4 sm:px-6 lg:px-8">
-          <Link
-            to="/"
-            className="flex shrink-0 items-center gap-2 rounded-sm text-lg font-semibold tracking-tight text-[#0D1333] sm:text-xl"
-          >
+      <header className="sticky top-0 z-40 border-b border-[#E4E7F5] bg-[#FBFCFF]/95 backdrop-blur-md">
+        <div className="mx-auto flex max-w-7xl items-center justify-between gap-4 px-4 py-3.5 sm:px-6 lg:px-8">
+          <Link to="/" className="flex shrink-0 items-center gap-2 text-lg font-semibold text-[#0D1333]">
             <StarteriaMark />
             Starteria
           </Link>
-
-          <nav className="hidden items-center gap-7 lg:flex" aria-label="Navegación principal">
+          <nav aria-label="Navegación principal" className="hidden items-center gap-6 lg:flex">
             {NAV_LINKS.map((link) => (
-              <a
-                key={link.href}
-                href={link.href}
-                className="text-sm font-medium text-[#3B4466] transition-colors hover:text-brand-primary"
-              >
+              <a key={link.href} href={link.href} className="text-sm font-medium text-[#3B4466] hover:text-[#4F46E5]">
                 {link.label}
               </a>
             ))}
           </nav>
-
-          <div className="flex shrink-0 items-center gap-2">
-            <Button asChild variant="outline" size="sm" className="hidden h-9 rounded-lg px-4 sm:inline-flex">
+          <div className="flex items-center gap-2">
+            <Button asChild variant="outline" size="sm" className="hidden sm:inline-flex">
               <Link to={isAuthenticated ? '/dashboard' : '/auth'}>
                 {isAuthenticated ? 'Ir al panel' : 'Iniciar sesión'}
               </Link>
             </Button>
-            <Button asChild size="sm" className="h-9 rounded-lg px-4 shadow-[0_6px_16px_-6px_rgb(79_70_229/0.6)]">
-              <a href={PUBLIC_LANDING_CONFIG.demoBookingUrl} target="_blank" rel="noopener noreferrer">
-                Reservar demo
-                <ArrowRight aria-hidden="true" size={15} className="hidden sm:block" />
-              </a>
+            <Button asChild size="sm" className="rounded-lg">
+              <a href={PUBLIC_LANDING_CONFIG.demoBookingUrl} target="_blank" rel="noopener noreferrer">Hablemos <ArrowUpRight aria-hidden="true" size={15} /></a>
             </Button>
           </div>
         </div>
       </header>
 
       <main id="contenido">
-        <section aria-labelledby="landing-hero-title" className="landing-wash relative scroll-mt-24 overflow-hidden">
-          <div className="mx-auto grid max-w-7xl min-w-0 items-center gap-12 px-4 pb-16 pt-12 sm:px-6 lg:px-8 lg:pb-20 lg:pt-16 xl:grid-cols-[minmax(0,1fr)_minmax(0,1.04fr)] xl:gap-10">
-            <div className="landing-pop min-w-0">
-              <p className={eyebrow}>De la estrategia al impacto real</p>
-              <h1
-                id="landing-hero-title"
-                className="landing-display mt-5 max-w-xl text-[2.6rem] font-semibold leading-[1.04] text-[#0D1333] sm:text-6xl"
-              >
-                Haz que la estrategia <span className="text-brand-primary">se haga realidad.</span>
+        <section className="relative overflow-hidden bg-[#111329] text-white" aria-labelledby="landing-hero-title">
+          <div aria-hidden="true" className="pointer-events-none absolute -right-32 -top-40 h-[38rem] w-[38rem] rounded-full bg-[#5745D6]/30 blur-[110px]" />
+          <div aria-hidden="true" className="pointer-events-none absolute -bottom-56 -left-24 h-[30rem] w-[30rem] rounded-full bg-[#0891B2]/15 blur-[110px]" />
+          <div className="relative mx-auto grid max-w-7xl items-center gap-12 px-4 py-20 sm:px-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,0.98fr)] lg:gap-14 lg:px-8 lg:py-28">
+            <div className="landing-pop">
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#ABA6FF]">
+                Starteria · Estrategia, plataforma y desarrollo tecnológico
+              </p>
+              <h1 id="landing-hero-title" className="landing-display mt-6 max-w-3xl text-4xl font-semibold leading-[1.04] sm:text-6xl lg:text-[4.1rem]">
+                De una necesidad de negocio a una <span className="text-[#AAA4FF]">solución que genera valor.</span>
               </h1>
-              <p className="mt-6 max-w-xl text-lg font-medium leading-7 text-[#1B2147]">
-                Conecta lo que tu empresa quiere mover con el trabajo, las personas y la evidencia necesarias para lograrlo.
+              <p className="mt-7 max-w-xl text-lg leading-8 text-[#E4E6F6]">
+                Combinamos estrategia, ejecución tecnológica e inteligencia artificial para ayudar a tu empresa a identificar oportunidades, desarrollar soluciones y dar seguimiento a sus resultados.
               </p>
-              <p className="mt-3 max-w-xl text-base leading-7 text-[#5D6585]">
-                Starteria reduce silos, mantiene contexto y convierte avance en decisiones más claras.
-              </p>
-              <div className="mt-8 flex flex-col items-stretch gap-3 sm:flex-row sm:items-center">
-                <Button asChild size="lg" className="h-12 rounded-xl px-6 text-[15px] shadow-[0_10px_24px_-10px_rgb(79_70_229/0.7)]">
-                  <a href={PUBLIC_LANDING_CONFIG.demoBookingUrl} target="_blank" rel="noopener noreferrer">
-                    Reservar demo
-                    <ArrowRight aria-hidden="true" size={16} />
-                  </a>
+              <div className="mt-9 flex flex-col items-stretch gap-3 sm:flex-row sm:items-center">
+                <Button asChild size="lg" className="h-12 rounded-xl bg-white px-6 text-[#151630] hover:bg-[#EDEBFF]">
+                  <a href={PUBLIC_LANDING_CONFIG.demoBookingUrl} target="_blank" rel="noopener noreferrer">Hablemos de tu desafío <ArrowUpRight aria-hidden="true" size={17} /></a>
                 </Button>
-                <Button
-                  asChild
-                  variant="outline"
-                  size="lg"
-                  className="h-12 rounded-xl border-[#C7D2FE] px-6 text-[15px] text-brand-primary hover:border-brand-primary hover:bg-brand-primary-subtle hover:text-[#3730A3]"
-                >
-                  <Link to="/public/start">Quiero alinear mi objetivo primero</Link>
-                </Button>
+                <a href="#soluciones" className="inline-flex h-12 items-center justify-center gap-2 rounded-xl border border-white/25 px-6 text-sm font-semibold text-white hover:bg-white/10">
+                  Explorar soluciones <ArrowRight aria-hidden="true" size={16} />
+                </a>
               </div>
-
-              <section aria-labelledby="quick-benefits-title" className="mt-10">
-                <h2 id="quick-benefits-title" className="sr-only">
-                  Beneficios rápidos
-                </h2>
-                <ul className="grid gap-4 sm:grid-cols-3 sm:gap-3">
-                  {QUICK_BENEFITS.map(({ label, Icon }) => (
-                    <li key={label} className="flex items-center gap-3 text-[13px] font-medium leading-5 text-[#3B4466]">
-                      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white text-brand-primary shadow-[0_2px_8px_-2px_rgb(13_19_51/0.12)] ring-1 ring-[#E4E7F5]">
-                        <Icon aria-hidden="true" size={17} />
-                      </span>
-                      <span className="max-w-[9.5rem]">{label}</span>
-                    </li>
-                  ))}
-                </ul>
-              </section>
+              <p className="mt-5 text-sm leading-6 text-[#BEC1DE]">Podemos comenzar desde un problema, una oportunidad o un proyecto que ya está en marcha.</p>
             </div>
-
-            <ConceptMap />
+            <SystemIllustration />
           </div>
         </section>
 
-        <section id="como-funciona" aria-labelledby="value-flow-title" className="scroll-mt-24 border-t border-[#E4E7F5]/80 bg-white">
-          <div className="mx-auto max-w-7xl px-4 py-20 sm:px-6 lg:px-8 lg:py-24">
-            <div className="max-w-2xl">
-              <p className={eyebrow}>Cómo funciona</p>
-              <h2 id="value-flow-title" className={`${sectionTitle} mt-4`}>
-                Cómo te ayuda Starteria
-              </h2>
-              <p className={`${sectionLead} mt-4`}>
-                No se trata solo de ordenar. Starteria te ayuda a entender qué quieres mover, coordinar el trabajo y
-                cerrar el ciclo con evidencia para decidir.
-              </p>
+        <section id="desafios" className="scroll-mt-24 bg-[#FBFCFF] px-4 py-20 sm:px-6 lg:px-8 lg:py-24" aria-labelledby="desafios-title">
+          <div className="mx-auto max-w-7xl">
+            <p className={eyebrow}>El punto de partida</p>
+            <h2 id="desafios-title" className={sectionTitle + ' mt-4 max-w-3xl'}>
+              Las oportunidades no se pierden por falta de ideas.
+            </h2>
+            <p className={sectionLead}>Muchas empresas ya saben qué quieren mejorar. El reto es pasar de la intención a un trabajo que avance y permita comprobar su contribución.</p>
+            <div className="mt-11 grid gap-4 md:grid-cols-2">
+              {CHALLENGES.map(({ title, description, Icon }) => (
+                <article key={title} className="landing-card rounded-2xl p-6 sm:p-7">
+                  <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-[#EEF1FF] text-[#4F46E5]">
+                    <Icon aria-hidden="true" size={22} />
+                  </span>
+                  <h3 className="mt-6 max-w-md text-xl font-semibold leading-snug text-[#0D1333]">{title}</h3>
+                  <p className="mt-3 max-w-xl text-sm leading-7 text-[#5D6585]">{description}</p>
+                </article>
+              ))}
             </div>
+          </div>
+        </section>
 
-            <ol role="group" aria-label="Flujo conceptual de valor" className="mt-12 grid gap-10 sm:grid-cols-2 lg:grid-cols-4 lg:gap-8">
-              {VALUE_FLOW.map(({ title, description, Icon }, index) => (
-                <li key={title} className="relative min-w-0">
-                  <div className="flex items-center gap-3">
-                    <span className="flex h-16 w-16 shrink-0 items-center justify-center rounded-full bg-gradient-to-b from-[#EEF2FF] to-[#E0E7FF] text-brand-primary ring-8 ring-[#F6F7FD]">
-                      <Icon aria-hidden="true" size={26} strokeWidth={1.9} />
-                    </span>
-                    <span className="flex h-8 min-w-8 items-center justify-center rounded-full border border-[#E4E7F5] bg-white px-2 text-xs font-semibold tabular-nums text-brand-primary">
-                      {String(index + 1).padStart(2, '0')}
-                    </span>
-                    {index < VALUE_FLOW.length - 1 ? (
-                      <span aria-hidden="true" className="ml-1 hidden flex-1 items-center text-[#A5B4FC] lg:flex">
-                        <span className="h-px flex-1 bg-[#C7D2FE]" />
-                        <ArrowRight size={14} className="-ml-1" />
-                      </span>
-                    ) : null}
-                  </div>
-                  <div className="mt-5 border-l border-[#E4E7F5] pl-4">
-                    <h3 className="text-base font-semibold text-[#0D1333]">{title}</h3>
-                    <p className="mt-1.5 max-w-[16rem] text-sm leading-6 text-[#5D6585]">{description}</p>
-                  </div>
+        <section id="soluciones" className="scroll-mt-24 border-y border-[#E4E7F5] bg-white px-4 py-20 sm:px-6 lg:px-8 lg:py-24" aria-labelledby="soluciones-title">
+          <div className="mx-auto max-w-7xl">
+            <p className={eyebrow}>Una propuesta, distintas formas de trabajar</p>
+            <h2 id="soluciones-title" className={sectionTitle + ' mt-4 max-w-3xl'}>
+              Lo que necesitas para pasar de la oportunidad a la ejecución.
+            </h2>
+            <p className={sectionLead}>Puedes abordar una iniciativa con Starteria Platform, solicitar desarrollo tecnológico con Starteria Fab o combinar ambas capacidades.</p>
+
+            <div className="mt-11 grid gap-5 lg:grid-cols-2">
+              <article className="relative overflow-hidden rounded-3xl border border-[#DADCF1] bg-[#F6F7FF] p-7 sm:p-9">
+                <div className="flex items-center gap-3">
+                  <span className="flex h-12 w-12 items-center justify-center rounded-xl bg-[#E2E5FF] text-[#4F46E5]"><Layers3 aria-hidden="true" /></span>
+                  <p className="text-xs font-bold uppercase tracking-widest text-[#4F46E5]">Starteria Platform</p>
+                </div>
+                <h3 className="landing-display mt-7 max-w-md text-3xl font-semibold leading-tight text-[#0D1333]">Haz que tus iniciativas tengan dirección y seguimiento.</h3>
+                <p className="mt-4 leading-7 text-[#475075]">Estructura problemas y oportunidades, activa trabajo, conecta evidencia y prepara decisiones con tu equipo.</p>
+                <ul className="mt-7 space-y-3 text-sm text-[#293251]">
+                  <Benefit>Contexto y prioridades conectadas</Benefit>
+                  <Benefit>Iniciativas, responsables y bloqueos visibles</Benefit>
+                  <Benefit>Evidencia y seguimiento de decisiones</Benefit>
+                </ul>
+              </article>
+              <article className="relative overflow-hidden rounded-3xl border border-[#2B3055] bg-[#181C37] p-7 text-white sm:p-9">
+                <div aria-hidden="true" className="pointer-events-none absolute -right-16 -top-12 h-56 w-56 rounded-full bg-[#4F46E5]/25 blur-3xl" />
+                <div className="relative flex items-center gap-3">
+                  <span className="flex h-12 w-12 items-center justify-center rounded-xl bg-[#333862] text-[#B9B3FF]"><Code2 aria-hidden="true" /></span>
+                  <p className="text-xs font-bold uppercase tracking-widest text-[#B9B3FF]">Starteria Fab</p>
+                </div>
+                <h3 className="landing-display relative mt-7 max-w-md text-3xl font-semibold leading-tight">De la propuesta al software que puedes probar.</h3>
+                <p className="relative mt-4 leading-7 text-[#D5D9EF]">Capacidad de ingeniería de software asistida por agentes para construir, revisar y probar soluciones con control humano.</p>
+                <ul className="relative mt-7 space-y-3 text-sm text-[#EFF0FB]">
+                  <Benefit>Prototipos, MVPs y automatizaciones según alcance</Benefit>
+                  <Benefit>Desarrollo con revisión técnica y pruebas</Benefit>
+                  <Benefit>Entrega trazable y evolución por iteraciones</Benefit>
+                </ul>
+              </article>
+            </div>
+            <div className="mt-5 flex flex-col gap-4 rounded-2xl border border-[#DFE2F2] bg-[#FBFCFF] p-6 sm:flex-row sm:items-center sm:justify-between sm:p-8">
+              <div className="max-w-3xl">
+                <p className="text-xs font-bold uppercase tracking-widest text-[#4F46E5]">Servicio integrado</p>
+                <h3 className="mt-2 text-xl font-semibold text-[#0D1333]">Platform aporta la trazabilidad. Fab aporta capacidad de construcción.</h3>
+                <p className="mt-2 text-sm leading-6 text-[#5D6585]">La integración completa está en evolución: el alcance y los compromisos de cada proyecto se acuerdan antes de empezar.</p>
+              </div>
+              <DemoLink className="inline-flex shrink-0 items-center gap-2 text-sm font-semibold text-[#4F46E5] hover:underline">
+                Cuéntanos qué necesitas <ArrowUpRight aria-hidden="true" size={16}/>
+              </DemoLink>
+            </div>
+          </div>
+        </section>
+
+        <section id="como-trabajamos" className="scroll-mt-24 bg-[#F5F7FC] px-4 py-20 sm:px-6 lg:px-8 lg:py-24" aria-labelledby="proceso-title">
+          <div className="mx-auto max-w-7xl">
+            <p className={eyebrow}>Cómo trabajamos</p>
+            <h2 id="proceso-title" className={sectionTitle + ' mt-4 max-w-3xl'}>De la primera conversación a una decisión sustentada.</h2>
+            <p className={sectionLead}>La ruta se adapta a tu situación: no todas las empresas necesitan una plataforma completa ni todos los desafíos requieren desarrollar software.</p>
+            <ol className="mt-11 grid gap-4 md:grid-cols-2 xl:grid-cols-4" aria-label="Proceso de colaboración">
+              {PROCESS.map((step, index) => (
+                <li key={step.title} className="landing-card rounded-2xl p-6">
+                  <span className="text-xs font-semibold tracking-widest text-[#4F46E5]">{String(index + 1).padStart(2, '0')} / 04</span>
+                  <h3 className="mt-8 text-xl font-semibold text-[#0D1333]">{step.title}</h3>
+                  <p className="mt-3 text-sm leading-7 text-[#5D6585]">{step.description}</p>
                 </li>
               ))}
             </ol>
-
             <StarteriaProductPreview />
           </div>
         </section>
 
-        <StrategyExecutionGap />
-
-        <StartPath />
-
-        <section id="confianza" aria-labelledby="confianza-title" className="scroll-mt-24 bg-[#F6F7FD]">
-          <div className="mx-auto grid max-w-7xl gap-10 px-4 py-20 sm:px-6 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)] lg:items-center lg:gap-10 lg:px-8 lg:py-24">
-            <div>
-              <p className={eyebrow}>Por qué confiar</p>
-              <h2 id="confianza-title" className={`${sectionTitle} mt-4`}>
-                Starteria estructura tu contexto sin sustituir tu criterio.
-              </h2>
-              <p className={`${sectionLead} mt-4 max-w-md`}>
-                La plataforma está diseñada para ayudarte a pensar mejor antes de formalizar trabajo, no para decidir por
-                ti.
-              </p>
-            </div>
-
-            <ul className="grid gap-4 sm:grid-cols-2">
-              {TRUST_PRINCIPLES.map(({ title, detail, Icon }) => (
-                <li key={title} className="landing-card flex items-start gap-4 rounded-2xl p-5">
-                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-brand-primary-subtle text-brand-primary">
-                    <Icon aria-hidden="true" size={19} />
-                  </span>
-                  <div className="min-w-0">
-                    <p className="text-sm font-semibold leading-5 text-[#0D1333]">{title}</p>
-                    <p className="mt-1.5 text-[13px] leading-5 text-[#5D6585]">{detail}</p>
-                  </div>
-                </li>
+        <section id="casos" className="scroll-mt-24 bg-white px-4 py-20 sm:px-6 lg:px-8 lg:py-24" aria-labelledby="casos-title">
+          <div className="mx-auto max-w-7xl">
+            <p className={eyebrow}>Ejemplos de aplicación</p>
+            <h2 id="casos-title" className={sectionTitle + ' mt-4 max-w-3xl'}>Un punto de partida diferente. Una ruta adecuada a cada desafío.</h2>
+            <p className={sectionLead}>Situaciones ilustrativas para entender dónde Starteria puede ayudar. No son casos de clientes ni resultados verificados.</p>
+            <div className="mt-11 grid gap-5 lg:grid-cols-3">
+              {USE_CASES.map((item) => (
+                <article key={item.title} className="rounded-2xl border border-[#E2E5F1] bg-[#FBFCFF] p-7">
+                  <p className="text-xs font-semibold uppercase tracking-widest text-[#4F46E5]">{item.label}</p>
+                  <h3 className="mt-5 text-xl font-semibold leading-snug text-[#0D1333]">{item.title}</h3>
+                  <p className="mt-4 text-sm leading-7 text-[#5D6585]">{item.description}</p>
+                </article>
               ))}
-            </ul>
+            </div>
           </div>
         </section>
 
-        <LandingClosingCta />
+        <section id="confianza" className="scroll-mt-24 border-t border-[#E4E7F5] bg-[#FBFCFF] px-4 py-20 sm:px-6 lg:px-8 lg:py-24" aria-labelledby="confianza-title">
+          <div className="mx-auto grid max-w-7xl gap-10 lg:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)] lg:items-center">
+            <div>
+              <p className={eyebrow}>Tecnología con criterio</p>
+              <h2 id="confianza-title" className={sectionTitle + ' mt-4'}>La IA ayuda a avanzar. La responsabilidad sigue siendo humana.</h2>
+              <p className={sectionLead}>Starteria puede apoyar análisis, estructura, desarrollo y seguimiento. La evidencia externa, las decisiones de negocio y las aprobaciones siguen dependiendo de las personas autorizadas.</p>
+            </div>
+            <div className="grid gap-3">
+              <TrustItem icon={Compass} title="Partimos del negocio" body="No asumimos que la primera idea o tecnología propuesta sea necesariamente la solución correcta." />
+              <TrustItem icon={ShieldCheck} title="Validaciones y revisión" body="El trabajo técnico puede incluir comprobaciones automáticas y revisión humana, según el alcance contratado." />
+              <TrustItem icon={FileCheck2} title="Evidencia trazable" body="Separamos lo observado de las hipótesis y las recomendaciones antes de una decisión." />
+            </div>
+          </div>
+        </section>
+
+        <section aria-labelledby="landing-closing-title" className="bg-[#111329] px-4 py-20 text-white sm:px-6 lg:px-8">
+          <div className="mx-auto flex max-w-7xl flex-col gap-8 lg:flex-row lg:items-center lg:justify-between">
+            <div className="max-w-3xl">
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#AAA4FF]">Empecemos por lo importante</p>
+              <h2 id="landing-closing-title" className="landing-display mt-4 text-3xl font-semibold leading-tight sm:text-5xl">¿Qué necesita cambiar en tu negocio?</h2>
+              <p className="mt-5 text-base leading-7 text-[#D8DBEF]">Cuéntanos el desafío. Evaluemos si conviene enfocarlo, desarrollar una solución, ordenar iniciativas o combinar estos caminos.</p>
+            </div>
+            <Button asChild size="lg" className="h-12 shrink-0 rounded-xl bg-white px-7 text-[#151630] hover:bg-[#EDEBFF]">
+              <a href={PUBLIC_LANDING_CONFIG.demoBookingUrl} target="_blank" rel="noopener noreferrer">Hablemos de tu desafío <ArrowUpRight aria-hidden="true" size={17} /></a>
+            </Button>
+          </div>
+        </section>
       </main>
 
-      <LandingFooter isAuthenticated={isAuthenticated} />
+      <footer className="border-t border-[#E4E7F5] bg-white">
+        <div className="mx-auto flex max-w-7xl flex-col gap-5 px-4 py-10 sm:px-6 md:flex-row md:items-center md:justify-between lg:px-8">
+          <div>
+            <Link to="/" className="flex items-center gap-2 text-lg font-semibold text-[#0D1333]"><StarteriaMark />Starteria</Link>
+            <p className="mt-3 max-w-sm text-sm leading-6 text-[#5D6585]">De necesidades y oportunidades a iniciativas, tecnología y decisiones con evidencia.</p>
+          </div>
+          <nav aria-label="Navegación del pie de página" className="flex flex-wrap gap-x-6 gap-y-3 text-sm text-[#3B4466]">
+            <a href="#soluciones" className="hover:text-[#4F46E5]">Soluciones</a>
+            <a href="#como-trabajamos" className="hover:text-[#4F46E5]">Cómo trabajamos</a>
+            <DemoLink className="hover:text-[#4F46E5]">Conversemos</DemoLink>
+            <Link to={isAuthenticated ? '/dashboard' : '/auth'} className="hover:text-[#4F46E5]">{isAuthenticated ? 'Ir al panel' : 'Acceder'}</Link>
+          </nav>
+        </div>
+        <p className="border-t border-[#E4E7F5] px-4 py-5 text-center text-xs text-[#5D6585]">© Starteria. Las decisiones siguen siendo de las personas.</p>
+      </footer>
     </div>
   );
 }
 
-// The gap diagram is drawn in a 900×300 box; item rows sit on these vertical centers.
-const GAP_ROW_Y = [76, 130, 184, 238];
-const TANGLE = [
-  'M300 76 C 372 76, 360 236, 412 190',
-  'M300 130 C 380 130, 352 60, 412 116',
-  'M300 184 C 366 184, 388 96, 412 162',
-  'M300 238 C 376 238, 350 140, 412 140',
-  'M300 76 C 350 116, 396 200, 412 214',
-];
+function Benefit({ children }: { children: ReactNode }) {
+  return <li className="flex items-start gap-2.5"><CheckCircle2 aria-hidden="true" size={17} className="mt-0.5 shrink-0 text-[#7C76F5]" />{children}</li>;
+}
 
-const gapRowStyle = (index: number) => ({ '--y': `${(GAP_ROW_Y[index] / 300) * 100}%` }) as CSSProperties;
-
-function StrategyExecutionGap() {
+function SystemIllustration() {
   return (
-    <section id="brecha" aria-labelledby="brecha-title" className="relative scroll-mt-24 overflow-hidden border-t border-[#E4E7F5]/80 bg-[#FBFCFF]">
-      <div className="mx-auto max-w-7xl px-4 py-20 sm:px-6 lg:px-8 lg:py-24">
-        <div className="max-w-2xl">
-          <p className={eyebrow}>La brecha que queremos cerrar</p>
-          <h2 id="brecha-title" className={`${sectionTitle} mt-4`}>
-            Entre la estrategia y la ejecución se pierde demasiado.
-          </h2>
-          <p className={`${sectionLead} mt-4`}>
-            Buenas ideas, mucho trabajo y poco resultado. Starteria cierra esa brecha con contexto, conexión y evidencia.
-          </p>
+    <figure aria-label="Modelo ilustrativo de Starteria Platform y Fab" className="landing-pop relative rounded-3xl border border-white/20 bg-white/[0.07] p-5 shadow-2xl backdrop-blur-sm sm:p-7">
+      <div className="flex items-center justify-between gap-3">
+        <span className="text-[11px] font-semibold uppercase tracking-widest text-[#BDBAFF]">Una misma necesidad, varias capacidades</span>
+        <span className="h-2 w-2 rounded-full bg-[#72D2BE]" aria-hidden="true" />
+      </div>
+      <div className="mt-6 rounded-xl border border-white/15 bg-[#0F1226] p-5">
+        <p className="text-xs font-semibold uppercase tracking-widest text-[#AAA4FF]">Punto de partida</p>
+        <p className="mt-2 text-lg font-medium text-white">Problema · Oportunidad · Iniciativa existente</p>
+        <p className="mt-2 text-xs leading-5 text-[#B9BFDB]">El trabajo comienza desde tu contexto real.</p>
+      </div>
+      <div className="mx-auto h-7 w-px bg-gradient-to-b from-[#aaa4ff] to-transparent" aria-hidden="true" />
+      <div className="grid gap-3 sm:grid-cols-2">
+        <div className="rounded-xl border border-[#8C88DD]/30 bg-[#2D2B59] p-5">
+          <Layers3 size={23} className="text-[#BDBAFF]" aria-hidden="true" />
+          <h3 className="mt-4 text-lg font-semibold text-white">Platform</h3>
+          <p className="mt-2 text-sm leading-6 text-[#CED1F5]">Contexto, iniciativas, evidencia y decisiones</p>
         </div>
-
-        <div className="relative mx-auto mt-14 max-w-5xl lg:mt-20">
-          <p
-            aria-hidden="true"
-            className="landing-hand absolute -right-4 -top-16 z-10 hidden rotate-[-6deg] text-2xl leading-6 text-[#5D6585] lg:block"
-          >
-            Mismo talento.
-            <br />
-            Mayor impacto.
-            <svg viewBox="0 0 60 40" aria-hidden="true" fill="none" className="ml-auto mt-1 block h-10 w-14 text-[#5D6585]">
-              <path d="M48 2c4 18-8 30-38 32" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
-              <path d="m16 28-6 6 7 4" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
-          </p>
-
-          <div className="relative grid gap-4 lg:block lg:aspect-[900/300]">
-            <svg
-              viewBox="0 0 900 300"
-              aria-hidden="true"
-              fill="none"
-              className="pointer-events-none absolute inset-0 hidden h-full w-full lg:block"
-            >
-              {TANGLE.map((d) => (
-                <path key={d} d={d} stroke="#FB7185" strokeWidth="1.25" opacity="0.55" />
-              ))}
-              {GAP_ROW_Y.map((y) => (
-                <circle key={`l${y}`} cx="300" cy={y} r="3.5" fill="#FB7185" />
-              ))}
-              <line x1="450" y1="12" x2="450" y2="288" stroke="#CBD5E1" strokeDasharray="4 6" />
-              {GAP_ROW_Y.map((y) => (
-                <g key={`r${y}`}>
-                  <path d={`M488 150 C 540 150, 528 ${y}, 600 ${y}`} stroke="#C7D2FE" strokeWidth="1.5" pathLength={1} className="landing-draw" />
-                  <path d={`M488 150 C 540 150, 528 ${y}, 600 ${y}`} stroke="#6366F1" strokeWidth="1.5" className="landing-flow" opacity="0.65" />
-                  <circle cx="600" cy={y} r="3.5" fill="#4F46E5" />
-                </g>
-              ))}
-            </svg>
-
-            <GapPanel title="Hoy: fragmentado" items={TODAY_FRAGMENTED} tone="fragmented" />
-
-            <div className="flex items-center justify-center lg:absolute lg:inset-y-0 lg:left-1/2 lg:w-[12%] lg:-translate-x-1/2 lg:rounded-2xl lg:bg-gradient-to-b lg:from-white/0 lg:via-white lg:to-white/0 lg:shadow-[0_18px_40px_-24px_rgb(49_46_129/0.35)]">
-              <span className="landing-card rounded-2xl px-5 py-3 text-center text-sm font-semibold leading-5 text-[#0D1333] lg:border-0 lg:bg-transparent lg:shadow-none">
-                La
-                <br className="hidden lg:block" /> brecha
-              </span>
-            </div>
-
-            <GapPanel title="Con Starteria: conectado" items={WITH_STARTERIA} tone="connected" />
-          </div>
+        <div className="rounded-xl border border-[#4C9FBB]/30 bg-[#16384C] p-5">
+          <Code2 size={23} className="text-[#8AD3E8]" aria-hidden="true" />
+          <h3 className="mt-4 text-lg font-semibold text-white">Fab</h3>
+          <p className="mt-2 text-sm leading-6 text-[#C5E2ED]">Construcción, pruebas y entrega tecnológica</p>
         </div>
       </div>
-    </section>
-  );
-}
-
-function GapPanel({
-  title,
-  items,
-  tone,
-}: {
-  title: string;
-  items: { label: string; Icon: LucideIcon }[];
-  tone: 'fragmented' | 'connected';
-}) {
-  const fragmented = tone === 'fragmented';
-  return (
-    <section
-      className={`relative min-w-0 rounded-2xl p-4 lg:absolute lg:inset-y-0 lg:w-[33.4%] lg:p-0 ${
-        fragmented ? 'bg-[#FFF5F6] lg:left-0' : 'bg-[#F4F6FF] lg:right-0'
-      }`}
-    >
-      <h3
-        className={`text-sm font-semibold lg:absolute lg:left-4 lg:top-4 ${
-          fragmented ? 'text-[#BE123C]' : 'text-brand-primary'
-        }`}
-      >
-        {title}
-      </h3>
-      <ul className="mt-3 grid gap-2 sm:grid-cols-2 lg:mt-0 lg:block">
-        {items.map(({ label, Icon }, index) => (
-          <li
-            key={label}
-            style={gapRowStyle(index)}
-            className={`flex items-center gap-3 rounded-xl bg-white px-3 py-2 text-[13px] font-medium text-[#1B2147] shadow-[0_1px_2px_rgb(13_19_51/0.05)] ring-1 lg:absolute lg:top-[var(--y)] lg:-translate-y-1/2 ${
-              fragmented ? 'ring-[#FFE4E8] lg:left-4 lg:right-6' : 'ring-[#E0E7FF] lg:left-6 lg:right-4'
-            }`}
-          >
-            <Icon aria-hidden="true" size={16} className={fragmented ? 'shrink-0 text-[#E11D48]' : 'shrink-0 text-brand-primary'} />
-            {label}
-          </li>
-        ))}
-      </ul>
-    </section>
-  );
-}
-
-function StartPath() {
-  return (
-    <section id="metodologia" aria-labelledby="metodologia-title" className="landing-wash scroll-mt-24 border-t border-[#E4E7F5]/80">
-      <div className="mx-auto max-w-7xl px-4 py-20 sm:px-6 lg:px-8 lg:py-24">
-        <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
-          <div className="max-w-2xl">
-            <p className={eyebrow}>Metodología</p>
-            <h2 id="metodologia-title" className={`${sectionTitle} mt-4`}>
-              Empiezas con lo que sabes y avanzas cuando decides.
-            </h2>
-          </div>
-          <p className={`${sectionLead} max-w-sm`}>
-            Tres momentos, una sola línea de contexto. Cada paso queda revisable antes de convertirse en trabajo.
-          </p>
-        </div>
-
-        <ol className="relative mt-12 grid gap-5 lg:grid-cols-3">
-          <span aria-hidden="true" className="absolute left-8 right-8 top-[22px] hidden h-px bg-gradient-to-r from-[#C7D2FE] via-[#A5B4FC] to-[#C7D2FE] lg:block" />
-          {START_PATH.map((step, index) => (
-            <li key={step.title} className="relative flex min-w-0 flex-col">
-              <span className="relative z-10 inline-flex w-fit items-center gap-2 rounded-full border border-[#C7D2FE] bg-white px-3.5 py-2.5 text-xs font-semibold text-[#3730A3]">
-                <span aria-hidden="true" className="h-2 w-2 rounded-full bg-brand-primary" style={{ opacity: 0.4 + index * 0.3 }} />
-                {step.stage}
-              </span>
-              <div className="landing-card mt-4 flex flex-1 flex-col rounded-2xl p-6">
-                <h3 className="text-lg font-semibold tracking-tight text-[#0D1333]">{step.title}</h3>
-                <p className="mt-2 text-sm leading-6 text-[#5D6585]">{step.body}</p>
-                <ul className="mt-5 flex flex-wrap gap-2 pt-1">
-                  {step.tags.map((tag) => (
-                    <li key={tag} className="rounded-md bg-[#F6F7FD] px-2.5 py-1 text-xs font-medium text-[#3B4466]">
-                      {tag}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            </li>
-          ))}
-        </ol>
-
-        <div className="mt-8 flex flex-wrap items-center gap-x-6 gap-y-3 text-sm font-semibold">
-          <Link to="/public/start" className="inline-flex items-center gap-1.5 text-brand-primary hover:text-[#3730A3]">
-            Empezar por la entrada pública
-            <ArrowRight aria-hidden="true" size={15} />
-          </Link>
-          <a
-            href={PUBLIC_LANDING_CONFIG.demoBookingUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex items-center gap-1.5 text-[#3B4466] hover:text-[#0D1333]"
-          >
-            Verlo con el equipo de Starteria
-            <ArrowUpRight aria-hidden="true" size={15} />
-          </a>
-        </div>
-      </div>
-    </section>
-  );
-}
-
-function LandingClosingCta() {
-  return (
-    <section aria-labelledby="landing-closing-title" className="bg-white px-4 py-16 sm:px-6 lg:px-8 lg:py-20">
-      <div className="relative mx-auto flex max-w-7xl flex-col items-start gap-8 overflow-hidden rounded-3xl bg-gradient-to-br from-[#EEF1FF] via-[#F4F6FF] to-[#EAF6FF] px-6 py-10 ring-1 ring-[#E0E7FF] sm:px-10 md:flex-row md:items-center md:justify-between lg:px-14 lg:py-12">
-        <div aria-hidden="true" className="landing-dots pointer-events-none absolute -right-6 -top-6 h-32 w-48 opacity-40" />
-        <div className="relative max-w-3xl">
-          <p className={eyebrow}>De la idea al siguiente paso</p>
-          <h2 id="landing-closing-title" className="landing-display mt-4 text-2xl font-semibold leading-tight text-[#0D1333] sm:text-[2rem]">
-            Empieza con lo que sabes. Starteria te ayuda a ordenar lo que falta.
-          </h2>
-          <p className="mt-3 text-base leading-7 text-[#5D6585]">
-            La primera lectura es pública y revisable. El trabajo formal empieza cuando decides continuar.
-          </p>
-        </div>
-        <div className="relative flex shrink-0 flex-col items-start gap-2 md:items-center">
-          <Button asChild size="lg" className="h-12 rounded-xl px-6 text-[15px] shadow-[0_10px_24px_-10px_rgb(79_70_229/0.7)]">
-            <Link to="/public/start">
-              Analizar mi situación
-              <ArrowRight aria-hidden="true" size={16} />
-            </Link>
-          </Button>
-          <p className="text-xs text-[#5D6585]">Sin compromiso.</p>
-        </div>
-      </div>
-    </section>
-  );
-}
-
-function LandingFooter({ isAuthenticated }: { isAuthenticated: boolean }) {
-  return (
-    <footer className="border-t border-[#E4E7F5] bg-white">
-      <div className="mx-auto grid max-w-7xl gap-10 px-4 py-12 sm:px-6 md:grid-cols-[minmax(0,1.4fr)_minmax(0,2fr)] lg:px-8">
+      <div className="mx-auto h-7 w-px bg-gradient-to-b from-[#aaa4ff] to-transparent" aria-hidden="true" />
+      <div className="flex items-start gap-3 rounded-xl border border-[#72D2BE]/25 bg-[#18373E] p-5">
+        <Target size={23} className="mt-0.5 shrink-0 text-[#72D2BE]" aria-hidden="true" />
         <div>
-          <Link to="/" className="flex w-fit items-center gap-2 text-lg font-semibold tracking-tight text-[#0D1333]">
-            <StarteriaMark className="h-6 w-6" />
-            Starteria
-          </Link>
-          <p className="mt-3 max-w-xs text-sm leading-6 text-[#5D6585]">
-            Contexto, trabajo y decisiones en un mismo lugar, para que la estrategia llegue a resultados.
-          </p>
+          <p className="text-lg font-semibold text-white">Trabajo verificable y siguiente decisión</p>
+          <p className="mt-1 text-sm leading-6 text-[#C4E4E3]">Entregables, resultados observados y continuidad acordada.</p>
         </div>
-        <nav aria-label="Navegación del pie de página" className="grid grid-cols-2 gap-8 text-sm sm:grid-cols-3">
-          <FooterColumn title="Producto">
-            <a href="#vista-producto">Caso ilustrativo</a>
-            <a href="#como-funciona">Cómo funciona</a>
-            <a href="#metodologia">Metodología</a>
-          </FooterColumn>
-          <FooterColumn title="Confianza">
-            <a href="#confianza">Por qué confiar</a>
-            <a href="#brecha">La brecha</a>
-          </FooterColumn>
-          <FooterColumn title="Empezar">
-            <Link to="/public/start">Entrada pública</Link>
-            <a href={PUBLIC_LANDING_CONFIG.demoBookingUrl} target="_blank" rel="noopener noreferrer">
-              Agendar una demo
-            </a>
-            <Link to={isAuthenticated ? '/dashboard' : '/auth'}>{isAuthenticated ? 'Ir al panel' : 'Iniciar sesión'}</Link>
-          </FooterColumn>
-        </nav>
       </div>
-      <div className="border-t border-[#E4E7F5]">
-        <p className="mx-auto max-w-7xl px-4 py-5 text-xs text-[#5D6585] sm:px-6 lg:px-8">
-          © Starteria. Las decisiones siguen siendo de las personas.
-        </p>
-      </div>
-    </footer>
+      <figcaption className="mt-5 text-xs leading-5 text-[#B9BFDB]">
+        Modelo conceptual, no una integración autónoma certificada. La intervención depende del alcance definido con cada empresa.
+      </figcaption>
+    </figure>
   );
 }
 
-function FooterColumn({ title, children }: { title: string; children: ReactNode }) {
+function TrustItem({ icon: Icon, title, body }: { icon: LucideIcon; title: string; body: string }) {
   return (
-    <div className="flex flex-col gap-2.5 [&>a]:w-fit [&>a]:text-[#3B4466] [&>a:hover]:text-brand-primary">
-      <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[#0D1333]">{title}</p>
-      {children}
-    </div>
+    <article className="landing-card flex gap-4 rounded-xl p-5">
+      <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-[#EEF1FF] text-[#4F46E5]"><Icon aria-hidden="true" size={21}/></span>
+      <div>
+        <h3 className="text-base font-semibold text-[#0D1333]">{title}</h3>
+        <p className="mt-1.5 text-sm leading-6 text-[#5D6585]">{body}</p>
+      </div>
+    </article>
   );
 }

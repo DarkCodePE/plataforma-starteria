@@ -49,7 +49,7 @@ export function StarteriaProductPreview() {
           className="mt-5 grid gap-7 lg:grid-cols-[repeat(4,minmax(0,1fr))] lg:gap-8"
         >
           <Stage title="Meta" icon={<Target size={16} />} iconTone="text-brand-primary bg-brand-primary-subtle">
-            <p>Copilot ayuda a aclarar la meta y los criterios de éxito.</p>
+            <p>El trabajo parte de una meta y criterios de éxito por revisar.</p>
             <p className="mt-3 rounded-lg bg-[#F6F7FD] px-3 py-2.5 text-[13px] leading-5 text-[#3B4466]">
               “Reducir 30% el tiempo operativo en 6 meses”
             </p>
