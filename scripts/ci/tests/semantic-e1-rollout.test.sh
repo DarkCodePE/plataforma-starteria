@@ -46,6 +46,8 @@ grep -Fq "failure_stage='first_turn_contract'" "$prod_smoke"
 grep -Fq "failure_stage='second_turn_transport'" "$prod_smoke"
 grep -Fq "failure_stage='second_turn_contract'" "$prod_smoke"
 [[ $(grep -Fc '(.conceptId == "main_uncertainty" or .conceptId == "uncertainty")' "$prod_smoke") -eq 2 ]]
+[[ $(grep -Fc '(.conceptId == "main_uncertainty" or .conceptId == "uncertainty" or .conceptId == "root_cause" or .conceptId == "solution")' "$prod_smoke") -eq 2 ]]
+[[ $(grep -Fc 'all($turn.facts[]; .conceptId != $concept or .status == "retracted")' "$prod_smoke") -eq 2 ]]
 diagnostic_line=$(grep -n 'Collect safe Semantic E1 validation diagnostic' "$cd_workflow" | cut -d: -f1)
 fail_closed_line=$(grep -n 'Fail closed after unsuccessful Semantic E1 smoke' "$cd_workflow" | cut -d: -f1)
 [[ "$diagnostic_line" -lt "$fail_closed_line" ]]

@@ -36,6 +36,7 @@ function inputWithMainUncertaintyFact(): SemanticE1PreflightInput {
         confidence: 0.8,
         status: 'proposed',
       }],
+      dispositions: [],
       emittedQuestion: null,
       convergence: {
         status: 'ready_for_human_review',
@@ -104,6 +105,47 @@ describe('Semantic E1 live-provider preflight evaluation', () => {
     expect(result.predicates.mainUncertainty).toBe(true);
     expect(result.diagnostics.convergenceStatus).toBe('question_required');
     expect(result.diagnostics.emittedQuestion).toBe(true);
+  });
+
+  it('accepts an unresolved material unknown exactly as materialEvidenceStatus does', () => {
+    const input = inputWithMainUncertaintyFact();
+    input.turn.facts = input.turn.facts.filter((fact) => fact.conceptId !== 'main_uncertainty');
+    input.turn.dispositions = [{
+      conceptId: 'solution',
+      disposition: 'unknown',
+      provenance: 'user_declared',
+      evidenceRefs: [{ kind: 'user_input', quote: 'Sin asumir todavía una solución.' }],
+    }];
+
+    const result = evaluateSemanticE1Preflight(input);
+
+    expect(result.passed).toBe(true);
+    expect(result.predicates.mainUncertainty).toBe(true);
+    expect(result.failedPredicates).toEqual([]);
+  });
+
+  it('does not accept an unknown disposition when an active fact resolves the same concept', () => {
+    const input = inputWithMainUncertaintyFact();
+    input.turn.facts = input.turn.facts.filter((fact) => fact.conceptId !== 'main_uncertainty');
+    input.turn.facts.push({
+      conceptId: 'solution',
+      value: 'Probar un menú de mediodía.',
+      provenance: 'user_declared',
+      evidenceRefs: [{ kind: 'user_input', quote: 'Probar un menú de mediodía.' }],
+      confidence: 1,
+      status: 'observed',
+    });
+    input.turn.dispositions = [{
+      conceptId: 'solution',
+      disposition: 'unknown',
+      provenance: 'user_declared',
+      evidenceRefs: [{ kind: 'user_input', quote: 'Sin asumir todavía una solución.' }],
+    }];
+
+    const result = evaluateSemanticE1Preflight(input);
+
+    expect(result.passed).toBe(false);
+    expect(result.failedPredicates).toContain('mainUncertainty');
   });
 
   it('does not accept an absent uncertainty without a material question', () => {
