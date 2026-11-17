@@ -198,6 +198,38 @@ describe('Portfolio Bootstrap E1 capability authorization', () => {
   });
 });
 
+describe('Portfolio Bootstrap E1 semantic idempotency reconciliation', () => {
+  it('waits for a concurrent same-key winner to become visible and returns its exact response', async () => {
+    const stored = { state: { id: 'state-1', version: 1 }, turn: { id: 'turn-1', semanticVersion: 1 } };
+    const db = {
+      portfolioBootstrapSession: {
+        findFirst: vi.fn().mockResolvedValue({
+          id: 'session-1', userId: 'actor-1', organizationId: null, status: 'draft',
+        }),
+      },
+      portfolioBootstrapSemanticState: {
+        findUnique: vi.fn().mockResolvedValue({ id: 'state-1' }),
+      },
+      portfolioBootstrapSemanticTurn: {
+        findUnique: vi.fn()
+          .mockResolvedValueOnce(null)
+          .mockResolvedValue({ payloadHash: 'payload-1', responseJson: stored }),
+      },
+    };
+    const prisma = { $transaction: vi.fn(async (callback: (tx: typeof db) => unknown) => callback(db)) };
+    const service = new PortfolioBootstrapSemanticService(prisma as any);
+
+    await expect((service as any).reconcileWriteConflict({
+      sessionId: 'session-1',
+      authenticatedUserId: 'actor-1',
+      permissions: permissionsForRoles(['portfolio_lead']),
+      idempotencyKey: 'same-key',
+    }, 'payload-1', { code: 'PORTFOLIO_SEMANTIC_VERSION_CONFLICT' })).resolves.toBe(stored);
+
+    expect(prisma.$transaction).toHaveBeenCalledTimes(2);
+  });
+});
+
 function fact(conceptId: string, value: string) {
   return {
     conceptId, value, provenance: 'user_declared' as const,

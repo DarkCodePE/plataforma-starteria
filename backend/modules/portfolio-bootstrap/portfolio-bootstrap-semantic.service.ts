@@ -688,17 +688,21 @@ export class PortfolioBootstrapSemanticService {
     const reconcilable = code === 'P2002' || code === 'PORTFOLIO_SEMANTIC_VERSION_CONFLICT'
       || isRetryableContextWriteConflict(error);
     if (!reconcilable) throw error;
-    return this.prisma.$transaction(async (tx) => {
-      const db = tx as any;
-      const session = await this.requireOwnedSession(db, input.sessionId, input.authenticatedUserId);
-      await this.authorize(db, session, input.authenticatedUserId, input.permissions, 'portfolio:write');
-      const state = await db.portfolioBootstrapSemanticState.findUnique({ where: { bootstrapSessionId: session.id } });
-      if (state) {
-        const replay = await this.replay(db, state.id, input.idempotencyKey, payloadHash);
-        if (replay) return replay;
+    const maxReplayReads = 8;
+    for (let attempt = 0; attempt < maxReplayReads; attempt += 1) {
+      const replay = await this.prisma.$transaction(async (tx) => {
+        const db = tx as any;
+        const session = await this.requireOwnedSession(db, input.sessionId, input.authenticatedUserId);
+        await this.authorize(db, session, input.authenticatedUserId, input.permissions, 'portfolio:write');
+        const state = await db.portfolioBootstrapSemanticState.findUnique({ where: { bootstrapSessionId: session.id } });
+        return state ? this.replay(db, state.id, input.idempotencyKey, payloadHash) : null;
+      }, { isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted, timeout: 10_000 });
+      if (replay) return replay;
+      if (attempt < maxReplayReads - 1) {
+        await new Promise((resolve) => setTimeout(resolve, Math.min(10 * 2 ** attempt, 160)));
       }
-      throw this.versionConflict();
-    }, { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead, timeout: 10_000 });
+    }
+    throw this.versionConflict();
   }
 
   private async requireOwnedSession(db: any, sessionId: string, userId: string): Promise<any> {
