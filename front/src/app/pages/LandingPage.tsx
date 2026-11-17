@@ -137,7 +137,7 @@ export function LandingPage() {
               </Link>
             </Button>
             <Button asChild size="sm" className="rounded-lg">
-              <DemoLink>Hablemos <ArrowUpRight aria-hidden="true" size={15} /></DemoLink>
+              <a href={PUBLIC_LANDING_CONFIG.demoBookingUrl} target="_blank" rel="noopener noreferrer">Hablemos <ArrowUpRight aria-hidden="true" size={15} /></a>
             </Button>
           </div>
         </div>
@@ -160,10 +160,7 @@ export function LandingPage() {
               </p>
               <div className="mt-9 flex flex-col items-stretch gap-3 sm:flex-row sm:items-center">
                 <Button asChild size="lg" className="h-12 rounded-xl bg-white px-6 text-[#151630] hover:bg-[#EDEBFF]">
-                  <DemoLink>
-                    Hablemos de tu desafío
-                    <ArrowUpRight aria-hidden="true" size={17} />
-                  </DemoLink>
+                  <a href={PUBLIC_LANDING_CONFIG.demoBookingUrl} target="_blank" rel="noopener noreferrer">Hablemos de tu desafío <ArrowUpRight aria-hidden="true" size={17} /></a>
                 </Button>
                 <a href="#soluciones" className="inline-flex h-12 items-center justify-center gap-2 rounded-xl border border-white/25 px-6 text-sm font-semibold text-white hover:bg-white/10">
                   Explorar soluciones <ArrowRight aria-hidden="true" size={16} />
@@ -304,7 +301,7 @@ export function LandingPage() {
               <p className="mt-5 text-base leading-7 text-[#D8DBEF]">Cuéntanos el desafío. Evaluemos si conviene enfocarlo, desarrollar una solución, ordenar iniciativas o combinar estos caminos.</p>
             </div>
             <Button asChild size="lg" className="h-12 shrink-0 rounded-xl bg-white px-7 text-[#151630] hover:bg-[#EDEBFF]">
-              <DemoLink>Hablemos de tu desafío <ArrowUpRight aria-hidden="true" size={17} /></DemoLink>
+              <a href={PUBLIC_LANDING_CONFIG.demoBookingUrl} target="_blank" rel="noopener noreferrer">Hablemos de tu desafío <ArrowUpRight aria-hidden="true" size={17} /></a>
             </Button>
           </div>
         </section>
