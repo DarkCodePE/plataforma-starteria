@@ -589,15 +589,12 @@ async function reachCriticalHandoff(page: Page, scenario: Scenario, testInfo: Te
   if (viaLanding) {
     await page.setViewportSize({ width: 390, height: 844 });
     await page.goto('/');
-    await expect(page.getByRole('heading', { name: 'Haz que la estrategia se haga realidad.' })).toBeVisible();
-    await expect(page.getByLabel('Modelo conceptual de Starteria')).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'De una necesidad de negocio a una solución que genera valor.' })).toBeVisible();
+    await expect(page.locator('a[href="/public/start"]')).toHaveCount(0);
     await expect(page.getByRole('textbox')).toHaveCount(0);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
-    await page
-      .locator('section[aria-labelledby="landing-closing-title"]')
-      .getByRole('link', { name: 'Analizar mi situación' })
-      .click();
-    await expect(page).toHaveURL(/\/public\/start$/);
+    // Portfolio Entry is intentionally absent from Landing. Exercise its existing route in isolation.
+    await page.goto('/public/start');
     await page.setViewportSize({ width: 1280, height: 900 });
   } else {
     await page.goto('/public/start');
@@ -606,7 +603,7 @@ async function reachCriticalHandoff(page: Page, scenario: Scenario, testInfo: Te
   await page.goto('/public/start');
 
   if (scenario.id === 'portfolio-first') {
-    await page.screenshot({ path: testInfo.outputPath('portfolio-entry-landing.png'), fullPage: true });
+    await page.screenshot({ path: testInfo.outputPath('portfolio-entry-direct-route.png'), fullPage: true });
   }
 
   await page.getByLabel('¿Qué necesitas resolver, conseguir o entender?').fill(scenario.input);
@@ -881,7 +878,7 @@ test.describe('Portfolio Entry 114D Critical Handoff and explicit legacy compati
   });
 
   // CURRENT_114D supplies the confirmed source; 114E then reads a bounded Path.
-  test('[CURRENT_114D] KAN-102 Landing → Entry → clarification → confirmed Critical Handoff → 114E Path', async ({ page }, testInfo) => {
+  test('[CURRENT_114D] direct Entry → clarification → confirmed Critical Handoff → 114E Path', async ({ page }, testInfo) => {
     const currentBoundary = watchForbiddenCriticalHandoffNavigation(page);
     const entryRequests: string[] = [];
     page.on('request', (request) => {
