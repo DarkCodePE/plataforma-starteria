@@ -1,6 +1,6 @@
 import React from 'react';
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, within } from '@testing-library/react';
+import { render, screen, fireEvent } from '@testing-library/react';
 import { appRoutes } from './routes';
 import { MemoryRouter, useLocation } from 'react-router';
 import { LandingPage } from './pages/LandingPage';
@@ -96,7 +96,7 @@ describe('public entry routing', () => {
     expect(screen.getByTestId('current-path')).toHaveTextContent('/auth');
   });
 
-  it('expone Portfolio Entry como camino opcional hacia /public/start', async () => {
+  it('no expone Portfolio Entry desde la landing, pero preserva la ruta legacy en el router', () => {
     render(
       <MemoryRouter initialEntries={['/']}>
         <LandingPage />
@@ -105,21 +105,13 @@ describe('public entry routing', () => {
     );
 
     expect(screen.getByRole('heading', {
-      name: /Haz que la estrategia se haga realidad/i,
+      name: /De una necesidad de negocio a una solución que genera valor/i,
     })).toBeInTheDocument();
-    const closingHeading = screen.getByRole('heading', {
-      name: 'Empieza con lo que sabes. Starteria te ayuda a ordenar lo que falta.',
-    });
-    expect(closingHeading).toBeInTheDocument();
-    const closingSection = closingHeading.closest('section') as HTMLElement;
-    const closingCta = within(closingSection).getByRole('link', { name: 'Analizar mi situación' });
-    expect(closingCta).toHaveAttribute('href', '/public/start');
-    expect(screen.queryByRole('textbox', { name: /necesitas conseguir o entender/i })).not.toBeInTheDocument();
-    expect(screen.queryByText(/Crear pre proyecto/i)).not.toBeInTheDocument();
-    expect(screen.queryByText(/proposal editor/i)).not.toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Explorar soluciones' })).toHaveAttribute('href', '#soluciones');
+    expect(document.querySelectorAll('a[href="/public/start"]')).toHaveLength(0);
 
-    fireEvent.click(closingCta);
-
-    expect(screen.getByTestId('current-path')).toHaveTextContent('/public/start');
+    const publicRoute = appRoutes[0].children?.find(route => route.path === '/public');
+    expect(publicRoute?.children?.some(route => route.path === 'start')).toBe(true);
+    expect(screen.getByTestId('current-path')).toHaveTextContent('/');
   });
 });
