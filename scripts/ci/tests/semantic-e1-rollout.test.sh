@@ -104,6 +104,15 @@ test_failure_diagnostics() {
     ]) | length == 0)
   ' >/dev/null <<<"$diagnostic"
 
+  if [[ "$scenario" == contract_failure ]]; then
+    jq -e '
+      .factsCount == 1
+      and .hasStartingPoint == true
+      and .hasMainUncertainty == true
+      and .hasNextStep == false
+    ' >/dev/null <<<"$diagnostic"
+  fi
+
   if grep -Eq 'ACCESS_TOKEN_SENTINEL|INPUT_TEXT_SENTINEL|MESSAGE_SENTINEL|PASSWORD_SENTINEL' "$output"; then
     echo "Semantic E1 diagnostics exposed a sensitive sentinel for $scenario" >&2
     cat "$output" >&2
@@ -141,7 +150,7 @@ case "$url" in
       printf '%s\n' '{"error":{"code":"provider_unavailable","message":"MESSAGE_SENTINEL"},"accessToken":"ACCESS_TOKEN_SENTINEL","inputText":"INPUT_TEXT_SENTINEL","password":"PASSWORD_SENTINEL"}'
       exit 22
     fi
-    printf '%s\n' '{"data":{"turn":{"status":"failed_retryable","error":{"code":"semantic_output_invalid","message":"MESSAGE_SENTINEL"},"execution":{"provider":"openai_responses","model":"synthetic-model","totalTokens":321},"facts":[],"hypotheses":[],"emittedQuestion":null,"convergence":{"synthesis":null}},"state":{"version":1}},"accessToken":"ACCESS_TOKEN_SENTINEL","inputText":"INPUT_TEXT_SENTINEL","password":"PASSWORD_SENTINEL"}'
+    printf '%s\n' '{"data":{"turn":{"status":"failed_retryable","error":{"code":"semantic_output_invalid","message":"MESSAGE_SENTINEL"},"execution":{"provider":"openai_responses","model":"synthetic-model","totalTokens":321},"facts":[{"conceptId":"uncertainty"}],"hypotheses":[{"hypothesisId":"starting_point.demand"},{"hypothesisId":"main_uncertainty"}],"emittedQuestion":null,"convergence":{"synthesis":null}},"state":{"version":1}},"accessToken":"ACCESS_TOKEN_SENTINEL","inputText":"INPUT_TEXT_SENTINEL","password":"PASSWORD_SENTINEL"}'
     ;;
   */context/semantic)
     printf '%s\n' '{"data":{"enabled":true,"state":null}}'

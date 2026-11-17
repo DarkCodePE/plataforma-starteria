@@ -32,7 +32,7 @@ report_failure() {
       model: (.data.turn.execution.model // null),
       totalTokens: (.data.turn.execution.totalTokens // null),
       factsCount: (if (.data.turn.facts | type) == "array" then (.data.turn.facts | length) else null end),
-      hasStartingPoint: (if (.data.turn.hypotheses | type) == "array" then any(.data.turn.hypotheses[]; (.hypothesisId | type) == "string" and startswith("starting_point.")) else null end),
+      hasStartingPoint: (if (.data.turn.hypotheses | type) == "array" then any(.data.turn.hypotheses[]; (.hypothesisId | type) == "string" and (.hypothesisId | startswith("starting_point."))) else null end),
       hasMainUncertainty: (if (.data.turn.hypotheses | type) == "array" and (.data.turn.facts | type) == "array" then (any(.data.turn.hypotheses[]; .hypothesisId == "main_uncertainty") or any(.data.turn.facts[]; .conceptId == "uncertainty")) else null end),
       hasNextStep: (if (.data.turn | type) == "object" then (.data.turn.emittedQuestion != null or .data.turn.convergence.synthesis != null) else null end),
       semanticVersion: (.data.state.version // null)
