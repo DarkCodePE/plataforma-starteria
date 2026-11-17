@@ -37,10 +37,6 @@ const companyContextEvidence = object({
   entryFingerprint: { type: 'string' as const, pattern: '^[a-f0-9]{64}$' },
 });
 
-const evidenceRef = {
-  anyOf: [userInputEvidence, contextReviewEvidence, companyContextEvidence],
-};
-
 // E1 facts are atomic evidence values. The existing Zod contract remains authoritative
 // and intentionally broader; this transport schema only constrains model-generated values
 // to the representations currently consumed by Portfolio Bootstrap.
@@ -61,14 +57,29 @@ const factValue = {
   ],
 };
 
-const fact = object({
+const factBase = {
   conceptId,
   value: factValue,
-  provenance: { type: 'string' as const, enum: ['user_declared', 'source_extracted'] as const },
-  evidenceRefs: array(evidenceRef, { minItems: 1, maxItems: 20 }),
   confidence: { type: 'number' as const, minimum: 0, maximum: 1 },
   status: { type: 'string' as const, enum: ['observed', 'confirmed', 'retracted'] as const },
-});
+};
+
+const fact = {
+  anyOf: [
+    object({
+      ...factBase,
+      provenance: { type: 'string' as const, enum: ['user_declared'] as const },
+      evidenceRefs: array(userInputEvidence, { minItems: 1, maxItems: 20 }),
+    }),
+    object({
+      ...factBase,
+      provenance: { type: 'string' as const, enum: ['source_extracted'] as const },
+      evidenceRefs: array({
+        anyOf: [contextReviewEvidence, companyContextEvidence],
+      }, { minItems: 1, maxItems: 20 }),
+    }),
+  ] as const,
+};
 
 const hypothesis = object({
   hypothesisId: string,

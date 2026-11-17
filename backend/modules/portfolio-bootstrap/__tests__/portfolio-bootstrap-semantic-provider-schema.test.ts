@@ -27,11 +27,14 @@ describe('Portfolio Bootstrap semantic E1 provider JSON Schema', () => {
     expect(root.properties.synthesis.anyOf?.map((branch) => branch.type)).toEqual(['object', 'null']);
   });
 
-  it('keeps all three evidence-reference variants available to E1 facts', () => {
+  it('couples each fact provenance to its governed evidence-reference variants', () => {
     const fact = portfolioBootstrapSemanticProviderJsonSchema.properties.facts.items;
-    const evidence = fact.properties.evidenceRefs.items;
-    expect(evidence.anyOf?.map((branch) => branch.properties.kind.enum[0])).toEqual([
-      'user_input',
+    const [declared, extracted] = fact.anyOf;
+
+    expect(declared.properties.provenance.enum).toEqual(['user_declared']);
+    expect(declared.properties.evidenceRefs.items.properties.kind.enum).toEqual(['user_input']);
+    expect(extracted.properties.provenance.enum).toEqual(['source_extracted']);
+    expect(extracted.properties.evidenceRefs.items.anyOf?.map((branch) => branch.properties.kind.enum[0])).toEqual([
       'context_review_field',
       'company_context_entry',
     ]);
