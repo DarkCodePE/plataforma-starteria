@@ -43,7 +43,10 @@ report_failure() {
           and (.conceptId == "main_uncertainty" or .conceptId == "uncertainty" or .conceptId == "root_cause" or .conceptId == "solution")
           and (.conceptId as $concept | all($turn.facts[]; .conceptId != $concept or .status == "retracted"))
         )
+        or ($turn.convergence.status == "question_required" and $turn.emittedQuestion != null)
       ) else null end),
+      convergenceStatus: ($turn.convergence.status // null),
+      emittedQuestion: ($turn.emittedQuestion != null),
       hasNextStep: (if (.data.turn | type) == "object" then (.data.turn.emittedQuestion != null or .data.turn.convergence.synthesis != null) else null end),
       semanticVersion: (.data.state.version // null)
     }' <<<"$diagnostic_response" || true
@@ -134,7 +137,8 @@ jq -e '
       .disposition == "unknown"
       and (.conceptId == "main_uncertainty" or .conceptId == "uncertainty" or .conceptId == "root_cause" or .conceptId == "solution")
       and (.conceptId as $concept | all($turn.facts[]; .conceptId != $concept or .status == "retracted"))
-    ))
+    )
+    or ($turn.convergence.status == "question_required" and $turn.emittedQuestion != null))
   and ($turn.emittedQuestion != null or $turn.convergence.synthesis != null)
 ' >/dev/null <<<"$first"
 
