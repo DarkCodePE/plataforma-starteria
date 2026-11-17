@@ -9,10 +9,8 @@ import {
   FileCheck2,
   Layers3,
   Lightbulb,
-  MessagesSquare,
   ShieldCheck,
   Target,
-  Workflow,
   type LucideIcon,
 } from 'lucide-react';
 import { Link } from 'react-router';
@@ -171,7 +169,7 @@ export function LandingPage() {
                   Explorar soluciones <ArrowRight aria-hidden="true" size={16} />
                 </a>
               </div>
-              <p className="mt-5 text-sm leading-6 text-[#BEC1DE]">Empezamos por entender lo que necesitas. Sin formularios ni conversaciones obligatorias con un Copilot.</p>
+              <p className="mt-5 text-sm leading-6 text-[#BEC1DE]">Podemos comenzar desde un problema, una oportunidad o un proyecto que ya está en marcha.</p>
             </div>
             <SystemIllustration />
           </div>
