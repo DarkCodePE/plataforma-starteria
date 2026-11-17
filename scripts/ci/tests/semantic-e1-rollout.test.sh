@@ -151,7 +151,12 @@ test_material_question_success() {
     bash "$prod_smoke" >"$output" 2>&1
 
   local result
-  result=$(tail -n 1 "$output")
+  result=$(grep -F '"correctedVersion":' "$output" || true)
+  [[ -n "$result" ]] || {
+    echo 'Semantic E1 material-question scenario did not produce a final result' >&2
+    cat "$output" >&2
+    return 1
+  }
   jq -e '
     .provider == "openai_responses"
     and .convergence == "ready_for_human_review"
