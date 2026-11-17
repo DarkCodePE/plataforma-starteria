@@ -720,6 +720,9 @@ jobs:
         env:
           E2E_PROD_LEAD_PASSWORD: ${{ secrets.E2E_PROD_LEAD_PASSWORD }}
         run: bash scripts/ci/semantic-e1-prod-smoke.sh
+      - name: Collect safe Semantic E1 validation diagnostic
+        if: always() && env.SEMANTIC_E1_ENABLED == 'true' && steps.semantic_e1_smoke.outcome == 'failure'
+        run: bash scripts/ci/semantic-e1-safe-log-diagnostic.sh
       - name: Fail closed after unsuccessful Semantic E1 smoke
         if: always() && env.SEMANTIC_E1_ENABLED == 'true' && (steps.rollout.outcome == 'success' || steps.rollout.outcome == 'failure' || steps.rollout.outcome == 'cancelled') && steps.semantic_e1_smoke.outcome != 'success'
         run: |

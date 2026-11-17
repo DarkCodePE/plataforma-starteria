@@ -8,10 +8,12 @@ secret_sync="$repo_root/scripts/ci/sync-backend-secret.sh"
 env_example="$repo_root/backend/.env.example"
 deployment="$repo_root/k8s/backend-deployment.yaml"
 prod_smoke="$repo_root/scripts/ci/semantic-e1-prod-smoke.sh"
+safe_log_diagnostic="$repo_root/scripts/ci/semantic-e1-safe-log-diagnostic.sh"
 provider_smoke="$repo_root/backend/scripts/semantic-e1-live-smoke.ts"
 
 [[ -f "$kill_switch" ]]
 [[ -f "$prod_smoke" ]]
+[[ -f "$safe_log_diagnostic" ]]
 
 grep -q '^name: Semantic E1 Kill Switch$' "$kill_switch"
 grep -q '^  workflow_dispatch:$' "$kill_switch"
@@ -44,6 +46,10 @@ grep -Fq "failure_stage='first_turn_contract'" "$prod_smoke"
 grep -Fq "failure_stage='second_turn_transport'" "$prod_smoke"
 grep -Fq "failure_stage='second_turn_contract'" "$prod_smoke"
 [[ $(grep -Fc '(.conceptId == "main_uncertainty" or .conceptId == "uncertainty")' "$prod_smoke") -eq 2 ]]
+diagnostic_line=$(grep -n 'Collect safe Semantic E1 validation diagnostic' "$cd_workflow" | cut -d: -f1)
+fail_closed_line=$(grep -n 'Fail closed after unsuccessful Semantic E1 smoke' "$cd_workflow" | cut -d: -f1)
+[[ "$diagnostic_line" -lt "$fail_closed_line" ]]
+grep -Fq 'run: bash scripts/ci/semantic-e1-safe-log-diagnostic.sh' "$cd_workflow"
 grep -q 'Fail closed after unsuccessful Semantic E1 smoke' "$cd_workflow"
 grep -Fq "steps.rollout.outcome == 'failure'" "$cd_workflow"
 grep -Fq "steps.rollout.outcome == 'cancelled'" "$cd_workflow"
@@ -132,6 +138,35 @@ if command -v jq >/dev/null 2>&1; then
   mock_bin="$test_root/bin"
   mkdir -p "$mock_bin"
   trap 'rm -rf "$test_root"' EXIT
+
+  cat >"$mock_bin/kubectl" <<'MOCK_KUBECTL'
+#!/usr/bin/env bash
+set -euo pipefail
+printf '%s\n' '{"event":"request_completed","inputText":"INPUT_TEXT_SENTINEL"}'
+printf '%s\n' '{"event":"portfolio_bootstrap_semantic_schema_invalid","validationStage":"semantic_turn","issues":[{"path":"facts.2.evidenceRefs.0.quote","category":"custom"}],"completionStatus":"completed","incompleteReason":null,"inputTokens":1200,"outputTokens":800,"totalTokens":2000,"providerRaw":"PROVIDER_RAW_SENTINEL","password":"PASSWORD_SENTINEL"}'
+MOCK_KUBECTL
+  chmod +x "$mock_bin/kubectl"
+
+  safe_output="$test_root/safe-log-diagnostic.txt"
+  PATH="$mock_bin:$PATH" NAMESPACE=synthetic bash "$safe_log_diagnostic" >"$safe_output"
+  jq -e '
+    .event == "portfolio_bootstrap_semantic_schema_invalid"
+    and .validationStage == "semantic_turn"
+    and .issues == [{path:"facts.2.evidenceRefs.0.quote",category:"custom"}]
+    and .completionStatus == "completed"
+    and .incompleteReason == null
+    and .inputTokens == 1200
+    and .outputTokens == 800
+    and .totalTokens == 2000
+    and ((keys - [
+      "completionStatus", "event", "incompleteReason", "inputTokens",
+      "issues", "outputTokens", "totalTokens", "validationStage"
+    ]) | length == 0)
+  ' "$safe_output" >/dev/null
+  if grep -Eq 'INPUT_TEXT_SENTINEL|PROVIDER_RAW_SENTINEL|PASSWORD_SENTINEL' "$safe_output"; then
+    echo 'Safe Semantic E1 log diagnostic exposed a sensitive sentinel' >&2
+    exit 1
+  fi
 
   cat >"$mock_bin/curl" <<'MOCK_CURL'
 #!/usr/bin/env bash
