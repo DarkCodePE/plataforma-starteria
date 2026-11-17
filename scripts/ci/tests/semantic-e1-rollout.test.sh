@@ -43,6 +43,7 @@ grep -Fq "failure_stage='first_turn_transport'" "$prod_smoke"
 grep -Fq "failure_stage='first_turn_contract'" "$prod_smoke"
 grep -Fq "failure_stage='second_turn_transport'" "$prod_smoke"
 grep -Fq "failure_stage='second_turn_contract'" "$prod_smoke"
+[[ $(grep -Fc '(.conceptId == "main_uncertainty" or .conceptId == "uncertainty")' "$prod_smoke") -eq 2 ]]
 grep -q 'Fail closed after unsuccessful Semantic E1 smoke' "$cd_workflow"
 grep -Fq "steps.rollout.outcome == 'failure'" "$cd_workflow"
 grep -Fq "steps.rollout.outcome == 'cancelled'" "$cd_workflow"
@@ -150,7 +151,7 @@ case "$url" in
       printf '%s\n' '{"error":{"code":"provider_unavailable","message":"MESSAGE_SENTINEL"},"accessToken":"ACCESS_TOKEN_SENTINEL","inputText":"INPUT_TEXT_SENTINEL","password":"PASSWORD_SENTINEL"}'
       exit 22
     fi
-    printf '%s\n' '{"data":{"turn":{"status":"failed_retryable","error":{"code":"semantic_output_invalid","message":"MESSAGE_SENTINEL"},"execution":{"provider":"openai_responses","model":"synthetic-model","totalTokens":321},"facts":[{"conceptId":"uncertainty"}],"hypotheses":[{"hypothesisId":"starting_point.demand"},{"hypothesisId":"main_uncertainty"}],"emittedQuestion":null,"convergence":{"synthesis":null}},"state":{"version":1}},"accessToken":"ACCESS_TOKEN_SENTINEL","inputText":"INPUT_TEXT_SENTINEL","password":"PASSWORD_SENTINEL"}'
+    printf '%s\n' '{"data":{"turn":{"status":"failed_retryable","error":{"code":"semantic_output_invalid","message":"MESSAGE_SENTINEL"},"execution":{"provider":"openai_responses","model":"synthetic-model","totalTokens":321},"facts":[{"conceptId":"main_uncertainty"}],"hypotheses":[{"hypothesisId":"starting_point.demand"},{"hypothesisId":"main_uncertainty"}],"emittedQuestion":null,"convergence":{"synthesis":null}},"state":{"version":1}},"accessToken":"ACCESS_TOKEN_SENTINEL","inputText":"INPUT_TEXT_SENTINEL","password":"PASSWORD_SENTINEL"}'
     ;;
   */context/semantic)
     printf '%s\n' '{"data":{"enabled":true,"state":null}}'
