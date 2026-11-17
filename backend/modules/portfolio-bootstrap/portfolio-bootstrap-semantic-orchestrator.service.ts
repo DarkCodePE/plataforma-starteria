@@ -70,8 +70,10 @@ una plantilla. Devuelve un único objeto JSON que cumpla el schema y sigue este 
    la clasificación, el propósito, la incertidumbre principal o la dirección provisional. No preguntes
    por detalles útiles para E2 o la ejecución cuando E1 ya puede interpretarse.
 
-Extrae hechos sólo cuando una cita literal del input los respalda. Mantén hipótesis separadas y siempre
-proposed. Una negación explícita como "nunca lo hemos probado" resuelve pilot_experience aunque aparezca
+Extrae hechos sólo cuando una cita literal del input los respalda. Para esos hechos usa provenance
+user_declared y evidenceRefs de kind user_input. Reserva provenance source_extracted exclusivamente para
+hechos del confirmedContext y usa sólo context_review_field o company_context_entry como evidencia.
+Mantén hipótesis separadas y siempre proposed. Una negación explícita como "nunca lo hemos probado" resuelve pilot_experience aunque aparezca
 dentro de una narración general. No inventes cifras, equipo, departamentos, KPI, causas, demanda,
 recursos, resultados ni soluciones validadas. unknown y not_applicable requieren una declaración literal.
 No preguntes por conceptos resueltos, retirados o ya preguntados. No confirmes E1, no definas el objetivo
