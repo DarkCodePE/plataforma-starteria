@@ -39,9 +39,22 @@ runtime_dir=$(mktemp -d)
 trap 'rm -rf -- "$runtime_dir"' EXIT
 curl --fail --silent --show-error "$PRODUCTION_BASE_URL/release.json" > "$runtime_dir/frontend.json"
 curl --fail --silent --show-error "$PRODUCTION_BASE_URL/api/health" > "$runtime_dir/backend.json"
-kubectl -n "$NAMESPACE" exec deployment/starteria-ai-service -- \
-  python -c "import json,urllib.request; print(json.dumps(json.load(urllib.request.urlopen('http://127.0.0.1:8001/health'))))" \
-  > "$runtime_dir/ai.json"
+AI_HEALTH_ATTEMPTS=${AI_HEALTH_ATTEMPTS:-12}
+AI_HEALTH_INTERVAL_SECONDS=${AI_HEALTH_INTERVAL_SECONDS:-5}
+ai_health_ready=false
+for attempt in $(seq 1 "$AI_HEALTH_ATTEMPTS"); do
+  if kubectl -n "$NAMESPACE" exec deployment/starteria-ai-service -- \
+    python -c "import json,urllib.request; print(json.dumps(json.load(urllib.request.urlopen('http://127.0.0.1:8001/health'))))" \
+    > "$runtime_dir/ai.json"; then
+    ai_health_ready=true
+    printf 'AI service health passed on attempt %s/%s.\n' "$attempt" "$AI_HEALTH_ATTEMPTS"
+    break
+  fi
+  printf '::warning::AI service health not ready on attempt %s/%s\n' "$attempt" "$AI_HEALTH_ATTEMPTS"
+  sleep "$AI_HEALTH_INTERVAL_SECONDS"
+done
+[[ "$ai_health_ready" == true ]] \
+  || { echo "::error::AI service health did not become ready after $AI_HEALTH_ATTEMPTS attempts"; exit 1; }
 
 node - "$RELEASE_MANIFEST" "$runtime_dir/frontend.json" "$runtime_dir/backend.json" "$runtime_dir/ai.json" <<'NODE'
 const fs = require('node:fs');
