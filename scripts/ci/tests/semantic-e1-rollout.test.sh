@@ -44,7 +44,9 @@ grep -Fq 'event: "semantic_e1_prod_smoke_failed"' "$prod_smoke"
 grep -Fq "failure_stage='first_turn_transport'" "$prod_smoke"
 grep -Fq "failure_stage='first_turn_contract'" "$prod_smoke"
 grep -Fq "failure_stage='second_turn_transport'" "$prod_smoke"
+grep -Fq "failure_stage='second_turn_retry_transport'" "$prod_smoke"
 grep -Fq "failure_stage='second_turn_contract'" "$prod_smoke"
+[[ $(grep -Fc 'Idempotency-Key: $second_idempotency_key' "$prod_smoke") -eq 2 ]]
 [[ $(grep -Fc '(.conceptId == "main_uncertainty" or .conceptId == "uncertainty")' "$prod_smoke") -eq 2 ]]
 [[ $(grep -Fc '(.conceptId == "main_uncertainty" or .conceptId == "uncertainty" or .conceptId == "root_cause" or .conceptId == "solution")' "$prod_smoke") -eq 2 ]]
 [[ $(grep -Fc 'all($turn.facts[]; .conceptId != $concept or .status == "retracted")' "$prod_smoke") -eq 2 ]]
@@ -170,6 +172,37 @@ test_material_question_success() {
   [[ $(grep -Fc '/abandon' "$calls") -eq 1 ]]
 }
 
+test_retryable_recovery() {
+  local scenario='retryable_recovery'
+  local case_dir="$test_root/$scenario"
+  local output="$case_dir/output.txt"
+  local calls="$case_dir/calls.txt"
+  mkdir -p "$case_dir"
+
+  PATH="$mock_bin:$PATH" \
+    MOCK_SCENARIO="$scenario" MOCK_CALL_LOG="$calls" \
+    E2E_PROD_BASE_URL='https://semantic-smoke.invalid' \
+    E2E_PROD_LEAD_PASSWORD='PASSWORD_SENTINEL' \
+    bash "$prod_smoke" >"$output" 2>&1
+
+  local result
+  result=$(grep -F '"correctedVersion":' "$output" || true)
+  [[ -n "$result" ]] || {
+    echo 'Semantic E1 retryable-recovery scenario did not produce a final result' >&2
+    cat "$output" >&2
+    return 1
+  }
+  jq -e '
+    .provider == "openai_responses"
+    and .convergence == "ready_for_human_review"
+    and .synthesis == true
+    and .correctedVersion == 2
+  ' >/dev/null <<<"$result"
+  ! grep -Fq 'semantic_e1_prod_smoke_failed' "$output"
+  [[ $(grep -Fc '/context/semantic/turns' "$calls") -eq 3 ]]
+  [[ $(grep -Fc '/abandon' "$calls") -eq 1 ]]
+}
+
 if command -v jq >/dev/null 2>&1; then
   test_root=$(mktemp -d)
   mock_bin="$test_root/bin"
@@ -223,10 +256,12 @@ case "$url" in
       printf '%s\n' '{"error":{"code":"provider_unavailable","message":"MESSAGE_SENTINEL"},"accessToken":"ACCESS_TOKEN_SENTINEL","inputText":"INPUT_TEXT_SENTINEL","password":"PASSWORD_SENTINEL"}'
       exit 22
     fi
-    if [[ "$MOCK_SCENARIO" == material_question_success ]]; then
+    if [[ "$MOCK_SCENARIO" == material_question_success || "$MOCK_SCENARIO" == retryable_recovery ]]; then
       turn_call=$(grep -Fc '/context/semantic/turns' "$MOCK_CALL_LOG")
       if [[ "$turn_call" -eq 1 ]]; then
         printf '%s\n' '{"data":{"turn":{"status":"completed","execution":{"provider":"openai_responses","model":"synthetic-model","inputTokens":120,"outputTokens":80,"totalTokens":200,"retryCount":0,"fallbackUsed":false},"facts":[{"conceptId":"situation","status":"observed"}],"hypotheses":[{"hypothesisId":"starting_point.opportunity"}],"dispositions":[],"emittedQuestion":{"id":"e1-q-1"},"convergence":{"status":"question_required","synthesis":null}},"state":{"version":1}}}'
+      elif [[ "$MOCK_SCENARIO" == retryable_recovery && "$turn_call" -eq 2 ]]; then
+        printf '%s\n' '{"data":{"turn":{"status":"failed_retryable","error":{"code":"semantic_interpretation_incomplete","retryable":true},"execution":{"provider":"openai_responses","model":"synthetic-model","inputTokens":140,"outputTokens":90,"totalTokens":230,"retryCount":0,"fallbackUsed":false},"facts":[],"hypotheses":[],"dispositions":[],"emittedQuestion":null,"convergence":{"status":"provider_retryable_failure","synthesis":null}},"state":{"version":1}}}'
       else
         printf '%s\n' '{"data":{"turn":{"status":"completed","execution":{"provider":"openai_responses","model":"synthetic-model","inputTokens":140,"outputTokens":90,"totalTokens":230,"retryCount":0,"fallbackUsed":false},"facts":[],"hypotheses":[],"dispositions":[],"emittedQuestion":null,"convergence":{"status":"ready_for_human_review","synthesis":{"summary":"synthetic"}}},"state":{"version":2}}}'
       fi
@@ -251,6 +286,7 @@ MOCK_CURL
   test_failure_diagnostics transport_failure 22 first_turn_transport provider_unavailable
   test_failure_diagnostics contract_failure 1 first_turn_contract semantic_output_invalid
   test_material_question_success
+  test_retryable_recovery
 elif [[ "${CI:-}" == true ]]; then
   echo 'jq is required for Semantic E1 behavioral rollout tests in CI' >&2
   exit 1
