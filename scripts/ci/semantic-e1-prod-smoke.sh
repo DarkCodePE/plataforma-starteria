@@ -34,6 +34,10 @@ report_failure() {
       model: (.data.turn.execution.model // null),
       totalTokens: (.data.turn.execution.totalTokens // null),
       factsCount: (if (.data.turn.facts | type) == "array" then (.data.turn.facts | length) else null end),
+      hypothesesCount: (if (.data.turn.hypotheses | type) == "array" then (.data.turn.hypotheses | length) else null end),
+      dispositionsCount: (if (.data.turn.dispositions | type) == "array" then (.data.turn.dispositions | length) else null end),
+      questionBudgetLimit: ($turn.questionBudget.limit // null),
+      questionBudgetUsed: ($turn.questionBudget.used // null),
       hasStartingPoint: (if (.data.turn.hypotheses | type) == "array" then any(.data.turn.hypotheses[]; (.hypothesisId | type) == "string" and (.hypothesisId | startswith("starting_point."))) else null end),
       hasMainUncertainty: (if ($turn.hypotheses | type) == "array" and ($turn.facts | type) == "array" then (
         any($turn.hypotheses[]; .hypothesisId == "main_uncertainty")
@@ -46,6 +50,12 @@ report_failure() {
         or ($turn.convergence.status == "question_required" and $turn.emittedQuestion != null)
       ) else null end),
       convergenceStatus: ($turn.convergence.status // null),
+      checkpointReasonKind: (if ($turn.convergence.status // null) != "budget_checkpoint" then null
+        elif ($turn.convergence.reason // "") == "La pregunta propuesta no superó el guardrail de proporcionalidad y no invención." then "unsafe_question"
+        elif ($turn.convergence.reason // "") == "La salida no reúne todavía situación, dirección, naturaleza e incertidumbre principal trazables para revisión humana." then "insufficient_review_evidence"
+        elif ($turn.convergence.reason // "") == "La pregunta propuesta repetía o reabría conceptos ya tratados; se requiere revisión humana." then "repeated_or_unresolved_question"
+        elif ($turn.convergence.reason // "") == "Se alcanzó el presupuesto de preguntas configurado." then "question_budget_exhausted"
+        else "other" end),
       emittedQuestion: ($turn.emittedQuestion != null),
       hasNextStep: (if (.data.turn | type) == "object" then (.data.turn.emittedQuestion != null or .data.turn.convergence.synthesis != null) else null end),
       semanticVersion: (.data.state.version // null)
