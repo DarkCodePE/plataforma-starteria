@@ -488,8 +488,8 @@ function applyDeterministicPolicy(input: {
     : false;
   const providerReturnedNoMaterialNextStep = facts.length > 0
     && facts.every((fact) => fact.status !== 'retracted')
-    && input.inference.hypotheses.length === 0
-    && input.inference.dispositions.length === 0
+    && hypotheses.length === 0
+    && dispositions.length === 0
     && input.inference.synthesis == null
     && !input.inference.readyForHumanReview
     && (rawQuestionPlan === null || (!rawQuestionRepeated && !rawQuestionUnsafe));

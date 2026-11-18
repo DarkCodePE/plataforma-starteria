@@ -453,6 +453,53 @@ describe('PortfolioBootstrapSemanticOrchestratorService', () => {
     }));
   });
 
+  it('fails retryably when the provider only re-emits interpretations already present in semantic state', async () => {
+    const priorStartingPoint = startingPoint('opportunity', ['opportunity', 'desired_outcome']);
+    const priorMainUncertainty = mainUncertainty(
+      'No está claro qué alternativa tendrá demanda suficiente.',
+      ['opportunity', 'desired_outcome'],
+    );
+    const priorDisposition = {
+      conceptId: 'delivery_channel', disposition: 'unknown' as const, provenance: 'user_declared' as const,
+      evidenceRefs: [{ kind: 'user_input' as const, quote: 'El canal todavía no está decidido.' }],
+    };
+    const store = fakeStore(semanticState({
+      version: 1,
+      factLedger: [
+        { ...fact('opportunity', 'crecer entre semana', 'crecer entre semana'), turnId: 'turn-1', semanticVersion: 1 },
+        { ...fact('desired_outcome', 'aumentar ventas', 'aumentar ventas'), turnId: 'turn-1', semanticVersion: 1 },
+      ],
+      hypotheses: [
+        { ...priorStartingPoint, turnId: 'turn-1', semanticVersion: 1 },
+        { ...priorMainUncertainty, turnId: 'turn-1', semanticVersion: 1 },
+      ],
+      dispositions: [{ ...priorDisposition, turnId: 'turn-1', semanticVersion: 1 }],
+      answeredGaps: ['opportunity', 'desired_outcome'],
+    }));
+    const model = fakeModel({
+      facts: [fact(
+        'solution',
+        'probar una propuesta entre semana',
+        'Queremos validar una propuesta específica para los días laborables.',
+      )],
+      hypotheses: [priorStartingPoint, priorMainUncertainty],
+      dispositions: [priorDisposition], questionPlan: null, synthesis: null,
+      readyForHumanReview: false,
+      reason: 'El proveedor repitió interpretaciones existentes sin producir una salida material.',
+    });
+
+    await new PortfolioBootstrapSemanticOrchestratorService(store, model, config)
+      .processTurn(command('Queremos validar una propuesta específica para los días laborables.', 1));
+
+    expect(store.completeInference).toHaveBeenCalledWith(expect.objectContaining({
+      status: 'failed_retryable',
+      hypotheses: [],
+      dispositions: [],
+      error: { code: 'semantic_interpretation_incomplete', retryable: true },
+      convergence: expect.objectContaining({ status: 'provider_retryable_failure' }),
+    }));
+  });
+
   it('preserves governed checkpoints outside the active-facts-only retry pattern', async () => {
     const sufficientState = (overrides: Partial<SemanticStateDto> = {}) => semanticState({
       version: 1,
