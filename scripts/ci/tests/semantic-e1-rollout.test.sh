@@ -115,7 +115,9 @@ test_failure_diagnostics() {
       "apiCode", "enabled", "event", "factsCount", "hasMainUncertainty",
       "hasNextStep", "hasStartingPoint", "model", "provider",
       "semanticVersion", "stage", "totalTokens", "turnStatus",
-      "convergenceStatus", "emittedQuestion"
+      "convergenceStatus", "emittedQuestion", "hypothesesCount",
+      "dispositionsCount", "questionBudgetLimit", "questionBudgetUsed",
+      "checkpointReasonKind"
     ]) | length == 0)
   ' >/dev/null <<<"$diagnostic"
 
@@ -125,6 +127,11 @@ test_failure_diagnostics() {
       and .hasStartingPoint == true
       and .hasMainUncertainty == true
       and .hasNextStep == false
+      and .hypothesesCount == 2
+      and .dispositionsCount == 0
+      and .questionBudgetLimit == 3
+      and .questionBudgetUsed == 1
+      and .checkpointReasonKind == "repeated_or_unresolved_question"
     ' >/dev/null <<<"$diagnostic"
   fi
 
@@ -267,7 +274,7 @@ case "$url" in
       fi
       exit 0
     fi
-    printf '%s\n' '{"data":{"turn":{"status":"failed_retryable","error":{"code":"semantic_output_invalid","message":"MESSAGE_SENTINEL"},"execution":{"provider":"openai_responses","model":"synthetic-model","totalTokens":321},"facts":[{"conceptId":"main_uncertainty"}],"hypotheses":[{"hypothesisId":"starting_point.demand"},{"hypothesisId":"main_uncertainty"}],"emittedQuestion":null,"convergence":{"synthesis":null}},"state":{"version":1}},"accessToken":"ACCESS_TOKEN_SENTINEL","inputText":"INPUT_TEXT_SENTINEL","password":"PASSWORD_SENTINEL"}'
+    printf '%s\n' '{"data":{"turn":{"status":"failed_retryable","error":{"code":"semantic_output_invalid","message":"MESSAGE_SENTINEL"},"execution":{"provider":"openai_responses","model":"synthetic-model","totalTokens":321},"facts":[{"conceptId":"main_uncertainty"}],"hypotheses":[{"hypothesisId":"starting_point.demand"},{"hypothesisId":"main_uncertainty"}],"dispositions":[],"questionBudget":{"limit":3,"used":1},"emittedQuestion":null,"convergence":{"status":"budget_checkpoint","reason":"La pregunta propuesta repetía o reabría conceptos ya tratados; se requiere revisión humana.","synthesis":null}},"state":{"version":1}},"accessToken":"ACCESS_TOKEN_SENTINEL","inputText":"INPUT_TEXT_SENTINEL","password":"PASSWORD_SENTINEL"}'
     ;;
   */context/semantic)
     printf '%s\n' '{"data":{"enabled":true,"state":null}}'
