@@ -409,6 +409,50 @@ describe('PortfolioBootstrapSemanticOrchestratorService', () => {
     }));
   });
 
+  it('fails retryably when a safe novel provider question is suppressed without producing a material next step', async () => {
+    const store = fakeStore(semanticState({
+      version: 1,
+      factLedger: [
+        { ...fact('opportunity', 'crecer entre semana', 'crecer entre semana'), turnId: 'turn-1', semanticVersion: 1 },
+        { ...fact('desired_outcome', 'aumentar ventas', 'aumentar ventas'), turnId: 'turn-1', semanticVersion: 1 },
+      ],
+      hypotheses: [
+        { ...startingPoint('opportunity', ['opportunity', 'desired_outcome']), turnId: 'turn-1', semanticVersion: 1 },
+        { ...mainUncertainty(
+          'No está claro qué alternativa tendrá demanda suficiente.',
+          ['opportunity', 'desired_outcome'],
+        ), turnId: 'turn-1', semanticVersion: 1 },
+      ],
+      answeredGaps: ['opportunity', 'desired_outcome'],
+    }));
+    const model = fakeModel({
+      facts: [fact(
+        'solution',
+        'probar una propuesta entre semana',
+        'Queremos validar una propuesta específica para los días laborables.',
+      )],
+      hypotheses: [], dispositions: [],
+      questionPlan: {
+        question: '¿Qué evidencia indicaría que la propuesta merece continuar?',
+        reasonToAsk: 'Delimitar una señal antes de decidir.',
+        resolves: ['validation_evidence'],
+      },
+      synthesis: null,
+      readyForHumanReview: false,
+      reason: 'El proveedor propuso una pregunta adicional, pero no produjo una salida material.',
+    });
+
+    await new PortfolioBootstrapSemanticOrchestratorService(store, model, config)
+      .processTurn(command('Queremos validar una propuesta específica para los días laborables.', 1));
+
+    expect(store.completeInference).toHaveBeenCalledWith(expect.objectContaining({
+      status: 'failed_retryable',
+      error: { code: 'semantic_interpretation_incomplete', retryable: true },
+      emittedQuestion: null,
+      convergence: expect.objectContaining({ status: 'provider_retryable_failure' }),
+    }));
+  });
+
   it('preserves governed checkpoints outside the active-facts-only retry pattern', async () => {
     const sufficientState = (overrides: Partial<SemanticStateDto> = {}) => semanticState({
       version: 1,
