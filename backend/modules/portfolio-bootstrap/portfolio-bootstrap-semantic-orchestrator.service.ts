@@ -473,16 +473,29 @@ function applyDeterministicPolicy(input: {
   const groundedReviewReady = input.inference.readyForHumanReview
     && sufficientForReview
     && synthesisGrounded;
-  const providerReturnedOnlyActiveFacts = facts.length > 0
+  const rawQuestionPlan = input.inference.questionPlan;
+  const rawQuestionRepeated = Boolean(rawQuestionPlan)
+    && (input.state?.questionHistory ?? []).some((question) => (
+      sameConceptSet(question.resolves, rawQuestionPlan?.resolves ?? [])
+    ));
+  const rawQuestionUnsafe = rawQuestionPlan
+    ? !questionGroundedForBusiness(
+      rawQuestionPlan as { question: string; reasonToAsk: string },
+      input.rawInput,
+      dispositions,
+      input.state,
+    )
+    : false;
+  const providerReturnedNoMaterialNextStep = facts.length > 0
     && facts.every((fact) => fact.status !== 'retracted')
     && input.inference.hypotheses.length === 0
     && input.inference.dispositions.length === 0
-    && input.inference.questionPlan === null
     && input.inference.synthesis == null
-    && !input.inference.readyForHumanReview;
+    && !input.inference.readyForHumanReview
+    && (rawQuestionPlan === null || (!rawQuestionRepeated && !rawQuestionUnsafe));
   const retryableEmptyCheckpoint = sufficientForReview
     && currentBudget.used < limit
-    && providerReturnedOnlyActiveFacts;
+    && providerReturnedNoMaterialNextStep;
   const interpretationIncomplete = materialEvidence.hasAnchor
     && materialEvidence.hasDirection
     && !canAsk
