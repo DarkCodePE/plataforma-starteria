@@ -331,7 +331,7 @@ describe('PortfolioBootstrapSemanticOrchestratorService', () => {
     }));
   });
 
-  it('fails retryably when the missing main uncertainty is paired with a question that cannot be emitted', async () => {
+  it('emits a material fallback when the missing main uncertainty is paired with a question that cannot be emitted', async () => {
     const store = fakeStore(semanticState({
       version: 1,
       factLedger: [
@@ -364,8 +364,10 @@ describe('PortfolioBootstrapSemanticOrchestratorService', () => {
       .processTurn(command('Todavía no sabemos qué alternativa tendrá demanda suficiente.', 1));
 
     expect(store.completeInference).toHaveBeenCalledWith(expect.objectContaining({
-      status: 'failed_retryable',
-      error: { code: 'semantic_interpretation_incomplete', retryable: true },
+      status: 'completed',
+      error: null,
+      emittedQuestion: expect.objectContaining({ resolves: ['main_uncertainty'] }),
+      convergence: expect.objectContaining({ status: 'question_required' }),
     }));
   });
 

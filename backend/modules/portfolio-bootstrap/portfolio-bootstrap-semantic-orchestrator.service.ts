@@ -412,18 +412,12 @@ function applyDeterministicPolicy(input: {
     && questionCanChangeInterpretation(proposedQuestionPlan.resolves, materialEvidence)
     ? proposedQuestionPlan
     : null;
-  const fallbackPlan = !sufficientForReview && !proposedQuestionPlan
-    ? materialClarificationPlan(input.rawInput, materialEvidence)
-    : null;
-  const questionPlan = providerQuestionPlan ?? fallbackPlan;
   const candidateResolves = providerQuestionPlan?.resolves
     .filter((conceptId) => !blockedConcepts.has(conceptId)) ?? [];
-  const fallbackResolves = fallbackPlan?.resolves.filter((conceptId) => !blockedConcepts.has(conceptId)) ?? [];
-  const resolves = providerQuestionPlan ? candidateResolves : fallbackResolves;
-  const repeated = resolves.length > 0 && (input.state?.questionHistory ?? []).some((question) => (
-    sameConceptSet(question.resolves, resolves)
+  const providerRepeated = candidateResolves.length > 0 && (input.state?.questionHistory ?? []).some((question) => (
+    sameConceptSet(question.resolves, candidateResolves)
   ));
-  const unsafeQuestion = providerQuestionPlan
+  const providerUnsafe = providerQuestionPlan
     ? !questionGroundedForBusiness(
       providerQuestionPlan as { question: string; reasonToAsk: string },
       input.rawInput,
@@ -431,6 +425,31 @@ function applyDeterministicPolicy(input: {
       input.state,
     )
     : false;
+  const providerCanAsk = Boolean(providerQuestionPlan)
+    && candidateResolves.length > 0
+    && !providerRepeated
+    && !providerUnsafe
+    && currentBudget.used < limit;
+  const incompleteCoreWithoutProviderQuestion = !proposedQuestionPlan
+    && materialEvidence.hasAnchor
+    && materialEvidence.hasDirection
+    && materialEvidence.hasStartingPoint
+    && !materialEvidence.hasMainUncertainty;
+  const coreFallbackRequired = Boolean(proposedQuestionPlan)
+    && !providerCanAsk
+    && materialEvidence.hasStartingPoint
+    && !materialEvidence.hasMainUncertainty;
+  const fallbackPlan = !sufficientForReview
+    && ((!proposedQuestionPlan && !incompleteCoreWithoutProviderQuestion) || coreFallbackRequired)
+    ? materialClarificationPlan(input.rawInput, materialEvidence)
+    : null;
+  const fallbackResolves = fallbackPlan?.resolves.filter((conceptId) => !blockedConcepts.has(conceptId)) ?? [];
+  const questionPlan = providerCanAsk ? providerQuestionPlan : fallbackPlan;
+  const resolves = providerCanAsk ? candidateResolves : fallbackResolves;
+  const repeated = resolves.length > 0 && (input.state?.questionHistory ?? []).some((question) => (
+    sameConceptSet(question.resolves, resolves)
+  ));
+  const unsafeQuestion = providerUnsafe && !fallbackPlan;
   const canAsk = Boolean(questionPlan)
     && resolves.length > 0
     && !repeated
@@ -793,6 +812,14 @@ function materialClarificationPlan(rawInput: string, evidence: {
       question: '¿Qué decisión o cambio concreto te gustaría poder orientar a partir de esta situación?',
       reasonToAsk: 'La situación está descrita, pero falta la dirección que permitirá convertirla en un objetivo provisional.',
       resolves: ['decision_to_enable'],
+    };
+  }
+  if (evidence.hasAnchor && evidence.hasDirection
+    && evidence.hasStartingPoint && !evidence.hasMainUncertainty) {
+    return {
+      question: '¿Cuál es la incertidumbre principal que necesitas despejar antes de decidir el siguiente paso?',
+      reasonToAsk: 'Distinguir la duda central evita cerrar E1 con una solución o una conclusión todavía no sustentada.',
+      resolves: ['main_uncertainty'],
     };
   }
   if (evidence.hasAnchor && evidence.hasDirection) return null;
