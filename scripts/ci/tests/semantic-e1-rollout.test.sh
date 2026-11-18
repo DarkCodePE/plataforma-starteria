@@ -34,7 +34,7 @@ fi
 
 grep -Fq "SEMANTIC_E1_ENABLED: \${{ vars.SEMANTIC_E1_ENABLED || 'false' }}" "$cd_workflow"
 grep -q '^  semantic-e1-provider-preflight:$' "$cd_workflow"
-grep -Fq "SEMANTIC_E1_MAX_OUTPUT_TOKENS: '1200'" "$cd_workflow"
+grep -Fq "SEMANTIC_E1_MAX_OUTPUT_TOKENS: '2400'" "$cd_workflow"
 grep -q -- '--semantic-e1-enabled "$SEMANTIC_E1_ENABLED"' "$cd_workflow"
 grep -q 'backend/scripts/semantic-e1-live-smoke.ts' "$cd_workflow"
 grep -Fq 'NODE_PATH: ${{ github.workspace }}/front/node_modules' "$cd_workflow"
@@ -72,6 +72,8 @@ grep -Fq 'void main().catch' "$provider_smoke"
 ! grep -q 'SEMANTIC_E1_PILOT_ORGANIZATION_ALLOWLIST' "$env_example"
 ! grep -q 'SEMANTIC_E1_PILOT_ORGANIZATION_ALLOWLIST' "$deployment"
 grep -q '^SEMANTIC_E1_ENABLED=false$' "$env_example"
+grep -Fq 'SEMANTIC_E1_MAX_OUTPUT_TOKENS=2400' "$env_example"
+grep -A1 -F 'name: SEMANTIC_E1_MAX_OUTPUT_TOKENS' "$deployment" | grep -Fq 'value: "2400"'
 grep -q "SEMANTIC_E1_ENABLED: bool(values\['semantic-e1-enabled'\]" "$repo_root/scripts/ci/generate-release-manifest.mjs"
 grep -q 'SEMANTIC_E1_ENABLED: false' "$repo_root/scripts/ci/generate-release-manifest.mjs"
 

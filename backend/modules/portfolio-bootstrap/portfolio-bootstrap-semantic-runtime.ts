@@ -40,7 +40,7 @@ export function loadSemanticE1OrchestratorConfig(
 ): PortfolioBootstrapSemanticOrchestratorConfig {
   return semanticE1RuntimeConfigSchema.parse({
     maxInputTokens: configuredInteger(env.SEMANTIC_E1_MAX_INPUT_TOKENS, 5_000),
-    maxOutputTokens: configuredInteger(env.SEMANTIC_E1_MAX_OUTPUT_TOKENS, 1_200),
+    maxOutputTokens: configuredInteger(env.SEMANTIC_E1_MAX_OUTPUT_TOKENS, 2_400),
     maxCallsPerTurn: configuredInteger(env.SEMANTIC_E1_MAX_CALLS_PER_TURN, 1),
     timeoutMs: configuredInteger(env.SEMANTIC_E1_TOTAL_TIMEOUT_MS, 30_000),
     questionLimit: configuredInteger(env.SEMANTIC_E1_QUESTION_LIMIT, 3),
