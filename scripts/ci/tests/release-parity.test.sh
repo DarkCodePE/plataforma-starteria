@@ -37,6 +37,13 @@ require_text scripts/ci/run-release-parity-e2e.sh '--network-alias mailpit'
 require_text scripts/ci/run-release-parity-e2e.sh '--retries=0'
 require_text scripts/ci/run-release-parity-e2e.sh 'release-parity-runtime'
 require_text scripts/ci/run-release-parity-e2e.sh 'e2e/kan311-e1-e2-e5-contextual.spec.ts'
+require_text scripts/ci/verify-deployed-release.sh 'AI_HEALTH_ATTEMPTS=${AI_HEALTH_ATTEMPTS:-12}'
+require_text scripts/ci/verify-deployed-release.sh 'AI_HEALTH_INTERVAL_SECONDS=${AI_HEALTH_INTERVAL_SECONDS:-5}'
+require_text scripts/ci/verify-deployed-release.sh 'for attempt in $(seq 1 "$AI_HEALTH_ATTEMPTS"); do'
+require_text scripts/ci/verify-deployed-release.sh 'if kubectl -n "$NAMESPACE" exec deployment/starteria-ai-service -- \'
+require_text scripts/ci/verify-deployed-release.sh 'sleep "$AI_HEALTH_INTERVAL_SECONDS"'
+require_text scripts/ci/verify-deployed-release.sh '[[ "$ai_health_ready" == true ]] \'
+require_text scripts/ci/verify-deployed-release.sh 'AI service health did not become ready after $AI_HEALTH_ATTEMPTS attempts'
 runtime_mode_declarations=$(grep -c 'PORTFOLIO_ENTRY_RUNTIME_MODE=live' scripts/ci/run-release-parity-e2e.sh)
 [[ "$runtime_mode_declarations" -ge 2 ]] || fail 'live runtime mode must reach both backend and Playwright parity processes'
 
