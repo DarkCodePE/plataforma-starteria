@@ -17,15 +17,16 @@ import { Link } from 'react-router';
 import { Button } from '../components/ui/button';
 import { useApp } from '../context/AppContext';
 import { StarteriaMark } from '../components/landing/StarteriaMark';
+import { StarteriaInteractiveStory } from '../components/landing/StarteriaInteractiveStory';
 import { StarteriaProductPreview } from '../components/landing/StarteriaProductPreview';
 import { PUBLIC_LANDING_CONFIG } from '../config/publicLanding';
 import '../components/landing/landing.css';
 
 const NAV_LINKS = [
-  { href: '#desafios', label: 'Desafíos' },
-  { href: '#soluciones', label: 'Soluciones' },
-  { href: '#como-trabajamos', label: 'Cómo trabajamos' },
-  { href: '#casos', label: 'Casos de uso' },
+  { href: '#en-accion', label: 'Así funciona' },
+  { href: '#impacto', label: 'Impacto' },
+  { href: '#soluciones', label: 'Capacidades' },
+  { href: '#como-trabajamos', label: 'Adopción' },
 ];
 
 const CHALLENGES: { title: string; description: string; Icon: LucideIcon }[] = [
@@ -150,25 +151,58 @@ export function LandingPage() {
           <div className="relative mx-auto grid max-w-7xl items-center gap-12 px-4 py-20 sm:px-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,0.98fr)] lg:gap-14 lg:px-8 lg:py-28">
             <div className="landing-pop">
               <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#ABA6FF]">
-                Starteria · Estrategia, plataforma y desarrollo tecnológico
+                PARA EQUIPOS DE INNOVACIÓN, TRANSFORMACIÓN, TI Y ESTRATEGIA
               </p>
               <h1 id="landing-hero-title" className="landing-display mt-6 max-w-3xl text-4xl font-semibold leading-[1.04] sm:text-6xl lg:text-[4.1rem]">
-                De una necesidad de negocio a una <span className="text-[#AAA4FF]">solución que genera valor.</span>
+                Más valor de tus iniciativas. <span className="text-[#AAA4FF]">Más capacidad para las siguientes.</span>
               </h1>
               <p className="mt-7 max-w-xl text-lg leading-8 text-[#E4E6F6]">
-                Combinamos estrategia, ejecución tecnológica e inteligencia artificial para ayudar a tu empresa a identificar oportunidades, desarrollar soluciones y dar seguimiento a sus resultados.
+                Startería conecta objetivos medibles, equipos, iniciativas y evidencia en un sistema de trabajo guiado por IA. Ayuda a priorizar, ejecutar con claridad y aprovechar el aprendizaje entre iniciativas.
               </p>
               <div className="mt-9 flex flex-col items-stretch gap-3 sm:flex-row sm:items-center">
                 <Button asChild size="lg" className="h-12 rounded-xl bg-white px-6 text-[#151630] hover:bg-[#EDEBFF]">
-                  <a href={PUBLIC_LANDING_CONFIG.demoBookingUrl} target="_blank" rel="noopener noreferrer">Hablemos de tu desafío <ArrowUpRight aria-hidden="true" size={17} /></a>
+                  <a href={PUBLIC_LANDING_CONFIG.demoBookingUrl} target="_blank" rel="noopener noreferrer">Explorar Startería para mi equipo <ArrowUpRight aria-hidden="true" size={17} /></a>
                 </Button>
-                <a href="#soluciones" className="inline-flex h-12 items-center justify-center gap-2 rounded-xl border border-white/25 px-6 text-sm font-semibold text-white hover:bg-white/10">
-                  Explorar soluciones <ArrowRight aria-hidden="true" size={16} />
+                <a href="#en-accion" className="inline-flex h-12 items-center justify-center gap-2 rounded-xl border border-white/25 px-6 text-sm font-semibold text-white hover:bg-white/10">
+                  Ver Startería en acción <ArrowRight aria-hidden="true" size={16} />
                 </a>
               </div>
-              <p className="mt-5 text-sm leading-6 text-[#BEC1DE]">Podemos comenzar desde un problema, una oportunidad o un proyecto que ya está en marcha.</p>
+              <p className="mt-5 text-sm leading-6 text-[#BEC1DE]">Primera conversación: revisamos tu proceso actual y evaluamos si tiene sentido una demo aplicada o un piloto acotado.</p>
             </div>
             <SystemIllustration />
+          </div>
+        </section>
+
+        <StarteriaInteractiveStory />
+
+        <section id="impacto" aria-labelledby="impacto-title" className="scroll-mt-24 border-b border-[#E3E6F3] bg-white px-4 py-20 sm:px-6 lg:px-8 lg:py-24">
+          <div className="mx-auto max-w-7xl">
+            <p className={eyebrow}>Qué cambia al implementar Startería</p>
+            <h2 id="impacto-title" className={sectionTitle + ' mt-4 max-w-3xl'}>
+              Tu equipo ya desarrolla iniciativas. Ayúdale a aprovechar mejor cada una.
+            </h2>
+            <p className={sectionLead}>No se trata de crear más proyectos. Se trata de reducir fricción, hacer visible el valor y reutilizar lo aprendido sin perder el contexto entre áreas.</p>
+            <div className="mt-11 grid gap-5 md:grid-cols-3">
+              <article className="rounded-2xl border border-[#E2E4F3] bg-[#F8F8FE] p-7">
+                <span className="text-xs font-bold uppercase tracking-wider text-[#4F46E5]">Eficiencia operativa</span>
+                <h3 className="mt-5 text-xl font-semibold text-[#0D1333]">Menos esfuerzo para estructurar y seguir el trabajo.</h3>
+                <p className="mt-3 text-sm leading-7 text-[#5D6585]">Objetivos, responsables, bloqueos y evidencias organizados para reducir tareas de coordinación y reportes repetidos.</p>
+                <p className="mt-5 border-t border-[#E2E4F3] pt-4 text-xs font-medium text-[#373F70]">A evaluar: tiempo de preparación y seguimiento.</p>
+              </article>
+              <article className="rounded-2xl border border-[#E2E4F3] bg-[#F8F8FE] p-7">
+                <span className="text-xs font-bold uppercase tracking-wider text-[#4F46E5]">Capacidad compartida</span>
+                <h3 className="mt-5 text-xl font-semibold text-[#0D1333]">Conecta iniciativas y áreas sin empezar de cero.</h3>
+                <p className="mt-3 text-sm leading-7 text-[#5D6585]">El contexto y los aprendizajes revisados de un equipo pueden orientar iniciativas relacionadas en otros equipos.</p>
+                <p className="mt-5 border-t border-[#E2E4F3] pt-4 text-xs font-medium text-[#373F70]">A evaluar: reutilización y trabajo duplicado.</p>
+              </article>
+              <article className="rounded-2xl border border-[#E2E4F3] bg-[#F8F8FE] p-7">
+                <span className="text-xs font-bold uppercase tracking-wider text-[#4F46E5]">Valor de negocio</span>
+                <h3 className="mt-5 text-xl font-semibold text-[#0D1333]">Decide qué merece seguir recibiendo inversión.</h3>
+                <p className="mt-3 text-sm leading-7 text-[#5D6585]">Relaciona los avances con las evidencias disponibles, los resultados esperados y las decisiones del negocio.</p>
+                <p className="mt-5 border-t border-[#E2E4F3] pt-4 text-xs font-medium text-[#373F70]">A evaluar: tiempo hasta decisión y beneficios observados.</p>
+              </article>
+            </div>
+            <p className="mt-5 text-xs leading-5 text-[#68728C]">Son hipótesis de impacto para validar con cada organización, no porcentajes ni resultados garantizados.</p>
           </div>
         </section>
 
@@ -176,9 +210,9 @@ export function LandingPage() {
           <div className="mx-auto max-w-7xl">
             <p className={eyebrow}>El punto de partida</p>
             <h2 id="desafios-title" className={sectionTitle + ' mt-4 max-w-3xl'}>
-              Las oportunidades no se pierden por falta de ideas.
+              Los retos de tus equipos no terminan cuando surge una buena idea.
             </h2>
-            <p className={sectionLead}>Muchas empresas ya saben qué quieren mejorar. El reto es pasar de la intención a un trabajo que avance y permita comprobar su contribución.</p>
+            <p className={sectionLead}>Innovación, TI, transformación y mejora continua ya impulsan iniciativas. El desafío es conectarlas con objetivos, evidencias y decisiones sin añadir burocracia.</p>
             <div className="mt-11 grid gap-4 md:grid-cols-2">
               {CHALLENGES.map(({ title, description, Icon }) => (
                 <article key={title} className="landing-card rounded-2xl p-6 sm:p-7">
@@ -195,11 +229,11 @@ export function LandingPage() {
 
         <section id="soluciones" className="scroll-mt-24 border-y border-[#E4E7F5] bg-white px-4 py-20 sm:px-6 lg:px-8 lg:py-24" aria-labelledby="soluciones-title">
           <div className="mx-auto max-w-7xl">
-            <p className={eyebrow}>Una propuesta, distintas formas de trabajar</p>
+            <p className={eyebrow}>Capacidades cuando tu equipo las necesita</p>
             <h2 id="soluciones-title" className={sectionTitle + ' mt-4 max-w-3xl'}>
-              Lo que necesitas para pasar de la oportunidad a la ejecución.
+              Una plataforma de trabajo, con capacidad técnica cuando hace falta.
             </h2>
-            <p className={sectionLead}>Puedes abordar una iniciativa con Starteria Platform, solicitar desarrollo tecnológico con Starteria Fab o combinar ambas capacidades.</p>
+            <p className={sectionLead}>Startería Platform conecta el trabajo y el aprendizaje de las iniciativas. Startería Fab puede apoyar el desarrollo de software cuando una de ellas necesita construcción tecnológica.</p>
 
             <div className="mt-11 grid gap-5 lg:grid-cols-2">
               <article className="relative overflow-hidden rounded-3xl border border-[#DADCF1] bg-[#F6F7FF] p-7 sm:p-9">
@@ -246,8 +280,8 @@ export function LandingPage() {
         <section id="como-trabajamos" className="scroll-mt-24 bg-[#F5F7FC] px-4 py-20 sm:px-6 lg:px-8 lg:py-24" aria-labelledby="proceso-title">
           <div className="mx-auto max-w-7xl">
             <p className={eyebrow}>Cómo trabajamos</p>
-            <h2 id="proceso-title" className={sectionTitle + ' mt-4 max-w-3xl'}>De la primera conversación a una decisión sustentada.</h2>
-            <p className={sectionLead}>La ruta se adapta a tu situación: no todas las empresas necesitan una plataforma completa ni todos los desafíos requieren desarrollar software.</p>
+            <h2 id="proceso-title" className={sectionTitle + ' mt-4 max-w-3xl'}>Una forma de trabajar que se adapta a tus equipos.</h2>
+            <p className={sectionLead}>Puedes comenzar con una unidad, un objetivo y algunas iniciativas existentes. Acordamos qué comprobar, quién participa y cómo evaluar el valor antes de ampliar el alcance.</p>
             <ol className="mt-11 grid gap-4 md:grid-cols-2 xl:grid-cols-4" aria-label="Proceso de colaboración">
               {PROCESS.map((step, index) => (
                 <li key={step.title} className="landing-card rounded-2xl p-6">
@@ -282,8 +316,8 @@ export function LandingPage() {
           <div className="mx-auto grid max-w-7xl gap-10 lg:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)] lg:items-center">
             <div>
               <p className={eyebrow}>Tecnología con criterio</p>
-              <h2 id="confianza-title" className={sectionTitle + ' mt-4'}>La IA ayuda a avanzar. La responsabilidad sigue siendo humana.</h2>
-              <p className={sectionLead}>Starteria puede apoyar análisis, estructura, desarrollo y seguimiento. La evidencia externa, las decisiones de negocio y las aprobaciones siguen dependiendo de las personas autorizadas.</p>
+              <h2 id="confianza-title" className={sectionTitle + ' mt-4'}>IA contextual para el trabajo. Decisiones y control en tu organización.</h2>
+              <p className={sectionLead}>La asistencia de IA ayuda a entender contexto, orientar iniciativas y preparar entregables revisables. La adopción de modelos autorizados por cada empresa depende de su configuración, seguridad y disponibilidad técnica.</p>
             </div>
             <div className="grid gap-3">
               <TrustItem icon={Compass} title="Partimos del negocio" body="No asumimos que la primera idea o tecnología propuesta sea necesariamente la solución correcta." />
@@ -297,11 +331,11 @@ export function LandingPage() {
           <div className="mx-auto flex max-w-7xl flex-col gap-8 lg:flex-row lg:items-center lg:justify-between">
             <div className="max-w-3xl">
               <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#AAA4FF]">Empecemos por lo importante</p>
-              <h2 id="landing-closing-title" className="landing-display mt-4 text-3xl font-semibold leading-tight sm:text-5xl">¿Qué necesita cambiar en tu negocio?</h2>
-              <p className="mt-5 text-base leading-7 text-[#D8DBEF]">Cuéntanos el desafío. Evaluemos si conviene enfocarlo, desarrollar una solución, ordenar iniciativas o combinar estos caminos.</p>
+              <h2 id="landing-closing-title" className="landing-display mt-4 text-3xl font-semibold leading-tight sm:text-5xl">¿Qué podría mejorar en la forma de desarrollar iniciativas de tu empresa?</h2>
+              <p className="mt-5 text-base leading-7 text-[#D8DBEF]">En una primera conversación revisamos cómo trabajáis hoy, qué obstáculos os consumen tiempo y si tiene sentido una demo contextualizada o una prueba acotada.</p>
             </div>
             <Button asChild size="lg" className="h-12 shrink-0 rounded-xl bg-white px-7 text-[#151630] hover:bg-[#EDEBFF]">
-              <a href={PUBLIC_LANDING_CONFIG.demoBookingUrl} target="_blank" rel="noopener noreferrer">Hablemos de tu desafío <ArrowUpRight aria-hidden="true" size={17} /></a>
+              <a href={PUBLIC_LANDING_CONFIG.demoBookingUrl} target="_blank" rel="noopener noreferrer">Explorar Startería para mi equipo <ArrowUpRight aria-hidden="true" size={17} /></a>
             </Button>
           </div>
         </section>
@@ -332,39 +366,36 @@ function Benefit({ children }: { children: ReactNode }) {
 
 function SystemIllustration() {
   return (
-    <figure aria-label="Modelo ilustrativo de Starteria Platform y Fab" className="landing-pop relative rounded-3xl border border-white/20 bg-white/[0.07] p-5 shadow-2xl backdrop-blur-sm sm:p-7">
+    <figure aria-label="Ejemplo ilustrativo de iniciativas conectadas con objetivos y evidencia" className="landing-pop relative rounded-3xl border border-white/20 bg-white/[0.07] p-5 shadow-2xl backdrop-blur-sm sm:p-7">
       <div className="flex items-center justify-between gap-3">
-        <span className="text-[11px] font-semibold uppercase tracking-widest text-[#BDBAFF]">Una misma necesidad, varias capacidades</span>
-        <span className="h-2 w-2 rounded-full bg-[#72D2BE]" aria-hidden="true" />
+        <span className="text-[11px] font-semibold uppercase tracking-widest text-[#BDBAFF]">Vista de portafolio · Ejemplo</span>
+        <span className="rounded-md border border-white/15 px-2 py-1 text-[11px] text-[#C8CCE7]">Datos ficticios</span>
       </div>
-      <div className="mt-6 rounded-xl border border-white/15 bg-[#0F1226] p-5">
-        <p className="text-xs font-semibold uppercase tracking-widest text-[#AAA4FF]">Punto de partida</p>
-        <p className="mt-2 text-lg font-medium text-white">Problema · Oportunidad · Iniciativa existente</p>
-        <p className="mt-2 text-xs leading-5 text-[#B9BFDB]">El trabajo comienza desde tu contexto real.</p>
+      <div className="mt-5 rounded-xl border border-[#7774DC]/60 bg-[#292C55] p-5">
+        <p className="text-xs font-semibold text-[#C7C1FF]">OBJETIVO DE NEGOCIO</p>
+        <p className="mt-2 text-lg font-semibold text-white">Mejorar el tiempo de atención al cliente</p>
+        <p className="mt-1 text-xs leading-5 text-[#C3C9E8]">Resultado y criterio de medición por confirmar</p>
       </div>
-      <div className="mx-auto h-7 w-px bg-gradient-to-b from-[#aaa4ff] to-transparent" aria-hidden="true" />
+      <div className="mx-auto h-6 w-px bg-[#8585BC]" aria-hidden="true" />
       <div className="grid gap-3 sm:grid-cols-2">
-        <div className="rounded-xl border border-[#8C88DD]/30 bg-[#2D2B59] p-5">
-          <Layers3 size={23} className="text-[#BDBAFF]" aria-hidden="true" />
-          <h3 className="mt-4 text-lg font-semibold text-white">Platform</h3>
-          <p className="mt-2 text-sm leading-6 text-[#CED1F5]">Contexto, iniciativas, evidencia y decisiones</p>
+        <div className="rounded-xl border border-[#6671A3] bg-[#232D4A] p-4">
+          <p className="text-xs font-semibold text-[#C5CBFF]">INICIATIVA 01</p>
+          <p className="mt-2 text-sm font-semibold text-white">Clasificar solicitudes</p>
+          <p className="mt-2 text-xs text-[#CFD3EE]">En revisión de evidencia</p>
         </div>
-        <div className="rounded-xl border border-[#4C9FBB]/30 bg-[#16384C] p-5">
-          <Code2 size={23} className="text-[#8AD3E8]" aria-hidden="true" />
-          <h3 className="mt-4 text-lg font-semibold text-white">Fab</h3>
-          <p className="mt-2 text-sm leading-6 text-[#C5E2ED]">Construcción, pruebas y entrega tecnológica</p>
-        </div>
-      </div>
-      <div className="mx-auto h-7 w-px bg-gradient-to-b from-[#aaa4ff] to-transparent" aria-hidden="true" />
-      <div className="flex items-start gap-3 rounded-xl border border-[#72D2BE]/25 bg-[#18373E] p-5">
-        <Target size={23} className="mt-0.5 shrink-0 text-[#72D2BE]" aria-hidden="true" />
-        <div>
-          <p className="text-lg font-semibold text-white">Trabajo verificable y siguiente decisión</p>
-          <p className="mt-1 text-sm leading-6 text-[#C4E4E3]">Entregables, resultados observados y continuidad acordada.</p>
+        <div className="rounded-xl border border-[#6671A3] bg-[#232D4A] p-4">
+          <p className="text-xs font-semibold text-[#C5CBFF]">INICIATIVA 02</p>
+          <p className="mt-2 text-sm font-semibold text-white">Simplificar derivaciones</p>
+          <p className="mt-2 text-xs text-[#CFD3EE]">Dependencia por resolver</p>
         </div>
       </div>
-      <figcaption className="mt-5 text-xs leading-5 text-[#B9BFDB]">
-        Modelo conceptual, no una integración autónoma certificada. La intervención depende del alcance definido con cada empresa.
+      <div className="mx-auto h-6 w-px bg-[#8585BC]" aria-hidden="true" />
+      <div className="rounded-xl border border-[#5DB4AE]/50 bg-[#193E46] p-4">
+        <p className="text-xs font-semibold text-[#8AE3D4]">EVIDENCIA → DECISIÓN → APRENDIZAJE</p>
+        <p className="mt-2 text-sm text-white">Lo que aprende una iniciativa puede orientar la siguiente, con contexto y revisión humana.</p>
+      </div>
+      <figcaption className="mt-4 text-xs leading-5 text-[#C3C9E8]">
+        Vista conceptual de valor, no una captura de datos reales ni una capacidad autónoma certificada.
       </figcaption>
     </figure>
   );
