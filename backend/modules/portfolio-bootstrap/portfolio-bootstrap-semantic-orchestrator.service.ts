@@ -415,11 +415,6 @@ function applyDeterministicPolicy(input: {
   const fallbackPlan = !sufficientForReview && !proposedQuestionPlan
     ? materialClarificationPlan(input.rawInput, materialEvidence)
     : null;
-  const interpretationIncomplete = materialEvidence.hasAnchor
-    && materialEvidence.hasDirection
-    && (!materialEvidence.hasStartingPoint || !materialEvidence.hasMainUncertainty)
-    && !providerQuestionPlan
-    && !fallbackPlan;
   const questionPlan = providerQuestionPlan ?? fallbackPlan;
   const candidateResolves = providerQuestionPlan?.resolves
     .filter((conceptId) => !blockedConcepts.has(conceptId)) ?? [];
@@ -441,6 +436,10 @@ function applyDeterministicPolicy(input: {
     && !repeated
     && !unsafeQuestion
     && currentBudget.used < limit;
+  const interpretationIncomplete = materialEvidence.hasAnchor
+    && materialEvidence.hasDirection
+    && (!materialEvidence.hasStartingPoint || !materialEvidence.hasMainUncertainty)
+    && !canAsk;
   const emittedQuestion = canAsk && questionPlan ? {
     id: `e1-q-${input.nextVersion}-${canonicalContextHash(resolves).slice(0, 12)}`,
     recap: groundedRecap(facts, dispositions, input.rawInput),

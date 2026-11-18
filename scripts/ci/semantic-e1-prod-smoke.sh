@@ -153,12 +153,27 @@ else
 fi
 second_body=$(jq -nc --argjson version "$first_version" --arg text "$second_input" --argjson answered "$answered" \
   '{expectedVersion:$version,inputText:$text,answeredQuestionId:$answered}')
+second_idempotency_key="semantic-e1-prod-smoke-second-$session_id"
 failure_stage='second_turn_transport'
 diagnostic_response=$(curl --silent --show-error --max-time 45 --fail-with-body \
   -X POST -H 'Content-Type: application/json' -H "Authorization: Bearer $token" \
-  -H "Idempotency-Key: semantic-e1-prod-smoke-second-$session_id" -d "$second_body" \
+  -H "Idempotency-Key: $second_idempotency_key" -d "$second_body" \
   "$base/api/v1/portfolio-bootstrap/sessions/$session_id/context/semantic/turns")
 second="$diagnostic_response"
+
+# Exercise the same explicit, idempotent recovery exposed by the UI. One retry
+# remains one provider call per attempt and cannot create a duplicate logical turn.
+if jq -e '
+  .data.turn.status == "failed_retryable"
+  and .data.turn.error.retryable == true
+' >/dev/null <<<"$second"; then
+  failure_stage='second_turn_retry_transport'
+  diagnostic_response=$(curl --silent --show-error --max-time 45 --fail-with-body \
+    -X POST -H 'Content-Type: application/json' -H "Authorization: Bearer $token" \
+    -H "Idempotency-Key: $second_idempotency_key" -d "$second_body" \
+    "$base/api/v1/portfolio-bootstrap/sessions/$session_id/context/semantic/turns")
+  second="$diagnostic_response"
+fi
 
 failure_stage='second_turn_contract'
 jq -e --argjson previous "$first_version" '

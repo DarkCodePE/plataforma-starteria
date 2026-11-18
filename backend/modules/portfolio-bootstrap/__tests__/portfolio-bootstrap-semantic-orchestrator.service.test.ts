@@ -331,6 +331,44 @@ describe('PortfolioBootstrapSemanticOrchestratorService', () => {
     }));
   });
 
+  it('fails retryably when the missing main uncertainty is paired with a question that cannot be emitted', async () => {
+    const store = fakeStore(semanticState({
+      version: 1,
+      factLedger: [
+        { ...fact('opportunity', 'crecer entre semana', 'crecer entre semana'), turnId: 'turn-1', semanticVersion: 1 },
+        { ...fact('desired_outcome', 'aumentar ventas', 'aumentar ventas'), turnId: 'turn-1', semanticVersion: 1 },
+      ],
+      hypotheses: [
+        { ...startingPoint('opportunity', ['opportunity', 'desired_outcome']), turnId: 'turn-1', semanticVersion: 1 },
+      ],
+      answeredGaps: ['opportunity', 'desired_outcome'],
+    }));
+    const model = fakeModel({
+      facts: [fact(
+        'solution',
+        'probar una propuesta entre semana',
+        'Todavía no sabemos qué alternativa tendrá demanda suficiente.',
+      )],
+      hypotheses: [], dispositions: [],
+      questionPlan: {
+        question: '¿Qué propuesta quieres probar entre semana?',
+        reasonToAsk: 'Concretar la alternativa antes de decidir.',
+        resolves: ['solution'],
+      },
+      synthesis: null,
+      readyForHumanReview: false,
+      reason: 'El proveedor mantuvo abierta la alternativa, pero omitió la incertidumbre principal.',
+    });
+
+    await new PortfolioBootstrapSemanticOrchestratorService(store, model, config)
+      .processTurn(command('Todavía no sabemos qué alternativa tendrá demanda suficiente.', 1));
+
+    expect(store.completeInference).toHaveBeenCalledWith(expect.objectContaining({
+      status: 'failed_retryable',
+      error: { code: 'semantic_interpretation_incomplete', retryable: true },
+    }));
+  });
+
   it('lands the restaurant case directly and suppresses a non-material extra question', async () => {
     const input = 'El restaurante tiene alta demanda y capacidad limitada los fines de semana, pero necesita incrementar las ventas entre semana.';
     const store = fakeStore();
