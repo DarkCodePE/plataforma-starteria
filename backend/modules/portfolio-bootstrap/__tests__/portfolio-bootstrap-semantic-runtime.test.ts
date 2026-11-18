@@ -9,7 +9,7 @@ describe('semantic E1 runtime configuration', () => {
   it('loads validated defaults and explicit operational budgets', () => {
     expect(loadSemanticE1OrchestratorConfig({})).toEqual({
       maxInputTokens: 5_000,
-      maxOutputTokens: 1_200,
+      maxOutputTokens: 2_400,
       maxCallsPerTurn: 1,
       timeoutMs: 30_000,
       questionLimit: 3,
