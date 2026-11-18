@@ -310,7 +310,7 @@ export class PortfolioBootstrapSemanticOrchestratorService {
         result: await complete(failedTurn({
           code: 'semantic_interpretation_incomplete',
           retryable: true,
-          reason: 'El modelo no produjo una naturaleza e incertidumbre principal trazables; el turno puede reintentarse.',
+          reason: 'El modelo no produjo una pregunta o síntesis material trazable; el turno puede reintentarse.',
           execution: measuredExecution,
         })),
       };
@@ -455,10 +455,6 @@ function applyDeterministicPolicy(input: {
     && !repeated
     && !unsafeQuestion
     && currentBudget.used < limit;
-  const interpretationIncomplete = materialEvidence.hasAnchor
-    && materialEvidence.hasDirection
-    && (!materialEvidence.hasStartingPoint || !materialEvidence.hasMainUncertainty)
-    && !canAsk;
   const emittedQuestion = canAsk && questionPlan ? {
     id: `e1-q-${input.nextVersion}-${canonicalContextHash(resolves).slice(0, 12)}`,
     recap: groundedRecap(facts, dispositions, input.rawInput),
@@ -474,11 +470,32 @@ function applyDeterministicPolicy(input: {
   const synthesisGrounded = synthesis ? synthesis.evidenceConceptIds.every((conceptId) => (
     activeFactConcepts.has(conceptId)
   )) : false;
+  const groundedReviewReady = input.inference.readyForHumanReview
+    && sufficientForReview
+    && synthesisGrounded;
+  const providerReturnedOnlyActiveFacts = facts.length > 0
+    && facts.every((fact) => fact.status !== 'retracted')
+    && input.inference.hypotheses.length === 0
+    && input.inference.dispositions.length === 0
+    && input.inference.questionPlan === null
+    && input.inference.synthesis == null
+    && !input.inference.readyForHumanReview;
+  const retryableEmptyCheckpoint = sufficientForReview
+    && currentBudget.used < limit
+    && providerReturnedOnlyActiveFacts;
+  const interpretationIncomplete = materialEvidence.hasAnchor
+    && materialEvidence.hasDirection
+    && !canAsk
+    && (
+      !materialEvidence.hasStartingPoint
+      || !materialEvidence.hasMainUncertainty
+      || retryableEmptyCheckpoint
+    );
   const convergence = emittedQuestion ? {
     status: 'question_required' as const,
     reason: input.inference.reason,
     synthesis: null,
-  } : input.inference.readyForHumanReview && sufficientForReview && synthesisGrounded ? {
+  } : groundedReviewReady ? {
     status: 'ready_for_human_review' as const,
     reason: input.inference.reason,
     synthesis,
