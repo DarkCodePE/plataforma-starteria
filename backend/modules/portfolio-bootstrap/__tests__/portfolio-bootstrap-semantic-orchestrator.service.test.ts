@@ -371,6 +371,145 @@ describe('PortfolioBootstrapSemanticOrchestratorService', () => {
     }));
   });
 
+  it('fails retryably when sufficient accumulated evidence produces no material next step', async () => {
+    const store = fakeStore(semanticState({
+      version: 1,
+      factLedger: [
+        { ...fact('opportunity', 'crecer entre semana', 'crecer entre semana'), turnId: 'turn-1', semanticVersion: 1 },
+        { ...fact('desired_outcome', 'aumentar ventas', 'aumentar ventas'), turnId: 'turn-1', semanticVersion: 1 },
+      ],
+      hypotheses: [
+        { ...startingPoint('opportunity', ['opportunity', 'desired_outcome']), turnId: 'turn-1', semanticVersion: 1 },
+        { ...mainUncertainty(
+          'No está claro qué alternativa tendrá demanda suficiente.',
+          ['opportunity', 'desired_outcome'],
+        ), turnId: 'turn-1', semanticVersion: 1 },
+      ],
+      answeredGaps: ['opportunity', 'desired_outcome'],
+    }));
+    const model = fakeModel({
+      facts: [fact(
+        'solution',
+        'probar una propuesta entre semana',
+        'Queremos validar una propuesta específica para los días laborables.',
+      )],
+      hypotheses: [], dispositions: [], questionPlan: null, synthesis: null,
+      readyForHumanReview: false,
+      reason: 'La evidencia acumulada es suficiente, pero el proveedor no produjo una salida material.',
+    });
+
+    await new PortfolioBootstrapSemanticOrchestratorService(store, model, config)
+      .processTurn(command('Queremos validar una propuesta específica para los días laborables.', 1));
+
+    expect(store.completeInference).toHaveBeenCalledWith(expect.objectContaining({
+      status: 'failed_retryable',
+      error: { code: 'semantic_interpretation_incomplete', retryable: true },
+      emittedQuestion: null,
+      convergence: expect.objectContaining({ status: 'provider_retryable_failure' }),
+    }));
+  });
+
+  it('preserves governed checkpoints outside the active-facts-only retry pattern', async () => {
+    const sufficientState = (overrides: Partial<SemanticStateDto> = {}) => semanticState({
+      version: 1,
+      factLedger: [
+        { ...fact('opportunity', 'crecer entre semana', 'crecer entre semana'), turnId: 'turn-1', semanticVersion: 1 },
+        { ...fact('desired_outcome', 'aumentar ventas', 'aumentar ventas'), turnId: 'turn-1', semanticVersion: 1 },
+      ],
+      hypotheses: [
+        { ...startingPoint('opportunity', ['opportunity', 'desired_outcome']), turnId: 'turn-1', semanticVersion: 1 },
+        { ...mainUncertainty(
+          'No está claro qué alternativa tendrá demanda suficiente.',
+          ['opportunity', 'desired_outcome'],
+        ), turnId: 'turn-1', semanticVersion: 1 },
+      ],
+      answeredGaps: ['opportunity', 'desired_outcome'],
+      ...overrides,
+    });
+    const baseInput = 'Queremos validar una propuesta específica para los días laborables.';
+    const activeFact = () => fact('solution', 'probar una propuesta entre semana', baseInput);
+    const fixtures = [
+      {
+        id: 'repeated-question',
+        state: sufficientState({
+          questionHistory: [{
+            id: 'question-solution', recap: 'La alternativa sigue abierta.',
+            question: '¿Qué propuesta quieres probar?', reasonToAsk: 'Concretar la alternativa.',
+            resolves: ['solution'], turnId: 'turn-0', semanticVersion: 1,
+          }],
+        }),
+        input: baseInput,
+        output: {
+          facts: [activeFact()], hypotheses: [], dispositions: [],
+          questionPlan: {
+            question: '¿Qué propuesta quieres probar?', reasonToAsk: 'Concretar la alternativa.',
+            resolves: ['solution'],
+          },
+          synthesis: null, readyForHumanReview: false, reason: 'La pregunta repite un concepto tratado.',
+        },
+      },
+      {
+        id: 'unsafe-question',
+        state: sufficientState(),
+        input: `Somos una cafetería pequeña. ${baseInput}`,
+        output: {
+          facts: [fact('solution', 'probar una propuesta entre semana', baseInput)], hypotheses: [], dispositions: [],
+          questionPlan: {
+            question: '¿Qué departamentos formales asumirán el trabajo?',
+            reasonToAsk: 'Identificar el organigrama formal.', resolves: ['organization_owners'],
+          },
+          synthesis: null, readyForHumanReview: false, reason: 'La pregunta no es proporcional al negocio.',
+        },
+      },
+      {
+        id: 'budget-exhausted',
+        state: sufficientState({ questionBudget: { limit: 3, used: 3 } }),
+        input: baseInput,
+        output: {
+          facts: [activeFact()], hypotheses: [], dispositions: [], questionPlan: null, synthesis: null,
+          readyForHumanReview: false, reason: 'El presupuesto de preguntas está agotado.',
+        },
+      },
+      {
+        id: 'new-hypothesis',
+        state: sufficientState(),
+        input: baseInput,
+        output: {
+          facts: [activeFact()],
+          hypotheses: [mainUncertainty('Podría existir otra restricción comercial.', ['solution'])],
+          dispositions: [], questionPlan: null, synthesis: null,
+          readyForHumanReview: false, reason: 'El turno añadió una hipótesis revisable.',
+        },
+      },
+      {
+        id: 'new-disposition',
+        state: sufficientState(),
+        input: baseInput,
+        output: {
+          facts: [activeFact()], hypotheses: [],
+          dispositions: [{
+            conceptId: 'delivery_channel', disposition: 'unknown', provenance: 'user_declared' as const,
+            evidenceRefs: [{ kind: 'user_input' as const, quote: baseInput }],
+          }],
+          questionPlan: null, synthesis: null,
+          readyForHumanReview: false, reason: 'El turno añadió una incógnita explícita.',
+        },
+      },
+    ];
+
+    for (const fixture of fixtures) {
+      const store = fakeStore(fixture.state);
+      await new PortfolioBootstrapSemanticOrchestratorService(store, fakeModel(fixture.output), config)
+        .processTurn(command(fixture.input, 1));
+      const persisted = vi.mocked(store.completeInference).mock.calls[0][0];
+      expect({ id: fixture.id, status: persisted.status, convergence: persisted.convergence.status }).toEqual({
+        id: fixture.id,
+        status: 'completed',
+        convergence: 'budget_checkpoint',
+      });
+    }
+  });
+
   it('lands the restaurant case directly and suppresses a non-material extra question', async () => {
     const input = 'El restaurante tiene alta demanda y capacidad limitada los fines de semana, pero necesita incrementar las ventas entre semana.';
     const store = fakeStore();
