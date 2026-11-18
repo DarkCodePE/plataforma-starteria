@@ -589,7 +589,7 @@ async function reachCriticalHandoff(page: Page, scenario: Scenario, testInfo: Te
   if (viaLanding) {
     await page.setViewportSize({ width: 390, height: 844 });
     await page.goto('/');
-    await expect(page.getByRole('heading', { name: 'De una necesidad de negocio a una solución que genera valor.' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Más valor de tus iniciativas. Más capacidad para las siguientes.' })).toBeVisible();
     await expect(page.locator('a[href="/public/start"]')).toHaveCount(0);
     await expect(page.getByRole('textbox')).toHaveCount(0);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);

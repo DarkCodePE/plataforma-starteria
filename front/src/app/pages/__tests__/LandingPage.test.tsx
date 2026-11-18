@@ -1,6 +1,6 @@
 import React from 'react';
 import { describe, expect, it, vi } from 'vitest';
-import { render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router';
 import { PUBLIC_LANDING_CONFIG } from '../../config/publicLanding';
 import { LandingPage } from '../LandingPage';
@@ -21,11 +21,11 @@ describe('public landing — Platform + Fab without Portfolio Entry', () => {
     expect(
       screen.getByRole('heading', {
         level: 1,
-        name: 'De una necesidad de negocio a una solución que genera valor.',
+        name: 'Más valor de tus iniciativas. Más capacidad para las siguientes.',
       }),
     ).toBeInTheDocument();
-    expect(screen.getByText(/Combinamos estrategia, ejecución tecnológica e inteligencia artificial/)).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'Explorar soluciones' })).toHaveAttribute('href', '#soluciones');
+    expect(screen.getByText(/Startería conecta objetivos medibles, equipos, iniciativas y evidencia/)).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Ver Startería en acción' })).toHaveAttribute('href', '#en-accion');
   });
 
   it('contains zero paths to the nonworking public Portfolio Entry experience', () => {
@@ -39,13 +39,43 @@ describe('public landing — Platform + Fab without Portfolio Entry', () => {
 
   it('presents Platform, Fab and integrated service with claims bounded to current status', () => {
     renderLanding();
-    const solutions = screen.getByRole('region', { name: /Lo que necesitas para pasar de la oportunidad a la ejecución/i });
+    const solutions = screen.getByRole('region', { name: /Una plataforma de trabajo, con capacidad técnica cuando hace falta/i });
     expect(within(solutions).getByText('Starteria Platform')).toBeInTheDocument();
     expect(within(solutions).getByText('Starteria Fab')).toBeInTheDocument();
     expect(within(solutions).getByText('Servicio integrado')).toBeInTheDocument();
     expect(within(solutions).getByText(/La integración completa está en evolución/)).toBeInTheDocument();
   });
 
+
+  it('offers a real, accessible three-stage walkthrough without a public AI form', () => {
+    renderLanding();
+    const tabs = screen.getByRole('tablist', { name: 'Etapas del trabajo con Startería' });
+    const focusTab = within(tabs).getByRole('tab', { name: /Enfocar/ });
+    const developTab = within(tabs).getByRole('tab', { name: /Desarrollar/ });
+    const learnTab = within(tabs).getByRole('tab', { name: /Aprender/ });
+
+    expect(focusTab).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByRole('tabpanel')).toHaveTextContent('Primero, saber qué resultado importa.');
+    fireEvent.click(developTab);
+    expect(developTab).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByRole('tabpanel')).toHaveTextContent('Después, convertir el foco en trabajo que avanza.');
+    fireEvent.click(learnTab);
+    expect(learnTab).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByRole('tabpanel')).toHaveTextContent('Por último, no empezar de cero en la siguiente iniciativa.');
+    expect(screen.getByText(/Demostración conceptual: no utiliza datos reales/)).toBeInTheDocument();
+    expect(document.querySelectorAll('a[href="/public/start"]')).toHaveLength(0);
+  });
+
+  it('explains business impact as measurable hypotheses, not invented outcomes', () => {
+    renderLanding();
+    const impact = screen.getByRole('region', {
+      name: /Tu equipo ya desarrolla iniciativas. Ayúdale a aprovechar mejor cada una/i,
+    });
+    expect(within(impact).getByText('Eficiencia operativa')).toBeInTheDocument();
+    expect(within(impact).getByText('Capacidad compartida')).toBeInTheDocument();
+    expect(within(impact).getByText('Valor de negocio')).toBeInTheDocument();
+    expect(within(impact).getByText(/hipótesis de impacto para validar/)).toBeInTheDocument();
+  });
   it('keeps the product illustration explicitly fictitious and static', () => {
     renderLanding();
     const preview = screen.getByRole('region', { name: 'Reducir 30% el tiempo operativo' });
@@ -64,11 +94,11 @@ describe('public landing — Platform + Fab without Portfolio Entry', () => {
     expect(within(header).getByRole('link', { name: 'Iniciar sesión' })).toHaveAttribute('href', '/auth');
 
     const hero = screen.getByRole('heading', { level: 1 }).closest('section') as HTMLElement;
-    expect(within(hero).getByRole('link', { name: 'Hablemos de tu desafío' })).toHaveAttribute(
+    expect(within(hero).getByRole('link', { name: 'Explorar Startería para mi equipo' })).toHaveAttribute(
       'href',
       PUBLIC_LANDING_CONFIG.demoBookingUrl,
     );
-    expect(screen.getByRole('heading', { name: 'La IA ayuda a avanzar. La responsabilidad sigue siendo humana.' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'IA contextual para el trabajo. Decisiones y control en tu organización.' })).toBeInTheDocument();
     expect(screen.queryByRole('link', { name: /early access/i })).not.toBeInTheDocument();
   });
 
@@ -76,12 +106,14 @@ describe('public landing — Platform + Fab without Portfolio Entry', () => {
     renderLanding();
     const headings = [
       screen.getByRole('heading', { level: 1 }),
-      screen.getByRole('heading', { name: 'Las oportunidades no se pierden por falta de ideas.' }),
-      screen.getByRole('heading', { name: 'Lo que necesitas para pasar de la oportunidad a la ejecución.' }),
-      screen.getByRole('heading', { name: 'De la primera conversación a una decisión sustentada.' }),
+      screen.getByRole('heading', { name: 'Así se convierte un objetivo en iniciativas que aprenden unas de otras.' }),
+      screen.getByRole('heading', { name: 'Tu equipo ya desarrolla iniciativas. Ayúdale a aprovechar mejor cada una.' }),
+      screen.getByRole('heading', { name: 'Los retos de tus equipos no terminan cuando surge una buena idea.' }),
+      screen.getByRole('heading', { name: 'Una plataforma de trabajo, con capacidad técnica cuando hace falta.' }),
+      screen.getByRole('heading', { name: 'Una forma de trabajar que se adapta a tus equipos.' }),
       screen.getByRole('heading', { name: 'Un punto de partida diferente. Una ruta adecuada a cada desafío.' }),
-      screen.getByRole('heading', { name: 'La IA ayuda a avanzar. La responsabilidad sigue siendo humana.' }),
-      screen.getByRole('heading', { name: '¿Qué necesita cambiar en tu negocio?' }),
+      screen.getByRole('heading', { name: 'IA contextual para el trabajo. Decisiones y control en tu organización.' }),
+      screen.getByRole('heading', { name: '¿Qué podría mejorar en la forma de desarrollar iniciativas de tu empresa?' }),
     ];
     for (let index = 0; index < headings.length - 1; index += 1) {
       expect(headings[index].compareDocumentPosition(headings[index + 1]) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
