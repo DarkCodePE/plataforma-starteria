@@ -36,6 +36,15 @@ jobs:
           payload=$(jq -nc --arg org "$RACKSPACE_ORG_NAME" --arg cs "$RACKSPACE_CLOUDSPACE_NAME" --arg rt "$RACKSPACE_REFRESH_TOKEN" '{organization_name:$org,cloudspace_name:$cs,refresh_token:$rt}')
           response="$RUNNER_TEMP/spot-response.json"
           status=$(curl --silent --show-error --output "$response" --write-out '%{http_code}' --request POST 'https://spot.rackspace.com/apis/auth.ngpc.rxt.io/v1/generate-kubeconfig' --header 'Content-Type: application/json' --data "$payload")
+          if [[ "$status" != 200 ]]; then
+            echo "::warning::Rackspace refresh-token kubeconfig endpoint failed (HTTP $status); probing the authenticated endpoint"
+            token_response="$RUNNER_TEMP/spot-token-response.json"
+            token_status=$(curl --silent --show-error --output "$token_response" --write-out '%{http_code}' --request POST 'https://login.spot.rackspace.com/oauth/token' --header 'Content-Type: application/x-www-form-urlencoded' --data-urlencode 'grant_type=refresh_token' --data-urlencode 'client_id=mwG3lUMV8KyeMqHe4fJ5Bb3nM1vBvRNa' --data-urlencode "refresh_token=$RACKSPACE_REFRESH_TOKEN")
+            [[ "$token_status" == 200 ]] || { echo "::error::Rackspace OAuth request failed (HTTP $token_status)"; exit 1; }
+            id_token=$(jq -er '.id_token' "$token_response")
+            rm -f "$token_response"
+            status=$(curl --silent --show-error --output "$response" --write-out '%{http_code}' --request GET "https://spot.rackspace.com/apis/auth.ngpc.rxt.io/v1/cloudspaces/$RACKSPACE_CLOUDSPACE_NAME/generate-kubeconfig" --header "Authorization: Bearer $id_token" --header 'Accept: application/json')
+          fi
           [[ "$status" == 200 ]] || { echo "::error::Rackspace kubeconfig request failed (HTTP $status)"; exit 1; }
           mkdir -p "$RUNNER_TEMP/kube"
           jq -er '.data.kubeconfig' "$response" > "$RUNNER_TEMP/kube/config"
@@ -107,4 +116,4 @@ jobs:
 
       - name: Remove kubeconfig
         if: always()
-        run: rm -f "$RUNNER_TEMP/kube/config" "$RUNNER_TEMP/spot-response.json"
+        run: rm -f "$RUNNER_TEMP/kube/config" "$RUNNER_TEMP/spot-response.json" "$RUNNER_TEMP/spot-token-response.json"
