@@ -105,9 +105,9 @@ describe('public entry routing', () => {
     );
 
     expect(screen.getByRole('heading', {
-      name: /Más valor de tus iniciativas. Más capacidad para las siguientes/i,
+      name: /Haz que cada iniciativa aporte más/i,
     })).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'Ver Startería en acción' })).toHaveAttribute('href', '#en-accion');
+    expect(screen.getByRole('link', { name: 'Ver cómo funciona' })).toHaveAttribute('href', '#en-accion');
     expect(document.querySelectorAll('a[href="/public/start"]')).toHaveLength(0);
 
     const publicRoute = appRoutes[0].children?.find(route => route.path === '/public');

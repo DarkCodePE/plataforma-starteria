@@ -1,5 +1,10 @@
 # ADR-006: Separation between Starteria Landing and Portfolio Entry
 
+> **PARTIALLY SUPERSEDED BY ADR-011 (KAN-255, 2026-11-19).** ADR-011 conserva la separación,
+> `/public/start` y todos los guardrails pre-Core, pero elimina para `/` la obligación de enlazar
+> Portfolio Entry y sustituye el funnel Early Access/Demo por el único destino comercial configurado.
+> Ver `ADR-011-public-landing-v2-platform-fab-narrative.md`.
+
 **Estado:** ACCEPTED
 **Fecha:** 2026-09-30
 **Tipo:** Product ADR

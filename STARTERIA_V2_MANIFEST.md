@@ -1151,6 +1151,35 @@ reason_to_ask_implementation: IMPLEMENTED_VERIFIED locally by backend/frontend s
 commercial_destinations: RUNTIME_PENDING / BLOCKED_BY_DESTINATION (Demo/Early Access routes not invented)
 ```
 
+KAN-102 se conserva como evidencia histórica. Product ADR-011 supersede para `/` su CTA opcional a
+Portfolio Entry y el estado de destino comercial; no cambia `/public/start` ni sus continuaciones.
+
+## KAN-255 — PUBLIC_LANDING_V2_PLATFORM_FAB_NARRATIVE
+
+**Registrado:** 2026-11-19 por ratificación del responsable de producto en KAN-255#10862.
+
+```text
+slice_id: KAN-255_PUBLIC_LANDING_V2_PLATFORM_FAB_NARRATIVE
+HU: KAN-255
+logic_status: ACTIVE_V2_BASELINE (Product ADR-011; frontend framing only)
+implementation_status: IMPLEMENTED_VERIFIED_ON_BRANCH
+visual_status: V2_IMPLEMENTED_RESPONSIVE_VERIFIED
+evidence_status: LOCAL_VERIFIED (build; frontend/backend typecheck; lint; full frontend suite; isolated Landing E2E; Lighthouse Accessibility 100 desktop/mobile; four-viewport captures; independent review)
+semantic_owner: Public Landing V2 exclusively for /
+authority: Jira KAN-255 + ratification comment 10862 + Product ADR-011 + Design System Contract v0.1 + Page Anatomy System v0.1
+entry_boundary: public route /
+exit_boundary: /auth | /dashboard for authenticated user | configured commercial destination | in-page anchors | external Fab information link
+portfolio_entry_boundary: /public/start remains direct and unchanged; zero links from /
+commercial_boundary: PUBLIC_LANDING_CONFIG.demoBookingUrl only; conversation request, not access, booking guarantee or automatic pilot
+fab_boundary: explanatory external link and optional delivery route; no certified Platform-Fab integration and no sw-factory changes
+scope: Landing copy, information architecture, one four-stage illustrative demo, Team/Fab branch, compact impact/friction sections, responsive/accessibility, affected frontend tests and evidence
+excluded: Portfolio Entry; Core; Steps 0-4; backend; Prisma/schema; auth; permissions; productive AI; sw-factory implementation; new commercial routes; fabricated metrics; merge; deploy
+tests_protecting_current_behavior: LandingPage.test.tsx; routes.public-entry.test.tsx; public-landing-l1.spec.ts; portfolio-entry-conversion.spec.ts
+implementation_evidence: docs/implementation/public-landing/evidence/KAN-255/ (before/after captures, architecture, skill report, machine-checked evidence); full-stack portfolio-entry-conversion E2E pending because Docker Desktop was unavailable locally
+delivery_status: PR_PENDING; CI_PENDING; merge and deploy NOT_AUTHORIZED
+supersession: ADR-006 PARTIALLY_SUPERSEDED; Landing UX Spec and continuation architecture superseded only for the root Landing surface; KAN-102 report retained as historical evidence
+```
+
 # 2.3 Slice DEV_CYCLE_HU_TOOLING (KAN-91)
 
 **Registrado:** 2026-10-02 por instrucción explícita del responsable (Orlando), HU KAN-91,

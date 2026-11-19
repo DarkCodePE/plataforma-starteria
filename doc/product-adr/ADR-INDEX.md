@@ -23,6 +23,8 @@ Este indice no reemplaza `docs/adr/`, que queda reservado para ADRs del harness.
 
 | ADR-010 | Ledger provisional y separado de turnos de Objetivo E2 | `ADR-010-portfolio-e2-goal-turn-ledger.md` | ACCEPTED | KAN-253#10835 · 2026-11-10; ledger provisional + migración aditiva; flags OFF; no autoriza CD. |
 
+| ADR-011 | Public Landing V2 Platform + Fab narrative and Portfolio Entry disconnection | `ADR-011-public-landing-v2-platform-fab-narrative.md` | ACCEPTED | KAN-255#10862 · 2026-11-19; frontend-only; supersede parcialmente ADR-006 para `/`; no autoriza merge ni CD. |
+
 ## Reglas
 
 - Registrar aqui solo ADRs de producto.

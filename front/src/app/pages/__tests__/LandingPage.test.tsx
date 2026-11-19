@@ -15,106 +15,111 @@ function renderLanding() {
   );
 }
 
-describe('public landing — Platform + Fab without Portfolio Entry', () => {
-  it('communicates the business need, the unified value and a direct next action', () => {
+describe('public landing — KAN-255 Platform + Fab', () => {
+  it('comunica categoría, valor y siguiente acción en la primera lectura', () => {
     renderLanding();
-    expect(
-      screen.getByRole('heading', {
-        level: 1,
-        name: 'Más valor de tus iniciativas. Más capacidad para las siguientes.',
-      }),
-    ).toBeInTheDocument();
-    expect(screen.getByText(/Startería conecta objetivos medibles, equipos, iniciativas y evidencia/)).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'Ver Startería en acción' })).toHaveAttribute('href', '#en-accion');
+
+    expect(screen.getByText('Plataforma de inteligencia y desarrollo de iniciativas')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { level: 1, name: 'Haz que cada iniciativa aporte más.' })).toBeInTheDocument();
+    expect(screen.getByText(/Conecta objetivos, equipos y conocimiento para desarrollar iniciativas/)).toBeInTheDocument();
+    expect(screen.getByText(/plataforma, asistencia de IA y capacidad tecnológica de Fab/i)).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Ver cómo funciona' })).toHaveAttribute('href', '#en-accion');
   });
 
-  it('contains zero paths to the nonworking public Portfolio Entry experience', () => {
+  it('presenta una única demostración navegable con cuatro etapas', () => {
     renderLanding();
+
+    const tabs = screen.getByRole('tablist', { name: 'Etapas del desarrollo de una iniciativa' });
+    const clarify = within(tabs).getByRole('tab', { name: /Clarificar/ });
+    const connect = within(tabs).getByRole('tab', { name: /Conectar/ });
+    const execute = within(tabs).getByRole('tab', { name: /Ejecutar/ });
+    const learn = within(tabs).getByRole('tab', { name: /Aprender/ });
+
+    expect(within(tabs).getAllByRole('tab')).toHaveLength(4);
+    expect(clarify).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getAllByRole('tabpanel')).toHaveLength(1);
+    expect(screen.getByRole('tabpanel')).toHaveTextContent('Convertir una necesidad en un objetivo observable.');
+
+    fireEvent.keyDown(clarify, { key: 'ArrowRight' });
+    expect(connect).toHaveAttribute('aria-selected', 'true');
+    expect(connect).toHaveFocus();
+    expect(screen.getByRole('tabpanel')).toHaveTextContent('Comparar iniciativas y hacer explícitas las prioridades.');
+
+    fireEvent.click(execute);
+    expect(screen.getByRole('tabpanel')).toHaveTextContent('Elegir cómo desarrollar la iniciativa sin perder continuidad.');
+    fireEvent.click(learn);
+    expect(screen.getByRole('tabpanel')).toHaveTextContent('Lo aprendido vuelve a orientar nuevas iniciativas.');
+    expect(screen.getByText(/Demostración conceptual con información ficticia/)).toBeInTheDocument();
+  });
+
+  it('integra las rutas Equipo y Fab dentro de ejecución y las reconecta con evidencia', () => {
+    renderLanding();
+
+    fireEvent.click(screen.getByRole('tab', { name: /Ejecutar/ }));
+    const panel = screen.getByRole('tabpanel');
+    expect(within(panel).getByText('Con el equipo')).toBeInTheDocument();
+    expect(within(panel).getByText('Con Startería Fab')).toBeInTheDocument();
+    expect(within(panel).getByText(/Evidencia, resultado y continuidad/)).toBeInTheDocument();
+    expect(within(panel).getByRole('link', { name: 'Conocer Startería Fab' })).toHaveAttribute(
+      'href',
+      'https://darkcodepe.github.io/sw-factory/',
+    );
+    expect(within(panel).getByRole('link', { name: 'Conocer Startería Fab' })).toHaveAttribute('target', '_blank');
+    expect(within(panel).getByText(/No implica una integración automática certificada/)).toBeInTheDocument();
+    expect(within(panel).getByText(/fábrica de software asistida por agentes que puede ayudar a implementar, revisar y probar soluciones/i)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('tab', { name: /Clarificar/ }));
+    fireEvent.click(screen.getByRole('link', { name: 'Fab' }));
+    expect(screen.getByRole('tab', { name: /Ejecutar/ })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByRole('tabpanel')).toHaveTextContent('¿Tu equipo tiene una iniciativa, pero no dispone de tiempo o capacidad técnica para desarrollarla?');
+  });
+
+  it('resume impacto y fricciones sin repetir el recorrido ni inventar métricas', () => {
+    renderLanding();
+
+    const impact = screen.getByRole('region', { name: 'Impacto empresarial' });
+    expect(within(impact).getByText('Menos esfuerzo de coordinación')).toBeInTheDocument();
+    expect(within(impact).getByText('Mayor aprovechamiento de la capacidad de los equipos')).toBeInTheDocument();
+    expect(within(impact).getByText('Mejor conexión y reutilización del conocimiento')).toBeInTheDocument();
+    expect(within(impact).getByText('Decisiones con evidencia')).toBeInTheDocument();
+
+    const comparison = screen.getByRole('region', { name: 'Fricciones que Startería ayuda a reducir' });
+    expect(within(comparison).getByText('Hoy')).toBeInTheDocument();
+    expect(within(comparison).getByText('Con Startería')).toBeInTheDocument();
+    expect(comparison.querySelectorAll('article')).toHaveLength(0);
+    expect(document.body).not.toHaveTextContent('30%');
+  });
+
+  it('conserva conversión comercial verificable y cero caminos a Portfolio Entry', () => {
+    renderLanding();
+
     expect(document.querySelectorAll('a[href="/public/start"]')).toHaveLength(0);
-    expect(screen.queryByRole('link', { name: /Analizar mi situación/i })).not.toBeInTheDocument();
-    expect(screen.queryByRole('link', { name: /Quiero alinear mi objetivo/i })).not.toBeInTheDocument();
     expect(screen.queryByRole('textbox')).not.toBeInTheDocument();
     expect(screen.queryByRole('form')).not.toBeInTheDocument();
+
+    for (const cta of screen.getAllByRole('link', { name: /Explorar Startería para mi equipo|Hablemos de tu iniciativa/ })) {
+      expect(cta).toHaveAttribute('href', PUBLIC_LANDING_CONFIG.demoBookingUrl);
+      expect(cta).toHaveAttribute('target', '_blank');
+      expect(cta).toHaveAttribute('rel', 'noopener noreferrer');
+    }
+
+    expect(
+      screen.getByRole('heading', { name: '¿Tienes una iniciativa que necesita ser escuchada o avanzar?' }),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/explorar si conviene una demostración contextualizada o un piloto acordado/)).toBeInTheDocument();
   });
 
-  it('presents Platform, Fab and integrated service with claims bounded to current status', () => {
+  it('mantiene navegación y jerarquía en el orden aprobado', () => {
     renderLanding();
-    const solutions = screen.getByRole('region', { name: /Una plataforma de trabajo, con capacidad técnica cuando hace falta/i });
-    expect(within(solutions).getByText('Starteria Platform')).toBeInTheDocument();
-    expect(within(solutions).getByText('Starteria Fab')).toBeInTheDocument();
-    expect(within(solutions).getByText('Servicio integrado')).toBeInTheDocument();
-    expect(within(solutions).getByText(/La integración completa está en evolución/)).toBeInTheDocument();
-  });
 
-
-  it('offers a real, accessible three-stage walkthrough without a public AI form', () => {
-    renderLanding();
-    const tabs = screen.getByRole('tablist', { name: 'Etapas del trabajo con Startería' });
-    const focusTab = within(tabs).getByRole('tab', { name: /Enfocar/ });
-    const developTab = within(tabs).getByRole('tab', { name: /Desarrollar/ });
-    const learnTab = within(tabs).getByRole('tab', { name: /Aprender/ });
-
-    expect(focusTab).toHaveAttribute('aria-selected', 'true');
-    expect(screen.getByRole('tabpanel')).toHaveTextContent('Primero, saber qué resultado importa.');
-    fireEvent.click(developTab);
-    expect(developTab).toHaveAttribute('aria-selected', 'true');
-    expect(screen.getByRole('tabpanel')).toHaveTextContent('Después, convertir el foco en trabajo que avanza.');
-    fireEvent.click(learnTab);
-    expect(learnTab).toHaveAttribute('aria-selected', 'true');
-    expect(screen.getByRole('tabpanel')).toHaveTextContent('Por último, no empezar de cero en la siguiente iniciativa.');
-    expect(screen.getByText(/Demostración conceptual: no utiliza datos reales/)).toBeInTheDocument();
-    expect(document.querySelectorAll('a[href="/public/start"]')).toHaveLength(0);
-  });
-
-  it('explains business impact as measurable hypotheses, not invented outcomes', () => {
-    renderLanding();
-    const impact = screen.getByRole('region', {
-      name: /Tu equipo ya desarrolla iniciativas. Ayúdale a aprovechar mejor cada una/i,
-    });
-    expect(within(impact).getByText('Eficiencia operativa')).toBeInTheDocument();
-    expect(within(impact).getByText('Capacidad compartida')).toBeInTheDocument();
-    expect(within(impact).getByText('Valor de negocio')).toBeInTheDocument();
-    expect(within(impact).getByText(/hipótesis de impacto para validar/)).toBeInTheDocument();
-  });
-  it('keeps the product illustration explicitly fictitious and static', () => {
-    renderLanding();
-    const preview = screen.getByRole('region', { name: 'Reducir 30% el tiempo operativo' });
-    expect(within(preview).getByText('Caso ilustrativo')).toBeInTheDocument();
-    expect(preview.querySelectorAll('button, a, input, textarea, select, [tabindex]')).toHaveLength(0);
-    expect(screen.getByText('Caso ilustrativo con datos ficticios. La decisión sigue siendo de las personas.')).toBeInTheDocument();
-  });
-
-  it('keeps a direct commercial CTA and human authority, without inventing access', () => {
-    renderLanding();
-    const header = document.querySelector('header.sticky') as HTMLElement;
-    const headerCta = within(header).getByRole('link', { name: 'Hablemos' });
-    expect(headerCta).toHaveAttribute('href', PUBLIC_LANDING_CONFIG.demoBookingUrl);
-    expect(headerCta).toHaveAttribute('target', '_blank');
-    expect(headerCta).toHaveAttribute('rel', 'noopener noreferrer');
-    expect(within(header).getByRole('link', { name: 'Iniciar sesión' })).toHaveAttribute('href', '/auth');
-
-    const hero = screen.getByRole('heading', { level: 1 }).closest('section') as HTMLElement;
-    expect(within(hero).getByRole('link', { name: 'Explorar Startería para mi equipo' })).toHaveAttribute(
-      'href',
-      PUBLIC_LANDING_CONFIG.demoBookingUrl,
-    );
-    expect(screen.getByRole('heading', { name: 'IA contextual para el trabajo. Decisiones y control en tu organización.' })).toBeInTheDocument();
-    expect(screen.queryByRole('link', { name: /early access/i })).not.toBeInTheDocument();
-  });
-
-  it('uses problem-to-solution narrative in the correct reading order', () => {
-    renderLanding();
     const headings = [
       screen.getByRole('heading', { level: 1 }),
-      screen.getByRole('heading', { name: 'Así se convierte un objetivo en iniciativas que aprenden unas de otras.' }),
-      screen.getByRole('heading', { name: 'Tu equipo ya desarrolla iniciativas. Ayúdale a aprovechar mejor cada una.' }),
-      screen.getByRole('heading', { name: 'Los retos de tus equipos no terminan cuando surge una buena idea.' }),
-      screen.getByRole('heading', { name: 'Una plataforma de trabajo, con capacidad técnica cuando hace falta.' }),
-      screen.getByRole('heading', { name: 'Una forma de trabajar que se adapta a tus equipos.' }),
-      screen.getByRole('heading', { name: 'Un punto de partida diferente. Una ruta adecuada a cada desafío.' }),
-      screen.getByRole('heading', { name: 'IA contextual para el trabajo. Decisiones y control en tu organización.' }),
-      screen.getByRole('heading', { name: '¿Qué podría mejorar en la forma de desarrollar iniciativas de tu empresa?' }),
+      screen.getByRole('heading', { name: 'Una iniciativa. Cuatro momentos para hacerla avanzar.' }),
+      screen.getByRole('heading', { name: 'Más capacidad no significa más complejidad.' }),
+      screen.getByRole('heading', { name: 'Cuando el trabajo se desconecta, el valor se diluye.' }),
+      screen.getByRole('heading', { name: '¿Tienes una iniciativa que necesita ser escuchada o avanzar?' }),
     ];
+
     for (let index = 0; index < headings.length - 1; index += 1) {
       expect(headings[index].compareDocumentPosition(headings[index + 1]) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     }
@@ -122,3 +127,4 @@ describe('public landing — Platform + Fab without Portfolio Entry', () => {
     expect(screen.getByRole('navigation', { name: 'Navegación del pie de página' })).toBeInTheDocument();
   });
 });
+

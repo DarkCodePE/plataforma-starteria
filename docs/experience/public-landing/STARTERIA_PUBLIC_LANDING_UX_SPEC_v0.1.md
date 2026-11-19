@@ -1,8 +1,13 @@
 # Starteria — Public Landing UX Spec
 
+> **SUPERSEDED_FOR_ROOT_LANDING_BY_ADR_011.** Los bloques obligatorios de Portfolio Entry y el
+> funnel Early Access/Demo de esta spec ya no gobiernan `/`. KAN-255/ADR-011 autoriza una Landing
+> Platform + Fab sin enlaces a `/public/start` y con un único destino comercial configurado. Este
+> documento se conserva como evidencia histórica; Portfolio Entry y `/public/start` no cambian.
+
 **Documento:** `docs/experience/public-landing/STARTERIA_PUBLIC_LANDING_UX_SPEC_v0.1.md`
 **Versión:** v0.1
-**Estado:** DOCUMENTAL ONLY / LISTA PARA REVISIÓN DE PRODUCTO Y DISEÑO
+**Estado:** HISTORICAL / SUPERSEDED_FOR_ROOT_LANDING_BY_ADR_011
 **Scope:** `/` — Landing pública de Starteria
 **Implementación autorizada:** NO
 

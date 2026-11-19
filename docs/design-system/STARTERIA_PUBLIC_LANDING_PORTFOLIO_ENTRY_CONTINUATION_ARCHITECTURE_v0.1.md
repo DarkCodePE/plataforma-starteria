@@ -1,8 +1,12 @@
 # Starteria — Public Landing, Portfolio Entry & Continuation UX Architecture
 
+> **PARTIALLY_SUPERSEDED_FOR_ROOT_LANDING_BY_ADR_011.** La separación y la continuación de
+> Portfolio Entry conservan valor histórico, pero `/` ya no enlaza a `/public/start` ni presenta
+> Early Access y Demo como dos caminos. KAN-255 gobierna la nueva Landing Platform + Fab.
+
 **Documento:** `STARTERIA_PUBLIC_LANDING_PORTFOLIO_ENTRY_CONTINUATION_ARCHITECTURE_v0.1.md`
 **Versión:** v0.1
-**Estado:** PROPUESTA DOCUMENTAL PARA LANDING UX / DESIGN SYSTEM REVIEW
+**Estado:** HISTORICAL / PARTIALLY_SUPERSEDED_FOR_ROOT_LANDING_BY_ADR_011
 **Tipo:** UX Architecture / Design System adaptation
 **Autoridad:** subordinado a Core v0.2, ADR-006, Portfolio Entry Experience Contract y los contratos aceptados de Early Access y Demo.
 
