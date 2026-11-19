@@ -65,4 +65,10 @@ The after captures intentionally open `#fab`, so the unique product demonstratio
 | Lighthouse | Accessibility 100 desktop and mobile; Best Practices 96 and SEO 91. Remaining local findings are the existing unauthenticated refresh 500, missing favicon/robots/llms infrastructure and are not Landing accessibility failures. |
 | Design evidence checker | PASS |
 | Independent review | APPROVED after 3 rounds; no P1/P2 remain. Fixes covered approved Fab/impact copy, repeated `#fab`, minimum 12 px demo type and removal of the outer demo-card treatment. |
-| Portfolio Entry full-stack Playwright | PENDING — isolated runner requires Docker Desktop, unavailable in this environment. Portfolio Entry code and `/public/start` were not modified. |
+| Portfolio Entry full-stack Playwright | PASS in GitHub CI for PR #347 and post-merge `main`; the equivalent local runner remained unavailable because Docker Desktop was not installed. Portfolio Entry code and `/public/start` were not modified. |
+
+## Delivery closure
+
+PR #347 was merged to `main` as `e5b402685bbc845d3c9871f87e1968533988d76d`. The PR CI and
+post-merge CI run 44497693762 passed, including the full-stack Portfolio Entry E2E suite. This slice
+has not been deployed to production; CD remains a separate manual, authorized operation.
