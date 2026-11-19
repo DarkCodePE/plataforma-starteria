@@ -64,5 +64,5 @@ The after captures intentionally open `#fab`, so the unique product demonstratio
 | Landing Playwright E2E | PASS — 2/2; includes four viewports, repeated Fab navigation, keyboard tabs, reduced motion and horizontal overflow |
 | Lighthouse | Accessibility 100 desktop and mobile; Best Practices 96 and SEO 91. Remaining local findings are the existing unauthenticated refresh 500, missing favicon/robots/llms infrastructure and are not Landing accessibility failures. |
 | Design evidence checker | PASS |
-| Independent review | Rounds 1–2 resolved: approved Fab/impact copy, repeated `#fab`, minimum 12 px demo type and removal of the outer demo-card treatment |
+| Independent review | APPROVED after 3 rounds; no P1/P2 remain. Fixes covered approved Fab/impact copy, repeated `#fab`, minimum 12 px demo type and removal of the outer demo-card treatment. |
 | Portfolio Entry full-stack Playwright | PENDING — isolated runner requires Docker Desktop, unavailable in this environment. Portfolio Entry code and `/public/start` were not modified. |
