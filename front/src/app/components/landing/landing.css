@@ -78,7 +78,7 @@
 .story-tabs button[aria-selected='true']::after { background: #818cf8; }
 .story-tabs button span { font-size: 12px; font-weight: 800; letter-spacing: .12em; }
 .story-tabs button strong { font-size: 15px; }
-.story-panel { display: grid; grid-template-columns: .66fr 1.34fr; gap: 48px; min-height: 510px; padding: 46px; border: 1px solid #343b4d; border-radius: 0 0 12px 12px; background: #181d2b; }
+.story-panel { display: grid; grid-template-columns: .66fr 1.34fr; gap: 48px; min-height: 510px; padding: 46px 0; }
 .story-panel__copy { align-self: center; animation: landing-rise .42s ease both; }
 .story-panel__copy h3 { margin: 16px 0 18px; font-size: clamp(28px, 3.5vw, 44px); font-weight: 700; letter-spacing: -.045em; line-height: 1.08; }
 .story-panel__copy p { margin: 0; color: #aeb8ca; font-size: 16px; line-height: 1.7; }
