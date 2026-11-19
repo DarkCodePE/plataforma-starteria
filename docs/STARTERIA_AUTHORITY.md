@@ -86,7 +86,11 @@ La presencia de este contrato en el repositorio no lo convierte en aprobado. Cua
 
 ## 4. Contrato activo para Portfolio Entry
 
-Para el vertical slice `Pantalla 1 - Portfolio Entry / Landing publica`, el Experience Contract activo es:
+ADR-011 separa de forma definitiva la autoridad de las dos superficies: la Landing pública `/` está
+gobernada por Product ADR-011 y el slice KAN-255; Portfolio Entry conserva exclusivamente la ruta
+`/public/start` y no es un destino ni un CTA de `/`.
+
+Para el vertical slice de Portfolio Entry en `/public/start`, el Experience Contract activo es:
 
 `doc/experience/portfolio-entry/PORTFOLIO_ENTRY_LOGIC_CONTRACT_v0.1.md`
 

@@ -1,15 +1,15 @@
 # KAN-255 — Propuesta de reconciliación de autoridad para Public Landing V2
 
-**Estado:** PROPUESTA / NO ES AUTORIDAD / IMPLEMENTACIÓN BLOQUEADA  
+**Estado:** RATIFICADA / MATERIALIZADA EN ADR-011 / EVIDENCIA DE DECISIÓN  
 **Fecha:** 2026-11-19  
 **Issue:** [KAN-255](https://stateria.atlassian.net/browse/KAN-255)  
+**Ratificación:** comentario Jira `10862`, 2026-11-19  
 **Superficie:** exclusivamente `/`  
 **No modifica:** `/public/start`, Portfolio Entry, Core, Steps 0–4, backend, IA productiva, schema, auth ni `sw-factory`
 
-Este documento prepara la decisión y la reconciliación solicitadas por KAN-255. Su presencia en el
-repositorio no aprueba la decisión, no cambia el estado de ningún ADR y no autoriza código de
-producto. La autorización efectiva requiere una decisión humana explícita y trazable en Jira y su
-posterior materialización en el Product ADR y el Manifest V2.
+Este documento preparó la decisión y la reconciliación solicitadas por KAN-255. La decisión humana
+quedó registrada en Jira KAN-255#10862 y fue materializada en Product ADR-011, Authority Map,
+Manifest V2 y Current State. Product ADR-011, no este reporte, es la autoridad de producto vigente.
 
 ## 1. Hechos observados
 
@@ -97,15 +97,15 @@ Requires ADR: no adicional; ADR-011 puede fijar la aclaración
 | Portfolio Entry Logic Contract v0.1 | `UNCHANGED` | Continúa gobernando `/public/start`. |
 | Design System Contract y Page Anatomy System | `KEEP` | Admiten experimentación de copy, orden y visuales sin cambiar semántica. |
 
-## 4. Decisión de producto propuesta — Product ADR-011
+## 4. Decisión de producto materializada — Product ADR-011
 
-Título propuesto:
+Título materializado:
 
 ```text
 ADR-011 — Public Landing V2 Platform + Fab narrative and Portfolio Entry disconnection
 ```
 
-Decisión propuesta:
+Decisión aceptada:
 
 1. `/` es la superficie comercial y explicativa de Startería Platform; debe comprenderse sin
    interacción previa y sin presentar un chatbot, un gestor de tareas o una consultoría aislada.
@@ -145,9 +145,9 @@ SUPERSEDE FOR `/`:
 - obligación de explicar Copilot/Portfolio Entry dentro de Landing
 ```
 
-## 5. Texto de ratificación humana propuesto
+## 5. Texto de ratificación humana registrado
 
-La decisión debe quedar registrada por Product Decision Owner en KAN-255. Texto sugerido:
+La decisión quedó registrada en KAN-255#10862 con este alcance:
 
 ```text
 RATIFY KAN-255 / Product ADR-011
@@ -166,11 +166,12 @@ Autorizo materializar ADR-011, reconciliar Manifest/CURRENT_STATE e implementar 
 estos límites. No autorizo merge ni despliegue automático.
 ```
 
-La identidad, fecha e ID del comentario de ratificación deben incorporarse al ADR-011 y al Manifest.
+La identidad, fecha e ID del comentario fueron incorporadas al ADR-011 y al Manifest.
 
-## 6. Entrada propuesta para STARTERIA_V2_MANIFEST.md
+## 6. Entrada materializada en STARTERIA_V2_MANIFEST.md
 
-No agregar como `ACTIVE` antes de la ratificación. Después de ella, registrar:
+La entrada se materializó como `ACTIVE_V2_BASELINE / AUTHORIZED_NOT_IMPLEMENTED` después de la
+ratificación:
 
 ```text
 slice_id: KAN-255_PUBLIC_LANDING_V2_PLATFORM_FAB_NARRATIVE
@@ -180,7 +181,7 @@ implementation_status: AUTHORIZED_NOT_IMPLEMENTED
 visual_status: V2_CANDIDATE
 evidence_status: NO_IMPLEMENTATION_EVIDENCE
 semantic_owner: Public Landing V2 exclusively for /
-authority: KAN-255 + ratification comment ID + Product ADR-011 + Design System Contract v0.1 +
+authority: KAN-255 + ratification comment 10862 + Product ADR-011 + Design System Contract v0.1 +
            Page Anatomy System v0.1
 entry_boundary: public route /
 exit_boundary: /auth | /dashboard for authenticated user | configured commercial destination |
@@ -203,7 +204,7 @@ supersession: ADR-006 PARTIALLY_SUPERSEDED; Landing UX Spec and continuation arc
 Al autorizarse, `CURRENT_STATE.md` debe registrar el nuevo baseline y dejar KAN-102 como estado
 histórico, sin reescribir su evidencia.
 
-## 7. V2_CHANGE_GUARDRAIL_CHECK
+## 7. V2_CHANGE_GUARDRAIL_CHECK pre-ratificación (histórico)
 
 ```text
 V2_CHANGE_GUARDRAIL_CHECK
@@ -228,11 +229,11 @@ Authority conflict: YES — KAN-255 AC5/AC6 conflict with accepted ADR-006, Land
 Proceed: NO
 ```
 
-## 8. Condición para repetir el guardrail
+## 8. Condiciones satisfechas para repetir el guardrail
 
-Repetir el guardrail solo cuando existan conjuntamente:
+La reconciliación documental acredita conjuntamente:
 
-1. comentario humano de ratificación en KAN-255;
+1. comentario humano de ratificación KAN-255#10862;
 2. Product ADR-011 materializado con identidad y evidencia de la decisión;
 3. entrada KAN-255 en `STARTERIA_V2_MANIFEST.md` con estado autorizado;
 4. reconciliación no destructiva de `CURRENT_STATE.md` y del índice de Product ADRs;

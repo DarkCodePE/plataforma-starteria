@@ -1,5 +1,8 @@
 # KAN-102 — Public Landing L2 + Portfolio Entry convergence
 
+> **HISTORICAL.** Este reporte conserva la evidencia factual de KAN-102. KAN-255/ADR-011 gobierna
+> ahora la narrativa y el funnel de `/`; `/public/start` y Portfolio Entry permanecen sin cambios.
+
 **Status:** `LANDING_ENTRY_CONVERGENCE_READY`
 **Scope:** `/` Landing and public framing of the existing `/public/start` route
 **Commit:** none
