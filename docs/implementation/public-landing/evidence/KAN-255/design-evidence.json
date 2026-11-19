@@ -1,0 +1,26 @@
+{
+  "contract": "KAN-255 + Product ADR-011 + STARTERIA_DESIGN_SYSTEM_CONTRACT_v0.1 + STARTERIA_PAGE_ANATOMY_SYSTEM_v0.1; one four-stage demo, Team/Fab execution split, no Portfolio Entry link, configured commercial CTA, responsive and accessible at all contracted viewports.",
+  "targetViewports": ["390x844", "768x900", "1024x900", "1440x900"],
+  "accessibility": {
+    "status": "pass",
+    "evidence": "Semantic landmarks and heading order inspected; roving tabs exercised by keyboard; skip link and focus visibility verified; controls have accessible names; reduced-motion disables landing animations; Lighthouse accessibility audit recorded in the delivery report."
+  },
+  "responsive": {
+    "status": "pass",
+    "evidence": "Playwright rendered 390x844, 768x900, 1024x900 and 1440x900; every viewport passed the horizontal-overflow assertion and full-page visual review."
+  },
+  "contentStates": {
+    "loading": { "status": "not-applicable", "reason": "The public landing renders static local content and performs no data-loading operation." },
+    "empty": { "status": "not-applicable", "reason": "The approved landing has no user-owned collection or empty data state." },
+    "error": { "status": "not-applicable", "reason": "No request or mutation is made within the landing; external destinations remain ordinary links." },
+    "partial": { "status": "not-applicable", "reason": "All narrative content is shipped together in the frontend bundle and has no partial-data mode." },
+    "success": { "status": "pass", "evidence": "Selecting any of the four stages updates one labelled tabpanel and leaves a clear next stage or commercial action." },
+    "permission": { "status": "not-applicable", "reason": "The public landing is unauthenticated and exposes no permission-gated action; sign-in remains a separate route." }
+  },
+  "renderedEvidence": [
+    { "viewport": "390x844", "artifact": "after-390x844.png", "observation": "Single-column hero, vertical transformation, 2x2 tabs, Team/Fab routes and compact comparison fit without horizontal overflow." },
+    { "viewport": "768x900", "artifact": "after-768x900.png", "observation": "Tablet layout preserves hierarchy, touch targets, connected transformation and readable product demo." },
+    { "viewport": "1024x900", "artifact": "after-1024x900.png", "observation": "Compact desktop keeps the transformation and story canvas balanced with no clipped labels." },
+    { "viewport": "1440x900", "artifact": "after-1440x900.png", "observation": "Wide desktop establishes the approved editorial hierarchy and one connected product narrative." }
+  ]
+}
