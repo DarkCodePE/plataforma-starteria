@@ -27,6 +27,12 @@ test.describe('Public landing — KAN-255 Platform + Fab', () => {
       'https://darkcodepe.github.io/sw-factory/',
     );
 
+    await tabs.getByRole('tab', { name: /Clarificar/ }).click();
+    await page.getByRole('navigation', { name: 'Navegación principal' }).getByRole('link', { name: 'Fab' }).click();
+    await expect(tabs.getByRole('tab', { name: /Ejecutar/ })).toHaveAttribute('aria-selected', 'true');
+    await expect(panel).toContainText('¿Tu equipo tiene una iniciativa, pero no dispone de tiempo o capacidad técnica para desarrollarla?');
+    await expect(panel).toContainText('fábrica de software asistida por agentes que puede ayudar a implementar, revisar y probar soluciones');
+
     await tabs.getByRole('tab', { name: /Aprender/ }).click();
     await expect(panel).toContainText('Lo aprendido vuelve a orientar nuevas iniciativas.');
 

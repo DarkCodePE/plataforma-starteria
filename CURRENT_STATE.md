@@ -12,7 +12,7 @@ No debe leerse como runtime productivo certificado por defecto. La presencia de 
 
 La autoridad actual permite cambios frontend de producto solo cuando exista decision explicita y documentada de slice, con alcance acotado y sin modificar Core, AI, permisos, esquemas, rutas ni semantica de producto salvo autorizacion especifica. DS-05 y DS-06 son evidencia documental de pilotos frontend autorizados por slice.
 
-## KAN-255 — Public Landing V2 Platform + Fab autorizada (2026-11-19)
+## KAN-255 — Public Landing V2 Platform + Fab implementada y verificada en rama (2026-11-19)
 
 El responsable de producto ratificó Product ADR-011 en KAN-255#10862. La decisión autoriza un slice
 frontend-only para `/`: narrativa empresarial de Startería Platform, una única demostración
@@ -23,8 +23,13 @@ La Landing no ofrece enlaces a `/public/start`. Portfolio Entry conserva esa rut
 handoff y continuaciones sin cambios. ADR-011 supersede parcialmente ADR-006 y los contratos
 anteriores de Landing únicamente en el funnel de `/`; conserva separación, pre-Core y guardrails.
 
-Estado: autoridad documental materializada en la rama KAN-255; implementación, pruebas, revisión,
-PR, merge y despliegue aún no acreditados. Quedan excluidos Core, Steps 0–4, backend, IA productiva,
+Estado: implementación frontend y evidencia visual materializadas en la rama KAN-255. El build,
+typecheck frontend/backend, lint, suite frontend, E2E aislado de Landing, revisión responsive en
+390/768/1024/1440, movimiento reducido, Lighthouse Accessibility 100 y revisión independiente están
+acreditados localmente en `docs/implementation/public-landing/evidence/KAN-255/`. El E2E full-stack de
+Portfolio Entry no pudo ejecutarse porque Docker Desktop no está disponible; `/public/start` no fue
+modificado y sus pruebas unitarias de routing pasan. PR y CI remoto quedan pendientes en este punto;
+merge y despliegue no están autorizados. Quedan excluidos Core, Steps 0–4, backend, IA productiva,
 auth, persistencia, schema y el repositorio `sw-factory`.
 
 ## GOAL — activación general del razonamiento semántico E1 (2026-11-16)

@@ -10,7 +10,7 @@ import {
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router';
 import { Button } from '../components/ui/button';
-import { StarteriaInteractiveStory } from '../components/landing/StarteriaInteractiveStory';
+import { STARTERIA_FAB_REVEAL_EVENT, StarteriaInteractiveStory } from '../components/landing/StarteriaInteractiveStory';
 import { StarteriaMark } from '../components/landing/StarteriaMark';
 import { TransformationFlow } from '../components/landing/TransformationFlow';
 import { PUBLIC_LANDING_CONFIG } from '../config/publicLanding';
@@ -18,8 +18,8 @@ import '../components/landing/landing.css';
 
 const impactItems = [
   { icon: Link2, label: 'Menos esfuerzo de coordinación', detail: 'Objetivos, trabajo y decisiones comparten contexto.' },
-  { icon: CircleGauge, label: 'Mayor aprovechamiento del equipo', detail: 'La capacidad se orienta a lo que más aporta.' },
-  { icon: BookOpenCheck, label: 'Conocimiento reutilizable', detail: 'La evidencia permanece disponible para lo siguiente.' },
+  { icon: CircleGauge, label: 'Mayor aprovechamiento de la capacidad de los equipos', detail: 'La capacidad se orienta a lo que más aporta.' },
+  { icon: BookOpenCheck, label: 'Mejor conexión y reutilización del conocimiento', detail: 'La evidencia permanece disponible para lo siguiente.' },
   { icon: CheckCircle2, label: 'Decisiones con evidencia', detail: 'Cada avance deja señales que permiten decidir.' },
 ];
 
@@ -56,6 +56,10 @@ export function LandingPage() {
     };
   }, []);
 
+  function revealFab() {
+    window.dispatchEvent(new Event(STARTERIA_FAB_REVEAL_EVENT));
+  }
+
   return (
     <div className="landing-root">
       <a className="landing-skip-link" href="#contenido">Saltar al contenido</a>
@@ -68,7 +72,7 @@ export function LandingPage() {
           <nav className="landing-nav landing-nav--desktop" aria-label="Navegación principal">
             <a href="#en-accion">Cómo funciona</a>
             <a href="#impacto">Impacto</a>
-            <a href="#fab">Fab</a>
+            <a href="#fab" onClick={revealFab}>Fab</a>
             <a href="#fricciones">Por qué Startería</a>
           </nav>
           <div className="landing-header__actions">
@@ -95,7 +99,18 @@ export function LandingPage() {
               ['Impacto', '#impacto'],
               ['Startería Fab', '#fab'],
               ['Por qué Startería', '#fricciones'],
-            ].map(([label, href]) => <a key={href} href={href} onClick={() => setMenuOpen(false)}>{label}</a>)}
+            ].map(([label, href]) => (
+              <a
+                key={href}
+                href={href}
+                onClick={() => {
+                  if (href === '#fab') revealFab();
+                  setMenuOpen(false);
+                }}
+              >
+                {label}
+              </a>
+            ))}
             <Link to="/auth" onClick={() => setMenuOpen(false)}>Iniciar sesión</Link>
           </nav>
         )}

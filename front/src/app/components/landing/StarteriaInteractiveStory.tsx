@@ -14,6 +14,8 @@ import {
 
 type StageId = 'clarificar' | 'conectar' | 'ejecutar' | 'aprender';
 
+export const STARTERIA_FAB_REVEAL_EVENT = 'starteria:reveal-fab';
+
 type Stage = {
   id: StageId;
   number: string;
@@ -42,7 +44,7 @@ const stages: Stage[] = [
     number: '03',
     label: 'Ejecutar',
     headline: 'Elegir cómo desarrollar la iniciativa sin perder continuidad.',
-    description: 'El trabajo puede avanzar con el equipo o sumar capacidad tecnológica de Fab cuando sea necesario.',
+    description: '¿Tu equipo tiene una iniciativa, pero no dispone de tiempo o capacidad técnica para desarrollarla? Puede avanzar con el equipo o sumar la capacidad de Fab.',
   },
   {
     id: 'aprender',
@@ -113,7 +115,7 @@ function ExecuteVisual() {
           <span className="story-route__icon"><Code2 aria-hidden="true" /></span>
           <span className="story-label">Ruta 2</span>
           <strong>Con Startería Fab</strong>
-          <p>Capacidad de implementación tecnológica asistida por agentes, con revisiones y pruebas.</p>
+          <p>Una fábrica de software asistida por agentes que puede ayudar a implementar, revisar y probar soluciones.</p>
           <ul>
             <li><Check aria-hidden="true" />Apoyo para implementar y revisar</li>
             <li><Check aria-hidden="true" />Pruebas como parte del desarrollo</li>
@@ -163,13 +165,18 @@ export function StarteriaInteractiveStory() {
   const ActiveVisual = visuals[activeId];
 
   useEffect(() => {
-    const revealFab = () => {
-      if (window.location.hash === '#fab') setActiveId('ejecutar');
+    const revealFab = () => setActiveId('ejecutar');
+    const revealFabFromHash = () => {
+      if (window.location.hash === '#fab') revealFab();
     };
 
-    revealFab();
-    window.addEventListener('hashchange', revealFab);
-    return () => window.removeEventListener('hashchange', revealFab);
+    revealFabFromHash();
+    window.addEventListener('hashchange', revealFabFromHash);
+    window.addEventListener(STARTERIA_FAB_REVEAL_EVENT, revealFab);
+    return () => {
+      window.removeEventListener('hashchange', revealFabFromHash);
+      window.removeEventListener(STARTERIA_FAB_REVEAL_EVENT, revealFab);
+    };
   }, []);
 
   function selectAndFocus(index: number) {

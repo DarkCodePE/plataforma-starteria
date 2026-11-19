@@ -66,6 +66,12 @@ describe('public landing — KAN-255 Platform + Fab', () => {
     );
     expect(within(panel).getByRole('link', { name: 'Conocer Startería Fab' })).toHaveAttribute('target', '_blank');
     expect(within(panel).getByText(/No implica una integración automática certificada/)).toBeInTheDocument();
+    expect(within(panel).getByText(/fábrica de software asistida por agentes que puede ayudar a implementar, revisar y probar soluciones/i)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('tab', { name: /Clarificar/ }));
+    fireEvent.click(screen.getByRole('link', { name: 'Fab' }));
+    expect(screen.getByRole('tab', { name: /Ejecutar/ })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByRole('tabpanel')).toHaveTextContent('¿Tu equipo tiene una iniciativa, pero no dispone de tiempo o capacidad técnica para desarrollarla?');
   });
 
   it('resume impacto y fricciones sin repetir el recorrido ni inventar métricas', () => {
@@ -73,8 +79,8 @@ describe('public landing — KAN-255 Platform + Fab', () => {
 
     const impact = screen.getByRole('region', { name: 'Impacto empresarial' });
     expect(within(impact).getByText('Menos esfuerzo de coordinación')).toBeInTheDocument();
-    expect(within(impact).getByText('Mayor aprovechamiento del equipo')).toBeInTheDocument();
-    expect(within(impact).getByText('Conocimiento reutilizable')).toBeInTheDocument();
+    expect(within(impact).getByText('Mayor aprovechamiento de la capacidad de los equipos')).toBeInTheDocument();
+    expect(within(impact).getByText('Mejor conexión y reutilización del conocimiento')).toBeInTheDocument();
     expect(within(impact).getByText('Decisiones con evidencia')).toBeInTheDocument();
 
     const comparison = screen.getByRole('region', { name: 'Fricciones que Startería ayuda a reducir' });
