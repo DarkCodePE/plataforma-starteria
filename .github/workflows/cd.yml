@@ -524,11 +524,22 @@ jobs:
           version: v1.30.0
       - name: Fetch kubeconfig from Rackspace Spot
         env:
+          # Static kubeconfig of the namespace-scoped ServiceAccount
+          # starteria/cd-deployer. When set it replaces the Spot API, whose
+          # refresh token breaks every time the Spot organization changes.
+          STARTERIA_KUBECONFIG: ${{ secrets.STARTERIA_KUBECONFIG }}
           RACKSPACE_REFRESH_TOKEN: ${{ secrets.RACKSPACE_REFRESH_TOKEN }}
           RACKSPACE_ORG_NAME: ${{ secrets.RACKSPACE_ORG_NAME }}
           RACKSPACE_CLOUDSPACE_NAME: ${{ secrets.RACKSPACE_CLOUDSPACE_NAME }}
         run: |
           set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/kube"
+          if [[ -n "$STARTERIA_KUBECONFIG" ]]; then
+            printf '%s\n' "$STARTERIA_KUBECONFIG" > "$RUNNER_TEMP/kube/config"
+            chmod 600 "$RUNNER_TEMP/kube/config"
+            echo "KUBECONFIG=$RUNNER_TEMP/kube/config" >> "$GITHUB_ENV"
+            exit 0
+          fi
           payload=$(jq -nc --arg org "$RACKSPACE_ORG_NAME" --arg cs "$RACKSPACE_CLOUDSPACE_NAME" --arg rt "$RACKSPACE_REFRESH_TOKEN" '{organization_name:$org,cloudspace_name:$cs,refresh_token:$rt}')
           response="$RUNNER_TEMP/spot-response.json"
           status=$(curl --silent --show-error --output "$response" --write-out '%{http_code}' --request POST 'https://spot.rackspace.com/apis/auth.ngpc.rxt.io/v1/generate-kubeconfig' --header 'Content-Type: application/json' --data "$payload")
