@@ -12,6 +12,12 @@ No debe leerse como runtime productivo certificado por defecto. La presencia de 
 
 La autoridad actual permite cambios frontend de producto solo cuando exista decision explicita y documentada de slice, con alcance acotado y sin modificar Core, AI, permisos, esquemas, rutas ni semantica de producto salvo autorizacion especifica. DS-05 y DS-06 son evidencia documental de pilotos frontend autorizados por slice.
 
+## KAN-257 / KAN-259 — Landing V4.2 propuesta, no implementada (2026-11-22)
+
+El responsable de producto aprobó la **dirección visual para transferencia** en Jira KAN-257#10870. KAN-258 es la subtarea técnica y KAN-259 debe ratificar la actualización de producto. Product ADR-012 es **PROPOSED**, no accepted. Product ADR-011 sigue gobernando la landing React existente. La referencia V4.2 final (HTML, capturas y QA corregidos por Codex) continúa en el entorno local y debe publicarse para verificar su identidad antes de implementación.
+
+Estado: `DESIGN_HANDOFF_RATIFIED / PRODUCT_AUTHORITY_PENDING / RUNTIME_NOT_IMPLEMENTED`. Guardrail `Proceed: NO` hasta aprobación, Manifest activo y verificación de requisitos. No modificar `front/`, `/public/start`, Core, Steps internos, backend, IA ni sw-factory en la reconciliación documental.
+
 ## KAN-255 — Public Landing V2 Platform + Fab integrada en main (2026-11-19)
 
 El responsable de producto ratificó Product ADR-011 en KAN-255#10862. La decisión autoriza un slice

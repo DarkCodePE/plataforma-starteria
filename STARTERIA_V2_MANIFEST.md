@@ -1180,6 +1180,31 @@ delivery_status: PR_347_MERGED_TO_MAIN; PR_AND_POST_MERGE_CI_PASS; PRODUCTION_NO
 supersession: ADR-006 PARTIALLY_SUPERSEDED; Landing UX Spec and continuation architecture superseded only for the root Landing surface; KAN-102 report retained as historical evidence
 ```
 
+## KAN-257 / KAN-259 — PUBLIC_LANDING_V4_INTEGRATED_NARRATIVE (PROPOSED)
+
+**Registrado como propuesta documental:** 2026-11-22. La dirección visual fue aprobada para handoff en KAN-257#10870; la autoridad del producto para V4.2 permanece pendiente de ratificación en KAN-259.
+
+```text
+slice_id: KAN-257_PUBLIC_LANDING_V4_INTEGRATED_NARRATIVE
+HU: KAN-257; functional_authority: KAN-259; technical_implementation: KAN-258
+logic_status: CANDIDATE_NOT_AUTHORIZED (Product ADR-012 PROPOSED; ADR-011 ACCEPTED governs current /)
+implementation_status: NOT_IMPLEMENTED
+visual_status: V4_2_REFERENCE_APPROVED_FOR_HANDOFF (exact final assets not yet published in GitHub)
+evidence_status: LOCAL_CODEX_QA_REPORTED_NOT_IN_REPO; NO_REACT_PARITY_EVIDENCE
+semantic_owner: Public Landing V2 exclusively for /
+authority: Product ADR-011 (current); Product ADR-012 (proposed); Jira KAN-257#10870 (visual handoff only); KAN-259 approval pending
+entry_boundary: public route /
+exit_boundary: existing /auth and PUBLIC_LANDING_CONFIG.demoBookingUrl; external Fab info
+portfolio_entry_boundary: /public/start independent, unchanged, zero links from /
+commercial_boundary: no promises of a real booking, pilot, entitlement or early access
+scope_candidate: integrated strategy → execution (Steps/Fab) → results/learning visual narrative; public marketing only
+excluded: Portfolio Entry; Core; Steps 0-4 behavior; backend; productive AI; Prisma/schema; auth/permissions; sw-factory; new commercial routes
+blocking: Publish exact final V4.2 visual references; approve Product ADR-012; reconcile Authority Map/Current State; re-run V2_CHANGE_GUARDRAIL_CHECK (must be Proceed YES)
+delivery_status: NOT_STARTED; no PR product/runtime; no merge or deploy
+```
+
+Este registro es solo candidato. **No promover ni interpretar como ACTIVE_V2_BASELINE** sin aprobación humana explícita y evidencia de la referencia exacta.
+
 # 2.3 Slice DEV_CYCLE_HU_TOOLING (KAN-91)
 
 **Registrado:** 2026-10-02 por instrucción explícita del responsable (Orlando), HU KAN-91,
