@@ -4,6 +4,8 @@ import api, { parseApiError } from '../../app/services/api';
 type TeamAttention = {
   id: string; reason: string; category: string; status: 'open' | 'acknowledged' | 'resolved' | 'cancelled';
   severity: 'low' | 'medium' | 'high' | 'critical'; ownerId: string | null; updatedAt: string;
+  events?: Array<{ id: string; actorId: string; action: string; note: string | null; createdAt: string }>;
+  resolutionNote?: string | null;
 };
 type Input = {
   category: string; reason: string; exitCondition: string; nextAction: string;
@@ -61,6 +63,16 @@ export function InitiativeAttentionReporter({ projectId }: { projectId: string }
       <li key={item.id} className="rounded-lg border border-amber-200 bg-white p-3 text-sm">
         <p className="font-semibold text-slate-950">{item.reason}</p>
         <p className="mt-1 text-xs text-slate-600">{item.category} · {item.severity} · {item.status}</p>
+        {item.resolutionNote ? <p className="mt-2 text-xs text-slate-700"><strong>Resolución:</strong> {item.resolutionNote}</p> : null}
+        {item.events?.length ? <details className="mt-2 rounded-lg border border-amber-200 p-2">
+          <summary className="cursor-pointer text-xs font-semibold">Ver respuestas e historial · {item.events.length} eventos</summary>
+          <ol className="mt-2 space-y-1 text-xs">{item.events.map((event) => (
+            <li key={event.id}>
+              <span className="font-semibold">{event.action}</span> · {event.actorId}
+              {event.note ? <p className="whitespace-pre-wrap">{event.note}</p> : null}
+            </li>
+          ))}</ol>
+        </details> : null}
       </li>)}</ul>
     <button type="button" className="mt-3 rounded-lg border border-amber-300 bg-white px-3 py-2 text-sm font-semibold text-amber-900"
       onClick={() => setFormOpen((open) => !open)}>{formOpen ? 'Cancelar aviso' : 'Comunicar un bloqueo'}</button>
