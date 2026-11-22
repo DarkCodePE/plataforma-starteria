@@ -496,13 +496,20 @@ function applyDeterministicPolicy(input: {
   const retryableEmptyCheckpoint = sufficientForReview
     && currentBudget.used < limit
     && providerReturnedNoMaterialNextStep;
-  const interpretationIncomplete = materialEvidence.hasAnchor
-    && materialEvidence.hasDirection
-    && !canAsk
+  const prematureReviewWithoutMaterialExit = input.inference.readyForHumanReview
+    && !sufficientForReview
+    && currentBudget.used < limit
+    && rawQuestionPlan === null;
+  const interpretationIncomplete = !canAsk
     && (
-      !materialEvidence.hasStartingPoint
-      || !materialEvidence.hasMainUncertainty
-      || retryableEmptyCheckpoint
+      prematureReviewWithoutMaterialExit
+      || (materialEvidence.hasAnchor
+        && materialEvidence.hasDirection
+        && (
+          !materialEvidence.hasStartingPoint
+          || !materialEvidence.hasMainUncertainty
+          || retryableEmptyCheckpoint
+        ))
     );
   const convergence = emittedQuestion ? {
     status: 'question_required' as const,
