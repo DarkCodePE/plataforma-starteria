@@ -310,6 +310,95 @@ describe('PortfolioBootstrapSemanticOrchestratorService', () => {
     }));
   });
 
+  it('fails retryably when review is claimed without a main uncertainty after generic gaps were already resolved', async () => {
+    const store = fakeStore(semanticState({
+      version: 1,
+      answeredGaps: ['material_subject', 'decision_to_enable'],
+      questionBudget: { limit: 3, used: 1 },
+    }));
+    const model = fakeModel({
+      facts: [
+        fact('weekend_demand', 'alta demanda los fines de semana', 'alta demanda los fines de semana'),
+        fact('weekday_capacity', 'capacidad disponible entre semana', 'capacidad disponible entre semana'),
+        fact('validation_intent', 'validar una propuesta para los días laborables', 'validar una propuesta para los días laborables'),
+      ],
+      hypotheses: [startingPoint('opportunity', ['weekend_demand', 'weekday_capacity', 'validation_intent'])],
+      dispositions: [], questionPlan: null,
+      synthesis: synthesis(['weekend_demand', 'weekday_capacity', 'validation_intent']),
+      readyForHumanReview: true,
+      reason: 'El proveedor intentó cerrar sin identificar la incertidumbre principal.',
+    });
+
+    await new PortfolioBootstrapSemanticOrchestratorService(store, model, config)
+      .processTurn(command(
+        'Hay alta demanda los fines de semana, capacidad disponible entre semana y queremos validar una propuesta para los días laborables.',
+        1,
+      ));
+
+    expect(store.completeInference).toHaveBeenCalledWith(expect.objectContaining({
+      status: 'failed_retryable',
+      facts: [],
+      hypotheses: [],
+      dispositions: [],
+      emittedQuestion: null,
+      error: { code: 'semantic_interpretation_incomplete', retryable: true },
+      convergence: expect.objectContaining({ status: 'provider_retryable_failure' }),
+    }));
+  });
+
+  it('preserves governed checkpoints for exhausted budget or a repeated provider question during premature review', async () => {
+    const input = 'Hay alta demanda los fines de semana, capacidad disponible entre semana y queremos validar una propuesta para los días laborables.';
+    const facts = [
+      fact('weekend_demand', 'alta demanda los fines de semana', 'alta demanda los fines de semana'),
+      fact('weekday_capacity', 'capacidad disponible entre semana', 'capacidad disponible entre semana'),
+      fact('validation_intent', 'validar una propuesta para los días laborables', 'validar una propuesta para los días laborables'),
+    ];
+    const hypotheses = [startingPoint('opportunity', ['weekend_demand', 'weekday_capacity', 'validation_intent'])];
+
+    const exhaustedStore = fakeStore(semanticState({
+      version: 1,
+      answeredGaps: ['material_subject', 'decision_to_enable'],
+      questionBudget: { limit: 3, used: 3 },
+    }));
+    await new PortfolioBootstrapSemanticOrchestratorService(exhaustedStore, fakeModel({
+      facts, hypotheses, dispositions: [], questionPlan: null,
+      synthesis: synthesis(['weekend_demand', 'weekday_capacity', 'validation_intent']),
+      readyForHumanReview: true,
+      reason: 'El proveedor intentó cerrar cuando el presupuesto ya estaba agotado.',
+    }), config).processTurn(command(input, 1));
+
+    const repeatedStore = fakeStore(semanticState({
+      version: 1,
+      answeredGaps: ['material_subject', 'decision_to_enable'],
+      questionBudget: { limit: 3, used: 1 },
+      questionHistory: [{
+        id: 'question-main-uncertainty', recap: 'La oportunidad sigue abierta.',
+        question: '¿Qué incertidumbre necesitas despejar?', reasonToAsk: 'Delimitar la decisión.',
+        resolves: ['main_uncertainty'], turnId: 'turn-1', semanticVersion: 1,
+      }],
+    }));
+    await new PortfolioBootstrapSemanticOrchestratorService(repeatedStore, fakeModel({
+      facts, hypotheses, dispositions: [],
+      questionPlan: {
+        question: '¿Qué incertidumbre necesitas despejar?',
+        reasonToAsk: 'Delimitar la decisión.',
+        resolves: ['main_uncertainty'],
+      },
+      synthesis: synthesis(['weekend_demand', 'weekday_capacity', 'validation_intent']),
+      readyForHumanReview: true,
+      reason: 'El proveedor repitió una pregunta ya tratada.',
+    }), config).processTurn(command(input, 1));
+
+    for (const store of [exhaustedStore, repeatedStore]) {
+      expect(store.completeInference).toHaveBeenCalledWith(expect.objectContaining({
+        status: 'completed',
+        error: null,
+        emittedQuestion: null,
+        convergence: expect.objectContaining({ status: 'budget_checkpoint' }),
+      }));
+    }
+  });
+
   it('fails retryably when an incomplete interpretation has no material question even if the model does not claim readiness', async () => {
     const store = fakeStore();
     const model = fakeModel({
