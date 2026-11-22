@@ -1,0 +1,90 @@
+{
+  "contract": "KAN-257 Fase A: referencia visual aislada V4.2 que consolida hero V4.1 centrado, demostración interactiva Estrategia/Ejecución/Resultados, Públicos V4.2, FAQ y Propósito editorial. No autoriza ni modifica la landing React productiva.",
+  "targetViewports": [
+    "1440x1000",
+    "1024x900",
+    "768x900",
+    "390x844"
+  ],
+  "accessibility": {
+    "status": "pass",
+    "evidence": "Lighthouse final: 100 Accessibility, 100 Best Practices, 100 SEO y 100 Agentic Browsing en escritorio y móvil; los tres estados de la demo obtienen 100/100/100/100. QA Playwright confirma tabs por teclado, foco visible, menú móvil, FAQ, objetivos táctiles de 44 px y reduced motion."
+  },
+  "responsive": {
+    "status": "pass",
+    "evidence": "QA Playwright en 1440x1000, 1024x900, 768x900 y 390x844 sin overflow horizontal ni errores de runtime; inspección visual de página completa y escenas específicas sin recortes, superposiciones o métricas truncadas."
+  },
+  "contentStates": {
+    "loading": {
+      "status": "not-applicable",
+      "reason": "El prototipo es HTML local y no carga datos asíncronos."
+    },
+    "empty": {
+      "status": "not-applicable",
+      "reason": "La narrativa de referencia es estática y no representa colecciones vacías."
+    },
+    "error": {
+      "status": "not-applicable",
+      "reason": "No existen solicitudes de datos ni flujos que puedan fallar en esta referencia aislada."
+    },
+    "partial": {
+      "status": "not-applicable",
+      "reason": "El prototipo se distribuye como una composición editorial completa, sin carga parcial."
+    },
+    "success": {
+      "status": "pass",
+      "evidence": "Estrategia, Ejecución y Resultados cambian de forma interactiva; el caso ficticio conserva 48 h, 24 h y 30 h, y las escenas mantienen ownership, checkpoints, guía contextual y retorno de aprendizaje."
+    },
+    "permission": {
+      "status": "not-applicable",
+      "reason": "Es una referencia pública aislada sin autenticación ni contenido condicionado por permisos."
+    }
+  },
+  "renderedEvidence": [
+    {
+      "viewport": "1440x1000",
+      "artifact": "v42_consolidated_1440_full.png",
+      "observation": "Composición completa con jerarquía editorial, escenas a escala de escritorio y secciones V4.2 integradas."
+    },
+    {
+      "viewport": "1024x900",
+      "artifact": "v42_consolidated_1024_full.png",
+      "observation": "Transición a una columna donde corresponde, sin perder jerarquía ni legibilidad."
+    },
+    {
+      "viewport": "768x900",
+      "artifact": "v42_consolidated_768_full.png",
+      "observation": "Composición tablet reordenada, sin overflow y con controles esenciales visibles."
+    },
+    {
+      "viewport": "390x844",
+      "artifact": "v42_consolidated_390_full.png",
+      "observation": "Composición móvil propia; menú, tabs, métricas 48/24/30, públicos y manifiesto permanecen utilizables."
+    },
+    {
+      "viewport": "1440x1000",
+      "artifact": "v42_consolidated_demo_estrategia_1440.png",
+      "observation": "Escena de estrategia con objetivo, KPI e iniciativas relacionadas."
+    },
+    {
+      "viewport": "1440x1000",
+      "artifact": "v42_consolidated_demo_ejecucion_1440.png",
+      "observation": "Escena de ejecución con ownership, checkpoints, guía contextual y capacidad Fab."
+    },
+    {
+      "viewport": "390x844",
+      "artifact": "v42_consolidated_demo_resultados_390.png",
+      "observation": "Escena móvil de resultados con 48 h, 24 h y 30 h completos y legibles."
+    },
+    {
+      "viewport": "1440x1000",
+      "artifact": "v42_consolidated_publicos_1440.png",
+      "observation": "Jerarquía asimétrica de públicos preservada, sin convertirla en tres tarjetas equivalentes."
+    },
+    {
+      "viewport": "390x844",
+      "artifact": "v42_consolidated_proposito_390.png",
+      "observation": "Propósito editorial numerado preservado en móvil, sin composición de círculos."
+    }
+  ]
+}
