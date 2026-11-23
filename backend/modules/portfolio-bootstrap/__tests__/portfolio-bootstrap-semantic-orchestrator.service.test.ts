@@ -156,6 +156,57 @@ describe('PortfolioBootstrapSemanticOrchestratorService', () => {
     expect(vi.mocked(model.generate).mock.calls[0][0].systemPrompt).toContain(
       'incluye ambas hipótesis proposed: exactamente una starting_point.* y exactamente una main_uncertainty',
     );
+    expect(vi.mocked(model.generate).mock.calls[0][0].systemPrompt).toContain(
+      'En el reintento reutiliza los conceptIds activos',
+    );
+    expect(vi.mocked(model.generate).mock.calls[0][0].systemPrompt).toContain(
+      'de semanticState.factLedger para conservar ancla y dirección',
+    );
+    expect(vi.mocked(model.generate).mock.calls[0][0].systemPrompt).toContain(
+      'No reemitas como facts nuevos hechos que sólo procedan de turnos anteriores',
+    );
+    expect(vi.mocked(model.generate).mock.calls[0][0].systemPrompt).toContain(
+      'supportConceptIds deben referenciar únicamente conceptIds activos',
+    );
+  });
+
+  it('grounds a retry in active state without re-emitting evidence from a prior turn', async () => {
+    const store = fakeStore(semanticState({
+      version: 1,
+      factLedger: [
+        { ...fact('opportunity', 'capacidad disponible entre semana', 'capacidad disponible entre semana'), turnId: 'turn-1', semanticVersion: 1 },
+        { ...fact('desired_outcome', 'aumentar las ventas entre semana', 'aumentar las ventas entre semana'), turnId: 'turn-1', semanticVersion: 1 },
+      ],
+      answeredGaps: ['opportunity', 'desired_outcome'],
+      questionBudget: { limit: 3, used: 1 },
+    }));
+    const retryClaim = turnResult('failed_retryable', 1);
+    retryClaim.turn.attempt = 2;
+    vi.mocked(store.claimInference).mockResolvedValue({ claimed: true, result: retryClaim });
+    const model = fakeModel({
+      facts: [],
+      hypotheses: [
+        startingPoint('opportunity', ['opportunity', 'desired_outcome']),
+        mainUncertainty('No está claro qué propuesta tendrá demanda suficiente.', ['opportunity', 'desired_outcome']),
+      ],
+      dispositions: [], questionPlan: null,
+      synthesis: synthesis(['opportunity', 'desired_outcome']),
+      readyForHumanReview: true,
+      reason: 'El estado activo ya conserva ancla, dirección y evidencia para ambas hipótesis.',
+    });
+
+    await new PortfolioBootstrapSemanticOrchestratorService(store, model, config)
+      .processTurn(command('Queremos validar una propuesta específica para los días laborables.', 1));
+
+    expect(store.completeInference).toHaveBeenCalledWith(expect.objectContaining({
+      status: 'completed',
+      facts: [],
+      hypotheses: expect.arrayContaining([
+        expect.objectContaining({ hypothesisId: 'starting_point.opportunity' }),
+        expect.objectContaining({ hypothesisId: 'main_uncertainty' }),
+      ]),
+      convergence: expect.objectContaining({ status: 'ready_for_human_review' }),
+    }));
   });
 
   it('fails closed before the provider when the configured input budget is exceeded', async () => {
@@ -339,6 +390,10 @@ describe('PortfolioBootstrapSemanticOrchestratorService', () => {
       providerHasQuestionPlan: false,
       providerHasSynthesis: true,
       providerReadyForHumanReview: true,
+      hasAnchor: true,
+      hasDirection: true,
+      hasStartingPoint: true,
+      hasMainUncertainty: false,
     }), 'portfolio_bootstrap_semantic_policy_incomplete');
   });
 
