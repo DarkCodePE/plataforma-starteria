@@ -18,9 +18,9 @@ El responsable de producto aprobó la dirección visual de V4.2 para handoff en 
 
 Product ADR-012 está **ACCEPTED para el target** de `/` (demo única Estrategia → Ejecución → Resultados y retorno), no para cambiar Core, Steps 0–4, backend o IA productiva. No autoriza claims de integración Platform–Fab, conexiones, LLMs, memoria automática, ahorro o ROI no demostrados. Las métricas 48h/24h/30h son ilustrativas. CTA de demo conserva `PUBLIC_LANDING_CONFIG.demoBookingUrl`; `/public/start` es independiente y sin enlaces desde la landing.
 
-**Estado factual:** la landing React de KAN-255/ADR-011 continúa implementada. La V4.2 sigue **NO IMPLEMENTADA**: PR #352 publica referencias, no código; la reconciliación de ADR Index, Authority Map, Manifest y Current State se prepara en rama documental separada. El guardrail previo a KAN-258 debe emitirse en el checkout consolidado antes de editar `front/`. No hay autorización de merge ni CD automático.
+**Estado factual:** la landing React de KAN-255/ADR-011 continúa implementada. La V4.2 sigue **NO IMPLEMENTADA**: PR #352 publica referencias, no código; la reconciliación de ADR Index, Authority Map, Manifest y Current State se integró en main mediante PR #361; el baseline V4.2 exacto se integró mediante PR #352. La implementación React de KAN-258 sigue pendiente. El guardrail previo a KAN-258 debe emitirse en el checkout consolidado antes de editar `front/`. No hay autorización de merge ni CD automático.
 
-Estado: `PRODUCT_TARGET_RATIFIED / AUTHORITY_DOCS_IN_REVIEW / V4_2_RUNTIME_NOT_IMPLEMENTED`.
+Estado: `PRODUCT_TARGET_RATIFIED / AUTHORITY_RECONCILED_IN_MAIN / KAN-258_FRONTEND_GUARDRAIL_PASSED / V4_2_RUNTIME_NOT_IMPLEMENTED`. El guardrail post-merge de KAN-258 habilita exclusivamente desarrollo React en rama; no certifica QA final ni autoriza merge/CD.
 
 ## KAN-255 — Public Landing V2 Platform + Fab integrada en main (2026-11-19)
 
