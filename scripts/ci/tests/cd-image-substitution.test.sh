@@ -73,11 +73,21 @@ if [[ " $* " == *' apply -f - '* ]]; then
   rendered=$(cat)
   printf '%s\n' "$rendered" >> "$KUBECTL_CAPTURE_DIR/rendered-deployments.yaml"
   printf '\n---\n' >> "$KUBECTL_CAPTURE_DIR/rendered-deployments.yaml"
-  service=$(printf '%s\n' "$rendered" | sed -nE 's/^[[:space:]]*name: starteria-(backend|frontend|ai-service)$/\1/p' | head -n 1)
-  [[ -n "$service" ]] && printf 'apply:%s\n' "$service" >> "$KUBECTL_CAPTURE_DIR/rollout-order.log"
+  case "$rendered" in
+    *'name: starteria-backend'*) service=backend ;;
+    *'name: starteria-frontend'*) service=frontend ;;
+    *'name: starteria-ai-service'*) service=ai-service ;;
+    *) echo 'kubectl double could not identify rendered deployment' >&2; exit 1 ;;
+  esac
+  printf 'apply:%s\n' "$service" >> "$KUBECTL_CAPTURE_DIR/rollout-order.log"
 elif [[ " $* " == *' rollout status deployment/starteria-'* ]]; then
-  service=$(printf '%s\n' "$*" | sed -nE 's#.*deployment/starteria-(backend|frontend|ai-service).*#\1#p')
-  [[ -n "$service" ]] && printf 'rollout:%s\n' "$service" >> "$KUBECTL_CAPTURE_DIR/rollout-order.log"
+  case "$*" in
+    *'deployment/starteria-backend'*) service=backend ;;
+    *'deployment/starteria-frontend'*) service=frontend ;;
+    *'deployment/starteria-ai-service'*) service=ai-service ;;
+    *) echo 'kubectl double could not identify rollout target' >&2; exit 1 ;;
+  esac
+  printf 'rollout:%s\n' "$service" >> "$KUBECTL_CAPTURE_DIR/rollout-order.log"
 fi
 EOF
 chmod +x "$tmp/bin/kubectl"
