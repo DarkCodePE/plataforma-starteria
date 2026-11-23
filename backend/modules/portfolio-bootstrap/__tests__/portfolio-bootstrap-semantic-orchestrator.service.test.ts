@@ -136,6 +136,25 @@ describe('PortfolioBootstrapSemanticOrchestratorService', () => {
     expect(store.completeInference).not.toHaveBeenCalled();
   });
 
+  it('guides an explicit retry away from the previous material dead end', async () => {
+    const store = fakeStore();
+    const retryClaim = turnResult('failed_retryable');
+    retryClaim.turn.attempt = 2;
+    vi.mocked(store.claimInference).mockResolvedValue({ claimed: true, result: retryClaim });
+    const model = fakeModelFailure();
+    const service = new PortfolioBootstrapSemanticOrchestratorService(store, model, config);
+
+    await service.processTurn(command('Necesitamos completar la interpretación sin inventar evidencia.'));
+
+    expect(model.generate).toHaveBeenCalledOnce();
+    expect(vi.mocked(model.generate).mock.calls[0][0].systemPrompt).toContain(
+      'REINTENTO EXPLÍCITO DEL MISMO TURNO',
+    );
+    expect(vi.mocked(model.generate).mock.calls[0][0].systemPrompt).toContain(
+      'readyForHumanReview=false, synthesis=null y questionPlan=null',
+    );
+  });
+
   it('fails closed before the provider when the configured input budget is exceeded', async () => {
     const store = fakeStore();
     const model = fakeModelFailure();
