@@ -84,6 +84,15 @@ explique la relación entre situación, intención, incertidumbre y dirección p
 a evidenceConceptIds. Si falta información que pueda cambiar esa interpretación, synthesis debe ser null
 y debes formular la única aclaración material necesaria.`;
 
+const SEMANTIC_E1_RETRY_RECOVERY_PROMPT = `REINTENTO EXPLÍCITO DEL MISMO TURNO.
+La salida anterior fue descartada porque no dejó una pregunta material ni una síntesis trazable.
+Reevalúa el estado acumulado junto con el input actual y no repitas ese punto muerto: si la evidencia
+ya delimita situación, dirección, clasificación e incertidumbre principal, devuelve
+readyForHumanReview=true y una synthesis sustentada sólo por evidenceConceptIds activos. Si todavía
+falta información capaz de cambiar la interpretación, devuelve readyForHumanReview=false, synthesis=null
+y una questionPlan material y no repetida. Mientras quede presupuesto, no devuelvas a la vez
+readyForHumanReview=false, synthesis=null y questionPlan=null.`;
+
 export interface PortfolioBootstrapSemanticTurnStore {
   getInferenceContext(input: {
     sessionId: string;
@@ -189,6 +198,9 @@ export class PortfolioBootstrapSemanticOrchestratorService {
     );
     const execution = emptyExecution();
     const state = before.state;
+    const systemPrompt = claim.result.turn.attempt > 1
+      ? `${SEMANTIC_E1_SYSTEM_PROMPT}\n\n${SEMANTIC_E1_RETRY_RECOVERY_PROMPT}`
+      : SEMANTIC_E1_SYSTEM_PROMPT;
     const userPayload = {
       rawInput: input.inputText,
       answeredQuestionId: input.answeredQuestionId,
@@ -204,7 +216,7 @@ export class PortfolioBootstrapSemanticOrchestratorService {
       confirmedContext: before.confirmedContext,
       remainingQuestionBudget: remainingQuestionBudget(state, this.config.questionLimit),
     };
-    const serializedModelInput = `${SEMANTIC_E1_SYSTEM_PROMPT}\n${JSON.stringify(userPayload)}`;
+    const serializedModelInput = `${systemPrompt}\n${JSON.stringify(userPayload)}`;
     if (estimateTokens(serializedModelInput) > this.config.maxInputTokens) {
       return {
         processing: false,
@@ -229,7 +241,7 @@ export class PortfolioBootstrapSemanticOrchestratorService {
       if (logicalCalls >= this.config.maxCallsPerTurn) throw new Error('Semantic logical call budget exhausted.');
       logicalCalls += 1;
       modelResult = await withDeadline(this.model.generate({
-        systemPrompt: SEMANTIC_E1_SYSTEM_PROMPT,
+        systemPrompt,
         userPayload,
         outputSchema: portfolioBootstrapSemanticInferenceSchema,
         providerJsonSchema: portfolioBootstrapSemanticProviderJsonSchema,
