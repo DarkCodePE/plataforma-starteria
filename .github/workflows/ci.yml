@@ -102,7 +102,7 @@ jobs:
         run: bash scripts/ci/tests/kan204-backend-env-hotfix.test.sh
 
       - name: Setup Node.js 20.x
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: '20'
           cache: 'npm'
@@ -210,7 +210,7 @@ jobs:
           ref: ${{ inputs.release_source_sha || github.sha }}
 
       - name: Setup Node.js 20.x
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: '20'
 
@@ -298,7 +298,7 @@ jobs:
 
       # ----- Node side -----
       - name: Setup Node.js 20.x
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: '20'
           cache: 'npm'
@@ -376,7 +376,7 @@ jobs:
           path: .ci-control-plane
 
       - name: Setup Node.js 20.x
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: '20'
           cache: 'npm'
