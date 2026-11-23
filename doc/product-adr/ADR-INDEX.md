@@ -25,7 +25,7 @@ Este indice no reemplaza `docs/adr/`, que queda reservado para ADRs del harness.
 
 | ADR-011 | Public Landing V2 Platform + Fab narrative and Portfolio Entry disconnection | `ADR-011-public-landing-v2-platform-fab-narrative.md` | ACCEPTED | KAN-255#10862 · 2026-11-19; frontend-only; supersede parcialmente ADR-006 para `/`; no autoriza merge ni CD. |
 
-| ADR-012 | Landing V4.2: narrativa integral estrategia, ejecución y aprendizaje | `ADR-012-public-landing-v4-ecosystem-narrative.md` | **PROPOSED / AWAITING_RATIFICATION** | KAN-259 / KAN-257#10870; no supersede ADR-011 ni autoriza runtime antes de aprobación. |
+| ADR-012 | Landing V4.2: narrativa integral estrategia, ejecución y aprendizaje | `ADR-012-public-landing-v4-ecosystem-narrative.md` | **ACCEPTED, 2026-11-23** | KAN-259#10874 ratifica las 8 condiciones de #10873 contra PR #352 @ `74d6982`; autoridad del target `/`, no implementación ni merge/CD. |
 
 ## Reglas
 
