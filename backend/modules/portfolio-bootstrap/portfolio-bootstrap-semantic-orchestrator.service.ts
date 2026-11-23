@@ -88,7 +88,9 @@ const SEMANTIC_E1_RETRY_RECOVERY_PROMPT = `REINTENTO EXPLÍCITO DEL MISMO TURNO.
 La salida anterior fue descartada porque no dejó una pregunta material ni una síntesis trazable.
 Reevalúa el estado acumulado junto con el input actual y no repitas ese punto muerto: si la evidencia
 ya delimita situación, dirección, clasificación e incertidumbre principal, devuelve
-readyForHumanReview=true y una synthesis sustentada sólo por evidenceConceptIds activos. Si todavía
+readyForHumanReview=true y una synthesis sustentada sólo por evidenceConceptIds activos; en hypotheses
+incluye ambas hipótesis proposed: exactamente una starting_point.* y exactamente una main_uncertainty,
+aunque la synthesis vuelva a expresar la incertidumbre. Si todavía
 falta información capaz de cambiar la interpretación, devuelve readyForHumanReview=false, synthesis=null
 y una questionPlan material y no repetida. Mientras quede presupuesto, no devuelvas a la vez
 readyForHumanReview=false, synthesis=null y questionPlan=null.`;
@@ -531,12 +533,15 @@ function applyDeterministicPolicy(input: {
     && !sufficientForReview
     && currentBudget.used < limit
     && rawQuestionPlan === null;
-  const incompleteReason = !canAsk && prematureReviewWithoutMaterialExit
-    ? 'premature_review_without_material_exit' as const
-    : !canAsk && materialEvidence.hasAnchor && materialEvidence.hasDirection && !materialEvidence.hasStartingPoint
+  const incompleteReason = !canAsk
+    && materialEvidence.hasAnchor
+    && materialEvidence.hasDirection
+    && !materialEvidence.hasStartingPoint
     ? 'missing_starting_point_without_question' as const
     : !canAsk && materialEvidence.hasAnchor && materialEvidence.hasDirection && !materialEvidence.hasMainUncertainty
     ? 'missing_main_uncertainty_without_question' as const
+    : !canAsk && prematureReviewWithoutMaterialExit
+    ? 'premature_review_without_material_exit' as const
     : !canAsk && materialEvidence.hasAnchor && materialEvidence.hasDirection && retryableEmptyCheckpoint
     ? 'material_evidence_without_next_step' as const
     : null;

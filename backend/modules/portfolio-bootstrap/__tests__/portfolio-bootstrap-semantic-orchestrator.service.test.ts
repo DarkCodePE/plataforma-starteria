@@ -153,6 +153,9 @@ describe('PortfolioBootstrapSemanticOrchestratorService', () => {
     expect(vi.mocked(model.generate).mock.calls[0][0].systemPrompt).toContain(
       'readyForHumanReview=false, synthesis=null y questionPlan=null',
     );
+    expect(vi.mocked(model.generate).mock.calls[0][0].systemPrompt).toContain(
+      'incluye ambas hipótesis proposed: exactamente una starting_point.* y exactamente una main_uncertainty',
+    );
   });
 
   it('fails closed before the provider when the configured input budget is exceeded', async () => {
@@ -329,7 +332,7 @@ describe('PortfolioBootstrapSemanticOrchestratorService', () => {
     }));
     expect(logger.warn).toHaveBeenCalledWith(expect.objectContaining({
       event: 'portfolio_bootstrap_semantic_policy_incomplete',
-      incompleteReason: 'premature_review_without_material_exit',
+      incompleteReason: 'missing_main_uncertainty_without_question',
       attempt: 1,
       providerFactsCount: 2,
       providerHypothesesCount: 1,
