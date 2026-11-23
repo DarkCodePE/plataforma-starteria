@@ -1161,9 +1161,9 @@ Portfolio Entry y el estado de destino comercial; no cambia `/public/start` ni s
 ```text
 slice_id: KAN-255_PUBLIC_LANDING_V2_PLATFORM_FAB_NARRATIVE
 HU: KAN-255
-logic_status: ACTIVE_V2_BASELINE (Product ADR-011; frontend framing only)
-implementation_status: MERGED_TO_MAIN_VERIFIED
-visual_status: V2_IMPLEMENTED_RESPONSIVE_VERIFIED
+logic_status: DEPRECATED_FOR_ROOT_LANDING_BY_ADR_012 (ADR-011 conversion and /public/start separation boundaries remain active V2 authority)
+implementation_status: HISTORICAL_IMPLEMENTATION_SUPERSEDED_IN_MAIN_BY_KAN_258
+visual_status: SUPERSEDED_BY_V4_2_FOR_ROOT_LANDING
 evidence_status: LOCAL_AND_REMOTE_CI_VERIFIED (build; frontend/backend typecheck; lint; full frontend suite; isolated Landing E2E; Lighthouse Accessibility 100 desktop/mobile; four-viewport captures; independent review; PR and post-merge CI; remote full-stack Portfolio Entry E2E)
 semantic_owner: Public Landing V2 exclusively for /
 authority: Jira KAN-255 + ratification comment 10862 + Product ADR-011 + Design System Contract v0.1 + Page Anatomy System v0.1
@@ -1177,20 +1177,20 @@ excluded: Portfolio Entry; Core; Steps 0-4; backend; Prisma/schema; auth; permis
 tests_protecting_current_behavior: LandingPage.test.tsx; routes.public-entry.test.tsx; public-landing-l1.spec.ts; portfolio-entry-conversion.spec.ts
 implementation_evidence: docs/implementation/public-landing/evidence/KAN-255/ (before/after captures, architecture, skill report, machine-checked evidence); local full-stack E2E unavailable without Docker Desktop and covered by successful remote CI E2E
 delivery_status: PR_347_MERGED_TO_MAIN; PR_AND_POST_MERGE_CI_PASS; PRODUCTION_NOT_DEPLOYED; CD_REQUIRES_SEPARATE_AUTHORIZATION
-supersession: ADR-006 PARTIALLY_SUPERSEDED; Landing UX Spec and continuation architecture superseded only for the root Landing surface; KAN-102 report retained as historical evidence
+supersession: ADR-006 PARTIALLY_SUPERSEDED; ADR-012/KAN-258 supersedes the four-stage marketing composition for /; conversion, Fab claim and /public/start separation boundaries remain active; KAN-102 report retained as historical evidence
 ```
 
-## KAN-257 / KAN-259 — PUBLIC_LANDING_V4_INTEGRATED_NARRATIVE (APPROVED TARGET)
+## KAN-257 / KAN-258 / KAN-259 — PUBLIC_LANDING_V4_INTEGRATED_NARRATIVE (ACTIVE IN MAIN)
 
 **Ratificación humana:** 2026-11-23, KAN-259#10874; Product ADR-012 ACCEPTED. La dirección visual se aprobó para handoff en KAN-257#10870 y se ratificó contra la identidad exacta V4.2 de PR #352 @ `74d6982503bfa2021db38b31e0e81993fe6899f7` (hashes en KAN-259#10873).
 
 ```text
 slice_id: KAN-257_PUBLIC_LANDING_V4_INTEGRATED_NARRATIVE
 HU: KAN-257; functional_authority: KAN-259#10874; technical_implementation: KAN-258
-logic_status: APPROVED_V2_TARGET_NOT_YET_RUNTIME (Product ADR-012 ACCEPTED; supersedes 4-stage marketing view of ADR-011 for the future /)
-implementation_status: NOT_IMPLEMENTED (existing main runtime: KAN-255 / ADR-011)
-visual_status: V4_2_REFERENCE_APPROVED_AND_MERGED_TO_MAIN_VIA_PR_352
-evidence_status: REFERENCE_QA_REPORTED_AND_LINKED (27 exact artifacts on PR #352 @ 74d6982); NO_REACT_PARITY_EVIDENCE
+logic_status: ACTIVE_V2_BASELINE (Product ADR-012 ACCEPTED; supersedes the ADR-011 four-stage marketing view for /)
+implementation_status: MERGED_TO_MAIN_VERIFIED (PR #363; merge e61f20e84ff98a44ee25643c408b80e99046f669)
+visual_status: V4_2_REACT_IMPLEMENTED_AND_RESPONSIVE_VERIFIED_AGAINST_APPROVED_REFERENCE
+evidence_status: LOCAL_TESTS_PLAYWRIGHT_AND_VISUAL_EVIDENCE_RECORDED; PR_CI_45221633325_PASS; POST_MERGE_CI_45233465492_PASS
 semantic_owner: Public Landing V2 exclusively for /
 authority: Product ADR-012 ACCEPTED + Jira KAN-259#10874 + KAN-257#10870 + accepted ADR-011 boundaries + Design System Contract/Page Anatomy
 entry_boundary: public route /
@@ -1202,13 +1202,18 @@ scope: integrated strategy → guided execution (Steps illustration/Fab informat
 example_only: 48h baseline / 24h target / 30h observed, fictitious and labeled, not causal KPI attribution
 excluded: Portfolio Entry; Core; Steps 0-4 behavior; backend; productive AI; Prisma/schema; auth/permissions; sw-factory; new commercial routes
 tests_protecting_current_behavior: LandingPage.test.tsx; routes.public-entry.test.tsx; public-landing-l1.spec.ts; portfolio-entry-conversion.spec.ts
-tests_required_before_review: Landing unit + routing regression + browser in four viewports + tabs/keyboard/FAQ/mobile/reduced motion + visual delta + frontend lint/typecheck/build + CI
+tests_executed: Landing unit + routing regression + browser in four viewports + tabs/keyboard/FAQ/mobile/reduced motion + visual delta + frontend lint/typecheck/build + CI
 baseline_ref: docs/design-references/landing-v4-2/ (PR #352 head 74d6982; exact HTML SHA256 A6450B24EB078AD3A6AA14FDA207AB64A3C7A90CC473EE74ECF16CBAFCEF7ADB)
-remaining_guardrail: PASSED_FOR_BOUNDED_FRONTEND_IMPLEMENTATION at main@b39edf4; see docs/implementation/public-landing/KAN-258_V4_2_GUARDRAIL_POSTMERGE_2026-11-23.md; runtime validation still pending
-delivery_status: PRODUCT_AUTHORITY_RECONCILED_IN_MAIN_PR_361; React PR not opened; no merge/CD permission
+implementation_evidence: docs/implementation/public-landing/evidence/KAN-258/ (verification matrix, four-viewport and interaction-state captures, visual delta and machine-readable evidence)
+v1_consumer_remaining: NONE
+retained_v2_authority: ADR-011 conversion, Fab claim and /public/start separation boundaries
+retirement_action: DEPRECATE (KAN-255 four-stage marketing composition for /; historical evidence retained, no runtime consumer)
+migration_status: V2_MIGRATED (repository runtime only; production not deployed)
+remaining_guardrail: V2_CHANGE_CLOSURE_CHECK_PASSED_FOR_REPOSITORY_RUNTIME; production deploy and validation remain separate gates
+delivery_status: PR_363_MERGED_TO_MAIN; PR_AND_POST_MERGE_CI_PASS; PRODUCTION_NOT_DEPLOYED; CD_REQUIRES_SEPARATE_AUTHORIZATION
 ```
 
-**Distinción obligatoria:** ADR-012 ya es la autoridad de producto aprobada para el **target** de la Landing V4.2; eso no implica que V4.2 esté incorporada a `main` ni que la landing actual haya cambiado. KAN-255 permanece como estado factual del frontend; KAN-258 todavía no está implementada. Este registro de Manifest no autoriza por sí solo React, merge ni CD.
+**Distinción obligatoria:** ADR-012 es la autoridad de producto y la implementación KAN-258 es el runtime vigente del repositorio para `/`. Esto no acredita despliegue ni validación productiva. KAN-255 permanece como evidencia histórica y conserva los límites de conversión, claims de Fab y separación de `/public/start`. Este registro de Manifest no autoriza por sí solo CD.
 
 # 2.3 Slice DEV_CYCLE_HU_TOOLING (KAN-91)
 
