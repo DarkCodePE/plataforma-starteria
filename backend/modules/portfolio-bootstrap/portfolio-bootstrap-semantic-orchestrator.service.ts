@@ -316,6 +316,25 @@ export class PortfolioBootstrapSemanticOrchestratorService {
       questionLimit: this.config.questionLimit,
     });
     if (policy.interpretationIncomplete) {
+      logger.warn({
+        event: 'portfolio_bootstrap_semantic_policy_incomplete',
+        incompleteReason: policy.incompleteReason,
+        attempt: claim.result.turn.attempt,
+        providerFactsCount: inference.facts.length,
+        providerHypothesesCount: inference.hypotheses.length,
+        providerDispositionsCount: inference.dispositions.length,
+        providerHasQuestionPlan: inference.questionPlan !== null,
+        providerHasSynthesis: inference.synthesis != null,
+        providerReadyForHumanReview: inference.readyForHumanReview,
+        acceptedFactsCount: policy.facts.length,
+        acceptedHypothesesCount: policy.hypotheses.length,
+        acceptedDispositionsCount: policy.dispositions.length,
+        questionBudgetLimit: policy.questionBudget.limit,
+        questionBudgetUsed: policy.questionBudget.used,
+        inputTokens: measuredExecution.inputTokens,
+        outputTokens: measuredExecution.outputTokens,
+        totalTokens: measuredExecution.totalTokens,
+      }, 'portfolio_bootstrap_semantic_policy_incomplete');
       this.recordFailure();
       return {
         processing: false,
@@ -512,17 +531,16 @@ function applyDeterministicPolicy(input: {
     && !sufficientForReview
     && currentBudget.used < limit
     && rawQuestionPlan === null;
-  const interpretationIncomplete = !canAsk
-    && (
-      prematureReviewWithoutMaterialExit
-      || (materialEvidence.hasAnchor
-        && materialEvidence.hasDirection
-        && (
-          !materialEvidence.hasStartingPoint
-          || !materialEvidence.hasMainUncertainty
-          || retryableEmptyCheckpoint
-        ))
-    );
+  const incompleteReason = !canAsk && prematureReviewWithoutMaterialExit
+    ? 'premature_review_without_material_exit' as const
+    : !canAsk && materialEvidence.hasAnchor && materialEvidence.hasDirection && !materialEvidence.hasStartingPoint
+    ? 'missing_starting_point_without_question' as const
+    : !canAsk && materialEvidence.hasAnchor && materialEvidence.hasDirection && !materialEvidence.hasMainUncertainty
+    ? 'missing_main_uncertainty_without_question' as const
+    : !canAsk && materialEvidence.hasAnchor && materialEvidence.hasDirection && retryableEmptyCheckpoint
+    ? 'material_evidence_without_next_step' as const
+    : null;
+  const interpretationIncomplete = incompleteReason !== null;
   const convergence = emittedQuestion ? {
     status: 'question_required' as const,
     reason: input.inference.reason,
@@ -544,7 +562,7 @@ function applyDeterministicPolicy(input: {
   };
   return {
     facts, hypotheses, dispositions, answeredGaps, emittedQuestion, convergence, questionBudget,
-    interpretationIncomplete,
+    interpretationIncomplete, incompleteReason,
   };
 }
 
