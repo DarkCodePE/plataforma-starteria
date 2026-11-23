@@ -1,12 +1,57 @@
 // Entrada D — "Me han encargado abordar algo" y la convergencia hasta la decisión.
 // doc/STARTERIA_JOB_DRIVEN_E2E_EXPERIENCE_v0.2.md §15, §17–§23.
 import { expect, request as pwRequest, test, type APIRequestContext } from '@playwright/test';
-import { ADMIN_EMAIL, ADMIN_PASSWORD, BASE, browserLogin, createChallenge, createFromInitialReview, createFront, getOk, login, patchOk, postOk, registerAndLogin, type Session } from '../support/api';
-import { ensurePortfolioLead, prisma, uiLoginLead } from '../support/portfolio-lead';
-import { completeStep0, completeStep1, completeStep2, completeStep3, completeStep4, confirmStep2, confirmStep3, confirmStep4 } from '../support/steps';
+import { BASE, browserLogin, createChallenge, createFromInitialReview, createFront, getOk, login, patchOk, postOk, registerAndLogin, type Session } from '../support/api';
+import { ensurePortfolioLead, LEAD_EMAIL, LEAD_PASSWORD, prisma, uiLoginLead } from '../support/portfolio-lead';
+import { completeStep0, completeStep1, completeStep2, completeStep3, completeStep4, confirmStep2, confirmStep3, confirmStep4, setTruthValidatorToken } from '../support/steps';
 
 let api: APIRequestContext;
 let admin: Session;
+let mentor: Session;
+let portfolioOrganizationId: string;
+
+async function registerAssignedOwner(tag: string) {
+  const owner = await registerAndLogin(api, tag);
+  await prisma.$transaction([
+    prisma.user.update({
+      where: { id: owner.userId },
+      data: { organizationId: portfolioOrganizationId },
+    }),
+    prisma.organizationMember.create({
+      data: {
+        organizationId: portfolioOrganizationId,
+        userId: owner.userId,
+        role: 'member',
+      },
+    }),
+  ]);
+  return owner;
+}
+
+async function registerMentor(tag: string) {
+  const registered = await registerAndLogin(api, tag);
+  await prisma.$transaction([
+    prisma.user.update({
+      where: { id: registered.userId },
+      data: { organizationId: portfolioOrganizationId, role: 'mentor', roles: ['mentor'] },
+    }),
+    prisma.organizationMember.create({
+      data: {
+        organizationId: portfolioOrganizationId,
+        userId: registered.userId,
+        role: 'member',
+      },
+    }),
+  ]);
+  return login(api, registered.email, registered.password);
+}
+
+async function assignMentor(projectId: string) {
+  await prisma.teamMember.create({
+    data: { projectId, userId: mentor.userId, role: 'EDITOR', status: 'ACTIVE' },
+  });
+  setTruthValidatorToken(projectId, mentor.token);
+}
 
 async function assignedInitiative(owner: Session, tag: string) {
   const front = await createFront(api, admin.token, {
@@ -20,15 +65,16 @@ async function assignedInitiative(owner: Session, tag: string) {
     successCriteria: 'Costo por solicitud bajo 12.00 en el piloto',
   });
   const project = await postOk(api, owner.token, '/api/v1/projects', { name: `E2E Job D ${tag} Iniciativa`, challengeId: challenge.id });
+  await assignMentor(project.id);
   return { frontId: front.id as string, challengeId: challenge.id as string, projectId: project.id as string };
 }
 
-async function runCycle(owner: Session, projectId: string, finalState: string, suffix: string) {
+async function runCycle(owner: Session, projectId: string, finalState: string, suffix: string, startAtStep0 = true) {
   // Las rutas de transferencia u operación (incluido benefit tracking, INV-12) exigen owner receptor.
   const receiverOwner = ['scaled', 'transferred', 'integrated_to_roadmap', 'completed', 'benefit_tracking'].includes(finalState)
     ? 'Owner receptor de operaciones'
     : undefined;
-  await completeStep0(api, owner.token, projectId);
+  if (startAtStep0) await completeStep0(api, owner.token, projectId);
   await completeStep1(api, owner.token, projectId);
   const step2 = await completeStep2(api, owner.token, projectId);
   await confirmStep2(api, owner.token, projectId, step2.output);
@@ -41,9 +87,11 @@ async function runCycle(owner: Session, projectId: string, finalState: string, s
 
 test.describe('Entrada D · encargo → Mission Review → ciclo → decisión → portfolio (§15, §17–§23)', () => {
   test.beforeAll(async () => {
-    await ensurePortfolioLead();
+    const portfolioLead = await ensurePortfolioLead();
+    portfolioOrganizationId = portfolioLead.organizationId;
     api = await pwRequest.newContext({ baseURL: BASE });
-    admin = await login(api, ADMIN_EMAIL, ADMIN_PASSWORD);
+    admin = await login(api, LEAD_EMAIL, LEAD_PASSWORD);
+    mentor = await registerMentor('d-mentor');
   });
 
   test.afterAll(async () => {
@@ -52,10 +100,16 @@ test.describe('Entrada D · encargo → Mission Review → ciclo → decisión �
   });
 
   test('el ciclo completo converge: Step 0–4 → Decision Package → la decisión sube al portfolio (§17, §23)', async () => {
-    const owner = await registerAndLogin(api, 'd-cycle');
+    const owner = await registerAssignedOwner('d-cycle');
     const { projectId } = await assignedInitiative(owner, `cycle-${Date.now()}`);
     const output = await runCycle(owner, projectId, 'scaled', 'd-cycle');
     expect(output.decisionPackage).toBeTruthy();
+    const independentValidation = await prisma.truthValidation.findFirstOrThrow({
+      where: { projectId, result: 'supported' },
+      orderBy: { createdAt: 'asc' },
+      select: { validatedById: true, validatorRole: true },
+    });
+    expect(independentValidation).toEqual({ validatedById: mentor.userId, validatorRole: 'editor' });
     // Iniciativa ligada a un Reto: el owner no cierra, presenta. La decisión es corporativa (§23).
     const state = await getOk(api, owner.token, `/api/v1/projects/${projectId}/adaptive-core`);
     expect(state.progressSignal.finalState).toBe('presented');
@@ -64,7 +118,7 @@ test.describe('Entrada D · encargo → Mission Review → ciclo → decisión �
   });
 
   test('el Decision Brief trae decisión, qué hicimos, qué ocurrió, aprendizajes, riesgos, qué no podemos afirmar y siguiente paso (§21)', async () => {
-    const owner = await registerAndLogin(api, 'd-brief');
+    const owner = await registerAssignedOwner('d-brief');
     const { projectId } = await assignedInitiative(owner, `brief-${Date.now()}`);
     const output = await runCycle(owner, projectId, 'closed_with_learning', 'd-brief');
     const text = JSON.stringify(output);
@@ -74,7 +128,7 @@ test.describe('Entrada D · encargo → Mission Review → ciclo → decisión �
   });
 
   test('el participante ve qué quiere mover el negocio y por qué en el Reto asignado (§15)', async ({ page }) => {
-    const owner = await registerAndLogin(api, 'd-view');
+    const owner = await registerAssignedOwner('d-view');
     const { challengeId } = await assignedInitiative(owner, `view-${Date.now()}`);
     await patchOk(api, admin.token, `/api/v1/portfolio/challenges/${challengeId}`, { visibleToParticipants: true, openCallStatus: 'activa' });
     await browserLogin(page, owner.email, owner.password);
@@ -84,7 +138,7 @@ test.describe('Entrada D · encargo → Mission Review → ciclo → decisión �
   });
 
   test('el encargo muestra qué se sabe, qué está abierto, restricciones y qué decisión futura necesita evidencia (§15, Core §14.1)', async ({ page }) => {
-    const owner = await registerAndLogin(api, 'd-envelope');
+    const owner = await registerAssignedOwner('d-envelope');
     const { challengeId } = await assignedInitiative(owner, `env-${Date.now()}`);
     await patchOk(api, admin.token, `/api/v1/portfolio/challenges/${challengeId}`, {
       visibleToParticipants: true,
@@ -102,7 +156,7 @@ test.describe('Entrada D · encargo → Mission Review → ciclo → decisión �
   });
 
   test('Mission Review antes de empezar: Start no abre directamente Step 0 (§18)', async ({ page }) => {
-    const owner = await registerAndLogin(api, 'd-mission');
+    const owner = await registerAssignedOwner('d-mission');
     const { projectId, challengeId } = await assignedInitiative(owner, `mission-${Date.now()}`);
     // Envelope del Reto (Core §14.1): con esto Mission Review deja de mostrar "Sin definir".
     await patchOk(api, admin.token, `/api/v1/portfolio/challenges/${challengeId}`, {
@@ -134,8 +188,13 @@ test.describe('Entrada D · encargo → Mission Review → ciclo → decisión �
   });
 
   test('los Steps se presentan como preguntas de progreso (§19)', async ({ page }) => {
-    const owner = await registerAndLogin(api, 'd-steps');
+    const owner = await registerAssignedOwner('d-steps');
     const { projectId } = await assignedInitiative(owner, `steps-${Date.now()}`);
+    await postOk(api, owner.token, `/api/v1/projects/${projectId}/adaptive-core/activation`, {
+      idempotencyKey: `${projectId}-activate`,
+      expectedVersion: 0,
+      origin: { kind: 'DIRECT_PROJECT' },
+    });
     await browserLogin(page, owner.email, owner.password);
     await page.goto(`/projects/${projectId}`);
     for (const question of [
@@ -150,7 +209,7 @@ test.describe('Entrada D · encargo → Mission Review → ciclo → decisión �
   });
 
   test('el Decision Brief incluye alternativas y qué podemos sostener (§21)', async () => {
-    const owner = await registerAndLogin(api, 'd-brief2');
+    const owner = await registerAssignedOwner('d-brief2');
     const { projectId } = await assignedInitiative(owner, `brief2-${Date.now()}`);
     const output = await runCycle(owner, projectId, 'closed_with_learning', 'd-brief2');
     // Las alternativas vienen de CP-2.2 (support/steps.ts): la apuesta y el respaldo.
@@ -169,9 +228,10 @@ test.describe('Entrada D · encargo → Mission Review → ciclo → decisión �
   test('la continuidad admite pivotear, buscar capacidad y benefit tracking como rutas propias (§22, Core §26)', async () => {
     // Independientes: el owner cierra el ciclo (una ligada a Reto termina en `presented`).
     for (const finalState of ['pivoted', 'seeking_capability', 'benefit_tracking']) {
-      const owner = await registerAndLogin(api, `d-${finalState}`);
+      const owner = await registerAssignedOwner(`d-${finalState}`);
       const projectId = await createFromInitialReview(api, owner.token, `Quiero validar si un portal reduce llamadas repetidas (${finalState}).`);
-      await runCycle(owner, projectId, finalState, `d-${finalState}`);
+      await assignMentor(projectId);
+      await runCycle(owner, projectId, finalState, `d-${finalState}`, false);
       // progressSignal.finalState es la proyección de ciclo de vida (completed/presented); la ruta
       // de continuidad queda en el output confirmado de Step 4.
       const state = await getOk(api, owner.token, `/api/v1/projects/${projectId}/adaptive-core`);
@@ -198,7 +258,7 @@ test.describe('Entrada D · encargo → Mission Review → ciclo → decisión �
   }
 
   test('la decisión corporativa vuelve al portfolio: cobertura del Reto, siguiente acción y aprendizaje (§23)', async ({ page }) => {
-    const owner = await registerAndLogin(api, 'd-return');
+    const owner = await registerAssignedOwner('d-return');
     const { projectId, challengeId } = await assignedInitiative(owner, `return-${Date.now()}`);
     await runCycle(owner, projectId, 'scaled', 'd-return');
     const before = await prisma.challenge.findUniqueOrThrow({ where: { id: challengeId }, select: { title: true, whatWeWantToMove: true } });
@@ -225,8 +285,8 @@ test.describe('Entrada D · encargo → Mission Review → ciclo → decisión �
   });
 
   test('el Portfolio Lead de una iniciativa se puede reasignar, y sólo él decide (§23)', async () => {
-    const owner = await registerAndLogin(api, 'd-gov');
-    const otherLead = await registerAndLogin(api, 'd-gov-lead');
+    const owner = await registerAssignedOwner('d-gov');
+    const otherLead = await registerAssignedOwner('d-gov-lead');
     const { projectId } = await assignedInitiative(owner, `gov-${Date.now()}`);
     const res = await api.put(`/api/v1/portfolio/initiatives/${projectId}/governance`, {
       headers: { Authorization: `Bearer ${admin.token}` },
@@ -246,7 +306,7 @@ test.describe('Entrada D · encargo → Mission Review → ciclo → decisión �
   });
 
   test('cerrar con aprendizaje sin otra iniciativa activa sugiere reformular el Reto, sin reescribirlo (§23, Core §30)', async () => {
-    const owner = await registerAndLogin(api, 'd-close');
+    const owner = await registerAssignedOwner('d-close');
     const { projectId, challengeId } = await assignedInitiative(owner, `close-${Date.now()}`);
     await runCycle(owner, projectId, 'scaled', 'd-close');
     const decision = await decideOnPortfolio(owner, projectId, 'close_with_learning', 'El piloto no movió el costo; cerramos con lo aprendido.');

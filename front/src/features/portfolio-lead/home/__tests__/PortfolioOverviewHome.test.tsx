@@ -419,6 +419,34 @@ describe('PortfolioOverviewHome', () => {
     expect(screen.queryByText(/% completado/i)).not.toBeInTheDocument();
   });
 
+  it('returns persisted organizational learning to the visible Portfolio overview', () => {
+    const withLearning = {
+      ...model,
+      learnings: [{
+        decisionId: 'decision-1',
+        projectId: 'project-1',
+        initiativeName: 'Iniciativa retorno',
+        challengeId: 'challenge-1',
+        challengeTitle: 'Reducir abandono',
+        strategicFrontId: 'front-1',
+        outcome: 'continue_experimenting',
+        learning: 'La evidencia pide un ciclo adicional.',
+        nextAction: 'Preparar el siguiente experimento.',
+        coverageBefore: 'sin_cobertura',
+        coverageAfter: 'cobertura_parcial',
+        suggestedReformulation: null,
+        decidedAt: '2026-11-23T10:00:00.000Z',
+      }],
+    };
+
+    render(<PortfolioOverviewHome model={withLearning as any} onOpenCopilot={vi.fn()} onOpenAdditionalFront={vi.fn()} />);
+
+    const panel = screen.getByRole('region', { name: 'Lo que aprendió el portfolio' });
+    expect(within(panel).getByTestId('portfolio-learning')).toHaveTextContent('Seguir experimentando · Iniciativa retorno');
+    expect(within(panel).getByText('La evidencia pide un ciclo adicional.')).toBeVisible();
+    expect(within(panel).getByText('Siguiente: Preparar el siguiente experimento.')).toBeVisible();
+  });
+
   it('G5-CA07 preserves detected, pending, confirmed and rejected WorkItem states as factual labels and actions', () => {
     const workItems = [
       ['detected', 'Detectado', 'Revisar trabajo detectado'],

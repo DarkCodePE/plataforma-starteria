@@ -39,6 +39,19 @@ describe('MVP-LITE-01 continuidad y Steps simplificados', () => {
     expect(onOpenStep).toHaveBeenCalledWith(2);
   });
 
+  it('presenta cada Step como una pregunta de progreso', () => {
+    render(<ContinuityOverview project={project} core={core} state="loaded" onRetry={vi.fn()} onOpenStep={vi.fn()} />);
+    for (const question of [
+      '¿Qué es razonable intentar ahora?',
+      '¿Qué sabemos realmente?',
+      '¿Qué podemos poner frente a la realidad y cómo observaremos lo ocurrido?',
+      '¿Qué ocurrió realmente?',
+      '¿Qué decisión está suficientemente sustentada?',
+    ]) {
+      expect(screen.getByText(question)).toBeVisible();
+    }
+  });
+
   it('usa cycle.currentStep aunque otras proyecciones diverjan', () => {
     const divergent = { ...core, cycle: { id: 'cycle-1', currentStep: 1 }, progressSignal: { ...core.progressSignal, step: 2 } } as unknown as AdaptiveInitiativeCore;
     render(<ContinuityOverview project={project} core={divergent} state="loaded" onRetry={vi.fn()} onOpenStep={vi.fn()} />);

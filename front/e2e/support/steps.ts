@@ -9,6 +9,11 @@ import { getOk, postOk } from './api';
 // Checkpoints con política en backend/modules/adaptive-core/checkpoint-evidence-policy.ts.
 const BINDING_CHECKPOINTS = new Set(['CP-1.3', 'CP-2.2', 'CP-2.3', 'CP-3.2', 'CP-3.3', 'CP-3.4', 'CP-4.2', 'CP-4.4']);
 const bindingsByProject = new Map<string, { claimId: string; evidenceIds: string[]; sourceRefIds: string[] }>();
+const truthValidatorTokensByProject = new Map<string, string>();
+
+export function setTruthValidatorToken(projectId: string, token: string) {
+  truthValidatorTokensByProject.set(projectId, token);
+}
 
 async function truthBindingFor(api: APIRequestContext, token: string, projectId: string) {
   const cached = bindingsByProject.get(projectId);
@@ -32,14 +37,16 @@ async function truthBindingFor(api: APIRequestContext, token: string, projectId:
     truthStatus: 'supports',
     stepRef: 1,
   });
-  await postOk(api, token, '/api/v1/truth/validations', {
+  const truthValidatorToken = truthValidatorTokensByProject.get(projectId);
+  await postOk(api, truthValidatorToken ?? token, '/api/v1/truth/validations', {
     projectId,
     claimId: claim.id,
     evidenceId: evidence.id,
     result: 'supported',
     validatorType: 'human',
-    validatorRole: 'owner',
+    validatorRole: truthValidatorToken ? 'editor' : 'owner',
     rationale: 'Validación humana sembrada por la suite E2E Job-Driven.',
+    expectedVersion: 0,
   });
   const binding = { claimId: claim.id as string, evidenceIds: [evidence.id as string], sourceRefIds: [source.id as string] };
   bindingsByProject.set(projectId, binding);
@@ -47,9 +54,11 @@ async function truthBindingFor(api: APIRequestContext, token: string, projectId:
 }
 
 export async function confirmCheckpoint(api: APIRequestContext, token: string, projectId: string, checkpointKey: string, responses: Record<string, unknown>, suffix: string) {
+  const state = await getOk(api, token, `/api/v1/projects/${projectId}/adaptive-core`);
   const binding = BINDING_CHECKPOINTS.has(checkpointKey) ? await truthBindingFor(api, token, projectId) : null;
   return postOk(api, token, `/api/v1/projects/${projectId}/adaptive-core/checkpoints/confirm`, {
     idempotencyKey: `${projectId}-${suffix}`,
+    expectedVersion: state.activeCheckpoint.version,
     checkpointKey,
     responses,
     ...(binding
@@ -59,6 +68,11 @@ export async function confirmCheckpoint(api: APIRequestContext, token: string, p
 }
 
 export async function completeStep0(api: APIRequestContext, token: string, projectId: string) {
+  await postOk(api, token, `/api/v1/projects/${projectId}/adaptive-core/activation`, {
+    idempotencyKey: `${projectId}-activate`,
+    expectedVersion: 0,
+    origin: { kind: 'DIRECT_PROJECT' },
+  });
   await getOk(api, token, `/api/v1/projects/${projectId}/adaptive-core`);
   await confirmCheckpoint(api, token, projectId, 'CP-0.1', { objective: 'Reducir retrabajo', challengeType: 'growth' }, 'cp01');
   await confirmCheckpoint(api, token, projectId, 'CP-0.2', { scope: 'Equipo comercial', owner_and_actor_required: 'Owner comercial' }, 'cp02');
