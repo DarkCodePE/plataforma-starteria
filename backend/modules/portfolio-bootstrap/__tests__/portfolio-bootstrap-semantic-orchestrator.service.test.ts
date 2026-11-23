@@ -327,6 +327,16 @@ describe('PortfolioBootstrapSemanticOrchestratorService', () => {
       status: 'failed_retryable',
       error: { code: 'semantic_interpretation_incomplete', retryable: true },
     }));
+    expect(logger.warn).toHaveBeenCalledWith(expect.objectContaining({
+      event: 'portfolio_bootstrap_semantic_policy_incomplete',
+      incompleteReason: 'premature_review_without_material_exit',
+      attempt: 1,
+      providerFactsCount: 2,
+      providerHypothesesCount: 1,
+      providerHasQuestionPlan: false,
+      providerHasSynthesis: true,
+      providerReadyForHumanReview: true,
+    }), 'portfolio_bootstrap_semantic_policy_incomplete');
   });
 
   it('fails retryably when review is claimed without a main uncertainty after generic gaps were already resolved', async () => {

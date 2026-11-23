@@ -221,24 +221,45 @@ if command -v jq >/dev/null 2>&1; then
 set -euo pipefail
 printf '%s\n' '{"event":"request_completed","inputText":"INPUT_TEXT_SENTINEL"}'
 printf '%s\n' '{"event":"portfolio_bootstrap_semantic_schema_invalid","validationStage":"semantic_turn","issues":[{"path":"facts.2.evidenceRefs.0.quote","category":"custom"}],"completionStatus":"completed","incompleteReason":null,"inputTokens":1200,"outputTokens":800,"totalTokens":2000,"providerRaw":"PROVIDER_RAW_SENTINEL","password":"PASSWORD_SENTINEL"}'
+printf '%s\n' '{"event":"portfolio_bootstrap_semantic_policy_incomplete","incompleteReason":"material_evidence_without_next_step","attempt":2,"providerFactsCount":3,"providerHypothesesCount":2,"providerDispositionsCount":0,"providerHasQuestionPlan":false,"providerHasSynthesis":false,"providerReadyForHumanReview":false,"acceptedFactsCount":1,"acceptedHypothesesCount":0,"acceptedDispositionsCount":0,"questionBudgetLimit":3,"questionBudgetUsed":1,"inputTokens":2100,"outputTokens":900,"totalTokens":3000,"inputText":"INPUT_TEXT_SENTINEL","providerRaw":"PROVIDER_RAW_SENTINEL"}'
 MOCK_KUBECTL
   chmod +x "$mock_bin/kubectl"
 
   safe_output="$test_root/safe-log-diagnostic.txt"
   PATH="$mock_bin:$PATH" NAMESPACE=synthetic bash "$safe_log_diagnostic" >"$safe_output"
-  jq -e '
-    .event == "portfolio_bootstrap_semantic_schema_invalid"
-    and .validationStage == "semantic_turn"
-    and .issues == [{path:"facts.2.evidenceRefs.0.quote",category:"custom"}]
-    and .completionStatus == "completed"
-    and .incompleteReason == null
-    and .inputTokens == 1200
-    and .outputTokens == 800
-    and .totalTokens == 2000
-    and ((keys - [
+  jq -s -e '
+    length == 2
+    and .[0].event == "portfolio_bootstrap_semantic_schema_invalid"
+    and .[0].validationStage == "semantic_turn"
+    and .[0].issues == [{path:"facts.2.evidenceRefs.0.quote",category:"custom"}]
+    and .[0].completionStatus == "completed"
+    and .[0].incompleteReason == null
+    and .[0].inputTokens == 1200
+    and .[0].outputTokens == 800
+    and .[0].totalTokens == 2000
+    and ((.[0] | keys) - [
       "completionStatus", "event", "incompleteReason", "inputTokens",
       "issues", "outputTokens", "totalTokens", "validationStage"
-    ]) | length == 0)
+    ] | length == 0)
+    and .[1] == {
+      event:"portfolio_bootstrap_semantic_policy_incomplete",
+      incompleteReason:"material_evidence_without_next_step",
+      attempt:2,
+      providerFactsCount:3,
+      providerHypothesesCount:2,
+      providerDispositionsCount:0,
+      providerHasQuestionPlan:false,
+      providerHasSynthesis:false,
+      providerReadyForHumanReview:false,
+      acceptedFactsCount:1,
+      acceptedHypothesesCount:0,
+      acceptedDispositionsCount:0,
+      questionBudgetLimit:3,
+      questionBudgetUsed:1,
+      inputTokens:2100,
+      outputTokens:900,
+      totalTokens:3000
+    }
   ' "$safe_output" >/dev/null
   if grep -Eq 'INPUT_TEXT_SENTINEL|PROVIDER_RAW_SENTINEL|PASSWORD_SENTINEL' "$safe_output"; then
     echo 'Safe Semantic E1 log diagnostic exposed a sensitive sentinel' >&2
