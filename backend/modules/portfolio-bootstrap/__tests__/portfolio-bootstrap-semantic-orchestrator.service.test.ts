@@ -170,6 +170,60 @@ describe('PortfolioBootstrapSemanticOrchestratorService', () => {
     );
   });
 
+  it('requires canonical material fact roles from the initial provider attempt', async () => {
+    const store = fakeStore();
+    const model = fakeModelFailure();
+
+    await new PortfolioBootstrapSemanticOrchestratorService(store, model, config)
+      .processTurn(command('Tenemos capacidad disponible y queremos aumentar las ventas entre semana.'));
+
+    const prompt = vi.mocked(model.generate).mock.calls[0][0].systemPrompt.replace(/\s+/g, ' ');
+    expect(prompt).toContain(
+      'usa al menos un conceptId de ancla canónico: situation, opportunity, problem, need, existing_work, initiative o business_signal',
+    );
+    expect(prompt).toContain(
+      'usa al menos un conceptId de dirección canónico: desired_outcome, objective, direction, decision_to_enable, concrete_decision o intention',
+    );
+    expect(prompt).toContain('cuando el rawInput actual los declare');
+  });
+
+  it('fails closed when plausible facts do not use canonical anchor and direction roles', async () => {
+    const store = fakeStore(semanticState({
+      version: 1,
+      answeredGaps: ['material_subject', 'decision_to_enable'],
+      questionBudget: { limit: 3, used: 1 },
+    }));
+    const model = fakeModel({
+      facts: [
+        fact('weekend_demand_pattern', 'alta demanda los fines de semana', 'alta demanda los fines de semana'),
+        fact('weekday_sales_ambition', 'aumentar las ventas entre semana', 'aumentar las ventas entre semana'),
+      ],
+      hypotheses: [
+        startingPoint('opportunity', ['weekend_demand_pattern', 'weekday_sales_ambition']),
+        mainUncertainty('No está claro qué propuesta tendrá demanda.', ['weekend_demand_pattern']),
+      ],
+      dispositions: [], questionPlan: null,
+      synthesis: synthesis(['weekend_demand_pattern', 'weekday_sales_ambition']),
+      readyForHumanReview: true,
+      reason: 'La semántica parece material, pero los roles de hechos no son canónicos.',
+    });
+
+    await new PortfolioBootstrapSemanticOrchestratorService(store, model, config)
+      .processTurn(command('Tenemos alta demanda los fines de semana y queremos aumentar las ventas entre semana.', 1));
+
+    expect(store.completeInference).toHaveBeenCalledWith(expect.objectContaining({
+      status: 'failed_retryable',
+      error: { code: 'semantic_interpretation_incomplete', retryable: true },
+    }));
+    expect(logger.warn).toHaveBeenCalledWith(expect.objectContaining({
+      incompleteReason: 'premature_review_without_material_exit',
+      hasAnchor: false,
+      hasDirection: false,
+      hasStartingPoint: true,
+      hasMainUncertainty: true,
+    }), 'portfolio_bootstrap_semantic_policy_incomplete');
+  });
+
   it('grounds a retry in active state without re-emitting evidence from a prior turn', async () => {
     const store = fakeStore(semanticState({
       version: 1,

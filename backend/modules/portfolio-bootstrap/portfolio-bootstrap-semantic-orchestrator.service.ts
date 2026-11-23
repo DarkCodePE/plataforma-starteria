@@ -73,6 +73,11 @@ una plantilla. Devuelve un único objeto JSON que cumpla el schema y sigue este 
 Extrae hechos sólo cuando una cita literal del input los respalda. Para esos hechos usa provenance
 user_declared y evidenceRefs de kind user_input. Reserva provenance source_extracted exclusivamente para
 hechos del confirmedContext y usa sólo context_review_field o company_context_entry como evidencia.
+En cada turno, cuando el rawInput actual los declare, usa al menos un conceptId de ancla canónico:
+situation, opportunity, problem, need, existing_work, initiative o business_signal; y usa al menos un
+conceptId de dirección canónico: desired_outcome, objective, direction, decision_to_enable,
+concrete_decision o intention. Si esos roles ya existen activos en semanticState.factLedger, reutiliza
+sus conceptIds para el grounding y no reemitas los hechos de turnos anteriores como facts nuevos.
 Mantén hipótesis separadas y siempre proposed. Una negación explícita como "nunca lo hemos probado" resuelve pilot_experience aunque aparezca
 dentro de una narración general. No inventes cifras, equipo, departamentos, KPI, causas, demanda,
 recursos, resultados ni soluciones validadas. unknown y not_applicable requieren una declaración literal.
