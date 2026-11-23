@@ -1,6 +1,6 @@
 import React from 'react';
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen } from '@testing-library/react';
 import { appRoutes } from './routes';
 import { MemoryRouter, useLocation } from 'react-router';
 import { LandingPage } from './pages/LandingPage';
@@ -83,7 +83,7 @@ describe('public entry routing', () => {
     expect(indexRoute?.Component).toBe(LandingPage);
   });
 
-  it('permite ir desde la landing al login real', () => {
+  it('mantiene la navegación editorial de la landing dentro de la ruta pública', () => {
     render(
       <MemoryRouter initialEntries={['/']}>
         <LandingPage />
@@ -91,9 +91,9 @@ describe('public entry routing', () => {
       </MemoryRouter>,
     );
 
-    fireEvent.click(screen.getAllByRole('link', { name: /iniciar sesi/i })[0]);
-
-    expect(screen.getByTestId('current-path')).toHaveTextContent('/auth');
+    expect(screen.getByRole('navigation', { name: 'Navegación principal' })
+      .querySelector('a[href="#como-funciona"]')).toBeInTheDocument();
+    expect(screen.getByTestId('current-path')).toHaveTextContent('/');
   });
 
   it('no expone Portfolio Entry desde la landing, pero preserva la ruta legacy en el router', () => {
@@ -105,9 +105,9 @@ describe('public entry routing', () => {
     );
 
     expect(screen.getByRole('heading', {
-      name: /Haz que cada iniciativa aporte más/i,
+      name: /Convierte objetivos de negocio en iniciativas que avanzan y aprenden/i,
     })).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'Ver cómo funciona' })).toHaveAttribute('href', '#en-accion');
+    expect(screen.getByRole('link', { name: 'Ver cómo funciona' })).toHaveAttribute('href', '#como-funciona');
     expect(document.querySelectorAll('a[href="/public/start"]')).toHaveLength(0);
 
     const publicRoute = appRoutes[0].children?.find(route => route.path === '/public');

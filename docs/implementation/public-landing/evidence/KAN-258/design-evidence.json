@@ -1,0 +1,30 @@
+{
+  "contract": "KAN-258 + ADR-012 ACCEPTED + guardrail post-merge Proceed: YES; Landing V4.2 frontend-only con hero V4.1 centrado, una demo de Estrategia/Ejecución/Resultados, Fab, públicos asimétricos, FAQ, propósito, CTA configurado y sin enlace a /public/start.",
+  "targetViewports": ["390x844", "768x900", "1024x900", "1440x900"],
+  "accessibility": {
+    "status": "pass",
+    "evidence": "Landmarks y jerarquía semántica revisados; tabs con patrón roving tabindex y ArrowLeft/ArrowRight/Home/End; skip link y foco visible verificados; reduced-motion elimina animaciones; controles con nombre accesible y targets móviles de 44 px."
+  },
+  "responsive": {
+    "status": "pass",
+    "evidence": "Playwright renderizó 390x844, 768x900, 1024x900 y 1440x900; todos pasaron el assert de overflow horizontal y la comparación visual manual contra las capturas consolidadas V4.2."
+  },
+  "contentStates": {
+    "loading": { "status": "not-applicable", "reason": "La landing pública usa contenido local estático y no presenta una operación de carga de datos." },
+    "empty": { "status": "not-applicable", "reason": "La composición aprobada no contiene colecciones dependientes del usuario ni estado vacío." },
+    "error": { "status": "not-applicable", "reason": "La landing no ejecuta requests ni mutaciones propias; los destinos comerciales y Fab son enlaces externos ordinarios." },
+    "partial": { "status": "not-applicable", "reason": "Todo el contenido editorial se entrega en el bundle frontend sin modo parcial." },
+    "success": { "status": "pass", "evidence": "Las tres perspectivas actualizan un único tabpanel; la conversión mantiene el destino HTTPS configurado y la landing no enlaza /public/start." },
+    "permission": { "status": "not-applicable", "reason": "La landing es pública y no expone acciones protegidas; autenticación y permisos permanecen fuera del slice." }
+  },
+  "renderedEvidence": [
+    { "viewport": "390x844", "artifact": "react-v42-390x844.png", "observation": "Reflow móvil completo sin overflow; mapa vertical, demo apilada, públicos, FAQ, propósito y CTA legibles." },
+    { "viewport": "768x900", "artifact": "react-v42-768x900.png", "observation": "Tablet conserva jerarquía, mapa amplio, demo de dos columnas y targets accesibles." },
+    { "viewport": "1024x900", "artifact": "react-v42-1024x900.png", "observation": "Escritorio compacto reproduce el hero de tres líneas del baseline y mantiene canvas, públicos y FAQ equilibrados." },
+    { "viewport": "1440x900", "artifact": "react-v42-1440x900.png", "observation": "Escritorio ancho reproduce la jerarquía editorial, hero de tres líneas y composición asimétrica aprobada." },
+    { "viewport": "390x844", "artifact": "react-v42-ejecucion-390.png", "observation": "Ejecución móvil expone guía contextual y rutas Equipo/Fab sin reemplazar la autoridad humana." },
+    { "viewport": "1440x900", "artifact": "react-v42-ejecucion-1440.png", "observation": "Ejecución de escritorio coincide con el panel focal aprobado." },
+    { "viewport": "390x844", "artifact": "react-v42-resultados-390.png", "observation": "Resultados móvil conserva métricas ficticias, decisión humana y aprendizaje persistente." },
+    { "viewport": "1440x900", "artifact": "react-v42-resultados-1440.png", "observation": "Resultados de escritorio coincide con el panel focal aprobado." }
+  ]
+}
