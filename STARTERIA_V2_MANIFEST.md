@@ -1180,30 +1180,35 @@ delivery_status: PR_347_MERGED_TO_MAIN; PR_AND_POST_MERGE_CI_PASS; PRODUCTION_NO
 supersession: ADR-006 PARTIALLY_SUPERSEDED; Landing UX Spec and continuation architecture superseded only for the root Landing surface; KAN-102 report retained as historical evidence
 ```
 
-## KAN-257 / KAN-259 — PUBLIC_LANDING_V4_INTEGRATED_NARRATIVE (PROPOSED)
+## KAN-257 / KAN-259 — PUBLIC_LANDING_V4_INTEGRATED_NARRATIVE (APPROVED TARGET)
 
-**Registrado como propuesta documental:** 2026-11-22. La dirección visual fue aprobada para handoff en KAN-257#10870; la autoridad del producto para V4.2 permanece pendiente de ratificación en KAN-259.
+**Ratificación humana:** 2026-11-23, KAN-259#10874; Product ADR-012 ACCEPTED. La dirección visual se aprobó para handoff en KAN-257#10870 y se ratificó contra la identidad exacta V4.2 de PR #352 @ `74d6982503bfa2021db38b31e0e81993fe6899f7` (hashes en KAN-259#10873).
 
 ```text
 slice_id: KAN-257_PUBLIC_LANDING_V4_INTEGRATED_NARRATIVE
-HU: KAN-257; functional_authority: KAN-259; technical_implementation: KAN-258
-logic_status: CANDIDATE_NOT_AUTHORIZED (Product ADR-012 PROPOSED; ADR-011 ACCEPTED governs current /)
-implementation_status: NOT_IMPLEMENTED
-visual_status: V4_2_REFERENCE_APPROVED_FOR_HANDOFF (exact final assets not yet published in GitHub)
-evidence_status: LOCAL_CODEX_QA_REPORTED_NOT_IN_REPO; NO_REACT_PARITY_EVIDENCE
+HU: KAN-257; functional_authority: KAN-259#10874; technical_implementation: KAN-258
+logic_status: APPROVED_V2_TARGET_NOT_YET_RUNTIME (Product ADR-012 ACCEPTED; supersedes 4-stage marketing view of ADR-011 for the future /)
+implementation_status: NOT_IMPLEMENTED (existing main runtime: KAN-255 / ADR-011)
+visual_status: V4_2_REFERENCE_APPROVED_AND_PUBLISHED_IN_PR_352_OPEN
+evidence_status: REFERENCE_QA_REPORTED_AND_LINKED (27 exact artifacts on PR #352 @ 74d6982); NO_REACT_PARITY_EVIDENCE
 semantic_owner: Public Landing V2 exclusively for /
-authority: Product ADR-011 (current); Product ADR-012 (proposed); Jira KAN-257#10870 (visual handoff only); KAN-259 approval pending
+authority: Product ADR-012 ACCEPTED + Jira KAN-259#10874 + KAN-257#10870 + accepted ADR-011 boundaries + Design System Contract/Page Anatomy
 entry_boundary: public route /
-exit_boundary: existing /auth and PUBLIC_LANDING_CONFIG.demoBookingUrl; external Fab info
+exit_boundary: existing /auth and configured commercial destination PUBLIC_LANDING_CONFIG.demoBookingUrl; external Fab info
 portfolio_entry_boundary: /public/start independent, unchanged, zero links from /
-commercial_boundary: no promises of a real booking, pilot, entitlement or early access
-scope_candidate: integrated strategy → execution (Steps/Fab) → results/learning visual narrative; public marketing only
+commercial_boundary: no guarantee of demo booking, pilot, early access, savings or ROI
+fab_boundary: informational external link; no certified Platform–Fab integration
+scope: integrated strategy → guided execution (Steps illustration/Fab information) → results/learning; hero V4.1; asymmetric audiences; editorial purpose; trust FAQ; CTA
+example_only: 48h baseline / 24h target / 30h observed, fictitious and labeled, not causal KPI attribution
 excluded: Portfolio Entry; Core; Steps 0-4 behavior; backend; productive AI; Prisma/schema; auth/permissions; sw-factory; new commercial routes
-blocking: Publish exact final V4.2 visual references; approve Product ADR-012; reconcile Authority Map/Current State; re-run V2_CHANGE_GUARDRAIL_CHECK (must be Proceed YES)
-delivery_status: NOT_STARTED; no PR product/runtime; no merge or deploy
+tests_protecting_current_behavior: LandingPage.test.tsx; routes.public-entry.test.tsx; public-landing-l1.spec.ts; portfolio-entry-conversion.spec.ts
+tests_required_before_review: Landing unit + routing regression + browser in four viewports + tabs/keyboard/FAQ/mobile/reduced motion + visual delta + frontend lint/typecheck/build + CI
+baseline_ref: docs/design-references/landing-v4-2/ (PR #352 head 74d6982; exact HTML SHA256 A6450B24EB078AD3A6AA14FDA207AB64A3C7A90CC473EE74ECF16CBAFCEF7ADB)
+remaining_guardrail: review reconciled docs + base/checkout lineage + run V2_CHANGE_GUARDRAIL_CHECK before editing front/
+delivery_status: AUTHORITY_DOCS_IN_REVIEW; React PR not opened; no merge/CD permission
 ```
 
-Este registro es solo candidato. **No promover ni interpretar como ACTIVE_V2_BASELINE** sin aprobación humana explícita y evidencia de la referencia exacta.
+**Distinción obligatoria:** ADR-012 ya es la autoridad de producto aprobada para el **target** de la Landing V4.2; eso no implica que V4.2 esté incorporada a `main` ni que la landing actual haya cambiado. KAN-255 permanece como estado factual del frontend; KAN-258 todavía no está implementada. Este registro de Manifest no autoriza por sí solo React, merge ni CD.
 
 # 2.3 Slice DEV_CYCLE_HU_TOOLING (KAN-91)
 

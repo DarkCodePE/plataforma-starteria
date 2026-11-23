@@ -86,9 +86,22 @@ La presencia de este contrato en el repositorio no lo convierte en aprobado. Cua
 
 ## 4. Contrato activo para Portfolio Entry
 
-ADR-011 separa de forma definitiva la autoridad de las dos superficies: la Landing pública `/` está
-gobernada por Product ADR-011 y el slice KAN-255; Portfolio Entry conserva exclusivamente la ruta
-`/public/start` y no es un destino ni un CTA de `/`.
+La separación entre la Landing pública `/` y Portfolio Entry `/public/start` sigue gobernada por
+Product ADR-011 (KAN-255), y permanece **intacta** con Product ADR-012.
+
+**Objetivo de producto ratificado para el siguiente slice de `/`:** Product ADR-012,
+`doc/product-adr/ADR-012-public-landing-v4-ecosystem-narrative.md`, ACCEPTED mediante
+KAN-259#10874 (2026-11-23) contra el baseline exacto PR #352 @ `74d6982`.
+El target V4.2 es una experiencia editorial de tres perspectivas Estrategia → Ejecución → Resultados,
+sin cambios en Core o Steps 0–4, y sin nuevos claims o capacidades productivas no verificadas.
+**Runtime actual:** KAN-255/ADR-011 sigue implementado mientras la landing V4.2 no tenga
+implementación React verificada en KAN-258. La ratificación de ADR-012 no equivale a un cambio
+de runtime ni a autorización de merge/CD.
+
+**Gate de ejecución:** KAN-258 requiere referencia V4.2 exacta disponible en su checkout,
+Manifest reconciliado, revisión de supuestos legacy y `V2_CHANGE_GUARDRAIL_CHECK: Proceed YES`
+antes de editar código productivo. Sin ese resultado, solo se permite trabajo documental.
+Portfolio Entry conserva exclusivamente la ruta `/public/start` y no es destino ni CTA de `/`.
 
 Para el vertical slice de Portfolio Entry en `/public/start`, el Experience Contract activo es:
 
