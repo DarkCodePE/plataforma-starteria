@@ -37,6 +37,7 @@ require_text scripts/ci/run-release-parity-e2e.sh '--network-alias mailpit'
 require_text scripts/ci/run-release-parity-e2e.sh '--retries=0'
 require_text scripts/ci/run-release-parity-e2e.sh 'release-parity-runtime'
 require_text scripts/ci/run-release-parity-e2e.sh 'e2e/kan311-e1-e2-e5-contextual.spec.ts'
+require_text scripts/ci/run-release-parity-e2e.sh 'wait-for-postgres-stable.sh "$postgres_container" 60 1 2'
 require_text scripts/ci/verify-deployed-release.sh 'AI_HEALTH_ATTEMPTS=${AI_HEALTH_ATTEMPTS:-12}'
 require_text scripts/ci/verify-deployed-release.sh 'AI_HEALTH_INTERVAL_SECONDS=${AI_HEALTH_INTERVAL_SECONDS:-5}'
 require_text scripts/ci/verify-deployed-release.sh 'for attempt in $(seq 1 "$AI_HEALTH_ATTEMPTS"); do'
@@ -50,12 +51,46 @@ runtime_mode_declarations=$(grep -c 'PORTFOLIO_ENTRY_RUNTIME_MODE=live' scripts/
 for file in \
   scripts/ci/generate-release-manifest.mjs \
   scripts/ci/verify-release-manifest.mjs \
-  scripts/ci/run-release-parity-e2e.sh; do
+  scripts/ci/run-release-parity-e2e.sh \
+  scripts/ci/wait-for-postgres-stable.sh; do
   [[ -f "$file" ]] || fail "missing $file"
 done
 
 tmp_dir=$(mktemp -d)
 trap 'rm -rf -- "$tmp_dir"' EXIT
+
+mock_bin="$tmp_dir/bin"
+mkdir -p "$mock_bin"
+cat > "$mock_bin/docker" <<'MOCK_DOCKER'
+#!/usr/bin/env bash
+set -euo pipefail
+count=$(cat "$POSTGRES_READY_STATE" 2>/dev/null || printf '0')
+count=$((count + 1))
+printf '%s' "$count" > "$POSTGRES_READY_STATE"
+IFS=',' read -r -a statuses <<< "$POSTGRES_READY_SEQUENCE"
+exit "${statuses[$((count - 1))]:-1}"
+MOCK_DOCKER
+cat > "$mock_bin/sleep" <<'MOCK_SLEEP'
+#!/usr/bin/env bash
+exit 0
+MOCK_SLEEP
+chmod +x "$mock_bin/docker" "$mock_bin/sleep"
+
+ready_state="$tmp_dir/ready-state"
+PATH="$mock_bin:$PATH" POSTGRES_READY_STATE="$ready_state" POSTGRES_READY_SEQUENCE='0,1,0,0' \
+  bash scripts/ci/wait-for-postgres-stable.sh parity-postgres 6 0 2
+[[ "$(cat "$ready_state")" == 4 ]] \
+  || fail 'a transient init server must not satisfy stable PostgreSQL readiness'
+
+failed_state="$tmp_dir/failed-state"
+failed_output="$tmp_dir/failed-output"
+if PATH="$mock_bin:$PATH" POSTGRES_READY_STATE="$failed_state" POSTGRES_READY_SEQUENCE='1,1,1' \
+  bash scripts/ci/wait-for-postgres-stable.sh parity-postgres 3 0 2 2>"$failed_output"; then
+  fail 'stable PostgreSQL readiness must fail closed after exhausting attempts'
+fi
+grep -Fq 'PostgreSQL did not remain ready for 2 consecutive checks' "$failed_output" \
+  || fail 'stable PostgreSQL readiness must explain the exhausted fail-closed state'
+
 sha=17b3e4934d3fa58adbffc398222101b621b0c8bb
 digest=sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
 
