@@ -12,11 +12,15 @@ No debe leerse como runtime productivo certificado por defecto. La presencia de 
 
 La autoridad actual permite cambios frontend de producto solo cuando exista decision explicita y documentada de slice, con alcance acotado y sin modificar Core, AI, permisos, esquemas, rutas ni semantica de producto salvo autorizacion especifica. DS-05 y DS-06 son evidencia documental de pilotos frontend autorizados por slice.
 
-## KAN-257 / KAN-259 — Landing V4.2 propuesta, no implementada (2026-11-22)
+## KAN-257 / KAN-259 — Landing V4.2 ratificada como target; React pendiente (2026-11-23)
 
-El responsable de producto aprobó la **dirección visual para transferencia** en Jira KAN-257#10870. KAN-258 es la subtarea técnica y KAN-259 debe ratificar la actualización de producto. Product ADR-012 es **PROPOSED**, no accepted. Product ADR-011 sigue gobernando la landing React existente. La referencia V4.2 final (HTML, capturas y QA corregidos por Codex) continúa en el entorno local y debe publicarse para verificar su identidad antes de implementación.
+El responsable de producto aprobó la dirección visual de V4.2 para handoff en Jira KAN-257#10870, después ratificó **explícitamente** Product ADR-012 y las ocho condiciones funcionales del comentario KAN-259#10873 en **KAN-259#10874** el 2026-11-23. La aprobación cita el baseline exacto de PR documental [#352](https://github.com/DarkCodePE/plataforma-starteria/pull/352), commit `74d6982503bfa2021db38b31e0e81993fe6899f7`, con sus 27 archivos HTML/QA/capturas y SHA-256.
 
-Estado: `DESIGN_HANDOFF_RATIFIED / PRODUCT_AUTHORITY_PENDING / RUNTIME_NOT_IMPLEMENTED`. Guardrail `Proceed: NO` hasta aprobación, Manifest activo y verificación de requisitos. No modificar `front/`, `/public/start`, Core, Steps internos, backend, IA ni sw-factory en la reconciliación documental.
+Product ADR-012 está **ACCEPTED para el target** de `/` (demo única Estrategia → Ejecución → Resultados y retorno), no para cambiar Core, Steps 0–4, backend o IA productiva. No autoriza claims de integración Platform–Fab, conexiones, LLMs, memoria automática, ahorro o ROI no demostrados. Las métricas 48h/24h/30h son ilustrativas. CTA de demo conserva `PUBLIC_LANDING_CONFIG.demoBookingUrl`; `/public/start` es independiente y sin enlaces desde la landing.
+
+**Estado factual:** la landing React de KAN-255/ADR-011 continúa implementada. La V4.2 sigue **NO IMPLEMENTADA**: PR #352 publica referencias, no código; la reconciliación de ADR Index, Authority Map, Manifest y Current State se prepara en rama documental separada. El guardrail previo a KAN-258 debe emitirse en el checkout consolidado antes de editar `front/`. No hay autorización de merge ni CD automático.
+
+Estado: `PRODUCT_TARGET_RATIFIED / AUTHORITY_DOCS_IN_REVIEW / V4_2_RUNTIME_NOT_IMPLEMENTED`.
 
 ## KAN-255 — Public Landing V2 Platform + Fab integrada en main (2026-11-19)
 
