@@ -62,11 +62,7 @@ docker run -d --name "$mailpit_container" --network "$network" --network-alias m
   -p 127.0.0.1:11025:1025 -p 127.0.0.1:18025:8025 \
   axllent/mailpit:v1.27.10@sha256:b1f1be18af530d939a11ee8820b379e0c88eeec204d904bfad68862adced3a5a >/dev/null
 
-for _ in $(seq 1 60); do
-  docker exec "$postgres_container" pg_isready -U postgres -d postgres >/dev/null 2>&1 && break
-  sleep 1
-done
-docker exec "$postgres_container" pg_isready -U postgres -d postgres >/dev/null
+bash scripts/ci/wait-for-postgres-stable.sh "$postgres_container" 60 1 2
 
 export E2E_DATABASE_ADMIN_URL=postgresql://postgres:postgres@127.0.0.1:55433/postgres
 export E2E_DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:55433/starteria_e2e
