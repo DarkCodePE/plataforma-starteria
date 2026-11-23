@@ -221,7 +221,7 @@ if command -v jq >/dev/null 2>&1; then
 set -euo pipefail
 printf '%s\n' '{"event":"request_completed","inputText":"INPUT_TEXT_SENTINEL"}'
 printf '%s\n' '{"event":"portfolio_bootstrap_semantic_schema_invalid","validationStage":"semantic_turn","issues":[{"path":"facts.2.evidenceRefs.0.quote","category":"custom"}],"completionStatus":"completed","incompleteReason":null,"inputTokens":1200,"outputTokens":800,"totalTokens":2000,"providerRaw":"PROVIDER_RAW_SENTINEL","password":"PASSWORD_SENTINEL"}'
-printf '%s\n' '{"event":"portfolio_bootstrap_semantic_policy_incomplete","incompleteReason":"material_evidence_without_next_step","attempt":2,"providerFactsCount":3,"providerHypothesesCount":2,"providerDispositionsCount":0,"providerHasQuestionPlan":false,"providerHasSynthesis":false,"providerReadyForHumanReview":false,"acceptedFactsCount":1,"acceptedHypothesesCount":0,"acceptedDispositionsCount":0,"questionBudgetLimit":3,"questionBudgetUsed":1,"inputTokens":2100,"outputTokens":900,"totalTokens":3000,"inputText":"INPUT_TEXT_SENTINEL","providerRaw":"PROVIDER_RAW_SENTINEL"}'
+printf '%s\n' '{"event":"portfolio_bootstrap_semantic_policy_incomplete","incompleteReason":"material_evidence_without_next_step","attempt":2,"providerFactsCount":3,"providerHypothesesCount":2,"providerDispositionsCount":0,"providerHasQuestionPlan":false,"providerHasSynthesis":false,"providerReadyForHumanReview":false,"acceptedFactsCount":1,"acceptedHypothesesCount":0,"acceptedDispositionsCount":0,"hasAnchor":true,"hasDirection":true,"hasStartingPoint":false,"hasMainUncertainty":false,"questionBudgetLimit":3,"questionBudgetUsed":1,"inputTokens":2100,"outputTokens":900,"totalTokens":3000,"inputText":"INPUT_TEXT_SENTINEL","providerRaw":"PROVIDER_RAW_SENTINEL","evidenceStatusRaw":"EVIDENCE_STATUS_SENTINEL"}'
 MOCK_KUBECTL
   chmod +x "$mock_bin/kubectl"
 
@@ -254,6 +254,10 @@ MOCK_KUBECTL
       acceptedFactsCount:1,
       acceptedHypothesesCount:0,
       acceptedDispositionsCount:0,
+      hasAnchor:true,
+      hasDirection:true,
+      hasStartingPoint:false,
+      hasMainUncertainty:false,
       questionBudgetLimit:3,
       questionBudgetUsed:1,
       inputTokens:2100,
@@ -261,7 +265,7 @@ MOCK_KUBECTL
       totalTokens:3000
     }
   ' "$safe_output" >/dev/null
-  if grep -Eq 'INPUT_TEXT_SENTINEL|PROVIDER_RAW_SENTINEL|PASSWORD_SENTINEL' "$safe_output"; then
+  if grep -Eq 'INPUT_TEXT_SENTINEL|PROVIDER_RAW_SENTINEL|PASSWORD_SENTINEL|EVIDENCE_STATUS_SENTINEL' "$safe_output"; then
     echo 'Safe Semantic E1 log diagnostic exposed a sensitive sentinel' >&2
     exit 1
   fi

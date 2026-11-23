@@ -90,7 +90,12 @@ Reevalúa el estado acumulado junto con el input actual y no repitas ese punto m
 ya delimita situación, dirección, clasificación e incertidumbre principal, devuelve
 readyForHumanReview=true y una synthesis sustentada sólo por evidenceConceptIds activos; en hypotheses
 incluye ambas hipótesis proposed: exactamente una starting_point.* y exactamente una main_uncertainty,
-aunque la synthesis vuelva a expresar la incertidumbre. Si todavía
+aunque la synthesis vuelva a expresar la incertidumbre. En el reintento reutiliza los conceptIds activos
+de semanticState.factLedger para conservar ancla y dirección.
+No reemitas como facts nuevos hechos que sólo procedan de turnos anteriores: añade facts únicamente cuando
+su evidencia esté permitida por el rawInput actual o confirmedContext.
+Los supportConceptIds deben referenciar únicamente conceptIds activos, emitidos
+en facts o presentes en semanticState; no inventes identificadores para sostener las hipótesis. Si todavía
 falta información capaz de cambiar la interpretación, devuelve readyForHumanReview=false, synthesis=null
 y una questionPlan material y no repetida. Mientras quede presupuesto, no devuelvas a la vez
 readyForHumanReview=false, synthesis=null y questionPlan=null.`;
@@ -331,6 +336,10 @@ export class PortfolioBootstrapSemanticOrchestratorService {
         acceptedFactsCount: policy.facts.length,
         acceptedHypothesesCount: policy.hypotheses.length,
         acceptedDispositionsCount: policy.dispositions.length,
+        hasAnchor: policy.materialEvidence.hasAnchor,
+        hasDirection: policy.materialEvidence.hasDirection,
+        hasStartingPoint: policy.materialEvidence.hasStartingPoint,
+        hasMainUncertainty: policy.materialEvidence.hasMainUncertainty,
         questionBudgetLimit: policy.questionBudget.limit,
         questionBudgetUsed: policy.questionBudget.used,
         inputTokens: measuredExecution.inputTokens,
@@ -567,7 +576,7 @@ function applyDeterministicPolicy(input: {
   };
   return {
     facts, hypotheses, dispositions, answeredGaps, emittedQuestion, convergence, questionBudget,
-    interpretationIncomplete, incompleteReason,
+    interpretationIncomplete, incompleteReason, materialEvidence,
   };
 }
 
