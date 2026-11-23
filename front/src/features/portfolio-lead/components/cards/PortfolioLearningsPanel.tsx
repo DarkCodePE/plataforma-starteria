@@ -23,19 +23,28 @@ export const COVERAGE_LABEL: Record<string, string> = {
   cerrar: 'a cerrar',
 };
 
-export function PortfolioLearningsPanel() {
-  const [learnings, setLearnings] = useState<PortfolioLearning[] | null>(null);
+type Props = {
+  items?: PortfolioLearning[];
+  unavailable?: boolean;
+};
+
+export function PortfolioLearningsPanel({ items, unavailable = false }: Props = {}) {
+  const [loadedLearnings, setLoadedLearnings] = useState<PortfolioLearning[] | null>(null);
   const [error, setError] = useState(false);
 
   useEffect(() => {
+    if (items !== undefined || unavailable) return;
     let cancelled = false;
     listPortfolioLearnings()
-      .then((data) => !cancelled && setLearnings(data))
+      .then((data) => !cancelled && setLoadedLearnings(data))
       .catch(() => !cancelled && setError(true));
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [items, unavailable]);
+
+  const learnings = items ?? loadedLearnings;
+  const hasError = error || unavailable;
 
   return (
     <section className="rounded-ds-lg border border-border-default bg-surface-default p-6 md:p-7" aria-label="Lo que aprendió el portfolio">
@@ -43,12 +52,12 @@ export function PortfolioLearningsPanel() {
       <p className="mt-2 text-sm text-text-secondary">
         Cada decisión vuelve a su reto y su frente: cómo cambió la cobertura, qué se aprendió y qué sigue.
       </p>
-      {error ? <p role="alert" className="mt-4 text-sm text-rose-700">No pudimos cargar los aprendizajes.</p> : null}
-      {!learnings && !error ? <p role="status" className="mt-4 text-sm text-slate-500">Cargando…</p> : null}
-      {learnings && learnings.length === 0 ? (
+      {hasError ? <p role="alert" className="mt-4 text-sm text-rose-700">No pudimos cargar los aprendizajes.</p> : null}
+      {!learnings && !hasError ? <p role="status" className="mt-4 text-sm text-slate-500">Cargando…</p> : null}
+      {!hasError && learnings && learnings.length === 0 ? (
         <p className="mt-4 text-sm text-slate-500">Todavía no hay decisiones organizacionales registradas.</p>
       ) : null}
-      {learnings && learnings.length > 0 ? (
+      {!hasError && learnings && learnings.length > 0 ? (
         <ul className="mt-4 space-y-3">
           {learnings.map((item) => (
             <li key={item.decisionId} className="rounded-2xl border border-slate-200 bg-white p-4" data-testid="portfolio-learning">

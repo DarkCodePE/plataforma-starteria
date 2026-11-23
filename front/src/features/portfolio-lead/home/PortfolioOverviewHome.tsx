@@ -2,6 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { AlertTriangle, ArrowRight, BriefcaseBusiness, CheckSquare, Gauge, Sparkles } from 'lucide-react';
 import type { PortfolioHomeReadModel } from '../../../app/services/portfolioService';
 import type { PortfolioResumableSession } from '../bootstrap/services/portfolioBootstrapClient';
+import { PortfolioLearningsPanel } from '../components/cards/PortfolioLearningsPanel';
 import { PortfolioAttentionPanel } from './PortfolioAttentionPanel';
 import {
   AlertDialog,
@@ -342,6 +343,8 @@ export function PortfolioOverviewHome({
       {model.capacity ? <><p className="mt-3 text-xs leading-5 text-slate-500">{model.capacity.note}</p>{model.capacity.signals.length > 0 ? <ul className="mt-3 space-y-2 text-sm text-slate-700">{model.capacity.signals.slice(0, 3).map((signal) => <li key={`${signal.kind}-${signal.frontId}-${signal.challengeId ?? ''}`} className="rounded-lg bg-slate-50 px-3 py-2">{signal.message}</li>)}</ul> : null}</> : null}
       <p className="mt-3 text-xs text-slate-500">{model.learningsUnavailable ? 'Los aprendizajes de decisiones no están disponibles.' : `${model.learnings.length} aprendizajes persistidos disponibles.`}</p>
     </section>
+
+    <PortfolioLearningsPanel items={model.learnings} unavailable={model.learningsUnavailable} />
 
     <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm md:p-7" aria-labelledby="portfolio-map-title">
       <div>

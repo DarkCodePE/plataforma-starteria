@@ -7,7 +7,7 @@
  * a portfolio-tracking meta row pointing at Step 0.
  *
  *   - Steps 1..4 are seeded (DEFAULT_STEPS): Step 1 NOT_STARTED, Steps 2..4 BLOCKED,
- *     currentStep=1, step0Status=NOT_STARTED — the participant can navigate immediately.
+ *     while a challenge-linked initiative enters the explicit Step 0 activation gate.
  *   - InitiativePortfolioMeta is upserted with status='en_step_0' and the reto's
  *     strategicFrontId, so the iniciativa shows up under its frente → reto for the
  *     portfolio dashboard without any re-capture.
@@ -40,13 +40,23 @@ function makeTx(overrides: Record<string, any> = {}) {
 }
 
 function makePrisma(tx: any) {
-  return { $transaction: vi.fn(async (cb: any) => cb(tx)) } as any;
+  return {
+    $transaction: vi.fn(async (cb: any) => cb(tx)),
+    user: { findUnique: vi.fn().mockResolvedValue({ organizationId: 'org-1' }) },
+    challenge: { findUnique: vi.fn().mockResolvedValue({
+      id: 'ch1',
+      strategicFrontId: 'sf1',
+      strategicFront: { organizationId: 'org-1' },
+    }) },
+    organizationMember: { findMany: vi.fn().mockResolvedValue([]) },
+    organizationPortfolioAccessGrant: { findMany: vi.fn().mockResolvedValue([]) },
+  } as any;
 }
 
 const baseData = { name: 'Mi Iniciativa', description: 'd' } as any;
 
 describe('ProjectService.createProject — steps + meta materialization (milestone #7)', () => {
-  it('seeds a navigable Steps 1..4 flow (Step 1 open, 2..4 blocked, currentStep=1)', async () => {
+  it('seeds Steps 1..4 while challenge-linked initiatives enter at Step 0', async () => {
     const tx = makeTx();
     const svc = new ProjectService(makePrisma(tx));
 
@@ -55,9 +65,9 @@ describe('ProjectService.createProject — steps + meta materialization (milesto
     expect(tx.project.create).toHaveBeenCalledTimes(1);
     const createArg = tx.project.create.mock.calls[0][0].data;
 
-    // Entry state for the participant: Step 0 pending, currentStep at 1.
-    expect(createArg.currentStep).toBe(1);
-    expect(createArg.step0Status).toBe('NOT_STARTED');
+    // Challenge-linked initiatives require the explicit Step 0 activation gate.
+    expect(createArg.currentStep).toBe(0);
+    expect(createArg.step0Status).toBe('IN_PROGRESS');
 
     // Steps 1..4 are materialized inline.
     const seededSteps = createArg.steps.create as Array<{ number: number; status: string; modules: any }>;

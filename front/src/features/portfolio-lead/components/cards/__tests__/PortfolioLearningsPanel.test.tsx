@@ -31,4 +31,11 @@ describe('PortfolioLearningsPanel', () => {
     render(<PortfolioLearningsPanel />);
     expect(await screen.findByText('Todavía no hay decisiones organizacionales registradas.')).toBeInTheDocument();
   });
+
+  it('no confunde una lectura no disponible con un portfolio sin decisiones', () => {
+    render(<PortfolioLearningsPanel items={[]} unavailable />);
+
+    expect(screen.getByRole('alert')).toHaveTextContent('No pudimos cargar los aprendizajes.');
+    expect(screen.queryByText('Todavía no hay decisiones organizacionales registradas.')).not.toBeInTheDocument();
+  });
 });

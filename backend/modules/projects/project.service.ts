@@ -260,10 +260,31 @@ export class ProjectService {
       });
     }
 
-    const linkedOrganizationId = linkedChallenge?.strategicFront?.organizationId ?? null;
-    if (linkedOrganizationId) {
+    const legacyChallenge = legacyChallengeId
+      ? await this.prisma.challenge.findUnique({
+          where: { id: legacyChallengeId },
+          include: { strategicFront: true },
+        })
+      : null;
+    if (legacyChallengeId && !legacyChallenge) {
+      throw AppError.notFound('Desafio', 'CHALLENGE_NOT_FOUND', {
+        hint: 'Verifica el ID del reto antes de crear la iniciativa.',
+      });
+    }
+    const challengeOrganizationId = linkedChallenge?.strategicFront?.organizationId
+      ?? legacyChallenge?.strategicFront?.organizationId
+      ?? null;
+    if ((linkedChallenge || legacyChallenge) && !challengeOrganizationId) {
+      throw AppError.notFound('Recurso de portafolio', 'PORTFOLIO_RESOURCE_NOT_FOUND');
+    }
+    const startsAtStep0 = Boolean(linkedChallenge ?? legacyChallenge);
+    const actor = challengeOrganizationId
+      ? null
+      : await this.prisma.user.findUnique({ where: { id: userId }, select: { organizationId: true } });
+    const projectOrganizationId = challengeOrganizationId ?? actor?.organizationId ?? null;
+    if (challengeOrganizationId) {
       const scope = await resolvePortfolioScope(this.prisma, { id: userId, role });
-      if (!scopeAllows(scope, { found: true, organizationId: linkedOrganizationId })) {
+      if (!scopeAllows(scope, { found: true, organizationId: challengeOrganizationId })) {
         throw AppError.notFound('Recurso de portafolio', 'PORTFOLIO_RESOURCE_NOT_FOUND');
       }
     }
@@ -308,11 +329,11 @@ export class ProjectService {
           name: data.name,
           description: data.description,
           ownerId: userId,
-          organizationId: linkedOrganizationId,
+          organizationId: projectOrganizationId,
           cohortId: data.cohort,
           status: 'DRAFT',
-          currentStep: linkedChallenge ? 0 : 1,
-          step0Status: linkedChallenge ? 'IN_PROGRESS' : 'NOT_STARTED',
+          currentStep: startsAtStep0 ? 0 : 1,
+          step0Status: startsAtStep0 ? 'IN_PROGRESS' : 'NOT_STARTED',
           step0Data: linkedChallenge ? inheritedStep0Data as any : undefined,
           mentorCredits: 3,
           riskLevel: 'LOW',

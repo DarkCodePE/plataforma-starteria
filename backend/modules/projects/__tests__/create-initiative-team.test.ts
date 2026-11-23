@@ -33,6 +33,14 @@ function makeTx(overrides: Record<string, any> = {}) {
 function makePrisma(tx: any, overrides: Record<string, any> = {}) {
   return {
     $transaction: vi.fn(async (cb: any) => cb(tx)),
+    user: { findUnique: vi.fn().mockResolvedValue({ organizationId: 'org-1' }) },
+    challenge: { findUnique: vi.fn().mockResolvedValue({
+      id: 'ch1',
+      strategicFrontId: 'sf1',
+      strategicFront: { organizationId: 'org-1' },
+    }) },
+    organizationMember: { findMany: vi.fn().mockResolvedValue([]) },
+    organizationPortfolioAccessGrant: { findMany: vi.fn().mockResolvedValue([]) },
     ...overrides,
   } as any;
 }
@@ -83,12 +91,81 @@ describe('ProjectService.createProject — team materialization (#111)', () => {
     expect(tx.teamMember.createMany).not.toHaveBeenCalled();
   });
 
-  it('skips materialization when the referenced reto no longer exists', async () => {
+  it('persists the actor tenant for a standalone initiative', async () => {
+    const tx = makeTx();
+    const svc = new ProjectService(makePrisma(tx, {
+      user: { findUnique: vi.fn().mockResolvedValue({ organizationId: 'org-owner' }) },
+    }));
+
+    await svc.createProject('owner', baseData);
+
+    expect(tx.project.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ organizationId: 'org-owner' }),
+    }));
+  });
+
+  it('persists and authorizes the Challenge tenant for a legacy challengeId link', async () => {
+    const tx = makeTx();
+    const svc = new ProjectService(makePrisma(tx, {
+      user: { findUnique: vi.fn().mockResolvedValue({ organizationId: 'org-legacy' }) },
+      challenge: { findUnique: vi.fn().mockResolvedValue({
+        id: 'ch1',
+        strategicFrontId: 'sf1',
+        strategicFront: { organizationId: 'org-legacy' },
+      }) },
+    }));
+
+    await svc.createProject('owner', { ...baseData, challengeId: 'ch1' });
+
+    expect(tx.project.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({
+        organizationId: 'org-legacy',
+        currentStep: 0,
+        step0Status: 'IN_PROGRESS',
+      }),
+    }));
+  });
+
+  it('rejects a legacy challengeId link outside the actor tenant', async () => {
+    const tx = makeTx();
+    const svc = new ProjectService(makePrisma(tx, {
+      user: { findUnique: vi.fn().mockResolvedValue({ organizationId: 'org-owner' }) },
+      challenge: { findUnique: vi.fn().mockResolvedValue({
+        id: 'foreign-challenge',
+        strategicFrontId: 'foreign-front',
+        strategicFront: { organizationId: 'org-foreign' },
+      }) },
+    }));
+
+    await expect(svc.createProject('owner', { ...baseData, challengeId: 'foreign-challenge' }))
+      .rejects.toMatchObject({ code: 'PORTFOLIO_RESOURCE_NOT_FOUND', statusCode: 404 });
+    expect(tx.project.create).not.toHaveBeenCalled();
+  });
+
+  it('rejects a legacy challengeId when the referenced reto no longer exists', async () => {
     const tx = makeTx({ challenge: { findUnique: vi.fn().mockResolvedValue(null) } });
-    const svc = new ProjectService(makePrisma(tx));
-    await svc.createProject('owner', { ...baseData, challengeId: 'gone' });
-    expect(tx.initiativePortfolioMeta.upsert).not.toHaveBeenCalled();
-    expect(tx.teamMember.createMany).not.toHaveBeenCalled();
+    const svc = new ProjectService(makePrisma(tx, {
+      challenge: { findUnique: vi.fn().mockResolvedValue(null) },
+    }));
+
+    await expect(svc.createProject('owner', { ...baseData, challengeId: 'gone' }))
+      .rejects.toMatchObject({ code: 'CHALLENGE_NOT_FOUND', statusCode: 404 });
+    expect(tx.project.create).not.toHaveBeenCalled();
+  });
+
+  it('rejects a legacy challengeId whose tenant cannot be established', async () => {
+    const tx = makeTx();
+    const svc = new ProjectService(makePrisma(tx, {
+      challenge: { findUnique: vi.fn().mockResolvedValue({
+        id: 'legacy-unscoped',
+        strategicFrontId: 'front-unscoped',
+        strategicFront: { organizationId: null },
+      }) },
+    }));
+
+    await expect(svc.createProject('owner', { ...baseData, challengeId: 'legacy-unscoped' }))
+      .rejects.toMatchObject({ code: 'PORTFOLIO_RESOURCE_NOT_FOUND', statusCode: 404 });
+    expect(tx.project.create).not.toHaveBeenCalled();
   });
 
   it('persists the tenant and inherited roster from an authorized V2 Challenge link', async () => {
@@ -144,6 +221,20 @@ describe('ProjectService.createProject — team materialization (#111)', () => {
     }));
 
     await expect(svc.createProject('owner', { ...baseData, challengeLink: { challengeId: 'foreign-challenge', createdFrom: 'challenge' } }))
+      .rejects.toMatchObject({ code: 'PORTFOLIO_RESOURCE_NOT_FOUND', statusCode: 404 });
+    expect(tx.project.create).not.toHaveBeenCalled();
+  });
+
+  it('rejects a V2 Challenge link whose tenant cannot be established', async () => {
+    const tx = makeTx();
+    const svc = new ProjectService(makePrisma(tx, {
+      challenge: { findUnique: vi.fn().mockResolvedValue({
+        id: 'v2-unscoped', status: 'recibiendo_iniciativas', strategicFrontId: 'front-unscoped',
+        assignedSquad: [], strategicFront: { organizationId: null },
+      }) },
+    }));
+
+    await expect(svc.createProject('owner', { ...baseData, challengeLink: { challengeId: 'v2-unscoped', createdFrom: 'challenge' } }))
       .rejects.toMatchObject({ code: 'PORTFOLIO_RESOURCE_NOT_FOUND', statusCode: 404 });
     expect(tx.project.create).not.toHaveBeenCalled();
   });
