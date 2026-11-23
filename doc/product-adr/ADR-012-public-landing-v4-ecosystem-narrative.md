@@ -1,18 +1,20 @@
 # Product ADR-012 — Landing V4.2: narrativa integral estrategia, ejecución y aprendizaje
 
-- **Estado:** PROPOSED / AWAITING_PRODUCT_RATIFICATION
+- **Estado:** ACCEPTED — Product ratification KAN-259#10874 (2026-11-23)
 - **Fecha:** 2026-11-22
 - **HU funcional:** KAN-259, hija de KAN-257
-- **HU técnica:** KAN-258 (bloqueada hasta autoridad)
+- **HU técnica:** KAN-258 (frontend público; implementación aún no iniciada y guardrail obligatorio)
 - **Ámbito:** landing pública `/`; no cambia reglas internas del producto
 - **Decisión anterior:** Product ADR-011, ACCEPTED para KAN-255
-- **Revisión visual:** KAN-257, comentario 10870: dirección visual aprobada para handoff, no implementación autorizada
+- **Revisión visual:** KAN-257#10870; baseline exacto PR #352 @ `74d6982503bfa2021db38b31e0e81993fe6899f7`, hashes SHA-256 registrados en KAN-259#10873
+- **Ratificación de producto:** KAN-259#10874, aceptación explícita de las 8 condiciones de KAN-259#10873
+- **Alcance de la ratificación:** reconciliación documental y repetición del guardrail; sin merge/CD, ni backend, Core, Steps 0–4, Prisma o IA productiva
 
 ## 1. Problema
 
 ADR-011 congeló una explicación ilustrativa de cuatro etapas y una propuesta Platform/Fab. La iteración V4.2 recupera la narrativa completa de Startería, no solo el detalle de ejecución, y requiere separar de forma comprensible la capa estratégica del trabajo del equipo y el retorno de resultados al portafolio. El cambio no puede promoverse desde un prototipo sin decisión de producto explícita.
 
-## 2. Decisión propuesta — pendiente de aceptar
+## 2. Decisión aceptada (KAN-259#10874)
 
 Para la landing comercial `/` exclusivamente:
 
@@ -39,19 +41,19 @@ Para la landing comercial `/` exclusivamente:
 
 ## 4. Relación con Product ADR-011
 
-Si este ADR llega a **ACCEPTED**, sustituirá **solo en la superficie `/`** la obligación de mostrar una demo de cuatro etapas independientes por la presentación integrada de tres perspectivas. Las cuatro etapas pueden subsistir como momentos internos de explicación. No se revierte la separación de Portfolio Entry y landing ni ninguno de los guardrails y límites aceptados en ADR-011.
+La ratificación **ACCEPTED** sustituye, como autoridad de producto para la siguiente evolución de la superficie pública `/` únicamente, la obligación de mostrar cuatro etapas independientes por la presentación integrada de tres perspectivas. Las cuatro etapas pueden subsistir como momentos internos de explicación. No se revierte la separación de Portfolio Entry y landing ni ninguno de los guardrails y límites aceptados en ADR-011.
 
-Mientras `ADR-012` esté **PROPOSED**, **ADR-011 continúa siendo la autoridad vigente** y KAN-258 sigue bloqueada para cambiar código productivo.
+ADR-011 conserva autoridad histórica y sigue describiendo el **runtime React KAN-255 efectivamente implementado**, hasta que KAN-258 se integre y verifique. ADR-012 gobierna **el target comercial aprobado** de V4.2; aprobar ADR-012 no cambia automáticamente lo desplegado ni salta el guardrail, las pruebas o la revisión humana de los PR.
 
-## 5. Gobierno y aceptación técnica (propuestos)
+## 5. Gobierno y aceptación técnica
 
-1. La aprobación de producto debe citar explícitamente este ADR, el baseline visual exacto y KAN-259, mediante comentario trazable en Jira.
-2. Antes de implementar deben publicarse en una rama revisable los artefactos **exactos** de `docs/design-references/landing-v4-2/`: HTML consolidado, informe de QA, capturas 1440/1024/768/390 y hashes de referencia. No basta el HTML V4.2 inicial, anterior a las correcciones de Codex.
-3. Reconciliar `doc/product-adr/ADR-INDEX.md`, `docs/STARTERIA_AUTHORITY.md`, `STARTERIA_V2_MANIFEST.md` y `CURRENT_STATE.md` después de la ratificación, sin confundir CANDIDATE con ACTIVE.
+1. **CUMPLIDO:** ratificación expresa de Product ADR-012 y de las ocho condiciones de KAN-259#10873, mediante KAN-259#10874, contra PR #352 @ `74d6982`.
+2. **CUMPLIDO EN PR ABIERTO, PENDIENTE DE INTEGRACIÓN A MAIN:** los 27 artefactos **exactos** de `docs/design-references/landing-v4-2/` están publicados en PR #352: HTML consolidado, QA, evidencia, capturas 1440/1024/768/390 y hashes. La implementación debe consumir esa identidad verificable, no el HTML anterior del chat.
+3. Reconciliar en PR documental `doc/product-adr/ADR-INDEX.md`, `docs/STARTERIA_AUTHORITY.md`, `STARTERIA_V2_MANIFEST.md` y `CURRENT_STATE.md`; diferenciar **producto aceptado**, **baseline publicado en PR**, **runtime KAN-255 existente** y **KAN-258 aún no implementado**.
 4. Ejecutar `V2_CHANGE_GUARDRAIL_CHECK`: proceder con código productivo **solo con Proceed: YES**.
 5. KAN-258 implementará la landing React en un PR propio, sin reescribir rutas ni semántica. Exigir typecheck, lint, build, Vitest, Playwright, accesibilidad, reduced-motion, responsive y capturas de paridad visual.
 6. No merge ni CD automático; requieren revisión y autorización explícita.
 
 ## 6. Estado actual
 
-**AUTHORITY_PROPOSAL_ONLY**. Es una propuesta documental para revisión funcional, **no** una autorización de implementación ni declaración de que V4.2 esté operativa.
+**PRODUCT_AUTHORITY_ACCEPTED / DOCUMENTARY_RECONCILIATION_IN_PR / REACT_V4_2_NOT_IMPLEMENTED**. Esta aceptación valida el cambio de narrativa de producto, **no** demuestra que V4.2 esté operativa ni autoriza merge/CD. El inicio de KAN-258 exige un `V2_CHANGE_GUARDRAIL_CHECK` trazable, en el checkout que contenga este ADR ratificado y el baseline exacto.
