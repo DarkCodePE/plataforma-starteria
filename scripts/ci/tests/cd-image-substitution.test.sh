@@ -70,8 +70,14 @@ cat > "$tmp/bin/kubectl" <<'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
 if [[ " $* " == *' apply -f - '* ]]; then
-  cat >> "$KUBECTL_CAPTURE_DIR/rendered-deployments.yaml"
+  rendered=$(cat)
+  printf '%s\n' "$rendered" >> "$KUBECTL_CAPTURE_DIR/rendered-deployments.yaml"
   printf '\n---\n' >> "$KUBECTL_CAPTURE_DIR/rendered-deployments.yaml"
+  service=$(printf '%s\n' "$rendered" | sed -nE 's/^[[:space:]]*name: starteria-(backend|frontend|ai-service)$/\1/p' | head -n 1)
+  [[ -n "$service" ]] && printf 'apply:%s\n' "$service" >> "$KUBECTL_CAPTURE_DIR/rollout-order.log"
+elif [[ " $* " == *' rollout status deployment/starteria-'* ]]; then
+  service=$(printf '%s\n' "$*" | sed -nE 's#.*deployment/starteria-(backend|frontend|ai-service).*#\1#p')
+  [[ -n "$service" ]] && printf 'rollout:%s\n' "$service" >> "$KUBECTL_CAPTURE_DIR/rollout-order.log"
 fi
 EOF
 chmod +x "$tmp/bin/kubectl"
@@ -84,6 +90,7 @@ run_image_application() {
   local fixture_root=$1
   local backend=${2-$backend_digest}
   rm -f "$tmp/rendered-deployments.yaml"
+  rm -f "$tmp/rollout-order.log"
   (
     cd "$fixture_root"
     PATH="$tmp/bin:$PATH" \
@@ -116,6 +123,10 @@ mkdir -p "$tag_fixture"
 cp -R "$repo_root/k8s" "$tag_fixture/k8s"
 run_image_application "$tag_fixture" >/dev/null
 assert_certified_images_rendered
+expected_rollout_order=$'apply:backend\nrollout:backend\napply:frontend\nrollout:frontend\napply:ai-service\nrollout:ai-service'
+actual_rollout_order=$(cat "$tmp/rollout-order.log")
+[[ "$actual_rollout_order" == "$expected_rollout_order" ]] \
+  || fail "release deployments are not rolled out sequentially: $actual_rollout_order"
 
 digest_fixture="$tmp/digest-fixture"
 mkdir -p "$digest_fixture"

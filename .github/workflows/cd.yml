@@ -661,6 +661,11 @@ jobs:
             -f k8s/cloudflared-service.yaml
           # El PVC va antes del Deployment que lo monta. Aplicarlo de nuevo no toca un PVC ya creado.
           kubectl -n "$NAMESPACE" apply -f k8s/backend-storage-pvc.yaml
+          kubectl -n "$NAMESPACE" apply -f k8s/cloudflared-deployment.yaml
+          # All application Deployments use Recreate and share a small cluster. Applying all
+          # three before waiting lets frontend/AI replacement pods consume the capacity that
+          # the backend replacement needs, leaving it at 0/1 until the timeout. Complete each
+          # rollout before starting the next service so its previous pod releases capacity.
           for svc in backend frontend ai-service; do
             manifest="k8s/$svc-deployment.yaml"
             case "$svc" in
@@ -680,27 +685,23 @@ jobs:
             printf '%s\n' "$substituted" | grep -Fq "image: ${release_image}" \
               || { echo "::error::Image substitution did not match in $manifest; refusing to apply"; exit 1; }
             printf '%s\n' "$substituted" | kubectl -n "$NAMESPACE" apply -f -
-          done
-          kubectl -n "$NAMESPACE" set env deployment/starteria-backend \
-            --from=configmap/starteria-step-reasoning-qa
-          kubectl -n "$NAMESPACE" set env deployment/starteria-backend \
-            STARTERIA_RELEASE_SHA="$SOURCE_SHA" \
-            STARTERIA_RELEASE_VERSION=0.0.1 \
-            SEMANTIC_E1_ENABLED="$SEMANTIC_E1_ENABLED" \
-            PORTFOLIO_GOAL_E2_LEDGER_ENABLED=false \
-            PORTFOLIO_GOAL_E2_MULTI_TURN_ENABLED=false \
-            PORTFOLIO_GOAL_E2_CHECKPOINT_ENABLED=false
-          kubectl -n "$NAMESPACE" apply -f k8s/cloudflared-deployment.yaml
-          kubectl -n "$NAMESPACE" set image deployment/starteria-backend "backend=$backend_image"
-          kubectl -n "$NAMESPACE" set image deployment/starteria-frontend "frontend=$frontend_image"
-          kubectl -n "$NAMESPACE" set image deployment/starteria-ai-service "ai-service=$ai_service_image"
-          for svc in backend frontend ai-service; do
+
+            if [[ "$svc" == backend ]]; then
+              kubectl -n "$NAMESPACE" set env deployment/starteria-backend \
+                --from=configmap/starteria-step-reasoning-qa
+              kubectl -n "$NAMESPACE" set env deployment/starteria-backend \
+                STARTERIA_RELEASE_SHA="$SOURCE_SHA" \
+                STARTERIA_RELEASE_VERSION=0.0.1 \
+                SEMANTIC_E1_ENABLED="$SEMANTIC_E1_ENABLED" \
+                PORTFOLIO_GOAL_E2_LEDGER_ENABLED=false \
+                PORTFOLIO_GOAL_E2_MULTI_TURN_ENABLED=false \
+                PORTFOLIO_GOAL_E2_CHECKPOINT_ENABLED=false
+            fi
+            kubectl -n "$NAMESPACE" set image deployment/starteria-$svc "$svc=$release_image"
             kubectl -n "$NAMESPACE" annotate deployment/starteria-$svc \
               starteria.io/release-sha="$SOURCE_SHA" \
               starteria.io/release-manifest="starteria-release-manifest-${GITHUB_RUN_ID}" \
               --overwrite
-          done
-          for svc in backend frontend ai-service; do
             kubectl -n "$NAMESPACE" rollout status "deployment/starteria-$svc" --timeout="$ROLLOUT_TIMEOUT"
           done
       - name: Verify database schema and API after rollout
