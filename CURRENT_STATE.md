@@ -12,17 +12,17 @@ No debe leerse como runtime productivo certificado por defecto. La presencia de 
 
 La autoridad actual permite cambios frontend de producto solo cuando exista decision explicita y documentada de slice, con alcance acotado y sin modificar Core, AI, permisos, esquemas, rutas ni semantica de producto salvo autorizacion especifica. DS-05 y DS-06 son evidencia documental de pilotos frontend autorizados por slice.
 
-## KAN-257 / KAN-259 — Landing V4.2 ratificada como target; React pendiente (2026-11-23)
+## KAN-257 / KAN-258 / KAN-259 — Landing V4.2 integrada en `main`; producción pendiente (2026-11-23)
 
 El responsable de producto aprobó la dirección visual de V4.2 para handoff en Jira KAN-257#10870, después ratificó **explícitamente** Product ADR-012 y las ocho condiciones funcionales del comentario KAN-259#10873 en **KAN-259#10874** el 2026-11-23. La aprobación cita el baseline exacto de PR documental [#352](https://github.com/DarkCodePE/plataforma-starteria/pull/352), commit `74d6982503bfa2021db38b31e0e81993fe6899f7`, con sus 27 archivos HTML/QA/capturas y SHA-256.
 
 Product ADR-012 está **ACCEPTED para el target** de `/` (demo única Estrategia → Ejecución → Resultados y retorno), no para cambiar Core, Steps 0–4, backend o IA productiva. No autoriza claims de integración Platform–Fab, conexiones, LLMs, memoria automática, ahorro o ROI no demostrados. Las métricas 48h/24h/30h son ilustrativas. CTA de demo conserva `PUBLIC_LANDING_CONFIG.demoBookingUrl`; `/public/start` es independiente y sin enlaces desde la landing.
 
-**Estado factual:** la landing React de KAN-255/ADR-011 continúa implementada. La V4.2 sigue **NO IMPLEMENTADA**: PR #352 publica referencias, no código; la reconciliación de ADR Index, Authority Map, Manifest y Current State se integró en main mediante PR #361; el baseline V4.2 exacto se integró mediante PR #352. La implementación React de KAN-258 sigue pendiente. El guardrail previo a KAN-258 debe emitirse en el checkout consolidado antes de editar `front/`. No hay autorización de merge ni CD automático.
+**Estado factual:** la implementación React V4.2 de KAN-258 se integró en `main` mediante PR [#363](https://github.com/DarkCodePE/plataforma-starteria/pull/363), merge `e61f20e84ff98a44ee25643c408b80e99046f669`. El CI del PR (run `45221633325`) y el CI posterior al merge (run `45233465492`) finalizaron correctamente. La evidencia versionada acredita pruebas unitarias, routing, Playwright, interacción accesible, separación de `/public/start` y comparación responsive en 1440, 1024, 768 y 390 px contra el baseline V4.2. KAN-255/ADR-011 queda como baseline histórico de la composición anterior; se conservan sus límites de conversión y separación. No se ha ejecutado CD para este SHA y no existe certificación productiva de V4.2.
 
-Estado: `PRODUCT_TARGET_RATIFIED / AUTHORITY_RECONCILED_IN_MAIN / KAN-258_FRONTEND_GUARDRAIL_PASSED / V4_2_RUNTIME_NOT_IMPLEMENTED`. El guardrail post-merge de KAN-258 habilita exclusivamente desarrollo React en rama; no certifica QA final ni autoriza merge/CD.
+Estado: `PRODUCT_TARGET_RATIFIED / KAN-258_MERGED_TO_MAIN / V4_2_REPOSITORY_RUNTIME_VERIFIED / POST_MERGE_CI_PASS / PRODUCTION_NOT_DEPLOYED`. La integración no modifica Core, Steps 0–4, backend, IA productiva, autenticación, permisos, persistencia ni infraestructura. Cualquier CD requiere autorización separada.
 
-## KAN-255 — Public Landing V2 Platform + Fab integrada en main (2026-11-19)
+## KAN-255 — Public Landing V2 Platform + Fab, baseline anterior de `/` (2026-11-19)
 
 El responsable de producto ratificó Product ADR-011 en KAN-255#10862. La decisión autoriza un slice
 frontend-only para `/`: narrativa empresarial de Startería Platform, una única demostración
